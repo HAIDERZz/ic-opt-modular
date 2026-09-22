@@ -1,11 +1,15 @@
 """Render a GDS top cell to PNG with matplotlib (one colour per layer), optional zoom box and red highlights."""
-import sys, json
+import json
+import sys
 from pathlib import Path
+
 import klayout.db as kdb
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon as MplPolygon, Rectangle
+from matplotlib.patches import Polygon as MplPolygon
+from matplotlib.patches import Rectangle
 
 PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf", "#aec7e8", "#ffbb78"]
 

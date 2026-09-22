@@ -1,7 +1,12 @@
 """Is D4 (crossover far pad poking into the neighbouring ring's chamfer) open for ind_sym NT>=3 on the current code?
 Generate a small-OD x NT grid on the public demo_6m profile and run the packaged DRC audit on every accepted GDS."""
-import collections, itertools, json, sys, tempfile
+import collections
+import itertools
+import json
+import sys
+import tempfile
 from pathlib import Path
+
 from ic_opt.em.pcell import get_generator
 from ic_opt.em.pcell.drc_audit import audit_gds
 

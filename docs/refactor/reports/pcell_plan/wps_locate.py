@@ -1,9 +1,12 @@
 """Locate the wide-parallel-spacing edge pairs the packaged audit flags on an ind_sym the generator accepted (demo_6m, W=5, S=2)."""
-import json, sys
+import json
+import sys
 from pathlib import Path
+
 import klayout.db as kdb
+
 from ic_opt.em.pcell import get_generator
-from ic_opt.em.pcell.drc_audit import _region_for, _um_to_dbu, _edge_key
+from ic_opt.em.pcell.drc_audit import _edge_key, _region_for, _um_to_dbu
 from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
 
 out = Path(sys.argv[1])

@@ -1,9 +1,17 @@
 """How much of the recorded library does the current geometry generation still stand behind?
 For a sample of recorded sweep points per stratum: rebuild with the current generator, classify refused / physically-equal / different."""
-import json, os, random, sys, tempfile, collections, re
+import collections
+import json
+import os
+import random
+import re
+import sys
+import tempfile
 from pathlib import Path
+
 from ic_opt.em.pcell import get_generator
 from ic_opt.em.pcell.gds_compare import compare_gds
+
 SWEEP = Path(os.environ["IC_OPT_EM_SWEEPS"])      # <em-opt>/experiments/device_db_sweep_n28/outputs/sweep
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 40
 result = {}

@@ -1,6 +1,8 @@
 """Build all six clean-port families on the packaged public demo_6m profile (safe to publish), then render them."""
-import json, sys
+import json
+import sys
 from pathlib import Path
+
 from ic_opt.em.pcell import get_generator
 
 out = Path(sys.argv[1]); out.mkdir(parents=True, exist_ok=True)
