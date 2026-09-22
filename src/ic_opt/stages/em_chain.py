@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -18,10 +19,13 @@ from pydantic import ValidationError
 from ic_opt import space
 from ic_opt.deck import Deck
 from ic_opt.em import emx as emx_kernel
+from ic_opt.em import measure as measure_kernel
 from ic_opt.em import nport as nport_kernel
+from ic_opt.em import touchstone
 from ic_opt.em.pcell import get_generator
 from ic_opt.em.pcell.base import EmxPort, read_emx_ports
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
+from ic_opt.observation import ChildResult
 from ic_opt.sim.ocean import WaveformExport
 from ic_opt.space import Point
 from ic_opt.spec import Device, Spec, VariableKind
@@ -233,13 +237,51 @@ class BindNport:
 
 
 def em_circuit_pipeline(spec: Spec, deck: Deck, *, waveforms: list[WaveformExport] = ()) -> list:
-    """pcell -> emx per device -> bind_nport -> spectre -> ocean -> extract (the device chain is added by T9.3's measure)."""
+    """pcell -> emx per device -> bind_nport -> spectre -> ocean -> extract, plus the measure chain when the spec has device metrics."""
     sim = spec.simulator
+    devices = [Measure()] if any(m.quantity is not None for m in spec.metrics) else []
     return [Pcell(spec), *emx_stages(spec), BindNport(deck), Spectre(preset=sim.preset, threads=sim.threads_per_run, timeout_s=sim.timeout_s),
-            Ocean(timeout_s=sim.timeout_s, waveforms=list(waveforms)), Extract()]
+            Ocean(timeout_s=sim.timeout_s, waveforms=list(waveforms)), Extract(), *devices]
+
+
+class Measure:
+    """Device child: the spec's quantity metrics for this device from its S-parameters (curves at a grid frequency, or scalars)."""
+
+    name = "measure"
+    level = "child"
+    unit = "device"
+    resources = Resources()
+
+    def fingerprint(self, geometry: Geometry, ctx: StageContext) -> str | None:
+        return None
+
+    def run(self, geometry: Geometry, ctx: StageContext) -> ChildResult:
+        device = ctx.spec.device(ctx.unit)
+        sp = geometry.sparams.get(ctx.unit)
+        if sp is None:
+            raise StageFailure(f"device {ctx.unit} has no S-parameters")
+        try:
+            ts = touchstone.read(sp.path)
+            topo = measure_kernel.Topology.from_labels(device.topology.drives, device.topology.grounded, sp.port_labels)
+            q = measure_kernel.quantities(ts.freqs, ts.s, topo, z0=ts.z0)
+        except (touchstone.TouchstoneError, measure_kernel.MeasureError, KeyError) as exc:
+            raise StageFailure(f"device {ctx.unit}: {exc}") from exc
+        metrics, issues = {}, []
+        for metric in ctx.spec.metrics_for_device(ctx.unit):
+            try:
+                value = q.at(metric.quantity, metric.frequency_hz) if metric.frequency_hz is not None else q.scalars[metric.quantity]
+            except (KeyError, measure_kernel.MeasureError) as exc:
+                issues.append(f"metric {metric.name}: {exc}")
+                continue
+            if value is None or not math.isfinite(value):
+                issues.append(f"metric {metric.name}: {metric.quantity} is {value}")
+            else:
+                metrics[metric.name] = float(value)
+        (ctx.workdir / "quantities.json").write_text(json.dumps({k: v for k, v in q.scalars.items()}, indent=1), encoding="utf-8")
+        return ChildResult(unit=ctx.unit, corner=None, metrics=metrics, issues=issues, status="ok" if not issues else "failed:measure")
 
 
 def em_only_pipeline(spec: Spec) -> list:
-    """pcell -> emx per device -> measure (device chain); the measure stage lands with T9.3."""
-    raise NotImplementedError("em_only pipeline needs the measure stage (T9.3)")
+    """pcell -> emx per device -> measure (device chain): characterization, library sweeps, device-level optimization."""
+    return [Pcell(spec), *emx_stages(spec), Measure()]
 
