@@ -25,6 +25,7 @@ from ic_opt.em.pcell._pcell_core import (
     bridge_y_reach,
     cross_endpoint_offset,
     max_opening,
+    transform_point,
 )
 
 
@@ -171,6 +172,63 @@ def _check_winding_segments(
             f"{where}: {_metal_name(met)} body has {loops} closed metal loop(s); "
             "a turn shorts onto itself (increase OD or reduce NT/W/S)"
         )
+
+
+def landing_pads_nm(cell: Cell, layer: tuple[int, int]) -> list[tuple[int, int, int, int]]:
+    """Global rectangles of every crossover endpoint pad on ``layer``: the ``vias`` blocks under a ``base_xfm_cross``."""
+    out: list[tuple[int, int, int, int]] = []
+
+    def walk(c: Cell, xf, inside_cross: bool) -> None:
+        for inst in c.insts:
+            ox, oy, orient = inst.origin_nm[0], inst.origin_nm[1], inst.orient
+
+            def child_xf(p, _ox=ox, _oy=oy, _orient=orient, _outer=xf):
+                x, y = transform_point(p, _orient)
+                return _outer((x + _ox, y + _oy))
+
+            if inside_cross and inst.cell.function == "vias":
+                for shape in inst.cell.shapes:
+                    if shape.layer == layer:
+                        xs, ys = zip(*(child_xf(pt) for pt in shape.points_nm))
+                        out.append((min(xs), min(ys), max(xs), max(ys)))
+            walk(inst.cell, child_xf, inside_cross or inst.cell.function == "base_xfm_cross")
+
+    walk(cell, lambda p: p, False)
+    return out
+
+
+def _check_landing_pads(cell: Cell, *, met: int, where: str, process: ProcessRuleContext | None) -> None:
+    """Every crossover endpoint pad must lie entirely on the winding metal around it (D4's landing predicate, M1.6).
+
+    A pad that hangs past its ring's flat is metal over free space -- not a
+    spacing violation, so DRC never sees it; the construction trims pads to the
+    flat (``base_ind_hud_cross``) and this is the check that it did. Reference
+    mode (no process) draws the SKILL reference verbatim, hangs included, and
+    trims nothing -- so it is not checked either."""
+    if process is None:
+        return
+    layer = _metal(met, process)
+    pads = landing_pads_nm(cell, layer)
+    if not pads:
+        return
+    pad_boxes = {p for p in pads}
+    others = kdb.Region()
+    for shape_layer, points in cell.flat_shapes():
+        if shape_layer == layer and points:
+            xs, ys = zip(*points)
+            if len(points) == 4 and (min(xs), min(ys), max(xs), max(ys)) in pad_boxes:
+                continue                                         # the pad itself (drawn by its vias block)
+            others.insert(kdb.Polygon([kdb.Point(x, y) for x, y in points]))
+    others.merge()
+    others.size(1)                      # one database unit of slack: an off-lattice width leaves sub-grid slivers, not geometry
+    for x0, y0, x1, y1 in pads:
+        pad = kdb.Region(kdb.Box(x0, y0, x1, y1))
+        outside = (pad - others).area()
+        if outside:
+            raise PortError(
+                f"{where}: a crossover landing pad at ({x0 * DBU_UM:.3f}, {y0 * DBU_UM:.3f})..({x1 * DBU_UM:.3f}, {y1 * DBU_UM:.3f}) um "
+                f"hangs {100.0 * outside / pad.area():.0f}% off the {_metal_name(met)} ring (increase OD or reduce W/NT/S)"
+            )
 
 
 def _check_ind_winding_segments(

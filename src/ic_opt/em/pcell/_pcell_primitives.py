@@ -811,8 +811,18 @@ def base_ind_hud_cross(
     chamfer_bias: int = 0,
     corridor: tuple[float, int] | None = None,
     outer_corridor: tuple[float, int] | None = None,
+    landing: tuple[float, int] | None = None,
 ) -> Cell:
     """One inductor turn with crossover: base_oct + two base_xfm_cross legs.
+
+    ``landing`` (M1.6, D4): the ``(OD, chamfer_bias)`` of the NEXT-INNER ring
+    the far pads land on (default: ``OD - 2*pitch`` with this turn's own
+    bias, exact whenever no staircase is active). Both endpoint pads must lie
+    entirely on their ring's flat: the far pad's top edge stays at or below
+    the landing ring's BA and the near pad's at or below this ring's BA --
+    past BA the ring's outer boundary turns 45 degrees inward and the pad's
+    outer corner would hang in free space (the review's D4 landing predicate).
+    A pad is trimmed to fit and refused below the metal's min_width.
 
     ``outer_corridor`` (issue 04, second mechanism): the NEXT-OUTER
     ring's ``(OD, chamfer_bias)``, bounding the legs' NEAR endpoint pads
@@ -941,6 +951,7 @@ def base_ind_hud_cross(
         "W": W,
         "S": S,
         "OPENING": OPENING,
+        "landing": landing,
         "TOP_ME": TOP_ME,
         "BTM_ME": BTM_ME,
         "under": under,
@@ -996,6 +1007,21 @@ def base_ind_hud_cross(
                     f"by {floor_sp} um -- the turn is too small to host "
                     f"the bridge landing; increase OD or reduce W/NT"
                 )
+    if process is not None:
+        # far pad flat containment (D4): y_top = y0 + length <= landing ring's BA
+        land_od, land_bias = (OD - 2 * pitch, chamfer_bias) if landing is None else landing
+        far_flat = floortogrid(octagon(land_od, W, land_bias).BA - y0)
+        if far_flat < (W if far_pad_len is None else far_pad_len) - 1e-9:
+            far_pad_len = far_flat
+            if far_pad_len < _pad_trim_floor(TOP_ME, process):
+                raise PortError(
+                    f"base_ind_hud_cross: OD={OD}, W={W}, PITCH={pitch} on "
+                    f"{_metal_name(_metal_index(TOP_ME))}: the crossover "
+                    f"far pad (starting {y0} um from the axis) does not fit "
+                    f"the landing ring OD={land_od}'s flat (BA="
+                    f"{octagon(land_od, W, land_bias).BA} um) -- the pad "
+                    f"would hang off the ring; increase OD or reduce W/NT/S"
+                )
     near_pad_len = None
     if process is not None and outer_corridor is not None:
         oc_od, oc_bias = outer_corridor
@@ -1020,6 +1046,21 @@ def base_ind_hud_cross(
     # OOCH from roundtogrid'd C/C2 -- replaced by the exact cross endpoint
     # edge so the ring arm ends flush with the crossover legs (alignment
     # correction, see cross_endpoint_offset and KNOWN_DEVIATIONS).
+    if process is not None:
+        # near pad flat containment (D4): on this turn's own arm, y_top <= own BA
+        y0_near = xfm_cross_far_pad_y0(cross_gap, W, 0.0, _metal_index(TOP_ME), process)
+        near_flat = floortogrid(octagon(OD, W, chamfer_bias).BA - y0_near)
+        if near_flat < (W if near_pad_len is None else near_pad_len) - 1e-9:
+            near_pad_len = near_flat
+            if near_pad_len < _pad_trim_floor(TOP_ME, process):
+                raise PortError(
+                    f"base_ind_hud_cross: OD={OD}, W={W}, PITCH={pitch} on "
+                    f"{_metal_name(_metal_index(TOP_ME))}: the crossover "
+                    f"near pad (starting {y0_near} um from the axis) does "
+                    f"not fit this ring's flat (BA="
+                    f"{octagon(OD, W, chamfer_bias).BA} um) -- the pad would "
+                    f"hang off the ring; increase OD or reduce W/NT/S"
+                )
     facing_val = cross_endpoint_offset(W, cross_gap, _metal_index(TOP_ME), process)
     lop_val, rop_val = facing_val, OPENING
     cross1_xy, cross1_or = (-OD / 2, 0.0), "R0"

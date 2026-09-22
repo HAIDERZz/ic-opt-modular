@@ -1,0 +1,4513 @@
+{
+ "profile": "demo_6m",
+ "top_metal": "6",
+ "tally": {
+  "clean": 177,
+  "refused": 303
+ },
+ "pads": {
+  "pads": 1900,
+  "hanging>0": 0,
+  "hanging>=40%": 0
+ },
+ "kinds": {},
+ "rows": [
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=3, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=32.000 (NT=3, PITCH=7.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=30.000 (NT=3, PITCH=7.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=3, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=24.000 (NT=3, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=3, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=26.000 (NT=3, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=24.000 (NT=3, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=20.000 (NT=3, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=20.000 (NT=3, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=18.000 (NT=3, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=16.000 (NT=3, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=12.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=12.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=10.000 (NT=3, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=8.000 (NT=3, PITCH=13.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 3,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=4.000 (NT=3, PITCH=14.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=36.0, W=4.0, PITCH=6.0 on M6: the crossover far pad would need trimming to 0."
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=34.0, W=4.0, PITCH=6.5 on M6: the crossover far pad (starting 4.415 um from t"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=32.0, W=4.0, PITCH=7.0 on M6: the crossover far pad (starting 4.32 um from th"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=4, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=32.000 (NT=4, PITCH=7.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=30.000 (NT=4, PITCH=7.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=4, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=24.000 (NT=4, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=4, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=26.000 (NT=4, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=24.000 (NT=4, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=20.000 (NT=4, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=20.000 (NT=4, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=18.000 (NT=4, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=16.000 (NT=4, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=12.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=12.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=10.000 (NT=4, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=8.000 (NT=4, PITCH=13.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 4,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=4.000 (NT=4, PITCH=14.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=12.000 (NT=5, PITCH=6.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=8.000 (NT=5, PITCH=6.5) cannot host the crossunder facing "
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=4.000 (NT=5, PITCH=7.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-4.000 (NT=5, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=4.000 (NT=5, PITCH=7.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=0.000 (NT=5, PITCH=7.5) cannot host the crossunder facing "
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-4.000 (NT=5, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-12.000 (NT=5, PITCH=9.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-4.000 (NT=5, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-8.000 (NT=5, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-12.000 (NT=5, PITCH=9.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-20.000 (NT=5, PITCH=10.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-20.000 (NT=5, PITCH=10.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-24.000 (NT=5, PITCH=10.5) cannot host the crossunder faci"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-28.000 (NT=5, PITCH=11.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-36.000 (NT=5, PITCH=12.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-36.000 (NT=5, PITCH=12.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-40.000 (NT=5, PITCH=12.5) cannot host the crossunder faci"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-44.000 (NT=5, PITCH=13.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 60,
+   "nt": 5,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-52.000 (NT=5, PITCH=14.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=33.000 (NT=3, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=29.000 (NT=3, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=33.000 (NT=3, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=31.000 (NT=3, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=29.000 (NT=3, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=25.000 (NT=3, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=25.000 (NT=3, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=23.000 (NT=3, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=21.000 (NT=3, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=17.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=17.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=15.000 (NT=3, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=13.000 (NT=3, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 3,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=9.000 (NT=3, PITCH=14.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=29.0, W=4.0, PITCH=6.0 on M6: the crossover far pad would need trimming to -0"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=39.0, W=4.0, PITCH=6.5 on M6: the crossover far pad (starting 4.415 um from t"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=37.0, W=4.0, PITCH=7.0 on M6: the crossover far pad (starting 4.32 um from th"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=33.0, W=4.0, PITCH=8.0 on M6: the crossover far pad (starting 4.82 um from th"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=37.0, W=5.0, PITCH=7.0 on M6: the crossover far pad would need trimming to -0"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=35.0, W=5.0, PITCH=7.5 on M6: the crossover far pad would need trimming to -0"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=33.000 (NT=4, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=29.000 (NT=4, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=33.000 (NT=4, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=31.000 (NT=4, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=29.000 (NT=4, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=25.000 (NT=4, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=25.000 (NT=4, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=23.000 (NT=4, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=21.000 (NT=4, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=17.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=17.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=15.000 (NT=4, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=13.000 (NT=4, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 65,
+   "nt": 4,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=9.000 (NT=4, PITCH=14.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=17.000 (NT=5, PITCH=6.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=13.000 (NT=5, PITCH=6.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=9.000 (NT=5, PITCH=7.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=1.000 (NT=5, PITCH=8.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=9.000 (NT=5, PITCH=7.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=5.000 (NT=5, PITCH=7.5) cannot host the crossunder facing "
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=1.000 (NT=5, PITCH=8.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-7.000 (NT=5, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=1.000 (NT=5, PITCH=8.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-3.000 (NT=5, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-7.000 (NT=5, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-15.000 (NT=5, PITCH=10.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-15.000 (NT=5, PITCH=10.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-19.000 (NT=5, PITCH=10.5) cannot host the crossunder faci"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-23.000 (NT=5, PITCH=11.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-31.000 (NT=5, PITCH=12.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-31.000 (NT=5, PITCH=12.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-35.000 (NT=5, PITCH=12.5) cannot host the crossunder faci"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-39.000 (NT=5, PITCH=13.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 65,
+   "nt": 5,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-47.000 (NT=5, PITCH=14.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=34.000 (NT=3, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=38.000 (NT=3, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=36.000 (NT=3, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=34.000 (NT=3, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=30.000 (NT=3, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=30.000 (NT=3, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=3, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=26.000 (NT=3, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=22.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=22.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=20.000 (NT=3, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=18.000 (NT=3, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=14.000 (NT=3, PITCH=14.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=34.0, W=4.0, PITCH=6.0 on M6: the crossover far pad would need trimming to 0."
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=31.0, W=4.0, PITCH=6.5 on M6: the crossover far pad would need trimming to 0."
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=28.0, W=4.0, PITCH=7.0 on M6: the crossover far pad would need trimming to 0."
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=38.0, W=4.0, PITCH=8.0 on M6: the crossover far pad (starting 4.82 um from th"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=42.0, W=5.0, PITCH=7.0 on M6: the crossover far pad would need trimming to 0."
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=40.0, W=5.0, PITCH=7.5 on M6: the crossover far pad would need trimming to 0."
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=38.0, W=5.0, PITCH=8.0 on M6: the crossover far pad would need trimming to 0."
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=34.000 (NT=4, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=38.000 (NT=4, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=36.000 (NT=4, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=34.000 (NT=4, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=30.000 (NT=4, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=30.000 (NT=4, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=4, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=26.000 (NT=4, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=22.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=22.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=20.000 (NT=4, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=18.000 (NT=4, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 4,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=14.000 (NT=4, PITCH=14.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=22.000 (NT=5, PITCH=6.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=18.000 (NT=5, PITCH=6.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=14.000 (NT=5, PITCH=7.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=6.000 (NT=5, PITCH=8.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=14.000 (NT=5, PITCH=7.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=10.000 (NT=5, PITCH=7.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=6.000 (NT=5, PITCH=8.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-2.000 (NT=5, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=6.000 (NT=5, PITCH=8.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=2.000 (NT=5, PITCH=8.5) cannot host the crossunder facing "
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-2.000 (NT=5, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-10.000 (NT=5, PITCH=10.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-10.000 (NT=5, PITCH=10.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-14.000 (NT=5, PITCH=10.5) cannot host the crossunder faci"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-18.000 (NT=5, PITCH=11.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-26.000 (NT=5, PITCH=12.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-26.000 (NT=5, PITCH=12.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-30.000 (NT=5, PITCH=12.5) cannot host the crossunder faci"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-34.000 (NT=5, PITCH=13.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 70,
+   "nt": 5,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-42.000 (NT=5, PITCH=14.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=40.000 (NT=3, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=40.000 (NT=3, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=38.000 (NT=3, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=36.000 (NT=3, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=32.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=32.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=30.000 (NT=3, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=3, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 3,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=24.000 (NT=3, PITCH=14.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=38.0, W=4.0, PITCH=7.0 on M6: the crossover far pad (starting 4.32 um from th"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=32.0, W=4.0, PITCH=8.0 on M6: the crossover far pad (starting 4.82 um from th"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=38.0, W=5.0, PITCH=7.0 on M6: the crossover far pad would need trimming to -0"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=35.0, W=5.0, PITCH=7.5 on M6: the crossover far pad would need trimming to -0"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=32.0, W=5.0, PITCH=8.0 on M6: the crossover far pad would need trimming to -0"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=44.0, W=5.0, PITCH=9.0 on M6: the crossover far pad (starting 5.525 um from t"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=48.0, W=6.0, PITCH=8.0 on M6: the crossover far pad would need trimming to 0."
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=46.0, W=6.0, PITCH=8.5 on M6: the crossover far pad would need trimming to 0."
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=44.0, W=6.0, PITCH=9.0 on M6: the crossover far pad (starting 5.735 um from t"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=40.000 (NT=4, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=40.000 (NT=4, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=38.000 (NT=4, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=36.000 (NT=4, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=32.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=32.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=30.000 (NT=4, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=4, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 4,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=24.000 (NT=4, PITCH=14.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=5, PITCH=6.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=24.000 (NT=5, PITCH=7.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=16.000 (NT=5, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=24.000 (NT=5, PITCH=7.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=20.000 (NT=5, PITCH=7.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=16.000 (NT=5, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=8.000 (NT=5, PITCH=9.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=16.000 (NT=5, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=12.000 (NT=5, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=8.000 (NT=5, PITCH=9.0) cannot host the crossunder facing "
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=0.000 (NT=5, PITCH=10.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=0.000 (NT=5, PITCH=10.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-4.000 (NT=5, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-8.000 (NT=5, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-16.000 (NT=5, PITCH=12.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-16.000 (NT=5, PITCH=12.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-20.000 (NT=5, PITCH=12.5) cannot host the crossunder faci"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-24.000 (NT=5, PITCH=13.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 80,
+   "nt": 5,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-32.000 (NT=5, PITCH=14.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=50.000 (NT=3, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=48.000 (NT=3, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=46.000 (NT=3, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=42.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=42.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=40.000 (NT=3, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=38.000 (NT=3, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=34.000 (NT=3, PITCH=14.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=42.0, W=4.0, PITCH=8.0 on M6: the crossover far pad (starting 4.82 um from th"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=42.0, W=5.0, PITCH=8.0 on M6: the crossover far pad (starting 5.025 um from t"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=36.0, W=5.0, PITCH=9.0 on M6: the crossover far pad (starting 5.525 um from t"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=42.0, W=6.0, PITCH=8.0 on M6: the crossover far pad would need trimming to -0"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=39.0, W=6.0, PITCH=8.5 on M6: the crossover far pad would need trimming to -0"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=36.0, W=6.0, PITCH=9.0 on M6: the crossover far pad would need trimming to -0"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=50.0, W=6.0, PITCH=10.0 on M6: the crossover far pad (starting 6.235 um from "
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=50.000 (NT=4, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=48.000 (NT=4, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=46.000 (NT=4, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=42.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=42.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=40.000 (NT=4, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=38.000 (NT=4, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=34.000 (NT=4, PITCH=14.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=26.000 (NT=5, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=34.000 (NT=5, PITCH=7.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=30.000 (NT=5, PITCH=7.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=26.000 (NT=5, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=18.000 (NT=5, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=26.000 (NT=5, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=22.000 (NT=5, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=18.000 (NT=5, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=10.000 (NT=5, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=10.000 (NT=5, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=6.000 (NT=5, PITCH=10.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=2.000 (NT=5, PITCH=11.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-6.000 (NT=5, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-6.000 (NT=5, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-10.000 (NT=5, PITCH=12.5) cannot host the crossunder faci"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-14.000 (NT=5, PITCH=13.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 90,
+   "nt": 5,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-22.000 (NT=5, PITCH=14.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=52.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=52.000 (NT=3, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=50.000 (NT=3, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=48.000 (NT=3, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=44.000 (NT=3, PITCH=14.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=46.0, W=5.0, PITCH=9.0 on M6: the crossover far pad (starting 5.525 um from t"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=49.0, W=6.0, PITCH=8.5 on M6: the crossover far pad (starting 5.83 um from th"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=46.0, W=6.0, PITCH=9.0 on M6: the crossover far pad (starting 5.735 um from t"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=40.0, W=6.0, PITCH=10.0 on M6: the crossover far pad would need trimming to 0"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=60.0, W=8.0, PITCH=10.0 on M6: the crossover far pad would need trimming to 0"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=58.0, W=8.0, PITCH=10.5 on M6: the crossover far pad (starting 7.245 um from "
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=56.0, W=8.0, PITCH=11.0 on M6: the crossover far pad (starting 7.15 um from t"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=52.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=52.000 (NT=4, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=50.000 (NT=4, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=48.000 (NT=4, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=44.000 (NT=4, PITCH=14.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=5, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=36.000 (NT=5, PITCH=8.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=32.000 (NT=5, PITCH=8.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=28.000 (NT=5, PITCH=9.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=20.000 (NT=5, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=20.000 (NT=5, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=16.000 (NT=5, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=12.000 (NT=5, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=4.000 (NT=5, PITCH=12.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=4.000 (NT=5, PITCH=12.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=0.000 (NT=5, PITCH=12.5) cannot host the crossunder facing"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-4.000 (NT=5, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=-12.000 (NT=5, PITCH=14.0) cannot host the crossunder faci"
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=60.0, W=8.0, PITCH=10.0 on M6: the crossover far pad would need trimming to 0"
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=57.0, W=8.0, PITCH=10.5 on M6: the crossover far pad would need trimming to 0"
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=54.0, W=8.0, PITCH=11.0 on M6: the crossover far pad would need trimming to 0"
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=48.0, W=8.0, PITCH=12.0 on M6: the crossover far pad would need trimming to 0"
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=72.0, W=10.0, PITCH=12.0 on M6: the crossover far pad would need trimming to "
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=70.0, W=10.0, PITCH=12.5 on M6: the crossover far pad (starting 8.66 um from "
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=68.0, W=10.0, PITCH=13.0 on M6: the crossover far pad (starting 8.565 um from"
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=64.0, W=10.0, PITCH=14.0 on M6: the crossover far pad (starting 9.065 um from"
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=40.000 (NT=5, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=40.000 (NT=5, PITCH=10.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=36.000 (NT=5, PITCH=10.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=32.000 (NT=5, PITCH=11.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=24.000 (NT=5, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=24.000 (NT=5, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=20.000 (NT=5, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=16.000 (NT=5, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=8.000 (NT=5, PITCH=14.0) cannot host the crossunder facing"
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 3,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 8,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 12,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=72.0, W=10.0, PITCH=13.0 on M6: the crossover far pad (starting 8.565 um from"
+  },
+  {
+   "od": 150,
+   "nt": 4,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: base_ind_hud_cross: OD=66.0, W=10.0, PITCH=14.0 on M6: the crossover far pad (starting 9.065 um from"
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 4.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 4.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 4.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 5.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 5.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 5.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 6.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 6.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 6.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 8.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 8.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 8.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "clean",
+   "pads": 16,
+   "worst_hang": 0.0
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=54.000 (NT=5, PITCH=12.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 10.0,
+   "s": 2.5,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=50.000 (NT=5, PITCH=12.5) cannot host the crossunder facin"
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 10.0,
+   "s": 3.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=46.000 (NT=5, PITCH=13.0) cannot host the crossunder facin"
+  },
+  {
+   "od": 150,
+   "nt": 5,
+   "w": 10.0,
+   "s": 4.0,
+   "origin": "grid",
+   "status": "refused",
+   "why": "PortError: ind_sym: innermost facing-bearing turn OD=38.000 (NT=5, PITCH=14.0) cannot host the crossunder facin"
+  }
+ ]
+}

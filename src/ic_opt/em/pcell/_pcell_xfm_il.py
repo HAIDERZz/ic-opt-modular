@@ -39,6 +39,7 @@ from ic_opt.em.pcell._pcell_core import (
 )
 from ic_opt.em.pcell._pcell_guards import (
     _check_bridge_escape_clearance,
+    _check_landing_pads,
     _check_opening,
     _check_winding_fit,
     _check_winding_segments,
@@ -656,6 +657,29 @@ def _il_shifted_hud_cross(
                     f"{floor_sp} um -- the turn is too small to host the "
                     f"bridge landing; increase OD or reduce W/NT"
                 )
+    own_pad_len = None
+    if process is not None:
+        # Flat containment (M1.6, D4): the lane shift moves one pad of each
+        # pair outward by |leg1_dy|, so both pads of a pair must fit the
+        # flat of the ring they sit on -- the far pads the same winding's
+        # next ring (OD - 2 PITCH, merged bias two steps on), the near pads
+        # this ring -- with their top edge at or below that ring's BA.
+        y0 = xfm_cross_far_pad_y0(cross_gap, W, 0.0, sl, process)
+        start = y0 + abs(leg1_dy)
+        far_flat = floortogrid(octagon(OD - 2 * PITCH, W, chamfer_bias + 2 * corridor_bias_step).BA - start)
+        own_flat = floortogrid(octagon(OD, W, chamfer_bias).BA - start)
+        if far_flat < (W if far_pad_len is None else far_pad_len) - 1e-9:
+            far_pad_len = far_flat
+        if own_flat < W - 1e-9:
+            own_pad_len = own_flat
+        for which, length in (("landing", far_pad_len), ("own-ring", own_pad_len)):
+            if length is not None and length < _pad_trim_floor(sl, process):
+                raise PortError(
+                    f"xfm_il: OD={OD}, W={W}, PITCH={PITCH}, q-shift={leg1_dy} um on "
+                    f"M{sl}: the bridge's {which} pad (starting {start} um from the "
+                    f"axis) does not fit the ring's flat -- the pad would hang off "
+                    f"the ring; increase OD or reduce W/NT/S"
+                )
     cell.inst(
         base_xfm_cross(
             WI=cross_gap,
@@ -665,6 +689,7 @@ def _il_shifted_hud_cross(
             BTM_ME=leg1,
             process=process,
             far_pad_length=far_pad_len,
+            near_pad_length=own_pad_len,
         ),
         (-OD / 2.0, leg1_dy),
         "R0",
@@ -681,6 +706,7 @@ def _il_shifted_hud_cross(
             process=process,
             # MY-mirrored: its inner-ring pad is the near one.
             near_pad_length=far_pad_len,
+            far_pad_length=own_pad_len,
         ),
         (-OD / 2.0 + PITCH + W, -leg1_dy),
         "MY",
@@ -1412,6 +1438,8 @@ def xfm_il(
         # secondary's escape adds two more. Fewer means two bands merged (D11 guard).
         _check_winding_segments(pri, met=sl, expected=2 * NT_P - 1, where="xfm_il primary", process=process)
         _check_winding_segments(sec, met=sl, expected=2 * NT_S + 1, where="xfm_il secondary", process=process)
+        _check_landing_pads(pri, met=sl, where="xfm_il primary", process=process)
+        _check_landing_pads(sec, met=sl, where="xfm_il secondary", process=process)
     except PortError as exc:
         raise PortError(
             f"{exc} -- escape-corridor note (design-region-full-coverage): "

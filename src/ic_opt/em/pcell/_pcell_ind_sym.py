@@ -35,6 +35,7 @@ from ic_opt.em.pcell._pcell_core import (
 )
 from ic_opt.em.pcell._pcell_guards import (
     _check_ind_winding_segments,
+    _check_landing_pads,
     _check_opening,
     _check_trace_rules,
     _check_winding_fit,
@@ -282,6 +283,7 @@ def _ind_ring_turns(cell, OD, W, OPENING, S, NT, TOP_ME, BTM_ME, DUMMYL,
                     # passes -- bound them against that ring too.
                     outer_corridor=(OD - 2 * (i - 1) * pitch,
                                     chamfer_biases[i - 1]),
+                    landing=(OD - 2 * (i + 1) * pitch, chamfer_biases[i + 1]),
                 ),
                 (0.0, 0.0),
                 orient,
@@ -299,6 +301,7 @@ def _ind_ring_turns(cell, OD, W, OPENING, S, NT, TOP_ME, BTM_ME, DUMMYL,
             PITCH=pitch,
             LEG2_BTM_ME=LEG2_BTM_ME,
             chamfer_bias=chamfer_biases[0],
+            landing=(OD - 2 * pitch, chamfer_biases[1]),
         ),
         (0.0, 0.0),
         "R0",
@@ -597,6 +600,7 @@ def ind_sym(
     # after the heal for parity with the legacy ind_sym_ct build (whose
     # inner winding healed before the outer tap existed).
     _heal_seam_notches(cell, process)
+    _check_landing_pads(cell, met=top_met, where="ind_sym", process=process)
     _check_ind_winding_segments(
         cell,
         top_met=top_met,
