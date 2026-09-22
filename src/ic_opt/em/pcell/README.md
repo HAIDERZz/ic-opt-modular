@@ -1,15 +1,16 @@
 # Clean-port PCell implementation and history
 
 Current product entry: `plugin_module: builtin:clean_port`, six registered
-generators. Use the [parameter reference](../../../../docs/guide/06-device-variables.md)
-and [current inventory/limits](../../../../docs/guide/07-device-inventory.md)
-for supported fields and known limitations. The M7 milestone descriptions below
-retain construction provenance; they are not a claim that every process/parameter
-combination has been qualified.
+generators. The parameter reference is generated from the config models:
+[docs/em/devices.md](../../../../docs/em/devices.md) (`python -m ic_opt.em.pcell.reference`);
+the family docstrings in `generator_plugin.py` state each family's limits. The M7
+milestone descriptions below retain construction provenance; they are not a claim
+that every process/parameter combination has been qualified.
 
-Clean-room, from-scratch Python port of the TYLEE PCell inductor
-construction chain (GPL v3, Copyright (C) 2013 Tao-Yi Lee), written for
-structure learning and GDS comparison. It intentionally reuses **no** code
+Original Python construction code, licensed with the repository (MIT). Its
+function names and coordinate conventions follow the reference SKILL PCells the
+chain was first studied against (see the provenance table in
+`pcell_inductor_port_clean.py`); it reuses **no** code
 from the failed M7 generators or earlier port prototypes.
 
 ## Construction modes
@@ -327,13 +328,12 @@ coplanarly. This is the only balun-family milestone with real `.il` porting:
   generator opening fields require values strictly greater than zero. TW's
   total-gap upper-bound inconsistency is tracked in the current inventory.
 
-## Status and licensing boundary
+## Status
 
-- These modules are already the in-package product implementation; the old
-  "prototype only / not merged into src" milestone description is superseded.
-- Preserve the source-level copyright/GPL notices and PCell provenance under
-  `gdsgen_ref/pcell/`. This README does not alter those notices or claim foundry
-  manufacturing signoff.
+- These modules are the in-package product implementation (original code under
+  the repository's MIT license; the provenance table in
+  `pcell_inductor_port_clean.py` records which reference PCell each construction
+  was first studied against). This README claims no foundry manufacturing signoff.
 
 ## Files
 

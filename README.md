@@ -108,6 +108,8 @@ metrics:
   - {name: Qp, unit: ratio, device: xfmr_in, quantity: Qp_peak}        # Lp/Qp/Ls/Qs/k at frequency_hz, or L*_lf L*_res Q*_peak SRF_* k_lf
 ```
 
+Every family's fields, constraints and retired names: [docs/em/devices.md](docs/em/devices.md) (generated from the config models).
+
 Every EMX run is cached under `.icopt/cache/emx:<device>/` by GDS bytes, port
 order, physics settings and the process file's content hash. `ic-opt migrate`
 converts em-opt's `em_opt_requirement.md` (Geometry Generator / EM Devices /

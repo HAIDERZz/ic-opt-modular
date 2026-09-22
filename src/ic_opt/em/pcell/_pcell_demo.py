@@ -912,7 +912,7 @@ def _write_report(out_dir, manifest):
     report = {
         "title": "PCell inductor Python port (clean-room experimental reference)",
         "provenance": {
-            "license": "GPL v3 (TYLEE PCELL, Copyright (C) 2013 Tao-Yi Lee)",
+            "license": "MIT (original code; construction conventions follow the reference SKILL PCells)",
             "status": "reference/prototype only",
             "restriction": (
                 "This experimental code must not be merged into the formal "
@@ -953,8 +953,7 @@ def _write_report(out_dir, manifest):
         "# PCell Inductor Python Port (clean)",
         "",
         "This directory holds a *reference/prototype* Python port of the",
-        "GPL-licensed TYLEE PCell inductor construction chain "
-        "(GPL v3, Copyright (C) 2013 Tao-Yi Lee).",
+        "reference SKILL PCell construction chain (original MIT-licensed code).",
         "It exists for structure learning and GDS comparison only and",
         "**must not be merged** into the formal `src/` product code without",
         "an explicit licensing decision.",

@@ -1,10 +1,12 @@
-"""Clean-room Python port of the TYLEE PCell inductor construction chain.
+"""The clean-port PCell facade: every construction name of the six families, re-exported from the family modules.
 
 Provenance
 ----------
-This module is a *reference/prototype* port of GPL-licensed SKILL PCells
-(TYLEE PCELL, Copyright (C) 2013 Tao-Yi Lee, GNU GPL v3) found under
-``gdsgen_ref/pcell/``. Each Python function mirrors one PCell source file:
+The construction chain was first studied against the reference SKILL PCells
+under ``gdsgen_ref/pcell/`` (em-opt workspace); the function names and
+coordinate conventions keep that vocabulary so the two can be compared. The
+code itself is original and licensed with the repository (MIT). Each Python
+function corresponds to one reference PCell:
 
 ==================  =====================================================
 Python function     PCell source file
@@ -24,10 +26,6 @@ ind_sym             gdsgen_ref/pcell/inductor/ind_sym.il
 ind_sym_ct          gdsgen_ref/pcell/inductor/ind_sym_ct.il (unified
                     into ind_sym's CT_ME path in M13)
 ==================  =====================================================
-
-This experimental port must NOT be merged into the formal ``src/`` product
-code without an explicit licensing decision: the geometry construction is a
-derivative work of the GPL SKILL sources.
 
 Coordinate conventions
 ----------------------
