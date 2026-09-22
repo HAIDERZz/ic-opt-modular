@@ -123,13 +123,14 @@ def extend_straight_x(
     # extend_straight_x -- see ind_sym/xfm_bs/xfm_ms) derives emx_ports
     # from result.ports, so nothing else needs setting here.
     shifted_ports = []
-    for port, point_nm, zone_nm in cell.flat_ports():
+    for port, point_nm, zone_nm, direction in cell.flat_ports():
         zx0, zy0, zx1, zy1 = zone_nm
         c0, c1 = shifted((zx0, zy0)), shifted((zx1, zy1))
         shifted_ports.append(Port(
             port.name, port.logical_name, port.metal, port.label_layer,
             shifted(point_nm),
             (min(c0[0], c1[0]), min(c0[1], c1[1]),
-             max(c0[0], c1[0]), max(c0[1], c1[1]))))
+             max(c0[0], c1[0]), max(c0[1], c1[1])),
+            direction, port.width_nm))                     # a translation leaves the direction and width as flattened
     result.ports = shifted_ports
     return result

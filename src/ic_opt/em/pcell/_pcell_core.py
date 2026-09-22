@@ -354,6 +354,33 @@ def _transform_box(
     return (min(px0, px1), min(py0, py1), max(px0, px1), max(py0, py1))
 
 
+ORIENTATION_DEG = {(1, 0): 0, (0, 1): 90, (-1, 0): 180, (0, -1): 270}      # the direction a port faces, as gdsfactory names it
+_PAIR_RE = re.compile(r"^([PN])(\d+)$")
+
+
+def port_direction(point_nm: tuple[int, int], zone_nm: tuple[int, int, int, int]) -> tuple[tuple[int, int], int]:
+    """(unit vector the port faces, lead width in nm) from the one zone edge the port point sits on.
+
+    A lead's port is registered at the tip of the lead it was drawn into, so
+    the edge it touches IS its orientation (outward, along the lead) and the
+    zone's extent across that edge is the lead's width. A point on a corner
+    or inside the zone has no orientation and violates the port contract."""
+    x, y = point_nm
+    x0, y0, x1, y1 = zone_nm
+    xlo, xhi, ylo, yhi = min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1)
+    edges = [d for d, on in (((1, 0), x == xhi), ((-1, 0), x == xlo), ((0, 1), y == yhi), ((0, -1), y == ylo)) if on]
+    if len(edges) != 1 or not (xlo <= x <= xhi and ylo <= y <= yhi):
+        raise PortError(f"port contract: point {point_nm} must sit on exactly one edge of its lead zone {zone_nm}, found {len(edges)}")
+    direction = edges[0]
+    return direction, (yhi - ylo) if direction[0] else (xhi - xlo)
+
+
+def port_pair(logical_name: str) -> str | None:
+    """The differential partner's logical name (P1 <-> N1); taps and single-ended ports have none."""
+    m = _PAIR_RE.match(logical_name)
+    return None if m is None else ("N" if m.group(1) == "P" else "P") + m.group(2)
+
+
 def _port_dict(
     name: str,
     logical_name: str,
@@ -361,6 +388,8 @@ def _port_dict(
     label_layer: tuple[int, int],
     point_nm: tuple[int, int],
     zone_nm: tuple[int, int, int, int],
+    direction: tuple[int, int],
+    width_nm: int,
 ) -> dict:
     """The one ``emx_ports`` dict shape (port contract 2026-09-21) --
     ``finalize_emx_ports``'s own builder, called once per composed port."""
@@ -376,6 +405,9 @@ def _port_dict(
         "point_nm": [gx, gy],
         "lead_zone_nm": list(zone_nm),
         "label_xy_um": [round(gx * DBU_UM, 3), round(gy * DBU_UM, 3)],
+        "orientation_deg": ORIENTATION_DEG[direction],
+        "width_um": round(width_nm * DBU_UM, 3),
+        "pair": port_pair(logical_name),
     }
 
 
@@ -417,6 +449,8 @@ class Port:
     label_layer: tuple[int, int]
     point_nm: tuple[int, int]
     lead_zone_nm: tuple[int, int, int, int]
+    direction_nm: tuple[int, int]          # unit vector the port faces, local frame (see ``port_direction``)
+    width_nm: int                          # the lead's width across that direction
 
 
 @dataclass
@@ -499,8 +533,9 @@ class Cell:
         x_nm, y_nm = _nm(x_um), _nm(y_um)
         self.labels.append(Label(label_layer, name, (x_nm, y_nm)))
         zone_nm = tuple(_nm(v) for v in lead_zone_um)
+        direction, width_nm = port_direction((x_nm, y_nm), zone_nm)
         self.ports.append(
-            Port(name, logical_name, metal, label_layer, (x_nm, y_nm), zone_nm)
+            Port(name, logical_name, metal, label_layer, (x_nm, y_nm), zone_nm, direction, width_nm)
         )
 
     def inst(self, child: Cell, origin_um: tuple[float, float], orient: str) -> None:
@@ -521,12 +556,12 @@ class Cell:
                 yield item
 
     def flat_ports(self):
-        """Yield (port, point_nm, zone_nm) with all instance transforms
-        applied -- the ``__port__`` analogue of ``flat_shapes``/
+        """Yield (port, point_nm, zone_nm, direction_nm) with all instance
+        transforms applied -- the ``__port__`` analogue of ``flat_shapes``/
         ``flat_labels`` (port contract 2026-09-21)."""
         for item in self._flat(lambda p: p):
             if item[0] == "__port__":
-                yield item[1], item[2], item[3]
+                yield item[1], item[2], item[3], item[4]
 
     def _flat(self, xf):
         for s in self.shapes:
@@ -534,7 +569,9 @@ class Cell:
         for lb in self.labels:
             yield ("__label__", lb.layer, lb.text, xf(lb.point_nm))
         for p in self.ports:
-            yield ("__port__", p, xf(p.point_nm), _transform_box(p.lead_zone_nm, xf))
+            gx, gy = xf(p.point_nm)
+            tx, ty = xf((p.point_nm[0] + p.direction_nm[0], p.point_nm[1] + p.direction_nm[1]))
+            yield ("__port__", p, (gx, gy), _transform_box(p.lead_zone_nm, xf), (tx - gx, ty - gy))
         for inst in self.insts:
             ox, oy = inst.origin_nm
             orient = inst.orient
@@ -850,9 +887,13 @@ def finalize_emx_ports(cell: Cell) -> list[dict]:
     for item in cell._flat(lambda p: p):
         if item[0] != "__port__":
             continue
-        _tag, port, point_nm, zone_nm = item
+        _tag, port, point_nm, zone_nm, direction = item
         out.append(_port_dict(port.name, port.logical_name, port.metal,
-                              port.label_layer, point_nm, zone_nm))
+                              port.label_layer, point_nm, zone_nm, direction, port.width_nm))
+    names = {p["logical_name"] for p in out}
+    for p in out:
+        if p["pair"] not in names:
+            p["pair"] = None
     _check_port_lattice_invariant(out)
     return out
 

@@ -2347,7 +2347,7 @@ def test_port_lattice_audit_fails_closed_when_label_missing(tmp_path):
     metal_layer = p.process_metal_layer(ctx, 9)
     cell = p.Cell("bare_port", "test", {})
     cell.add_emx_port(name="P1", logical_name="P1", metal=9,
-                      label_layer=pin_layer, x_um=1.0, y_um=1.0,
+                      label_layer=pin_layer, x_um=2.0, y_um=1.0,
                       lead_zone_um=(0.0, 0.0, 2.0, 2.0))
     cell.add_rect(metal_layer, 0.0, 0.0, 2.0, 2.0)
     # (port contract 2026-09-21) add_emx_port only registers the

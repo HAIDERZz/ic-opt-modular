@@ -5976,15 +5976,17 @@ def test_add_emx_port_does_not_populate_emx_ports_directly():
     cell = port.Cell("bare_port_contract_probe", "test", {})
     cell.add_emx_port(
         name="P1", logical_name="P1", metal=9,
-        label_layer=port.metal_pin_layer(9), x_um=1.0, y_um=1.0,
+        label_layer=port.metal_pin_layer(9), x_um=2.0, y_um=1.0,
         lead_zone_um=(0.0, 0.0, 2.0, 2.0),
     )
     assert cell.emx_ports == []
     assert len(cell.ports) == 1
-    assert cell.ports[0].point_nm == (1000, 1000)
+    assert cell.ports[0].point_nm == (2000, 1000)
+    assert cell.ports[0].direction_nm == (1, 0) and cell.ports[0].width_nm == 2000   # M2.1: it faces out of the edge it sits on
     cell.emx_ports = port.finalize_emx_ports(cell)
     assert len(cell.emx_ports) == 1
     assert cell.emx_ports[0]["name"] == "P1"
+    assert cell.emx_ports[0]["orientation_deg"] == 0 and cell.emx_ports[0]["width_um"] == 2.0 and cell.emx_ports[0]["pair"] is None
 
 
 def _add_emx_port_calls_outside(tree: ast.AST, allowed_function: str) -> list[int]:

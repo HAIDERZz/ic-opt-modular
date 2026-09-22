@@ -885,22 +885,19 @@ def audit_port_lattice(gds_path: Path, ports: list[dict], process_profile: str) 
         name = port["name"]
         px, py = port["point_nm"]
         x0, y0, x1, y1 = port["lead_zone_nm"]
-        # On an edge means bounded on BOTH axes, with equality on at least
-        # one of them (port contract 2026-09-21) -- `px in (x0, x1)` alone
-        # says nothing about py, so a zone that only coincidentally shares
-        # one bound with a wrong point would otherwise pass (break-the-
-        # contract review: a lead_zone_nm shifted tens of um along the
-        # orthogonal axis still matched this check by sharing the other
-        # axis's bound).
+        # The port faces out of the one zone edge it sits on (port contract
+        # 2026-09-21; the orientation is the edge, recorded at
+        # registration). Bounded on both axes, equality on the edge the
+        # orientation names -- a zone shifted along the orthogonal axis
+        # would still share the other bound and must not pass.
         xlo, xhi = min(x0, x1), max(x0, x1)
         ylo, yhi = min(y0, y1), max(y0, y1)
-        on_x_edge = px in (x0, x1) and ylo <= py <= yhi
-        on_y_edge = py in (y0, y1) and xlo <= px <= xhi
-        if not (on_x_edge or on_y_edge):
+        edge = {0: px == xhi, 180: px == xlo, 90: py == yhi, 270: py == ylo}[port["orientation_deg"]]
+        if not (edge and xlo <= px <= xhi and ylo <= py <= yhi):
             raise ValueError(
                 f"port lattice audit failed: {name} point=({px}, {py}) "
-                f"is not on an edge of its own lead_zone_nm="
-                f"{port['lead_zone_nm']}"
+                f"is not on the {port['orientation_deg']}-degree edge of "
+                f"its own lead_zone_nm={port['lead_zone_nm']}"
             )
         label_layer = tuple(port["label_layer"])
         if (name, px, py) not in texts(label_layer):
@@ -918,6 +915,16 @@ def audit_port_lattice(gds_path: Path, ports: list[dict], process_profile: str) 
                 f"({port['metal']}) in {gds_path.name}"
             )
     return {"status": "pass", "ports_checked": len(ports)}
+
+
+def _manifest_port(port: dict) -> dict:
+    """The port as the file describes it (M2.1): where it is, which way it faces, how wide its lead is, what it pairs with."""
+    return {
+        "name": port["name"], "logical_name": port["logical_name"], "reference": port["reference"], "metal": port["metal"],
+        "x_um": port["label_xy_um"][0], "y_um": port["label_xy_um"][1], "width_um": port["width_um"],
+        "orientation_deg": port["orientation_deg"], "pair": port["pair"],
+        "lead_zone_um": [round(v * 0.001, 3) for v in port["lead_zone_nm"]],
+    }
 
 
 def _write_geometry_outputs(
@@ -959,10 +966,11 @@ def _write_geometry_outputs(
 
     manifest_path = outdir / "geometry_manifest.json"
     manifest_path.write_text(json.dumps({
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "generator_id": generator_id,
         "geometry_version": GEOMETRY_VERSION,
         "geometry": {"config": config.model_dump(mode="json")},
+        "ports": [_manifest_port(port) for port in cell.emx_ports],
         "suggested_emx_ports": port_lines,
         "suggested_emx_ports_note": (
             "EMX orders sNp ports lexicographically by EMX port name, "
