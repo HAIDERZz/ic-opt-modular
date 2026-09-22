@@ -9,6 +9,7 @@ import math
 from ic_opt.em.pcell._pcell_core import (
     _EPS,
     GRID_UM,
+    PI,
     Cell,
     PortError,
     ProcessRuleContext,
@@ -620,9 +621,9 @@ def base_lead_jog(
     W + ``RUN``, a 45-degree jog of |DY|, then straight to ``L``. The port sits at the tip; its zone is the
     straight tail, which must be at least W long (``L >= 2 W + RUN + |DY|``).
 
-    ``RUN`` keeps an outward jog's 45-degree edge clear of the ring arm it leaves: the wedge between the arm's
-    outer edge and the diagonal is ``RUN / sqrt2`` wide at its narrowest, so the caller sets ``RUN`` to
-    ``sqrt2`` times the metal's spacing floor."""
+    ``RUN`` keeps an outward jog's 45-degree edge clear of the ring arm it leaves: the outline's diagonal
+    begins ``(W/2) tan(pi/8)`` before the centreline vertex and that corner is the closest point to the
+    arm's outer edge, so the caller sets ``RUN`` to the metal's spacing floor plus that offset."""
     tail = L - W - RUN - abs(DY)
     if tail < W - _EPS:
         raise PortError(
@@ -719,7 +720,9 @@ def base_lead_pair(
                 f"W={W} um leads, below the {_metal_name(LM)} spacing floor {floor} um"
             )
         dy = (PORT_SPACING - natural) / 2.0
-        run = ceiltogrid(floor * math.sqrt(2.0)) if dy > 0 else 0.0        # an outward jog must clear the ring arm it leaves
+        # an outward jog must clear the ring arm it leaves: the mitred outline starts its diagonal (W/2) tan(pi/8)
+        # before the centreline vertex, and that corner is the closest point to the arm's outer edge
+        run = ceiltogrid(floor + W * math.tan(PI / 8) / 2.0) if dy > 0 else 0.0
         for txt, logical, y0, sign in ((P1TXT, port_p1_logical_name, OPENING, 1.0), (N1TXT, port_n1_logical_name, -OPENING - W, -1.0)):
             cell.inst(
                 base_lead_jog(L=LEAD, W=W, DY=sign * dy, LEAD_ME=LEAD_ME, port_name=txt, port_logical_name=logical,

@@ -407,6 +407,16 @@ def xfm_balun(
                   f"NT_P={NT_P}",
             corridor="primary innermost turn's chamfer corridor",
             advice="increase OD or reduce W/NT_P")
+    if process is not None:
+        # The arm-tip pad (OPENING_S .. OPENING_S + W_S along the arm) must sit on the secondary's own flat;
+        # past BA the ring's outer boundary turns 45 degrees and the pad's corner would hang outside it (D4).
+        flat = octagon(OD_S, W_S, sec_bias).BA
+        if OPENING_S + (W_S if tip_w is None else tip_w) > flat + 1e-9:
+            raise PortError(
+                f"xfm_balun: OD_S={OD_S}, W_S={W_S}, OPENING_S={OPENING_S}: the secondary escape's arm-tip pad "
+                f"reaches {OPENING_S + (W_S if tip_w is None else tip_w):.3f} um along the arm, past the ring's flat "
+                f"(BA={flat} um) -- the pad would hang off the ring; reduce OPENING_S or W_S, or increase OD_S"
+            )
     _ci_winding(sec, xS, OD_S, W_S, OPENING_S, LEAD_S, S, NT_S, "right",
                 BALUN_ME, "P2", "N2", process,
                 direct_leads=False, chamfer_bias=sec_bias)

@@ -1194,7 +1194,11 @@ def test_xfm_balun_generator_parity_with_direct_module_call(tmp_path):
 
 
 def test_xfm_balun_wide_nt2_primary_uses_reference_bridge_scheme(tmp_path):
-    """A feasible nested W=10 balun inherits the compact three-layer coil."""
+    """A feasible nested W=10 balun inherits the compact three-layer coil.
+
+    OD_S=100 (was 70): since M1.6 the secondary escape's arm-tip pad must sit
+    on the secondary's flat (OPENING_S + W_S <= BA), which a 70 um ring
+    cannot offer a 10 um pad at a 10 um opening."""
     from ic_opt.em.pcell.drc_audit import (
         audit_gds,
         product_scope_record,
@@ -1204,8 +1208,8 @@ def test_xfm_balun_wide_nt2_primary_uses_reference_bridge_scheme(tmp_path):
     gp = _load_plugin()
     payload = {
         **_xfm_balun_config_dict(),
-        "primary_outer_diameter_um": 130.0,
-        "secondary_outer_diameter_um": 70.0,
+        "primary_outer_diameter_um": 150.0,
+        "secondary_outer_diameter_um": 100.0,
         "primary_width_um": 10.0,
         "secondary_width_um": 10.0,
         "spacing_um": 2.1,

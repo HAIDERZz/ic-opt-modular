@@ -57,3 +57,16 @@ def test_impossible_pitches_are_refused(tmp_path):
         generate("ind_sym_nt1", tmp_path / "close", port_spacing_um=5.5)                                # 0.5 um between two 5 um leads
     with pytest.raises(PortError, match="needs LEAD >="):
         generate("xfm_bs", tmp_path / "bs", primary_port_spacing_um=60.0)
+
+
+def test_wide_outward_jog_clears_the_ring_arm(tmp_path):
+    """The mitred outline starts its diagonal (W/2) tan(pi/8) before the vertex; the straight run accounts for it."""
+    r = generate("ind_sym_nt1", tmp_path, width_um=8.0, lead_length_um=30.0, port_spacing_um=2 * 8.0 + 8.0 + 12.0)
+    findings = {(v.kind, v.layer) for v in audit_gds(r.gds_path, "demo_6m").violations} - {("max_width", "M1")}
+    assert not findings, findings
+
+
+def test_balun_escape_tip_pad_must_sit_on_the_secondary_flat(tmp_path):
+    """A wide secondary opening on a small secondary ring would put the arm-tip pad's corner past the flat (D4): refused."""
+    with pytest.raises(PortError, match="past the ring's flat"):
+        generate("xfm_balun", tmp_path, secondary_outer_diameter_um=92.0, secondary_width_um=9.0, secondary_opening_um=12.0, spacing_um=3.0)
