@@ -1095,17 +1095,22 @@ def _min_met_spacing(top_met, process, override):
 def _effective_min_spacing(top_met, W: float, process) -> float:
     """The spacing floor DRC actually enforces between W-wide parallel
     windings on M(top_met): the base min_space raised by every
-    wide-parallel rule whose width threshold W exceeds (winding arcs
-    always exceed the parallel-length thresholds). Rule-generic -- read
-    from the loaded profile, never per-process constants (six-family
-    tight-spacing clearance, 2026-07-28)."""
+    wide-parallel rule whose width threshold the winding's DRAWN width
+    exceeds (winding arcs always exceed the parallel-length thresholds).
+
+    The width DRC measures is the octagon diagonal's ``chamfer(W).drawn_width``
+    (a few nanometres over W, never W itself), so a nominal W sitting exactly
+    on a rule threshold is already on the wide side of it -- the generator
+    must believe what it draws (M1.2; plan F2). Rule-generic -- read from the
+    loaded profile, never per-process constants."""
     floor = _min_met_spacing(top_met, process, None)
     if process is None:
         return floor
     name = _metal_name(top_met)
+    drawn = chamfer(W).drawn_width
     passive = process.adapter.profile.layout_rules.passive_region
     for rule in passive.wide_parallel_spacing:
-        if name in rule.metals and W > rule.when_width_gt_um:
+        if name in rule.metals and drawn > rule.when_width_gt_um:
             floor = max(floor, rule.min_space_um)
     return floor
 

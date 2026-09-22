@@ -84,10 +84,9 @@ CASES = {
     "xfm_il_nt2_ct": _il(turns=2, top_metal="5", ct_primary_metal="6", ct_secondary_metal="6", port_order=[*XFM_PORTS, "CTP", "CTS"]),   # upward taps
 }
 
-# Findings the packaged audit raises on a golden the generator accepted: the generator's nominal W=5.0 sits on the
-# wide-parallel threshold while the quantized chamfer draws the diagonals 5.006 wide and 1.994 apart (plan F2).
-# Emptied by M1.1 (single chamfer source); nothing may be added here.
-KNOWN_FINDINGS = {"ind_sym_nt2_ct": {("wide_parallel_spacing", "M6")}, "ind_sym_nt3": {("wide_parallel_spacing", "M6")}}
+# Findings the packaged audit raises on a golden the generator accepted. Empty since M1.2 (the generator judges the
+# wide-parallel rules on the drawn diagonal width, plan F2); nothing may be added here.
+KNOWN_FINDINGS: dict[str, set[tuple[str, str]]] = {}
 
 
 def build(name: str, outdir: Path) -> Path:

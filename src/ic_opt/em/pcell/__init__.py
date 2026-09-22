@@ -13,8 +13,10 @@ from ic_opt.em.pcell.registry import get_generator, resolve_plugin_module_path
 # gds_compare sense): the generators stamp it into geometry_manifest.json and
 # the Pcell stage carries it in the pipeline fingerprint, so observations of an
 # older generation are never reused for a newer one. 6 = em-opt's
-# ingest.CURRENT_GEOM_VERSION at the move (port contract + taps + landing fixes).
-GEOMETRY_VERSION = 6
+# ingest.CURRENT_GEOM_VERSION at the move (port contract + taps + landing fixes);
+# 7 = the M1 primitive convergence (wide-parallel rules judged on the drawn
+# diagonal width, single chamfer source, landing guards).
+GEOMETRY_VERSION = 7
 
 __all__ = [
     "GEOMETRY_VERSION",
