@@ -41,6 +41,7 @@ from ic_opt.em.pcell._pcell_core import (
     vias,
 )
 from ic_opt.em.pcell._pcell_guards import (
+    _check_winding_segments,
     _xfm_net_short,
 )
 from ic_opt.em.pcell._pcell_primitives import (
@@ -947,6 +948,9 @@ def xfm_tw(
                        LEAD, "P2", "N2", True)
 
     _xfm_net_short("xfm_tw", pri, sec)
+    # each net holds one segment per ring on SL_ME; the dive legs join them below (D11 guard)
+    _check_winding_segments(pri, met=sl, expected=NR, where="xfm_tw primary", process=process)
+    _check_winding_segments(sec, met=sl, expected=NR, where="xfm_tw secondary", process=process)
     cell.inst(pri, (0.0, 0.0), "R0")
     cell.inst(sec, (0.0, 0.0), "R0")
     # (port contract 2026-09-21) walks the cell.inst() chain down to both

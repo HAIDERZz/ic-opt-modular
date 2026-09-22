@@ -139,6 +139,40 @@ def _check_bridge_escape_clearance(
         )
 
 
+def _check_winding_segments(
+    cell: Cell, *, met: int, expected: int, where: str, process: ProcessRuleContext | None,
+) -> None:
+    """Require exactly ``expected`` disconnected segments, none of them a closed loop, on one net's winding metal.
+
+    The lower-metal bridges are what serially join these segments. If
+    body-metal crowding merges two of them first, a bridge is bypassed and the
+    winding contains an unintended same-layer turn-to-turn short that a
+    same-net spacing DRC cannot report; a segment with a hole is a shorted
+    turn by itself. Every family runs this on each net (M1.4, D11): ind_sym
+    with NT (2 NT - 1 when the second leg dips), xfm_il with 2 NT - 1 (P) and
+    2 NT + 1 (S, the escape), xfm_tw with NR per net.
+    """
+    drawing = _metal(met, process)
+    body = kdb.Region()
+    for layer, points in cell.flat_shapes():
+        if layer == drawing and points:
+            body.insert(kdb.Polygon([kdb.Point(x, y) for x, y in points]))
+    body.merge()
+    found = body.count()
+    if found != expected:
+        raise PortError(
+            f"{where}: {_metal_name(met)} body expected {expected} winding "
+            f"segments, found {found}; adjacent turns overlap/self-short "
+            "before the lower-metal bridges (increase OD or reduce NT/W/S)"
+        )
+    loops = sum(1 for polygon in body.each() if polygon.holes())
+    if loops:
+        raise PortError(
+            f"{where}: {_metal_name(met)} body has {loops} closed metal loop(s); "
+            "a turn shorts onto itself (increase OD or reduce NT/W/S)"
+        )
+
+
 def _check_ind_winding_segments(
     cell: Cell,
     *,
@@ -147,26 +181,8 @@ def _check_ind_winding_segments(
     expected_segments: int | None = None,
     process: ProcessRuleContext | None,
 ) -> None:
-    """Require one disconnected body-metal segment per nominal turn.
-
-    The lower-metal crossunders are what serially join these segments.  If
-    body-metal crowding merges two segments first, the bridge is bypassed and
-    the winding contains an unintended same-layer turn-to-turn short that a
-    same-net spacing DRC cannot report.
-    """
-    drawing = _metal(top_met, process)
-    body = kdb.Region()
-    for layer, points in cell.flat_shapes():
-        if layer == drawing and points:
-            body.insert(kdb.Polygon([kdb.Point(x, y) for x, y in points]))
-    found = body.merged().count()
-    expected = turns if expected_segments is None else expected_segments
-    if found != expected:
-        raise PortError(
-            f"ind_sym: {_metal_name(top_met)} body expected {expected} winding "
-            f"segments, found {found}; adjacent turns overlap/self-short "
-            "before the lower-metal bridges (increase OD or reduce NT/W/S)"
-        )
+    _check_winding_segments(cell, met=top_met, expected=turns if expected_segments is None else expected_segments,
+                            where="ind_sym", process=process)
 
 
 def _heal_seam_notches(cell: Cell, process: ProcessRuleContext | None) -> None:

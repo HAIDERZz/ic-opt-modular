@@ -41,6 +41,7 @@ from ic_opt.em.pcell._pcell_guards import (
     _check_bridge_escape_clearance,
     _check_opening,
     _check_winding_fit,
+    _check_winding_segments,
     _heal_seam_notches,
     _xfm_net_short,
 )
@@ -1407,6 +1408,10 @@ def xfm_il(
     try:
         _xfm_net_short("xfm_il", pri, sec)
         _il_bridge_spacing_guard(pri, sec, sl, process)
+        # per net on SL_ME: every turn is split at its dual-layer crossunder (2 NT - 1 segments); the
+        # secondary's escape adds two more. Fewer means two bands merged (D11 guard).
+        _check_winding_segments(pri, met=sl, expected=2 * NT_P - 1, where="xfm_il primary", process=process)
+        _check_winding_segments(sec, met=sl, expected=2 * NT_S + 1, where="xfm_il secondary", process=process)
     except PortError as exc:
         raise PortError(
             f"{exc} -- escape-corridor note (design-region-full-coverage): "
