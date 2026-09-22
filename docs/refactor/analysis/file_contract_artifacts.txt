@@ -1,0 +1,129 @@
+
+=== config  (1 artifacts) ===
+  config/workflow.yaml                                           <-  1: validate
+
+=== state  (9 artifacts) ===
+  state/best_candidate.json                                      <-  4: health, mock_optimizer, optimizer_progress_state, real_result_record
+  state/health_check.json                                        <-  1: reports
+  state/optimizer_state.json                                     <-  5: health, optimizer_progress_state, real_result_record, real_run, remote_doctor
+  state/remote_attempt.lock                                      <-  1: remote_attempt_lock
+  state/remote_preparation_snapshot                              <-  1: remote_prepare
+  state/remote_preparation_snapshots                             <-  1: remote_prepare
+  state/run_retention                                            <-  1: run_retention
+  state/run_retention/<run_id>.json                              <-  1: doctor_readiness
+  state/run_retention_evidence                                   <-  1: retention_evidence
+
+=== ledger  (1 artifacts) ===
+  ledger/experiment_ledger.jsonl                                 <-  7: doctor_readiness, health, optimizer_progress_state, real_result_record, real_run, real_run_recovery, remote_doctor
+
+=== reports  (41 artifacts) ===
+  reports/dry_run_report.json                                    <-  1: reports
+  reports/fix_run_report.json                                    <-  3: fix_run_flow, remote_fix_run_flow, remote_optimizer_flow
+  reports/history_warm_start_audit.json                          <-  3: history_warm_start, optimizer_html_report, optimizer_insights
+  reports/history_warm_start_audit.md                            <-  1: history_warm_start
+  reports/ic_opt_doctor_report.json                              <-  1: product_doctor
+  reports/license_probe_report.json                              <-  1: license_probe
+  reports/metric_result_check_report.json                        <-  2: metric_results, real_run_recovery
+  reports/multi_testbench_aggregation_report.json                <-  1: multi_testbench_aggregation
+  reports/native_turbo_optimizer_evaluations.jsonl               <-  1: native_turbo_history
+  reports/native_turbo_optimizer_report.json                     <-  1: native_turbo_history
+  reports/netlist_preparation_report.json                        <-  1: reports
+  reports/openbox_advanced_visualization                         <-  1: openbox_backend
+  reports/openbox_advanced_visualization_manifest.json           <-  2: openbox_backend, optimizer_final_summary
+  reports/optimizer_completion_report.json                       <-  5: optimizer_completion, optimizer_decision, optimizer_finalize, optimizer_status, optimizer_task_package
+  reports/optimizer_decision_report.json                         <-  1: optimizer_decision
+  reports/optimizer_decision_report.md                           <-  1: optimizer_decision
+  reports/optimizer_effectiveness_audit.json                     <-  6: native_turbo, openbox_backend, optimizer_html_report, optimizer_insights, optimizer_status, optimizer_task_package
+  reports/optimizer_evaluations.jsonl                            <-  2: optimizer_artifacts, optimizer_progress_state
+  reports/optimizer_final_summary.json                           <-  1: optimizer_final_summary
+  reports/optimizer_final_summary.md                             <-  1: optimizer_final_summary
+  reports/optimizer_finalize_report.json                         <-  4: optimizer_decision, optimizer_finalize, optimizer_status, optimizer_task_package
+  reports/optimizer_flow_run_report.json                         <-  2: optimizer_flow, remote_optimizer_flow
+  reports/optimizer_insight_report.html                          <-  3: optimizer_finalize, optimizer_html_report, optimizer_insights
+  reports/optimizer_insight_report.json                          <-  6: optimizer_decision, optimizer_final_summary, optimizer_finalize, optimizer_html_report, optimizer_insights, optimizer_task_package
+  reports/optimizer_insight_report.md                            <-  4: optimizer_final_summary, optimizer_html_report, optimizer_insights, optimizer_task_package
+  reports/optimizer_run_acceptance_report.json                   <-  6: optimizer_acceptance, optimizer_completion, optimizer_finalize, optimizer_insights, optimizer_task_package, remote_history_manifests
+  reports/optimizer_run_report.json                              <-  3: optimizer_artifacts, optimizer_html_report, optimizer_insights
+  reports/optimizer_supervisor_decision.json                     <-  1: optimizer_supervisor_decision
+  reports/optimizer_supervisor_decision.md                       <-  1: optimizer_supervisor_decision
+  reports/optimizer_visuals                                      <-  1: optimizer_insights
+  reports/optimizer_visuals/*.svg                                <-  1: optimizer_task_package
+  reports/optimizer_visuals/all_evaluable_fom.svg                <-  1: optimizer_final_summary
+  reports/optimizer_visuals/bottleneck_weighted_score.png        <-  1: optimizer_final_summary
+  reports/optimizer_visuals/constraint_margins.svg               <-  1: optimizer_final_summary
+  reports/optimizer_visuals/feasible_convergence.svg             <-  1: optimizer_final_summary
+  reports/project_readiness_report.json                          <-  1: project_readiness
+  reports/real_result_record_report.json                         <-  1: real_result_record
+  reports/real_run_check_report.json                             <-  2: real_run_recovery, result_handoff
+  reports/real_run_recovery_report.json                          <-  1: real_run_recovery
+  reports/remote_preparation_snapshot.json                       <-  1: remote_prepare
+  reports/remote_run_artifacts.sha256                            <-  1: remote_history_manifests
+
+=== runs  (5 artifacts) ===
+  runs/dry_run/input.scs                                         <-  1: dry_run
+  runs/dry_run/testbenches/                                      <-  1: dry_run
+  runs/real                                                      <-  9: metric_results, multi_testbench_aggregation, optimizer_loop, real_result_record, real_run, real_run_recovery, result_handoff ...
+  runs/real/                                                     <-  5: metric_requests, native_turbo, optimizer_acceptance, remote_doctor, run_retention
+  runs/real/<run_id>                                             <-  1: doctor_readiness
+
+=== execution_package  (1 artifacts) ===
+  execution_package/execution_manifest.json                      <-  1: real_run
+
+=== netlists  (7 artifacts) ===
+  netlists/corners/                                              <-  2: netlists, real_run
+  netlists/exported                                              <-  1: validate
+  netlists/exported/input.scs                                    <-  2: project_readiness, requirement_intake
+  netlists/templates                                             <-  1: validate
+  netlists/templates/template.scs                                <-  2: project_readiness, requirement_intake
+  netlists/testbenches                                           <-  1: netlists
+  netlists/testbenches/                                          <-  3: dry_run, netlists, real_run
+
+=== history  (0 artifacts) ===
+
+=== (bare)  (46 artifacts) ===
+  EXECUTION_TASK.md                                              <-  1: package
+  OPTIMIZER_EXECUTION_TASK.md                                    <-  1: optimizer_task_package
+  best_candidate.json                                            <-  1: mock_optimizer
+  candidate.json                                                 <-  7: doctor_readiness, real_result_record, real_run, real_run_recovery, remote_doctor, result_handoff, spectre_ocean
+  candidate_request.json                                         <-  3: cli, doctor_readiness, remote_doctor
+  constraints.md                                                 <-  3: remote_doctor, remote_prepare, requirement_intake
+  dry_run_report.json                                            <-  2: dry_run, reports
+  evidence.json                                                  <-  2: retention_evidence, run_retention
+  execution_manifest.json                                        <-  4: approvals, cli, package, remote_optimizer_flow
+  experiment_ledger.jsonl                                        <-  2: mock_optimizer, optimizer_loop
+  fix_run_report.json                                            <-  1: product_cli
+  fixed_points.yaml                                              <-  7: fix_run_flow, package, project_readiness, remote_fix_run_flow, remote_optimizer_flow, requirement_intake, validate
+  health_check.json                                              <-  3: health, mock_optimizer, reports
+  history_warm_start.yaml                                        <-  4: package, remote_prepare, requirement_intake, validate
+  history_warm_start_audit.json                                  <-  1: optimizer_report_interpretation
+  ic_opt_doctor_report.json                                      <-  2: remote_doctor, remote_project
+  maestro_point_import_report.json                               <-  1: requirement_intake
+  metric_extraction_request.json                                 <-  7: fix_run_flow, metric_results, multi_testbench_aggregation, real_run, real_run_recovery, remote_fix_run_flow, spectre_ocean
+  metric_result_manifest.json                                    <-  9: doctor_readiness, multi_testbench_aggregation, real_run_recovery, remote_doctor, remote_history_manifests, remote_optimizer_flow, remote_spectre_ocean ...
+  metrics.yaml                                                   <-  7: measurement_routes, optimizer_insights, package, project_readiness, remote_prepare, requirement_intake, validate
+  multi_testbench_aggregation_report.json                        <-  2: multi_testbench_aggregation, optimizer_insights
+  netlist_preparation_report.json                                <-  2: netlists, reports
+  opt_requirement.md                                             <-  4: product_cli, remote_doctor, remote_prepare, requirement_intake
+  optimizer.yaml                                                 <-  6: optimizer_flow, package, project_readiness, remote_prepare, requirement_intake, validate
+  optimizer_completion_report.json                               <-  2: doctor_readiness, remote_doctor
+  optimizer_decision_report.md                                   <-  1: product_cli
+  optimizer_evaluations.jsonl                                    <-  1: remote_prepare
+  optimizer_execution_manifest.json                              <-  1: optimizer_task_package
+  optimizer_final_summary.json                                   <-  1: project_readiness
+  optimizer_run_report.json                                      <-  2: doctor_readiness, remote_doctor
+  optimizer_state.json                                           <-  3: mock_optimizer, optimizer_loop, remote_doctor
+  owner.json                                                     <-  1: remote_attempt_lock
+  process_corners.yaml                                           <-  5: netlists, package, requirement_intake, spectre_ocean, validate
+  project_config.yaml                                            <-  5: package, project_readiness, remote_prepare, requirement_intake, validate
+  real_run_manifest.json                                         <-  8: fix_run_flow, metric_results, multi_testbench_aggregation, real_run, real_run_recovery, remote_fix_run_flow, result_handoff ...
+  real_run_recovery_report.json                                  <-  1: cli
+  recovery_decision.json                                         <-  1: real_run_recovery
+  requirement_intake_report.json                                 <-  1: requirement_intake
+  result_manifest.json                                           <- 13: doctor_readiness, metric_results, multi_testbench_aggregation, real_result_record, real_run_recovery, remote_doctor, remote_history_manifests ...
+  spectre.yaml                                                   <-  5: package, project_readiness, remote_prepare, requirement_intake, validate
+  supervisor_instruction.json                                    <-  2: approvals, real_run
+  testbenches.yaml                                               <-  5: measurement_routes, package, project_readiness, requirement_intake, validate
+  variables.yaml                                                 <-  7: optimizer_completion, optimizer_space_advisory, package, project_readiness, remote_prepare, requirement_intake, validate
+  waveform_export_manifest.json                                  <-  2: metric_results, spectre_ocean
+  waveform_exports.yaml                                          <-  7: fix_run_flow, measurement_routes, package, project_readiness, remote_fix_run_flow, requirement_intake, validate
+  workflow.yaml                                                  <-  7: fix_run_flow, package, project_readiness, remote_fix_run_flow, remote_optimizer_flow, requirement_intake, validate

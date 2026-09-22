@@ -1,0 +1,96 @@
+== cycles (SCC size>1) ==
+   ['real_run', 'real_run_recovery']
+   ['multi_testbench_aggregation', 'native_turbo']
+== modules by layer (0 = leaf) ==
+L0:
+    remote_ssh                                    loc=  705 out= 0 in=10
+    optimizer_html_report                         loc=  637 out= 0 in= 1
+    schemas                                       loc=  587 out= 0 in=21
+    optimizer_report_interpretation               loc=  319 out= 0 in= 1
+    reports                                       loc=  292 out= 0 in=12
+    optimizer_space_advisory                      loc=  265 out= 0 in= 1
+    optimizer_resources                           loc=  264 out= 0 in= 2
+    toolchain_env                                 loc=  224 out= 0 in= 2
+    optimizer_effectiveness                       loc=  213 out= 0 in= 2
+    objective_contract                            loc=  178 out= 0 in= 2
+    optimizer_tradeoffs                           loc=  144 out= 0 in= 1
+    diagnostics                                   loc=   80 out= 0 in= 5
+    optimizer_trace_identity                      loc=   57 out= 0 in= 4
+    remote_project                                loc=   53 out= 0 in= 8
+    __init__                                      loc=    2 out= 0 in= 0
+L1:
+    license_probe                                 loc=  367 out= 1 in= 2 lazy=['remote_ssh']
+    fix_run_models                                loc=  237 out= 1 in= 6
+    optimizer_strategy                            loc=  192 out= 1 in= 5
+    requirement_semantics                         loc=  167 out= 1 in= 2
+    candidate_contract                            loc=  160 out= 1 in= 5
+    remote_attempt_lock                           loc=  115 out= 2 in= 1
+L2:
+    native_turbo_history                          loc=  356 out= 3 in= 3
+    measurement_routes                            loc=  126 out= 2 in= 2
+L3:
+    validate                                      loc=  893 out= 7 in=33
+    optimizer_artifacts                           loc=  204 out= 1 in=11
+L4:
+    optimizer_insights                            loc= 2524 out= 6 in= 6
+    netlists                                      loc=  574 out= 3 in= 4
+    mock_optimizer                                loc=  476 out= 2 in= 6
+    optimizer_completion                          loc=  434 out= 1 in= 5
+    project_readiness                             loc=  297 out= 1 in= 3
+    package                                       loc=  267 out= 2 in=15
+    approvals                                     loc=  208 out= 2 in= 5
+    metric_requests                               loc=  117 out= 1 in= 2
+    health                                        loc=   55 out= 2 in= 2
+L5:
+    requirement_intake                            loc= 1652 out= 8 in= 8
+    optimizer_decision                            loc=  410 out= 1 in= 6
+    result_handoff                                loc=  325 out= 3 in= 7
+    dry_run                                       loc=  283 out= 3 in= 3
+    optimizer_progress_state                      loc=  206 out= 4 in= 2
+L6:
+    metric_results                                loc=  761 out= 5 in= 7 lazy=['fix_run_models']
+    remote_prepare                                loc=  717 out= 4 in= 2
+    optimizer_supervisor_decision                 loc=  151 out= 1 in= 2
+L7:
+    execution_adapters.spectre_ocean              loc= 1470 out= 5 in= 4 lazy=['schemas']
+    real_run                                      loc= 1277 out= 8 in=13 lazy=['real_run_recovery']
+    real_run_recovery                             loc=  908 out= 7 in= 4
+    real_result_record                            loc=  386 out= 6 in= 7
+    optimizer_final_summary                       loc=  233 out= 2 in= 1
+L8:
+    doctor_readiness                              loc=  647 out= 6 in= 3
+    retention_evidence                            loc=  647 out= 2 in= 4
+    optimizer_suggestion                          loc=  297 out= 6 in= 2
+    execution_adapters                            loc=   12 out= 1 in= 0
+L9:
+    run_retention                                 loc=  555 out= 5 in= 4
+    optimizer_loop                                loc=  185 out= 6 in= 0
+L10:
+    native_turbo                                  loc= 1786 out=16 in=10 lazy=['execution_adapters.spectre_ocean', 'multi_testbench_aggregation', 'optimizer_progress_state']
+    multi_testbench_aggregation                   loc=  638 out= 6 in= 2
+L11:
+    history_warm_start                            loc=  982 out= 4 in= 1
+    execution_adapters.remote_spectre_ocean       loc=  570 out= 5 in= 2 lazy=['multi_testbench_aggregation', 'validate']
+    optimizer_task_package                        loc=  492 out= 5 in= 2
+    optimizer_trace_science                       loc=  407 out= 2 in= 3
+    optimizer_runtime                             loc=  198 out= 2 in= 2
+L12:
+    openbox_backend                               loc= 1968 out=12 in= 4 lazy=['optimizer_progress_state']
+    remote_doctor                                 loc= 1062 out= 9 in= 3
+    product_doctor                                loc=  577 out= 9 in= 3
+    optimizer_acceptance                          loc=  450 out= 6 in= 5
+    remote_history_manifests                      loc=  438 out= 8 in= 1
+L13:
+    fix_run_flow                                  loc=  536 out= 9 in= 1
+    optimizer_finalize                            loc=  154 out= 3 in= 5
+L14:
+    optimizer_flow                                loc=  552 out=18 in= 4
+    optimizer_status                              loc=  100 out= 1 in= 1
+L15:
+    remote_optimizer_flow                         loc= 1712 out=24 in= 3
+    cli                                           loc= 1374 out=28 in= 0
+L16:
+    remote_fix_run_flow                           loc=  616 out=12 in= 1 lazy=['remote_optimizer_flow']
+    optimizer_continuation_flow                   loc=  104 out=10 in= 1
+L17:
+    product_cli                                   loc=  522 out=11 in= 0

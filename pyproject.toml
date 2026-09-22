@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ic-auto-opt-workflow"
+version = "0.2.0"
+description = "Composable blocks and recipes for Spectre/OCEAN design optimization"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "matplotlib>=3.7",
+    "numpy>=1.24",
+    "pydantic>=2.7",
+    "PyYAML>=6.0",
+    "scipy>=1.10",
+    "threadpoolctl>=3.1",
+    "torch>=2.0",
+    "gpytorch>=1.11",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+advanced = [
+    "pyrfr==0.9.0",
+    "shap==0.49.1",
+    "lightgbm==4.6.0",
+]
+
+[project.scripts]
+ic-opt = "ic_opt.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

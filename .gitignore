@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.serena/
+build/
+dist/
+*.egg-info/
+graphify-out/
+docs/OCEAN_DOC_*
+docs/toolchain_evidence/
+
+# archify renders are regenerable from the .json sources (node bin/archify.mjs deliver ...)
+docs/refactor/diagrams/*.html
+docs/refactor/diagrams/*.png
+smoke/

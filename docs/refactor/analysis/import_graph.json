@@ -1,0 +1,1080 @@
+{
+ "deps": {
+  "__init__": [],
+  "approvals": [
+   "reports",
+   "validate"
+  ],
+  "candidate_contract": [
+   "schemas"
+  ],
+  "cli": [
+   "approvals",
+   "dry_run",
+   "health",
+   "metric_results",
+   "mock_optimizer",
+   "native_turbo",
+   "netlists",
+   "openbox_backend",
+   "optimizer_acceptance",
+   "optimizer_completion",
+   "optimizer_decision",
+   "optimizer_final_summary",
+   "optimizer_finalize",
+   "optimizer_flow",
+   "optimizer_insights",
+   "optimizer_status",
+   "optimizer_suggestion",
+   "optimizer_supervisor_decision",
+   "optimizer_task_package",
+   "package",
+   "project_readiness",
+   "real_result_record",
+   "real_run",
+   "real_run_recovery",
+   "requirement_intake",
+   "result_handoff",
+   "toolchain_env",
+   "validate"
+  ],
+  "diagnostics": [],
+  "doctor_readiness": [
+   "diagnostics",
+   "native_turbo_history",
+   "optimizer_artifacts",
+   "optimizer_strategy",
+   "real_result_record",
+   "schemas"
+  ],
+  "dry_run": [
+   "mock_optimizer",
+   "reports",
+   "validate"
+  ],
+  "fix_run_flow": [
+   "approvals",
+   "execution_adapters.spectre_ocean",
+   "fix_run_models",
+   "package",
+   "product_doctor",
+   "real_run",
+   "requirement_intake",
+   "run_retention",
+   "validate"
+  ],
+  "fix_run_models": [
+   "schemas"
+  ],
+  "health": [
+   "reports",
+   "validate"
+  ],
+  "history_warm_start": [
+   "native_turbo",
+   "optimizer_artifacts",
+   "schemas",
+   "validate"
+  ],
+  "license_probe": [
+   "remote_ssh"
+  ],
+  "measurement_routes": [
+   "fix_run_models",
+   "schemas"
+  ],
+  "metric_requests": [
+   "validate"
+  ],
+  "metric_results": [
+   "fix_run_models",
+   "package",
+   "reports",
+   "result_handoff",
+   "validate"
+  ],
+  "mock_optimizer": [
+   "schemas",
+   "validate"
+  ],
+  "multi_testbench_aggregation": [
+   "metric_results",
+   "native_turbo",
+   "package",
+   "reports",
+   "result_handoff",
+   "validate"
+  ],
+  "native_turbo": [
+   "candidate_contract",
+   "execution_adapters.spectre_ocean",
+   "metric_results",
+   "multi_testbench_aggregation",
+   "native_turbo_history",
+   "optimizer_effectiveness",
+   "optimizer_progress_state",
+   "optimizer_resources",
+   "real_result_record",
+   "real_run",
+   "real_run_recovery",
+   "reports",
+   "result_handoff",
+   "run_retention",
+   "schemas",
+   "validate"
+  ],
+  "native_turbo_history": [
+   "candidate_contract",
+   "optimizer_trace_identity",
+   "schemas"
+  ],
+  "netlists": [
+   "reports",
+   "schemas",
+   "validate"
+  ],
+  "objective_contract": [],
+  "openbox_backend": [
+   "history_warm_start",
+   "native_turbo",
+   "optimizer_artifacts",
+   "optimizer_effectiveness",
+   "optimizer_progress_state",
+   "optimizer_resources",
+   "optimizer_strategy",
+   "optimizer_trace_identity",
+   "real_result_record",
+   "real_run",
+   "schemas",
+   "validate"
+  ],
+  "optimizer_acceptance": [
+   "optimizer_artifacts",
+   "optimizer_trace_identity",
+   "optimizer_trace_science",
+   "real_run",
+   "retention_evidence",
+   "validate"
+  ],
+  "optimizer_artifacts": [
+   "native_turbo_history"
+  ],
+  "optimizer_completion": [
+   "optimizer_artifacts"
+  ],
+  "optimizer_continuation_flow": [
+   "native_turbo",
+   "openbox_backend",
+   "optimizer_acceptance",
+   "optimizer_completion",
+   "optimizer_decision",
+   "optimizer_finalize",
+   "optimizer_flow",
+   "optimizer_insights",
+   "remote_optimizer_flow",
+   "validate"
+  ],
+  "optimizer_decision": [
+   "optimizer_insights"
+  ],
+  "optimizer_effectiveness": [],
+  "optimizer_final_summary": [
+   "optimizer_decision",
+   "optimizer_supervisor_decision"
+  ],
+  "optimizer_finalize": [
+   "optimizer_acceptance",
+   "optimizer_completion",
+   "optimizer_insights"
+  ],
+  "optimizer_flow": [
+   "approvals",
+   "dry_run",
+   "health",
+   "native_turbo",
+   "netlists",
+   "openbox_backend",
+   "optimizer_acceptance",
+   "optimizer_completion",
+   "optimizer_decision",
+   "optimizer_finalize",
+   "optimizer_insights",
+   "optimizer_strategy",
+   "optimizer_task_package",
+   "package",
+   "product_doctor",
+   "project_readiness",
+   "requirement_intake",
+   "validate"
+  ],
+  "optimizer_html_report": [],
+  "optimizer_insights": [
+   "optimizer_artifacts",
+   "optimizer_html_report",
+   "optimizer_report_interpretation",
+   "optimizer_space_advisory",
+   "optimizer_tradeoffs",
+   "validate"
+  ],
+  "optimizer_loop": [
+   "metric_results",
+   "optimizer_suggestion",
+   "real_result_record",
+   "real_run",
+   "reports",
+   "result_handoff"
+  ],
+  "optimizer_progress_state": [
+   "mock_optimizer",
+   "optimizer_artifacts",
+   "schemas",
+   "validate"
+  ],
+  "optimizer_report_interpretation": [],
+  "optimizer_resources": [],
+  "optimizer_runtime": [
+   "doctor_readiness",
+   "native_turbo"
+  ],
+  "optimizer_space_advisory": [],
+  "optimizer_status": [
+   "optimizer_finalize"
+  ],
+  "optimizer_strategy": [
+   "schemas"
+  ],
+  "optimizer_suggestion": [
+   "mock_optimizer",
+   "package",
+   "real_run",
+   "real_run_recovery",
+   "schemas",
+   "validate"
+  ],
+  "optimizer_supervisor_decision": [
+   "optimizer_decision"
+  ],
+  "optimizer_task_package": [
+   "native_turbo",
+   "optimizer_artifacts",
+   "optimizer_strategy",
+   "real_result_record",
+   "validate"
+  ],
+  "optimizer_trace_identity": [],
+  "optimizer_trace_science": [
+   "native_turbo",
+   "schemas"
+  ],
+  "optimizer_tradeoffs": [],
+  "package": [
+   "reports",
+   "validate"
+  ],
+  "product_cli": [
+   "diagnostics",
+   "fix_run_flow",
+   "optimizer_continuation_flow",
+   "optimizer_flow",
+   "product_doctor",
+   "remote_doctor",
+   "remote_fix_run_flow",
+   "remote_optimizer_flow",
+   "remote_project",
+   "remote_ssh",
+   "requirement_intake"
+  ],
+  "product_doctor": [
+   "diagnostics",
+   "doctor_readiness",
+   "license_probe",
+   "optimizer_artifacts",
+   "optimizer_runtime",
+   "project_readiness",
+   "real_result_record",
+   "requirement_intake",
+   "toolchain_env"
+  ],
+  "project_readiness": [
+   "validate"
+  ],
+  "real_result_record": [
+   "metric_results",
+   "mock_optimizer",
+   "reports",
+   "result_handoff",
+   "schemas",
+   "validate"
+  ],
+  "real_run": [
+   "candidate_contract",
+   "dry_run",
+   "metric_requests",
+   "mock_optimizer",
+   "package",
+   "real_run_recovery",
+   "schemas",
+   "validate"
+  ],
+  "real_run_recovery": [
+   "metric_results",
+   "package",
+   "real_run",
+   "reports",
+   "result_handoff",
+   "schemas",
+   "validate"
+  ],
+  "remote_attempt_lock": [
+   "remote_project",
+   "remote_ssh"
+  ],
+  "remote_doctor": [
+   "diagnostics",
+   "doctor_readiness",
+   "license_probe",
+   "optimizer_artifacts",
+   "optimizer_runtime",
+   "remote_project",
+   "remote_ssh",
+   "requirement_intake",
+   "schemas"
+  ],
+  "remote_fix_run_flow": [
+   "approvals",
+   "execution_adapters.remote_spectre_ocean",
+   "fix_run_models",
+   "package",
+   "real_run",
+   "remote_doctor",
+   "remote_optimizer_flow",
+   "remote_prepare",
+   "remote_project",
+   "remote_ssh",
+   "run_retention",
+   "validate"
+  ],
+  "remote_history_manifests": [
+   "optimizer_trace_identity",
+   "optimizer_trace_science",
+   "package",
+   "real_run",
+   "remote_project",
+   "remote_ssh",
+   "retention_evidence",
+   "validate"
+  ],
+  "remote_optimizer_flow": [
+   "approvals",
+   "execution_adapters.remote_spectre_ocean",
+   "native_turbo",
+   "openbox_backend",
+   "optimizer_acceptance",
+   "optimizer_artifacts",
+   "optimizer_completion",
+   "optimizer_decision",
+   "optimizer_finalize",
+   "optimizer_flow",
+   "optimizer_insights",
+   "optimizer_trace_science",
+   "package",
+   "real_run",
+   "remote_attempt_lock",
+   "remote_doctor",
+   "remote_history_manifests",
+   "remote_prepare",
+   "remote_project",
+   "remote_ssh",
+   "requirement_intake",
+   "retention_evidence",
+   "run_retention",
+   "validate"
+  ],
+  "remote_prepare": [
+   "netlists",
+   "remote_project",
+   "remote_ssh",
+   "requirement_intake"
+  ],
+  "remote_project": [],
+  "remote_ssh": [],
+  "reports": [],
+  "requirement_intake": [
+   "candidate_contract",
+   "diagnostics",
+   "fix_run_models",
+   "measurement_routes",
+   "netlists",
+   "requirement_semantics",
+   "schemas",
+   "validate"
+  ],
+  "requirement_semantics": [
+   "objective_contract"
+  ],
+  "result_handoff": [
+   "package",
+   "reports",
+   "validate"
+  ],
+  "retention_evidence": [
+   "package",
+   "real_run"
+  ],
+  "run_retention": [
+   "package",
+   "real_run",
+   "remote_ssh",
+   "retention_evidence",
+   "validate"
+  ],
+  "schemas": [],
+  "toolchain_env": [],
+  "validate": [
+   "candidate_contract",
+   "fix_run_models",
+   "measurement_routes",
+   "objective_contract",
+   "optimizer_strategy",
+   "requirement_semantics",
+   "schemas"
+  ],
+  "execution_adapters": [
+   "execution_adapters.spectre_ocean"
+  ],
+  "execution_adapters.remote_spectre_ocean": [
+   "execution_adapters.spectre_ocean",
+   "multi_testbench_aggregation",
+   "remote_project",
+   "remote_ssh",
+   "validate"
+  ],
+  "execution_adapters.spectre_ocean": [
+   "metric_requests",
+   "metric_results",
+   "package",
+   "schemas",
+   "validate"
+  ]
+ },
+ "fanin": {
+  "reports": [
+   "approvals",
+   "dry_run",
+   "health",
+   "metric_results",
+   "multi_testbench_aggregation",
+   "native_turbo",
+   "netlists",
+   "optimizer_loop",
+   "package",
+   "real_result_record",
+   "real_run_recovery",
+   "result_handoff"
+  ],
+  "validate": [
+   "approvals",
+   "cli",
+   "dry_run",
+   "execution_adapters.remote_spectre_ocean",
+   "execution_adapters.spectre_ocean",
+   "fix_run_flow",
+   "health",
+   "history_warm_start",
+   "metric_requests",
+   "metric_results",
+   "mock_optimizer",
+   "multi_testbench_aggregation",
+   "native_turbo",
+   "netlists",
+   "openbox_backend",
+   "optimizer_acceptance",
+   "optimizer_continuation_flow",
+   "optimizer_flow",
+   "optimizer_insights",
+   "optimizer_progress_state",
+   "optimizer_suggestion",
+   "optimizer_task_package",
+   "package",
+   "project_readiness",
+   "real_result_record",
+   "real_run",
+   "real_run_recovery",
+   "remote_fix_run_flow",
+   "remote_history_manifests",
+   "remote_optimizer_flow",
+   "requirement_intake",
+   "result_handoff",
+   "run_retention"
+  ],
+  "schemas": [
+   "candidate_contract",
+   "doctor_readiness",
+   "execution_adapters.spectre_ocean",
+   "fix_run_models",
+   "history_warm_start",
+   "measurement_routes",
+   "mock_optimizer",
+   "native_turbo",
+   "native_turbo_history",
+   "netlists",
+   "openbox_backend",
+   "optimizer_progress_state",
+   "optimizer_strategy",
+   "optimizer_suggestion",
+   "optimizer_trace_science",
+   "real_result_record",
+   "real_run",
+   "real_run_recovery",
+   "remote_doctor",
+   "requirement_intake",
+   "validate"
+  ],
+  "metric_results": [
+   "cli",
+   "execution_adapters.spectre_ocean",
+   "multi_testbench_aggregation",
+   "native_turbo",
+   "optimizer_loop",
+   "real_result_record",
+   "real_run_recovery"
+  ],
+  "optimizer_flow": [
+   "cli",
+   "optimizer_continuation_flow",
+   "product_cli",
+   "remote_optimizer_flow"
+  ],
+  "optimizer_supervisor_decision": [
+   "cli",
+   "optimizer_final_summary"
+  ],
+  "real_result_record": [
+   "cli",
+   "doctor_readiness",
+   "native_turbo",
+   "openbox_backend",
+   "optimizer_loop",
+   "optimizer_task_package",
+   "product_doctor"
+  ],
+  "project_readiness": [
+   "cli",
+   "optimizer_flow",
+   "product_doctor"
+  ],
+  "real_run": [
+   "cli",
+   "fix_run_flow",
+   "native_turbo",
+   "openbox_backend",
+   "optimizer_acceptance",
+   "optimizer_loop",
+   "optimizer_suggestion",
+   "real_run_recovery",
+   "remote_fix_run_flow",
+   "remote_history_manifests",
+   "remote_optimizer_flow",
+   "retention_evidence",
+   "run_retention"
+  ],
+  "package": [
+   "cli",
+   "execution_adapters.spectre_ocean",
+   "fix_run_flow",
+   "metric_results",
+   "multi_testbench_aggregation",
+   "optimizer_flow",
+   "optimizer_suggestion",
+   "real_run",
+   "real_run_recovery",
+   "remote_fix_run_flow",
+   "remote_history_manifests",
+   "remote_optimizer_flow",
+   "result_handoff",
+   "retention_evidence",
+   "run_retention"
+  ],
+  "dry_run": [
+   "cli",
+   "optimizer_flow",
+   "real_run"
+  ],
+  "optimizer_completion": [
+   "cli",
+   "optimizer_continuation_flow",
+   "optimizer_finalize",
+   "optimizer_flow",
+   "remote_optimizer_flow"
+  ],
+  "openbox_backend": [
+   "cli",
+   "optimizer_continuation_flow",
+   "optimizer_flow",
+   "remote_optimizer_flow"
+  ],
+  "netlists": [
+   "cli",
+   "optimizer_flow",
+   "remote_prepare",
+   "requirement_intake"
+  ],
+  "toolchain_env": [
+   "cli",
+   "product_doctor"
+  ],
+  "requirement_intake": [
+   "cli",
+   "fix_run_flow",
+   "optimizer_flow",
+   "product_cli",
+   "product_doctor",
+   "remote_doctor",
+   "remote_optimizer_flow",
+   "remote_prepare"
+  ],
+  "optimizer_status": [
+   "cli"
+  ],
+  "mock_optimizer": [
+   "cli",
+   "dry_run",
+   "optimizer_progress_state",
+   "optimizer_suggestion",
+   "real_result_record",
+   "real_run"
+  ],
+  "optimizer_suggestion": [
+   "cli",
+   "optimizer_loop"
+  ],
+  "native_turbo": [
+   "cli",
+   "history_warm_start",
+   "multi_testbench_aggregation",
+   "openbox_backend",
+   "optimizer_continuation_flow",
+   "optimizer_flow",
+   "optimizer_runtime",
+   "optimizer_task_package",
+   "optimizer_trace_science",
+   "remote_optimizer_flow"
+  ],
+  "optimizer_decision": [
+   "cli",
+   "optimizer_continuation_flow",
+   "optimizer_final_summary",
+   "optimizer_flow",
+   "optimizer_supervisor_decision",
+   "remote_optimizer_flow"
+  ],
+  "health": [
+   "cli",
+   "optimizer_flow"
+  ],
+  "optimizer_task_package": [
+   "cli",
+   "optimizer_flow"
+  ],
+  "real_run_recovery": [
+   "cli",
+   "native_turbo",
+   "optimizer_suggestion",
+   "real_run"
+  ],
+  "optimizer_acceptance": [
+   "cli",
+   "optimizer_continuation_flow",
+   "optimizer_finalize",
+   "optimizer_flow",
+   "remote_optimizer_flow"
+  ],
+  "approvals": [
+   "cli",
+   "fix_run_flow",
+   "optimizer_flow",
+   "remote_fix_run_flow",
+   "remote_optimizer_flow"
+  ],
+  "optimizer_finalize": [
+   "cli",
+   "optimizer_continuation_flow",
+   "optimizer_flow",
+   "optimizer_status",
+   "remote_optimizer_flow"
+  ],
+  "result_handoff": [
+   "cli",
+   "metric_results",
+   "multi_testbench_aggregation",
+   "native_turbo",
+   "optimizer_loop",
+   "real_result_record",
+   "real_run_recovery"
+  ],
+  "optimizer_final_summary": [
+   "cli"
+  ],
+  "optimizer_insights": [
+   "cli",
+   "optimizer_continuation_flow",
+   "optimizer_decision",
+   "optimizer_finalize",
+   "optimizer_flow",
+   "remote_optimizer_flow"
+  ],
+  "diagnostics": [
+   "doctor_readiness",
+   "product_cli",
+   "product_doctor",
+   "remote_doctor",
+   "requirement_intake"
+  ],
+  "optimizer_artifacts": [
+   "doctor_readiness",
+   "history_warm_start",
+   "openbox_backend",
+   "optimizer_acceptance",
+   "optimizer_completion",
+   "optimizer_insights",
+   "optimizer_progress_state",
+   "optimizer_task_package",
+   "product_doctor",
+   "remote_doctor",
+   "remote_optimizer_flow"
+  ],
+  "optimizer_strategy": [
+   "doctor_readiness",
+   "openbox_backend",
+   "optimizer_flow",
+   "optimizer_task_package",
+   "validate"
+  ],
+  "native_turbo_history": [
+   "doctor_readiness",
+   "native_turbo",
+   "optimizer_artifacts"
+  ],
+  "execution_adapters.spectre_ocean": [
+   "execution_adapters",
+   "execution_adapters.remote_spectre_ocean",
+   "fix_run_flow",
+   "native_turbo"
+  ],
+  "product_doctor": [
+   "fix_run_flow",
+   "optimizer_flow",
+   "product_cli"
+  ],
+  "run_retention": [
+   "fix_run_flow",
+   "native_turbo",
+   "remote_fix_run_flow",
+   "remote_optimizer_flow"
+  ],
+  "fix_run_models": [
+   "fix_run_flow",
+   "measurement_routes",
+   "metric_results",
+   "remote_fix_run_flow",
+   "requirement_intake",
+   "validate"
+  ],
+  "remote_ssh": [
+   "execution_adapters.remote_spectre_ocean",
+   "license_probe",
+   "product_cli",
+   "remote_attempt_lock",
+   "remote_doctor",
+   "remote_fix_run_flow",
+   "remote_history_manifests",
+   "remote_optimizer_flow",
+   "remote_prepare",
+   "run_retention"
+  ],
+  "optimizer_effectiveness": [
+   "native_turbo",
+   "openbox_backend"
+  ],
+  "optimizer_resources": [
+   "native_turbo",
+   "openbox_backend"
+  ],
+  "optimizer_progress_state": [
+   "native_turbo",
+   "openbox_backend"
+  ],
+  "multi_testbench_aggregation": [
+   "execution_adapters.remote_spectre_ocean",
+   "native_turbo"
+  ],
+  "candidate_contract": [
+   "native_turbo",
+   "native_turbo_history",
+   "real_run",
+   "requirement_intake",
+   "validate"
+  ],
+  "optimizer_trace_identity": [
+   "native_turbo_history",
+   "openbox_backend",
+   "optimizer_acceptance",
+   "remote_history_manifests"
+  ],
+  "history_warm_start": [
+   "openbox_backend"
+  ],
+  "optimizer_trace_science": [
+   "optimizer_acceptance",
+   "remote_history_manifests",
+   "remote_optimizer_flow"
+  ],
+  "retention_evidence": [
+   "optimizer_acceptance",
+   "remote_history_manifests",
+   "remote_optimizer_flow",
+   "run_retention"
+  ],
+  "remote_optimizer_flow": [
+   "optimizer_continuation_flow",
+   "product_cli",
+   "remote_fix_run_flow"
+  ],
+  "optimizer_space_advisory": [
+   "optimizer_insights"
+  ],
+  "optimizer_html_report": [
+   "optimizer_insights"
+  ],
+  "optimizer_tradeoffs": [
+   "optimizer_insights"
+  ],
+  "optimizer_report_interpretation": [
+   "optimizer_insights"
+  ],
+  "doctor_readiness": [
+   "optimizer_runtime",
+   "product_doctor",
+   "remote_doctor"
+  ],
+  "remote_doctor": [
+   "product_cli",
+   "remote_fix_run_flow",
+   "remote_optimizer_flow"
+  ],
+  "remote_project": [
+   "execution_adapters.remote_spectre_ocean",
+   "product_cli",
+   "remote_attempt_lock",
+   "remote_doctor",
+   "remote_fix_run_flow",
+   "remote_history_manifests",
+   "remote_optimizer_flow",
+   "remote_prepare"
+  ],
+  "fix_run_flow": [
+   "product_cli"
+  ],
+  "remote_fix_run_flow": [
+   "product_cli"
+  ],
+  "optimizer_continuation_flow": [
+   "product_cli"
+  ],
+  "optimizer_runtime": [
+   "product_doctor",
+   "remote_doctor"
+  ],
+  "license_probe": [
+   "product_doctor",
+   "remote_doctor"
+  ],
+  "metric_requests": [
+   "execution_adapters.spectre_ocean",
+   "real_run"
+  ],
+  "execution_adapters.remote_spectre_ocean": [
+   "remote_fix_run_flow",
+   "remote_optimizer_flow"
+  ],
+  "remote_prepare": [
+   "remote_fix_run_flow",
+   "remote_optimizer_flow"
+  ],
+  "remote_history_manifests": [
+   "remote_optimizer_flow"
+  ],
+  "remote_attempt_lock": [
+   "remote_optimizer_flow"
+  ],
+  "measurement_routes": [
+   "requirement_intake",
+   "validate"
+  ],
+  "requirement_semantics": [
+   "requirement_intake",
+   "validate"
+  ],
+  "objective_contract": [
+   "requirement_semantics",
+   "validate"
+  ],
+  "__init__": [],
+  "execution_adapters": [],
+  "optimizer_loop": [],
+  "cli": [],
+  "product_cli": []
+ },
+ "loc": {
+  "__init__": 2,
+  "approvals": 208,
+  "candidate_contract": 160,
+  "cli": 1374,
+  "diagnostics": 80,
+  "doctor_readiness": 647,
+  "dry_run": 283,
+  "fix_run_flow": 536,
+  "fix_run_models": 237,
+  "health": 55,
+  "history_warm_start": 982,
+  "license_probe": 367,
+  "measurement_routes": 126,
+  "metric_requests": 117,
+  "metric_results": 761,
+  "mock_optimizer": 476,
+  "multi_testbench_aggregation": 638,
+  "native_turbo": 1786,
+  "native_turbo_history": 356,
+  "netlists": 574,
+  "objective_contract": 178,
+  "openbox_backend": 1968,
+  "optimizer_acceptance": 450,
+  "optimizer_artifacts": 204,
+  "optimizer_completion": 434,
+  "optimizer_continuation_flow": 104,
+  "optimizer_decision": 410,
+  "optimizer_effectiveness": 213,
+  "optimizer_final_summary": 233,
+  "optimizer_finalize": 154,
+  "optimizer_flow": 552,
+  "optimizer_html_report": 637,
+  "optimizer_insights": 2524,
+  "optimizer_loop": 185,
+  "optimizer_progress_state": 206,
+  "optimizer_report_interpretation": 319,
+  "optimizer_resources": 264,
+  "optimizer_runtime": 198,
+  "optimizer_space_advisory": 265,
+  "optimizer_status": 100,
+  "optimizer_strategy": 192,
+  "optimizer_suggestion": 297,
+  "optimizer_supervisor_decision": 151,
+  "optimizer_task_package": 492,
+  "optimizer_trace_identity": 57,
+  "optimizer_trace_science": 407,
+  "optimizer_tradeoffs": 144,
+  "package": 267,
+  "product_cli": 522,
+  "product_doctor": 577,
+  "project_readiness": 297,
+  "real_result_record": 386,
+  "real_run": 1277,
+  "real_run_recovery": 908,
+  "remote_attempt_lock": 115,
+  "remote_doctor": 1062,
+  "remote_fix_run_flow": 616,
+  "remote_history_manifests": 438,
+  "remote_optimizer_flow": 1712,
+  "remote_prepare": 717,
+  "remote_project": 53,
+  "remote_ssh": 705,
+  "reports": 292,
+  "requirement_intake": 1652,
+  "requirement_semantics": 167,
+  "result_handoff": 325,
+  "retention_evidence": 647,
+  "run_retention": 555,
+  "schemas": 587,
+  "toolchain_env": 224,
+  "validate": 893,
+  "execution_adapters": 12,
+  "execution_adapters.remote_spectre_ocean": 570,
+  "execution_adapters.spectre_ocean": 1470
+ },
+ "level": {
+  "__init__": 0,
+  "approvals": 4,
+  "candidate_contract": 1,
+  "cli": 15,
+  "diagnostics": 0,
+  "doctor_readiness": 8,
+  "dry_run": 5,
+  "fix_run_flow": 13,
+  "fix_run_models": 1,
+  "health": 4,
+  "history_warm_start": 11,
+  "license_probe": 1,
+  "measurement_routes": 2,
+  "metric_requests": 4,
+  "metric_results": 6,
+  "mock_optimizer": 4,
+  "multi_testbench_aggregation": 10,
+  "native_turbo": 10,
+  "native_turbo_history": 2,
+  "netlists": 4,
+  "objective_contract": 0,
+  "openbox_backend": 12,
+  "optimizer_acceptance": 12,
+  "optimizer_artifacts": 3,
+  "optimizer_completion": 4,
+  "optimizer_continuation_flow": 16,
+  "optimizer_decision": 5,
+  "optimizer_effectiveness": 0,
+  "optimizer_final_summary": 7,
+  "optimizer_finalize": 13,
+  "optimizer_flow": 14,
+  "optimizer_html_report": 0,
+  "optimizer_insights": 4,
+  "optimizer_loop": 9,
+  "optimizer_progress_state": 5,
+  "optimizer_report_interpretation": 0,
+  "optimizer_resources": 0,
+  "optimizer_runtime": 11,
+  "optimizer_space_advisory": 0,
+  "optimizer_status": 14,
+  "optimizer_strategy": 1,
+  "optimizer_suggestion": 8,
+  "optimizer_supervisor_decision": 6,
+  "optimizer_task_package": 11,
+  "optimizer_trace_identity": 0,
+  "optimizer_trace_science": 11,
+  "optimizer_tradeoffs": 0,
+  "package": 4,
+  "product_cli": 17,
+  "product_doctor": 12,
+  "project_readiness": 4,
+  "real_result_record": 7,
+  "real_run": 7,
+  "real_run_recovery": 7,
+  "remote_attempt_lock": 1,
+  "remote_doctor": 12,
+  "remote_fix_run_flow": 16,
+  "remote_history_manifests": 12,
+  "remote_optimizer_flow": 15,
+  "remote_prepare": 6,
+  "remote_project": 0,
+  "remote_ssh": 0,
+  "reports": 0,
+  "requirement_intake": 5,
+  "requirement_semantics": 1,
+  "result_handoff": 5,
+  "retention_evidence": 8,
+  "run_retention": 9,
+  "schemas": 0,
+  "toolchain_env": 0,
+  "validate": 3,
+  "execution_adapters": 8,
+  "execution_adapters.remote_spectre_ocean": 11,
+  "execution_adapters.spectre_ocean": 7
+ }
+}

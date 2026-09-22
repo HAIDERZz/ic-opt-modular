@@ -1,0 +1,302 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "IC-Opt 0.2 使用方式",
+    "locale": "zh-CN",
+    "output": "docs/refactor/diagrams/ic-opt-usage.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "main-path",
+        "label": "从 spec 到报告",
+        "focus": [
+          "user",
+          "plan",
+          "confirm",
+          "run",
+          "doctor",
+          "netlist",
+          "optimize",
+          "report",
+          "result"
+        ],
+        "note": "写 spec.yaml 和 recipe，--plan 预览后运行；Block 依次执行，最后读报告与观测表。"
+      },
+      {
+        "id": "evaluate-loop",
+        "label": "suggest ⇄ evaluate",
+        "focus": [
+          "optimize",
+          "evaluate",
+          "sim",
+          "store"
+        ],
+        "note": "optimize 只是循环：suggest 出点，evaluate 经 Executor 仿真并追加观测；fix-run 只是把 suggest 换成 points_fixed。"
+      },
+      {
+        "id": "guardrails",
+        "label": "护栏",
+        "focus": [
+          "plan",
+          "confirm",
+          "evaluate",
+          "guard"
+        ],
+        "note": "唯一的审批点是 --plan；运行中预算 / 资源包络 / license / 锁是不变量，超限即停，已完成观测保留。"
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "ui",
+      "label": "用户 / Agent"
+    },
+    {
+      "id": "cli",
+      "label": "ic-opt CLI"
+    },
+    {
+      "id": "blocks",
+      "label": "Blocks（能力层）"
+    },
+    {
+      "id": "sim",
+      "label": "评估与仿真"
+    }
+  ],
+  "mainPath": [
+    "user",
+    "plan",
+    "confirm",
+    "run",
+    "doctor",
+    "netlist",
+    "optimize",
+    "report",
+    "result"
+  ],
+  "nodes": [
+    {
+      "id": "user",
+      "lane": "ui",
+      "col": 0,
+      "type": "external",
+      "label": "写 spec.yaml + recipe",
+      "sublabel": "WHAT 在 spec，HOW 在 recipe",
+      "width": 150
+    },
+    {
+      "id": "confirm",
+      "lane": "ui",
+      "col": 2,
+      "type": "external",
+      "label": "确认预览",
+      "sublabel": "仿真数 · 并发 · 主机",
+      "width": 150
+    },
+    {
+      "id": "result",
+      "lane": "ui",
+      "col": 5,
+      "type": "frontend",
+      "label": "读 report + 观测表",
+      "sublabel": "六节四图 · observations.jsonl",
+      "width": 150
+    },
+    {
+      "id": "plan",
+      "lane": "cli",
+      "col": 1,
+      "type": "security",
+      "label": "ic-opt run --plan",
+      "sublabel": "只打印，不启动仿真",
+      "tag": "唯一审批点",
+      "width": 150
+    },
+    {
+      "id": "run",
+      "lane": "cli",
+      "col": 2,
+      "type": "frontend",
+      "label": "ic-opt run recipe",
+      "sublabel": "步骤日志 · 幂等续跑",
+      "width": 150
+    },
+    {
+      "id": "doctor",
+      "lane": "blocks",
+      "col": 2,
+      "type": "security",
+      "label": "env.doctor",
+      "sublabel": "工具链 · license · 包络",
+      "width": 150
+    },
+    {
+      "id": "netlist",
+      "lane": "blocks",
+      "col": 3,
+      "type": "backend",
+      "label": "netlist.import",
+      "sublabel": "Maestro 导出 → Deck",
+      "width": 150
+    },
+    {
+      "id": "optimize",
+      "lane": "blocks",
+      "col": 4,
+      "type": "backend",
+      "label": "opt.optimize",
+      "sublabel": "或 points_fixed（fix-run）",
+      "width": 150
+    },
+    {
+      "id": "report",
+      "lane": "blocks",
+      "col": 5,
+      "type": "backend",
+      "label": "analyze.report",
+      "sublabel": "md + html + 四图",
+      "width": 150
+    },
+    {
+      "id": "store",
+      "lane": "sim",
+      "col": 2,
+      "type": "database",
+      "label": "RunStore",
+      "sublabel": ".icopt/observations.jsonl",
+      "width": 150
+    },
+    {
+      "id": "evaluate",
+      "lane": "sim",
+      "col": 3,
+      "type": "backend",
+      "label": "sim.evaluate",
+      "sublabel": "唯一评估原语",
+      "tag": "护栏内建",
+      "width": 150
+    },
+    {
+      "id": "sim",
+      "lane": "sim",
+      "col": 5,
+      "type": "cloud",
+      "label": "Spectre / OCEAN",
+      "sublabel": "经 Executor：本地 或 SSH",
+      "width": 150
+    },
+    {
+      "id": "guard",
+      "lane": "sim",
+      "col": 4,
+      "type": "security",
+      "label": "超限即停",
+      "sublabel": "预算 · 包络 · license · 锁",
+      "width": 150
+    }
+  ],
+  "edges": [
+    {
+      "id": "user-plan",
+      "from": "user",
+      "to": "plan",
+      "variant": "default"
+    },
+    {
+      "id": "plan-confirm",
+      "from": "plan",
+      "to": "confirm",
+      "label": "预览",
+      "variant": "security"
+    },
+    {
+      "id": "confirm-run",
+      "from": "confirm",
+      "to": "run",
+      "variant": "emphasis"
+    },
+    {
+      "id": "run-doctor",
+      "from": "run",
+      "to": "doctor",
+      "label": "require_pass()",
+      "variant": "security"
+    },
+    {
+      "id": "doctor-netlist",
+      "from": "doctor",
+      "to": "netlist",
+      "variant": "emphasis"
+    },
+    {
+      "id": "netlist-optimize",
+      "from": "netlist",
+      "to": "optimize",
+      "label": "Deck",
+      "variant": "emphasis"
+    },
+    {
+      "id": "optimize-evaluate",
+      "from": "optimize",
+      "to": "evaluate",
+      "label": "suggest → Points",
+      "variant": "emphasis"
+    },
+    {
+      "id": "evaluate-sim",
+      "from": "evaluate",
+      "to": "sim",
+      "label": "render → spectre → ocean",
+      "variant": "default"
+    },
+    {
+      "id": "evaluate-store",
+      "from": "evaluate",
+      "to": "store",
+      "label": "append",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "optimize-report",
+      "from": "optimize",
+      "to": "report",
+      "variant": "emphasis",
+      "label": "Observations"
+    },
+    {
+      "id": "report-result",
+      "from": "report",
+      "to": "result",
+      "variant": "emphasis"
+    },
+    {
+      "id": "evaluate-guard",
+      "from": "evaluate",
+      "to": "guard",
+      "label": "超限",
+      "variant": "security",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两种用法，同一套 Block",
+      "items": [
+        "强模型：ic-opt blocks → describe → 写 recipe → --plan → run",
+        "省事：ic-opt run optimize spec.yaml（随包 recipe）"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "零新代码的新组合 / 护栏",
+      "items": [
+        "粗搜 → TuRBO 精修：optimize(..., initial=coarse)；TT 优化后前 5 名全 corner 签核",
+        "--plan 是唯一审批点；站点上限在 ~/.ic-opt/site.yaml，agent 改不了"
+      ]
+    }
+  ]
+}
