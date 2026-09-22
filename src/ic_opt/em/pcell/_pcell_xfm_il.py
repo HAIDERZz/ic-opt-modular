@@ -12,7 +12,6 @@ from ic_opt.em.pcell._pcell_core import (
     _EPS,
     _ORIENTS,
     GRID_UM,
-    PI,
     Cell,
     GroundFixtureConfig,
     PortError,
@@ -35,7 +34,7 @@ from ic_opt.em.pcell._pcell_core import (
     finalize_emx_ports,
     floortogrid,
     max_opening,
-    roundtogrid,
+    octagon,
     vias,
 )
 from ic_opt.em.pcell._pcell_guards import (
@@ -640,13 +639,9 @@ def _il_shifted_hud_cross(
     if process is not None:
         cor_od = OD - PITCH
         cor_bias = chamfer_bias + corridor_bias_step
-        A_c = roundtogrid(cor_od / (2 + math.sqrt(2)))
-        BA_c = floortogrid((cor_od - 2 * A_c) / 2 - 0.005) \
-            - cor_bias * GRID_UM
-        C_w = ceiltogrid(W * math.tan(PI / 8) + 0.005)
         floor_sp = _effective_min_spacing(sl, W, process)
         y0 = xfm_cross_far_pad_y0(cross_gap, W, 0.0, sl, process)
-        y_allow = (cor_od / 2 + BA_c - C_w - W) \
+        y_allow = octagon(cor_od, W, cor_bias).inner_chamfer_intercept \
             - floor_sp * math.sqrt(2.0) - (OD / 2 - PITCH)
         corner = y0 + abs(leg1_dy) + W
         if y_allow < corner - 1e-9:

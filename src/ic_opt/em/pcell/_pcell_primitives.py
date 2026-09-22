@@ -8,7 +8,6 @@ import math
 
 from ic_opt.em.pcell._pcell_core import (
     GRID_UM,
-    PI,
     Cell,
     PortError,
     ProcessRuleContext,
@@ -19,9 +18,11 @@ from ic_opt.em.pcell._pcell_core import (
     _metal_index,
     _metal_name,
     ceiltogrid,
+    chamfer,
     cross_endpoint_offset,
     floortogrid,
-    roundtogrid,
+    junction_half_offset,
+    octagon,
     vias,
     vias_nomet,
 )
@@ -55,11 +56,9 @@ def base_ind_diag(
         params["process"] = process.profile_id
     cell = Cell(f"base_ind_diag_W{W}_S{S}_M{MET}", "base_ind_diag", params)
     P = S + W
-    C = ceiltogrid(W * math.tan(PI / 8) + 0.005)
+    C = chamfer(W).C
     OO = 2 * W + S
-    C2 = ceiltogrid(C / math.sqrt(2))
-    OOC = 2 * W + S - 2 * C2
-    OOCH = OOC / 2
+    OOCH = junction_half_offset(W, S)
     layer = _metal(MET, process)
     if S <= 2.0 * math.sqrt(2):
         clr_met = MET if clearance_met is None else clearance_met
@@ -119,9 +118,7 @@ def xfm_cross_far_pad_y0(
     exposed so a caller (base_ind_hud_cross, issue 04) can bound the
     pad's outer corner against an adjacent ring's chamfer corridor
     without replicating the quantized math out of sync."""
-    C = ceiltogrid(WO * math.tan(PI / 8) + 0.005)
-    C2 = ceiltogrid(C / math.sqrt(2))
-    OOCH = WO + S + WI / 2 - C2
+    OOCH = junction_half_offset(WO, 2 * S + WI)
     if 2 * S + WI <= 2.0 * math.sqrt(2.0):
         OOCHD = ceiltogrid(
             _junction_clearance_const(TOP_ME, process) * math.sqrt(2.0) - WI)
@@ -185,9 +182,7 @@ def base_xfm_cross(
         "base_xfm_cross",
         params,
     )
-    C = ceiltogrid(WO * math.tan(PI / 8) + 0.005)
-    C2 = ceiltogrid(C / math.sqrt(2))
-    OOCH = WO + S + WI / 2 - C2
+    OOCH = junction_half_offset(WO, 2 * S + WI)
     diag_met = TOP_ME if top else BTM_ME
     # D1 (M12 Phase 0.5): the endpoint via block spans BTM_ME..TOP_ME, so its
     # top-metal pad is what a same-layer ring can crowd -- key the endpoint
@@ -255,11 +250,8 @@ def base_oct_quad(
         f"base_oct_quad_OD{OD}_W{W}_OP{OP}_M{MET}{suffix}",
         "base_oct_quad", params
     )
-    C = ceiltogrid(W * math.tan(PI / 8) + 0.005)
-    DIV = 2 + math.sqrt(2)
-    A = roundtogrid(OD / DIV)
-    B = OD - 2 * A
-    BA = floortogrid(B / 2 - 0.005) - chamfer_bias * GRID_UM
+    ring = octagon(OD, W, chamfer_bias)
+    A, BA, C = ring.A, ring.BA, ring.C
     layer = _metal(MET, process)
     if OP > (BA - C):
         if bCons:
@@ -426,10 +418,8 @@ def base_oct_quad_vias(
     cell = Cell(
         f"base_oct_quad_vias_OD{OD}_W{W}_OP{OP}_M{MET}", "base_oct_quad_vias", params
     )
-    A = roundtogrid(OD / (2 + math.sqrt(2)))
-    B = OD - 2 * A
-    BA = floortogrid(B / 2 - 0.005)
-    BB = B - BA
+    ring = octagon(OD, W)
+    BB = OD - 2 * ring.A - ring.BA
     cell.inst(
         vias_nomet(Length=W, Width=BB, TOP_ME=MET, BTM_ME=MET - 1, process=process),
         (OD / 2 - BB, OD / 2 - W),
@@ -484,8 +474,6 @@ def base_xfm_half(
     WO: float = 5.0,
     WI: float = 5.0,
     S: float = 2.0,
-    B_TK: float = 0.0,
-    A_TK: float = 0.0,
     LOP: float = 15.0,
     ROP: float = 15.0,
     TOP_ME: int = 9,
@@ -500,12 +488,8 @@ def base_xfm_half(
     by one axis-aligned vias() block (via_to_next). via_diag uses the sourceless
     'vias_diagonal' PCell (no source, no GDS evidence; ind_ref.gds VIA8 cuts
     are all axis-aligned), so via_diag=True fails closed. WI/BB/PA/PB are dead
-    (signature fidelity); A_TK/B_TK move only the via placement (A/B), never
-    the drawn octagon (base_oct_quad recomputes its own A/B from OD).
-
-    P = S + WO and C = ceiltogrid(WO*tan(pi/8)+0.005) feed only the dead
-    PA/PB and the unported via_diag branch; dropped (never reached past the
-    fail-closed guard above)."""
+    (signature fidelity). The reference's A_TK/B_TK via-placement offsets and
+    its P/C feed only dead or unported branches and are dropped."""
     top, btm = _metal_index(TOP_ME), _metal_index(BTM_ME)
     if top < btm:
         raise PortError(f"base_xfm_half: TOP_ME M{top} below BTM_ME M{btm}")
@@ -513,13 +497,11 @@ def base_xfm_half(
         raise PortError(
             "base_xfm_half: via_diag needs the sourceless 'vias_diagonal' "
             "PCell (no source, no GDS evidence); fail closed")
-    DIV = 2 + math.sqrt(2)
-    A = roundtogrid(OD / DIV) - A_TK
-    B = OD - 2 * A - B_TK
-    BA = floortogrid(B / 2 - 0.005)
-    params = {"OD": OD, "WO": WO, "WI": WI, "S": S, "B_TK": B_TK,
-              "A_TK": A_TK, "LOP": LOP, "ROP": ROP, "TOP_ME": TOP_ME,
-              "BTM_ME": BTM_ME, "via_to_next": via_to_next,
+    ring = octagon(OD, WO)
+    A, BA = ring.A, ring.BA
+    B = OD - 2 * A
+    params = {"OD": OD, "WO": WO, "WI": WI, "S": S, "LOP": LOP, "ROP": ROP,
+              "TOP_ME": TOP_ME, "BTM_ME": BTM_ME, "via_to_next": via_to_next,
               "via_diag": via_diag}
     if process is not None:
         params["process"] = process.profile_id
@@ -993,16 +975,12 @@ def base_ind_hud_cross(
     far_pad_len = None
     if process is not None:
         cor_od, cor_bias = (OD, chamfer_bias) if corridor is None else corridor
-        A_c = roundtogrid(cor_od / (2 + math.sqrt(2)))
-        BA_c = floortogrid((cor_od - 2 * A_c) / 2 - 0.005) \
-            - cor_bias * GRID_UM
-        C_w = ceiltogrid(W * math.tan(PI / 8) + 0.005)
         floor_sp = _effective_min_spacing(_metal_index(TOP_ME), W, process)
         y0 = xfm_cross_far_pad_y0(
             cross_gap, W, 0.0, _metal_index(TOP_ME), process)
         # far pad outer |x| = OD/2 - pitch; corner constraint:
-        # x_outer + y_top <= (cor_od/2 + BA_c - C_w - W) - floor*sqrt(2)
-        y_allow = (cor_od / 2 + BA_c - C_w - W) \
+        # x_outer + y_top <= inner chamfer intercept - floor*sqrt(2)
+        y_allow = octagon(cor_od, W, cor_bias).inner_chamfer_intercept \
             - floor_sp * math.sqrt(2.0) - (OD / 2 - pitch)
         if y_allow < y0 + W - 1e-9:
             far_pad_len = floortogrid(y_allow - y0)
@@ -1021,15 +999,11 @@ def base_ind_hud_cross(
     near_pad_len = None
     if process is not None and outer_corridor is not None:
         oc_od, oc_bias = outer_corridor
-        A_o = roundtogrid(oc_od / (2 + math.sqrt(2)))
-        BA_o = floortogrid((oc_od - 2 * A_o) / 2 - 0.005) \
-            - oc_bias * GRID_UM
-        C_w = ceiltogrid(W * math.tan(PI / 8) + 0.005)
         floor_sp = _effective_min_spacing(_metal_index(TOP_ME), W, process)
         y0 = xfm_cross_far_pad_y0(
             cross_gap, W, 0.0, _metal_index(TOP_ME), process)
         # near pad outer |x| = OD/2 (this turn's own arm)
-        y_allow_o = (oc_od / 2 + BA_o - C_w - W) \
+        y_allow_o = octagon(oc_od, W, oc_bias).inner_chamfer_intercept \
             - floor_sp * math.sqrt(2.0) - OD / 2
         if y_allow_o < y0 + W - 1e-9:
             near_pad_len = floortogrid(y_allow_o - y0)

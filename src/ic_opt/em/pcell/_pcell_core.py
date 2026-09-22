@@ -48,19 +48,89 @@ def floortogrid(x: float) -> float:
     return math.floor(x / GRID_UM + _EPS) * GRID_UM
 
 
-def max_opening(OD: float, W: float) -> float:
-    """Largest OPENING that ``base_oct_quad`` still honours as a real gap.
+# ---------------------------------------------------------------------------
+# the octagon's quantized chamfer geometry, computed once (M1.1)
+#
+# Every primitive that draws a ring's 45-degree edges, lands a pad on its
+# flats or reasons about the gap between concentric rings' diagonals takes
+# A / BA / C from here. Before, nine call sites each quantized their own copy
+# of the same formulas and disagreed by grid steps (plan F1/F2, D8).
+# ---------------------------------------------------------------------------
 
-    Above this bound the octagon opening leg no longer descends to ``y=OPENING``
-    (base_oct_quad switches to its clamped ``OP > (BA - C)`` branch), so the
-    ring detaches from ``base_lead_pair`` and the P/N ports float. Bit-exact
-    with that branch condition; depends only on ``OD`` and ``W``
-    (metal-independent)."""
+SQRT2 = math.sqrt(2.0)
+OCT_DIV = 2.0 + SQRT2                    # OD / OCT_DIV is a regular octagon's chamfer projection
+
+
+@dataclass(frozen=True)
+class Chamfer:
+    """The 45-degree corner of a W-wide octagon trace (independent of OD)."""
+
+    W: float
+    C: float                             # inner-chamfer offset; ceil(W tan(pi/8)) + half a grid: the diagonal is drawn AT LEAST W wide
+    C2: float                            # ceil(C / sqrt2): the crossover diagonals' 45-degree junction offset
+
+    @property
+    def drawn_width(self) -> float:
+        """What the diagonal segment measures: (W + C) / sqrt2 >= W, never W exactly (C is quantized upward)."""
+        return (self.W + self.C) / SQRT2
+
+
+def chamfer(W: float) -> Chamfer:
     C = ceiltogrid(W * math.tan(PI / 8) + 0.005)
-    A = roundtogrid(OD / (2 + math.sqrt(2)))
-    B = OD - 2 * A
-    BA = floortogrid(B / 2 - 0.005)
-    return BA - C
+    return Chamfer(W, C, ceiltogrid(C / SQRT2))
+
+
+@dataclass(frozen=True)
+class Octagon:
+    """One octagon ring of outer diameter OD and trace width W, as ``base_oct_quad`` quantizes it.
+
+    In the ring's own frame (centre at the origin): flats at |x| or |y| = OD/2,
+    each flat's half-length is BA, the outer chamfer runs from (BA, OD/2) to
+    (OD/2, BA) (A = OD/2 - BA up to quantization), the inner chamfer is offset by
+    C + W. ``bias`` pulls BA inward by grid steps (the staircase clearance).
+    """
+
+    OD: float
+    W: float
+    bias: int
+    A: float
+    BA: float
+    C: float
+
+    @property
+    def max_opening(self) -> float:
+        """Largest OPENING ``base_oct_quad`` still honours as a real gap (above it the opening leg detaches; metal-independent)."""
+        return self.BA - self.C
+
+    @property
+    def inner_chamfer_intercept(self) -> float:
+        """x + y along the inner chamfer edge (first quadrant): the corridor line a landing pad's corner must stay inside."""
+        return self.OD / 2 + self.BA - self.C - self.W
+
+    def diagonal_gap(self, inner: Octagon) -> float:
+        """Perpendicular gap between this ring's inner chamfer and the concentric ``inner`` ring's outer chamfer."""
+        pitch = (self.OD - inner.OD) / 2
+        return (pitch + self.BA - inner.BA - self.C - self.W) / SQRT2
+
+
+def octagon(OD: float, W: float, bias: int = 0) -> Octagon:
+    A = roundtogrid(OD / OCT_DIV)
+    BA = floortogrid((OD - 2 * A) / 2 - 0.005) - bias * GRID_UM
+    return Octagon(OD, W, bias, A, BA, chamfer(W).C)
+
+
+def max_opening(OD: float, W: float) -> float:
+    """``octagon(OD, W).max_opening`` for the callers that only have the two numbers."""
+    return octagon(OD, W).max_opening
+
+
+def junction_half_offset(W: float, S: float) -> float:
+    """OOCH of base_ind_diag / base_xfm_cross: half the distance between a crossover's two diagonal junctions, on the grid.
+
+    ``W + S/2 - C2`` lands half a grid off whenever S is an odd multiple of the
+    grid; snapping keeps every diagonal vertex on integer nanometres (D8: the
+    44.9959-degree edges came from the two endpoints rounding differently)."""
+    return roundtogrid(W + S / 2 - chamfer(W).C2)
 
 
 def _nm(x_um: float) -> int:
@@ -728,9 +798,7 @@ def cross_endpoint_offset(
     With ``process=None`` (or the default ``met``) the clearance is the
     reference literal -> byte-identical geometry (see
     ``_junction_clearance_const``)."""
-    C = ceiltogrid(W * math.tan(PI / 8) + 0.005)
-    C2 = ceiltogrid(C / math.sqrt(2))
-    OOCH = W + S / 2 - C2
+    OOCH = junction_half_offset(W, S)
     if S <= 2.0 * math.sqrt(2.0):
         OOCHD = ceiltogrid(
             _junction_clearance_const(met, process) * math.sqrt(2.0) - S)
@@ -1067,17 +1135,8 @@ def chamfer_staircase_delta(ring_ods, W: float, top_met, process) -> int:
     if process is None or len(ring_ods) < 2:
         return 0
     floor = _effective_min_spacing(top_met, W, process)
-    C = ceiltogrid(W * math.tan(PI / 8) + 0.005)
-    div = 2.0 + math.sqrt(2.0)
-    worst = None
-    for od_out, od_in in zip(ring_ods, ring_ods[1:]):
-        a_out = roundtogrid(od_out / div)
-        a_in = roundtogrid(od_in / div)
-        ba_out = floortogrid((od_out - 2.0 * a_out) / 2.0 - 0.005)
-        ba_in = floortogrid((od_in - 2.0 * a_in) / 2.0 - 0.005)
-        pitch = (od_out - od_in) / 2.0
-        sep = (pitch + ba_out - ba_in - C - W) / math.sqrt(2.0)
-        worst = sep if worst is None else min(worst, sep)
+    rings = [octagon(od, W) for od in ring_ods]
+    worst = min(outer.diagonal_gap(inner) for outer, inner in zip(rings, rings[1:]))
     if worst >= floor - 1e-9:
         return 0
     delta = math.ceil((floor - worst) * math.sqrt(2.0) / GRID_UM - 1e-9)

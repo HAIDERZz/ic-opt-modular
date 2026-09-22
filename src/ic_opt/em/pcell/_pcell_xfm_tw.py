@@ -33,10 +33,11 @@ from ic_opt.em.pcell._pcell_core import (
     _xfm_order_ports,
     add_ground_fixture,
     ceiltogrid,
+    chamfer,
     finalize_emx_ports,
     floortogrid,
     max_opening,
-    roundtogrid,
+    octagon,
     vias,
 )
 from ic_opt.em.pcell._pcell_guards import (
@@ -207,12 +208,10 @@ def _tw_edge_point(H: float, angle: int, offset: float) -> tuple[float, float]:
 
 def _tw_oct_chamfer(H: float) -> tuple[float, float]:
     """(chamfer A, flat half-length BA) for an octagon ring of centerline
-    half-size H, using base_oct_quad's own DIV=2+sqrt(2) chamfer ratio
-    (applied to ``2*H`` as base_oct_quad applies it to ``OD``)."""
-    DIV = 2 + math.sqrt(2)
-    A = roundtogrid(2 * H / DIV)
-    BA = floortogrid(H - A - 0.005)
-    return A, BA
+    half-size H: ``octagon`` applied to ``2*H`` as base_oct_quad applies it
+    to ``OD`` (A and BA do not depend on the trace width)."""
+    ring = octagon(2 * H, 0.0)
+    return ring.A, ring.BA
 
 
 def _tw_max_opening(OD: float, W: float) -> float:
@@ -227,7 +226,7 @@ def _tw_max_opening(OD: float, W: float) -> float:
     review 2026-09-21); it stays as a floor so no previously accepted
     wide-trace/small-ring configuration becomes a rejection."""
     _, BA = _tw_oct_chamfer((OD - W) / 2.0)
-    C = ceiltogrid(W * math.tan(math.pi / 8) + 0.005)
+    C = chamfer(W).C
     return max(max_opening(OD, W), floortogrid(2 * (BA - W - C)))
 
 

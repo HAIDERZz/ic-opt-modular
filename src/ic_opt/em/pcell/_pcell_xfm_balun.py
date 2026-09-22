@@ -7,8 +7,6 @@ from __future__ import annotations
 import math
 
 from ic_opt.em.pcell._pcell_core import (
-    GRID_UM,
-    PI,
     Cell,
     GroundFixtureConfig,
     PortError,
@@ -21,11 +19,10 @@ from ic_opt.em.pcell._pcell_core import (
     _pin,
     _xfm_order_ports,
     add_ground_fixture,
-    ceiltogrid,
     chamfer_staircase_delta,
     finalize_emx_ports,
     floortogrid,
-    roundtogrid,
+    octagon,
 )
 from ic_opt.em.pcell._pcell_guards import (
     _check_opening,
@@ -185,12 +182,8 @@ def _escape_tip_pad_width(*, ring_od, ring_bias, ring_w, tip_w, x_tip,
     (``process=None``) never trims."""
     if process is None:
         return None
-    A_c = roundtogrid(ring_od / (2 + math.sqrt(2)))
-    BA_c = floortogrid((ring_od - 2 * A_c) / 2 - 0.005) \
-        - ring_bias * GRID_UM
-    C_w = ceiltogrid(ring_w * math.tan(PI / 8) + 0.005)
     floor_sp = _effective_min_spacing(me, max(ring_w, tip_w), process)
-    d_line = ring_od / 2 + BA_c - C_w - ring_w
+    d_line = octagon(ring_od, ring_w, ring_bias).inner_chamfer_intercept
     allow = d_line - floor_sp * math.sqrt(2.0) - x_tip - opening
     if allow >= tip_w - 1e-9:
         return None
