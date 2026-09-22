@@ -79,14 +79,21 @@ _CT_LABELS = {"p01": "P1", "p02": "N1", "p03": "CT"}                            
 def _device(device_id: str, generator: dict[str, Any], prefix: str | None) -> dict[str, Any]:
     gen_id, extra_fixed, ports = _RETIRED.get(generator["id"], (generator["id"], {}, None))
     labels = ports or [_CT_LABELS.get(p, p) for p in generator["port_order"]]
+    plugin = "builtin:clean_port" if generator["id"] in _RETIRED else generator.get("plugin_module", "builtin:clean_port")
+    fixed = {**generator.get("fixed_parameters", {}), **extra_fixed}
     fields = list(generator.get("parameters", []))
+    if plugin == "builtin:clean_port":                        # em-opt's field names -> today's vocabulary (M2.2)
+        from ic_opt.em.pcell.generator_plugin import translate_config
+
+        fixed = translate_config(gen_id, fixed)
+        fields = [f for f in translate_config(gen_id, dict.fromkeys(fields))]
     return {
         "id": device_id,
         "generator": gen_id,
-        "plugin": "builtin:clean_port" if generator["id"] in _RETIRED else generator.get("plugin_module", "builtin:clean_port"),
+        "plugin": plugin,
         "profile": generator["process_profile"],
         "ports": labels,
-        "fixed": {**generator.get("fixed_parameters", {}), **extra_fixed},
+        "fixed": fixed,
         "variables": {f: (f"{prefix}.{f}" if prefix else f) for f in fields},
     }
 

@@ -17,6 +17,7 @@ import re
 import sys
 import threading
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import (
     BaseModel,
@@ -98,7 +99,7 @@ def _forbid_m1_through_m3_metal(value: str) -> str:
     """Like ``_forbid_m1_and_m2_metal``, but ALSO rejects M3: xfm_il draws
     its crossunder leg2 TWO stack levels below this field's own metal
     (ticket 02d's dual-layer legs -- see ``_xfm_il_recipe`` in
-    geometry/drc_audit.py), so an M3 top_metal would put that implicit
+    geometry/drc_audit.py), so an M3 metal would put that implicit
     leg2 on M1 just the same as M1/M2 would directly."""
     index = _metal_stack_index_or_none(value)
     if index in (1, 2, 3):
@@ -162,10 +163,26 @@ class CleanPortGroundFixtureConfig(BaseModel):
 class _CleanPortDeviceConfigBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    #: Field names this family retired (M2.2 vocabulary: one winding -> ``metal`` / ``turns``; two windings ->
+    #: ``primary_*`` / ``secondary_*``; xfm_tw's stub gaps -> ``port_gap_*``). Old name -> new name, or None
+    #: when the field was dead and is simply gone. ``translate_config`` applies it to old records; a spec
+    #: that still uses an old name is refused with the new one.
+    renamed: ClassVar[dict[str, str | None]] = {}
+
     process_profile: str
     port_order: list[str]
     ground_fixture: CleanPortGroundFixtureConfig
     drc_check: StrictBool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_retired_names(cls, data):
+        if isinstance(data, dict):
+            stale = [k for k in data if k in cls.renamed]
+            if stale:
+                raise ValueError("retired field name(s): " + "; ".join(
+                    f"{k} is now {cls.renamed[k]}" if cls.renamed[k] else f"{k} was removed (it never affected the geometry)" for k in stale))
+        return data
 
     @model_serializer(mode="wrap")
     def _serialize_config(self, handler):
@@ -201,10 +218,9 @@ class _CleanPortInductorConfigBase(_CleanPortDeviceConfigBase):
     opening_um: float = Field(gt=0)
     lead_length_um: float = Field(gt=0)
     turns: int = Field(ge=1)
-    top_metal: str = Field(min_length=1)
-    bottom_metal: str = Field(min_length=1)
+    metal: str = Field(min_length=1)
 
-    @field_validator("top_metal", "bottom_metal")
+    @field_validator("metal")
     @classmethod
     def _metals_not_m1(cls, value: str) -> str:
         return _forbid_m1_metal(value)
@@ -229,6 +245,7 @@ _IND_PORT_MIGRATION = (
 
 
 class CleanPortIndSymConfig(_CleanPortInductorConfigBase):
+    renamed: ClassVar[dict[str, str | None]] = {"top_metal": "metal", "bottom_metal": None}
     pgs: CleanPortPgsConfig | None = None
     straight_extension_um: float = Field(
         default=0, ge=0, multiple_of=0.01, allow_inf_nan=False)
@@ -261,20 +278,19 @@ class CleanPortIndSymConfig(_CleanPortInductorConfigBase):
                 f"['P1', 'N1', 'CT']; got {self.port_order!r} "
                 "(M13: taps append to the fixed semantic base order)"
             )
-        # For turns>=2 the winding crossunder is drawn at top_metal-1
-        # (bottom_metal is the chain's documented dead parameter) and
+        # For turns>=2 the winding crossunder is drawn at metal-1 and
         # crosses y=0 exactly where the CT lead (drawn on ct_metal) runs.
         # Keep the same conservative two-level tap contract for turns==1;
         # relaxing the public CT contract is outside the direct-ring fix.
         # Unparseable metal spellings fall through to the pcell's own
         # generate()-time guard, per _metal_stack_index_or_none's contract.
-        top = _metal_stack_index_or_none(self.top_metal)
+        top = _metal_stack_index_or_none(self.metal)
         ct = _metal_stack_index_or_none(self.ct_metal)
         if top is not None and ct is not None and ct >= top - 1:
             raise ValueError(
                 f"ct_metal {self.ct_metal!r} must sit at least two "
-                f"levels below top_metal {self.top_metal!r}: multi-turn "
-                "windings occupy top_metal-1 at the CT lead path, and the "
+                f"levels below metal {self.metal!r}: multi-turn "
+                "windings occupy metal-1 at the CT lead path, and the "
                 "same conservative tap contract applies to turns=1 "
                 "(bug review 2026-07-17 N1)"
             )
@@ -379,36 +395,45 @@ class CleanPortXfmBsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
 
 class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
-    """Winding-to-port mapping: single-turn winding = P1/N1 (width
-    single_width_um), multi-turn winding = P2/N2 (width multi_width_um)."""
+    """1:N stacked transformer. The primary is the single-turn winding (P1/N1,
+    ``primary_width_um``); the secondary is the multi-turn winding (P2/N2,
+    ``secondary_width_um``, ``secondary_turns`` >= 2)."""
 
+    renamed: ClassVar[dict[str, str | None]] = {
+        "single_outer_diameter_um": "primary_outer_diameter_um", "multi_outer_diameter_um": "secondary_outer_diameter_um",
+        "single_width_um": "primary_width_um", "multi_width_um": "secondary_width_um",
+        "single_opening_um": "primary_opening_um", "multi_opening_um": "secondary_opening_um",
+        "single_lead_length_um": "primary_lead_length_um", "multi_lead_length_um": "secondary_lead_length_um",
+        "multi_turns": "secondary_turns", "multi_spacing_um": "secondary_spacing_um",
+        "single_metal": "primary_metal", "multi_metal": "secondary_metal",
+    }
     pgs: CleanPortPgsConfig | None = None
     straight_extension_um: float = Field(
         default=0, ge=0, multiple_of=0.01, allow_inf_nan=False)
-    single_outer_diameter_um: float = Field(gt=0)
-    multi_outer_diameter_um: float = Field(gt=0)
-    single_width_um: float = Field(gt=0)
-    multi_width_um: float = Field(gt=0)
-    single_opening_um: float = Field(gt=0)
-    multi_opening_um: float = Field(gt=0)
-    single_lead_length_um: float = Field(gt=0)
-    multi_lead_length_um: float = Field(gt=0)
-    multi_turns: int = Field(ge=2)
-    multi_spacing_um: float = Field(gt=0)
+    primary_outer_diameter_um: float = Field(gt=0)
+    secondary_outer_diameter_um: float = Field(gt=0)
+    primary_width_um: float = Field(gt=0)
+    secondary_width_um: float = Field(gt=0)
+    primary_opening_um: float = Field(gt=0)
+    secondary_opening_um: float = Field(gt=0)
+    primary_lead_length_um: float = Field(gt=0)
+    secondary_lead_length_um: float = Field(gt=0)
+    secondary_turns: int = Field(ge=2)
+    secondary_spacing_um: float = Field(gt=0)
     center_spacing_um: float = Field(ge=0, multiple_of=0.01, allow_inf_nan=False)      # half of it is a coordinate: keep it on the grid (D9)
-    single_metal: str = Field(min_length=1)
-    multi_metal: str = Field(min_length=1)
+    primary_metal: str = Field(min_length=1)
+    secondary_metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
     ct_secondary_metal: str | None = None
 
-    @field_validator("single_metal")
+    @field_validator("primary_metal")
     @classmethod
-    def _single_metal_not_m1(cls, value: str) -> str:
+    def _primary_metal_not_m1(cls, value: str) -> str:
         return _forbid_m1_metal(value)
 
-    @field_validator("multi_metal")
+    @field_validator("secondary_metal")
     @classmethod
-    def _multi_metal_not_m1_or_m2(cls, value: str) -> str:
+    def _secondary_metal_not_m1_or_m2(cls, value: str) -> str:
         return _forbid_m1_and_m2_metal(value)
 
     @field_validator("ct_primary_metal", "ct_secondary_metal")
@@ -420,47 +445,48 @@ class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
     @model_validator(mode="after")
     def _center_spacing_keeps_overlap(self) -> CleanPortXfmMsConfig:
-        # Same overlap rule as xfm_bs (M13 ticket 10): the multi winding
-        # couples to the single winding through their vertical overlap, so
-        # spacing is capped at (single_od + multi_od)/4.
-        bound = (self.single_outer_diameter_um
-                 + self.multi_outer_diameter_um) / 4.0
+        # Same overlap rule as xfm_bs (M13 ticket 10): the windings couple
+        # through their vertical overlap, so spacing is capped at
+        # (primary_od + secondary_od)/4.
+        bound = (self.primary_outer_diameter_um
+                 + self.secondary_outer_diameter_um) / 4.0
         if self.center_spacing_um > bound:
             raise ValueError(
                 f"center_spacing_um {self.center_spacing_um} exceeds "
-                f"(single_od + multi_od)/4 = {bound}: beyond that the "
+                f"(primary_od + secondary_od)/4 = {bound}: beyond that the "
                 "windings lose the overlap that makes this a transformer")
         return self
 
     @model_validator(mode="after")
     def _ct_metal_rules(self) -> CleanPortXfmMsConfig:
-        # P side taps the single-turn winding: strictly below its plane.
-        # S side taps the multi-turn winding through ind_sym's CT path, so
-        # it obeys the same N1 adjacency rule as the inductor: at least
-        # two levels below multi_metal (the crossunder occupies
-        # multi_metal-1 and crosses the CT lead path at y=0).
+        # P side taps the single-turn primary: strictly below its plane.
+        # S side taps the multi-turn secondary through ind_sym's CT path,
+        # so it obeys the same N1 adjacency rule as the inductor: at least
+        # two levels below secondary_metal (the crossunder occupies
+        # secondary_metal-1 and crosses the CT lead path at y=0).
         ct_p = _metal_stack_index_or_none(self.ct_primary_metal) \
             if self.ct_primary_metal is not None else None
-        single = _metal_stack_index_or_none(self.single_metal)
-        if ct_p is not None and single is not None and ct_p >= single:
+        primary = _metal_stack_index_or_none(self.primary_metal)
+        if ct_p is not None and primary is not None and ct_p >= primary:
             raise ValueError(
                 f"ct_primary_metal {self.ct_primary_metal!r} must sit "
-                f"below single_metal {self.single_metal!r} (the tap stack "
+                f"below primary_metal {self.primary_metal!r} (the tap stack "
                 "drops from the winding plane)")
         ct_s = _metal_stack_index_or_none(self.ct_secondary_metal) \
             if self.ct_secondary_metal is not None else None
-        multi = _metal_stack_index_or_none(self.multi_metal)
-        if ct_s is not None and multi is not None and ct_s >= multi - 1:
+        secondary = _metal_stack_index_or_none(self.secondary_metal)
+        if ct_s is not None and secondary is not None and ct_s >= secondary - 1:
             raise ValueError(
                 f"ct_secondary_metal {self.ct_secondary_metal!r} must sit "
-                f"at least two levels below multi_metal "
-                f"{self.multi_metal!r}: the multi winding's crossunder "
-                "occupies multi_metal-1 and crosses the CT lead path, "
+                f"at least two levels below secondary_metal "
+                f"{self.secondary_metal!r}: the secondary's crossunder "
+                "occupies secondary_metal-1 and crosses the CT lead path, "
                 "shorting the tap net (bug review 2026-07-17 N1)")
         return self
 
 
 class CleanPortXfmBalunConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
+    renamed: ClassVar[dict[str, str | None]] = {"balun_metal": "metal"}
     primary_outer_diameter_um: float = Field(gt=0)
     secondary_outer_diameter_um: float = Field(gt=0)
     primary_width_um: float = Field(gt=0)
@@ -473,13 +499,13 @@ class CleanPortXfmBalunConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBas
     primary_turns: int = Field(ge=1)
     secondary_turns: int = Field(ge=1)
     center_spacing_um: float = Field(ge=0, multiple_of=0.01, allow_inf_nan=False)      # half of it is a coordinate: keep it on the grid (D9)
-    balun_metal: str = Field(min_length=1)
+    metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
     ct_secondary_metal: str | None = None
 
-    @field_validator("balun_metal")
+    @field_validator("metal")
     @classmethod
-    def _balun_metal_not_m1_or_m2(cls, value: str) -> str:
+    def _metal_not_m1_or_m2(cls, value: str) -> str:
         return _forbid_m1_and_m2_metal(value)
 
     @field_validator("ct_primary_metal", "ct_secondary_metal")
@@ -491,7 +517,7 @@ class CleanPortXfmBalunConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBas
 
     @model_validator(mode="after")
     def _ct_below_balun_plane(self) -> CleanPortXfmBalunConfig:
-        # Both balun windings live on balun_metal; each tap stack drops
+        # Both balun windings live on ``metal``; each tap stack drops
         # from that plane (M13 ticket 05; the pcell repeats this guard
         # fail-closed at generate time).
         for ct, label in ((self.ct_primary_metal, "primary"),
@@ -499,11 +525,11 @@ class CleanPortXfmBalunConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBas
             if ct is None:
                 continue
             c = _metal_stack_index_or_none(ct)
-            h = _metal_stack_index_or_none(self.balun_metal)
+            h = _metal_stack_index_or_none(self.metal)
             if c is not None and h is not None and c >= h:
                 raise ValueError(
-                    f"ct_{label}_metal {ct!r} must sit below balun_metal "
-                    f"{self.balun_metal!r} (the tap stack drops from the "
+                    f"ct_{label}_metal {ct!r} must sit below metal "
+                    f"{self.metal!r} (the tap stack drops from the "
                     "winding plane)")
         return self
 
@@ -531,7 +557,7 @@ class CleanPortXfmTwConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     x-mirror, CW), each NR/2 turns, connected across the NR-1 ring
     boundaries by explicit dive/same-layer legs (spec.md,
     .scratch/xfm-tw-twisted/). Both windings share ONE metal plane
-    (top_metal) and ONE width (width_um) -- there is no separate primary/
+    (``metal``) and ONE width (width_um) -- there is no separate primary/
     secondary width the way xfm_bs/xfm_ms/xfm_balun have, since P and S
     occupy the SAME rings (spec.md: "两绕组共享每个环...线宽必然同 W").
 
@@ -542,6 +568,7 @@ class CleanPortXfmTwConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     class's extra="forbid" the same as any other typo.
     """
 
+    renamed: ClassVar[dict[str, str | None]] = {"top_metal": "metal", "opening_p_um": "port_gap_p_um", "opening_n_um": "port_gap_n_um"}
     outer_diameter_um: float = Field(gt=0)
     width_um: float = Field(gt=0)
     spacing_um: float = Field(gt=0)
@@ -552,24 +579,24 @@ class CleanPortXfmTwConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     ring_count: int
     # ticket 02c semantics (mirrors xfm_tw's own pcell docstring): the two
     # P-side (P1/P2) port stubs' INNER edges -- the edges facing the coil
-    # centre -- sit exactly opening_p_um apart in TOTAL (each stub's own
-    # centreline is offset +-(opening_p_um/2 + width_um/2) from the
-    # x-axis). opening_n_um is the same rule for the two N-side (N1/N2)
-    # stubs. This is NOT "each stub is opening_p_um/opening_n_um from the
+    # centre -- sit exactly port_gap_p_um apart in TOTAL (each stub's own
+    # centreline is offset +-(port_gap_p_um/2 + width_um/2) from the
+    # x-axis). port_gap_n_um is the same rule for the two N-side (N1/N2)
+    # stubs. This is NOT "each stub is port_gap_p_um/port_gap_n_um from the
     # coil centreline" -- that earlier (ticket 01/02) reading put the inner
     # edges 2x too far apart and was corrected in ticket 02c.
-    opening_p_um: float = Field(gt=0)
-    opening_n_um: float = Field(gt=0)
+    port_gap_p_um: float = Field(gt=0)
+    port_gap_n_um: float = Field(gt=0)
     lead_length_um: float = Field(gt=0)
-    top_metal: str = Field(min_length=1)
+    metal: str = Field(min_length=1)
 
-    @field_validator("top_metal")
+    @field_validator("metal")
     @classmethod
-    def _top_metal_not_m1_or_m2(cls, value: str) -> str:
-        # The dive legs at every ring boundary land on top_metal-1
+    def _metal_not_m1_or_m2(cls, value: str) -> str:
+        # The dive legs at every ring boundary land on metal-1
         # implicitly -- there is no separate config field for the dive
-        # layer (same situation as xfm_ms's multi_metal / xfm_balun's
-        # balun_metal): M2 would put that implicit dive layer on M1 even
+        # layer (same situation as xfm_ms's secondary_metal / xfm_balun's
+        # metal): M2 would put that implicit dive layer on M1 even
         # though M1 was never named directly.
         return _forbid_m1_and_m2_metal(value)
 
@@ -590,8 +617,8 @@ class CleanPortXfmTwConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
 class CleanPortXfmIlConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     """Type 3 same-layer interleaved ("Rabjohn/Frlan") transformer: P and S
-    alternate radial bands on ONE metal plane (top_metal), each turn's
-    crossunder split across top_metal-1 (leg1) and top_metal-2 (leg2)
+    alternate radial bands on ONE metal plane (``metal``), each turn's
+    crossunder split across metal-1 (leg1) and metal-2 (leg2)
     (spec.md, .scratch/xfm-il-interleaved/, ticket 02d). Both windings
     share ONE width (width_um) and ONE spacing (spacing_um) -- unequal
     winding widths are out of scope (spec.md "Out of Scope"), the same
@@ -609,18 +636,18 @@ class CleanPortXfmIlConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
     ``ct_primary_metal``/``ct_secondary_metal`` (both optional, default
     None -> no tap) are DIRECTION-DISPATCHED by comparing the CT metal to
-    top_metal (ticket 03c, mirroring the pcell's own
-    ``_il_ct_metal_guard``): ABOVE top_metal taps UPWARD (no adjacency
-    floor -- nothing else this device ever draws is above top_metal);
-    BELOW top_metal taps DOWNWARD (must sit at least THREE levels below --
-    top_metal-1 is leg1, top_metal-2 is leg2, so the floor is
-    top_metal-3); EQUAL to top_metal is always illegal (the coil's own
+    ``metal`` (ticket 03c, mirroring the pcell's own
+    ``_il_ct_metal_guard``): ABOVE it taps UPWARD (no adjacency
+    floor -- nothing else this device ever draws is above the coil plane);
+    BELOW it taps DOWNWARD (must sit at least THREE levels below --
+    metal-1 is leg1, metal-2 is leg2, so the floor is
+    metal-3); EQUAL to it is always illegal (the coil's own
     layer, not a separate tap plane). **CTP cannot tap downward in ANY
     legal configuration** -- the interleaved lattice always sandwiches a P
     ring inside a same-reach S bridge gap, proven by sweep in the pcell's
     own docstring/tests -- so in practice ct_primary_metal needs an
     UPWARD value (e.g. "10" or "AP" on a top_metal="9" body); on a
-    top_metal="AP" body specifically there is no metal above it, so CTP
+    metal="AP" body specifically there is no metal above it, so CTP
     cannot be tapped in EITHER direction, a genuine architectural limit of
     that body, not a bug. CTS's downward tap is the structural mirror
     opposite -- always clear (S is always this device's innermost
@@ -631,22 +658,26 @@ class CleanPortXfmIlConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     the pcell's own fail-closed check at generate() time.
     """
 
+    renamed: ClassVar[dict[str, str | None]] = {
+        "top_metal": "metal", "opening_p_um": "primary_opening_um", "opening_s_um": "secondary_opening_um",
+        "lead_p_um": "primary_lead_length_um", "lead_s_um": "secondary_lead_length_um",
+    }
     outer_diameter_um: float = Field(gt=0)
     width_um: float = Field(gt=0)
     spacing_um: float = Field(gt=0)
     turns: int = Field(ge=2)
-    opening_p_um: float = Field(gt=0)
-    opening_s_um: float = Field(gt=0)
-    lead_p_um: float = Field(gt=0)
-    lead_s_um: float = Field(gt=0)
-    top_metal: str = Field(min_length=1)
+    primary_opening_um: float = Field(gt=0)
+    secondary_opening_um: float = Field(gt=0)
+    primary_lead_length_um: float = Field(gt=0)
+    secondary_lead_length_um: float = Field(gt=0)
+    metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
     ct_secondary_metal: str | None = None
 
-    @field_validator("top_metal")
+    @field_validator("metal")
     @classmethod
-    def _top_metal_not_m1_through_m3(cls, value: str) -> str:
-        # leg2 lands TWO stack levels below top_metal (ticket 02d) -- no
+    def _metal_not_m1_through_m3(cls, value: str) -> str:
+        # leg2 lands TWO stack levels below metal (ticket 02d) -- no
         # separate config field for it, same situation as xfm_tw's dive
         # layer / xfm_ms's multi_metal crossunder.
         return _forbid_m1_through_m3_metal(value)
@@ -660,14 +691,14 @@ class CleanPortXfmIlConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
     @model_validator(mode="after")
     def _ct_metal_direction_and_floor(self) -> CleanPortXfmIlConfig:
-        top = _metal_stack_index_or_none(self.top_metal)
+        top = _metal_stack_index_or_none(self.metal)
         # The floor is the real leg2 conductor (pcell _il_ct_adjacency_guard):
         # on a stack with gaps (n65_1p9m has no M10) that is NOT top-2, so
         # read the profile when one is named (port contract follow-up
         # 2026-09-22); the pure numeric floor stays the reference-mode rule.
         leg2 = None if top is None else top - 2
         if top is not None and _profile_known(self.process_profile):
-            leg2 = _real_leg2_index(self.top_metal, self.process_profile)
+            leg2 = _real_leg2_index(self.metal, self.process_profile)
         for ct, label in ((self.ct_primary_metal, "primary"),
                           (self.ct_secondary_metal, "secondary")):
             if ct is None:
@@ -677,19 +708,19 @@ class CleanPortXfmIlConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
                 continue
             if c == top:
                 raise ValueError(
-                    f"ct_{label}_metal {ct!r} cannot equal top_metal "
-                    f"{self.top_metal!r} -- that is the coil ring's own "
+                    f"ct_{label}_metal {ct!r} cannot equal metal "
+                    f"{self.metal!r} -- that is the coil ring's own "
                     "layer, not a separate tap plane (xfm_il ticket 03c)")
             if c < top and (leg2 is None or c >= leg2):
                 raise ValueError(
                     f"ct_{label}_metal {ct!r} must sit at least three "
-                    f"levels below top_metal {self.top_metal!r}: xfm_il's "
-                    "dual-layer crossunder occupies both top_metal-1 and "
-                    "top_metal-2 (ticket 02d), so a CT on either layer "
+                    f"levels below metal {self.metal!r}: xfm_il's "
+                    "dual-layer crossunder occupies both metal-1 and "
+                    "metal-2 (ticket 02d), so a CT on either layer "
                     "galvanically shorts the tap net to the mid-winding "
                     "bridges (ticket 03c); use a downward metal at or "
-                    f"below top_metal-3, or an upward metal above "
-                    f"{self.top_metal!r} instead")
+                    f"below metal-3, or an upward metal above "
+                    f"{self.metal!r} instead")
         return self
 
 
@@ -727,11 +758,7 @@ def _auto_stub_widths(config) -> dict[str, float]:
     if isinstance(config, (CleanPortIndSymConfig, CleanPortXfmTwConfig,
                            CleanPortXfmIlConfig)):
         return {name: config.width_um for name in config.port_order}
-    if isinstance(config, CleanPortXfmBsConfig):
-        p_w, s_w = config.primary_width_um, config.secondary_width_um
-    elif isinstance(config, CleanPortXfmMsConfig):
-        p_w, s_w = config.single_width_um, config.multi_width_um
-    elif isinstance(config, CleanPortXfmBalunConfig):
+    if isinstance(config, (CleanPortXfmBsConfig, CleanPortXfmMsConfig, CleanPortXfmBalunConfig)):
         p_w, s_w = config.primary_width_um, config.secondary_width_um
     else:  # fail closed: an unmapped device must not silently guess
         raise TypeError(
@@ -929,15 +956,14 @@ def _manifest_port(port: dict) -> dict:
 
 def _write_geometry_outputs(
     p, cell, config: _CleanPortDeviceConfigBase, *, generator_id: str,
-    outdir: Path, gds_name: str, top_cell: str | None, requires_vias: bool,
+    outdir: Path, gds_name: str, requires_vias: bool,
 ) -> GeometryGenerationResult:
     """Shared output seam for all clean-port generators; `p` is the loaded clean-port module handle."""
     gds_name = validate_output_file_name(gds_name, "gds_name")
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    # write_gds names the GDS top cell after the sanitized filename stem.
-    # Return that actual name to EMX, including when legacy projects pass
-    # a different top_cell override.
+    # write_gds names the GDS top cell after the sanitized filename stem, and
+    # that is the name EMX gets (the top cell IS the file name; there is no override).
     resolved_top_cell = re.sub(r"[^A-Za-z0-9_$?]", "_", Path(gds_name).stem)
     cell.name = resolved_top_cell
     gds_path = outdir / gds_name
@@ -990,6 +1016,12 @@ def _write_geometry_outputs(
         emx_ports_path=emx_ports_path)
 
 
+def translate_config(generator_id: str, config: dict) -> dict:
+    """An old record's config in today's vocabulary (M2.2): renamed fields renamed, removed fields dropped."""
+    renamed = PLUGIN_GENERATORS[generator_id].config_model.renamed
+    return {renamed.get(k, k): v for k, v in config.items() if renamed.get(k, k) is not None}
+
+
 class _CleanPortGenerator(PassiveDeviceGenerator):
     """The six built-in families share the package's geometry generation."""
 
@@ -1000,13 +1032,13 @@ class CleanPortIndSymGenerator(_CleanPortGenerator):
     generator_id = "clean_port_ind_sym"
     config_model = CleanPortIndSymConfig
 
-    def generate(self, config, *, outdir, gds_name, top_cell=None):
+    def generate(self, config, *, outdir, gds_name):
         p = _clean_port()
         cell = p.ind_sym(
             OD=config.outer_diameter_um, W=config.width_um,
             OPENING=config.opening_um, LEAD=config.lead_length_um,
             S=config.spacing_um, NT=config.turns,
-            TOP_ME=config.top_metal, BTM_ME=config.bottom_metal,
+            TOP_ME=config.metal, BTM_ME=config.metal,      # BTM_ME is the reference chain's documented dead parameter
             CT_ME=config.ct_metal,
             STRAIGHT_EXTENSION=config.straight_extension_um,
             port_order=list(config.port_order),
@@ -1016,7 +1048,7 @@ class CleanPortIndSymGenerator(_CleanPortGenerator):
         )
         return _write_geometry_outputs(
             p, cell, config, generator_id=self.generator_id,
-            outdir=outdir, gds_name=gds_name, top_cell=top_cell,
+            outdir=outdir, gds_name=gds_name,
             requires_vias=(config.turns >= 2 or config.ct_metal is not None))
 
 
@@ -1024,7 +1056,7 @@ class CleanPortXfmBsGenerator(_CleanPortGenerator):
     generator_id = "clean_port_xfm_bs"
     config_model = CleanPortXfmBsConfig
 
-    def generate(self, config, *, outdir, gds_name, top_cell=None):
+    def generate(self, config, *, outdir, gds_name):
         p = _clean_port()
         cell = p.xfm_bs(
             OD_P=config.primary_outer_diameter_um,
@@ -1049,7 +1081,7 @@ class CleanPortXfmBsGenerator(_CleanPortGenerator):
                   or config.ct_secondary_metal is not None)
         return _write_geometry_outputs(
             p, cell, config, generator_id=self.generator_id,
-            outdir=outdir, gds_name=gds_name, top_cell=top_cell,
+            outdir=outdir, gds_name=gds_name,
             requires_vias=has_ct)
 
 
@@ -1057,19 +1089,19 @@ class CleanPortXfmMsGenerator(_CleanPortGenerator):
     generator_id = "clean_port_xfm_ms"
     config_model = CleanPortXfmMsConfig
 
-    def generate(self, config, *, outdir, gds_name, top_cell=None):
+    def generate(self, config, *, outdir, gds_name):
         p = _clean_port()
         cell = p.xfm_ms(
-            OD_S=config.single_outer_diameter_um,
-            OD_M=config.multi_outer_diameter_um,
-            W_S=config.single_width_um, W_M=config.multi_width_um,
-            OPENING_S=config.single_opening_um,
-            OPENING_M=config.multi_opening_um,
-            LEAD_S=config.single_lead_length_um,
-            LEAD_M=config.multi_lead_length_um,
-            NT_M=config.multi_turns, S_M=config.multi_spacing_um,
+            OD_S=config.primary_outer_diameter_um,
+            OD_M=config.secondary_outer_diameter_um,
+            W_S=config.primary_width_um, W_M=config.secondary_width_um,
+            OPENING_S=config.primary_opening_um,
+            OPENING_M=config.secondary_opening_um,
+            LEAD_S=config.primary_lead_length_um,
+            LEAD_M=config.secondary_lead_length_um,
+            NT_M=config.secondary_turns, S_M=config.secondary_spacing_um,
             CENTER_SPACING=config.center_spacing_um,
-            SINGLE_ME=config.single_metal, MULTI_ME=config.multi_metal,
+            SINGLE_ME=config.primary_metal, MULTI_ME=config.secondary_metal,
             CT_P_ME=config.ct_primary_metal,
             CT_S_ME=config.ct_secondary_metal,
             ground_fixture=_build_fixture(p, config.ground_fixture,
@@ -1079,7 +1111,7 @@ class CleanPortXfmMsGenerator(_CleanPortGenerator):
         )
         return _write_geometry_outputs(
             p, cell, config, generator_id=self.generator_id,
-            outdir=outdir, gds_name=gds_name, top_cell=top_cell,
+            outdir=outdir, gds_name=gds_name,
             requires_vias=True)
 
 
@@ -1087,7 +1119,7 @@ class CleanPortXfmBalunGenerator(_CleanPortGenerator):
     generator_id = "clean_port_xfm_balun"
     config_model = CleanPortXfmBalunConfig
 
-    def generate(self, config, *, outdir, gds_name, top_cell=None):
+    def generate(self, config, *, outdir, gds_name):
         p = _clean_port()
         cell = p.xfm_balun(
             OD_P=config.primary_outer_diameter_um,
@@ -1100,7 +1132,7 @@ class CleanPortXfmBalunGenerator(_CleanPortGenerator):
             LEAD_S=config.secondary_lead_length_um,
             NT_P=config.primary_turns, NT_S=config.secondary_turns,
             CENTER_SPACING=config.center_spacing_um,
-            BALUN_ME=config.balun_metal,
+            BALUN_ME=config.metal,
             CT_P_ME=config.ct_primary_metal,
             CT_S_ME=config.ct_secondary_metal,
             ground_fixture=_build_fixture(p, config.ground_fixture,
@@ -1113,7 +1145,7 @@ class CleanPortXfmBalunGenerator(_CleanPortGenerator):
         # balun is via-less (round-1 false-reject fix, M13 ticket 05).
         return _write_geometry_outputs(
             p, cell, config, generator_id=self.generator_id,
-            outdir=outdir, gds_name=gds_name, top_cell=top_cell,
+            outdir=outdir, gds_name=gds_name,
             requires_vias=True)
 
 
@@ -1121,17 +1153,17 @@ class CleanPortXfmTwGenerator(_CleanPortGenerator):
     generator_id = "clean_port_xfm_tw"
     config_model = CleanPortXfmTwConfig
 
-    def generate(self, config, *, outdir, gds_name, top_cell=None):
+    def generate(self, config, *, outdir, gds_name):
         p = _clean_port()
         cell = p.xfm_tw(
             OD=config.outer_diameter_um,
             W=config.width_um,
             S=config.spacing_um,
             NR=config.ring_count,
-            OPENING_P=config.opening_p_um,
-            OPENING_N=config.opening_n_um,
+            OPENING_P=config.port_gap_p_um,
+            OPENING_N=config.port_gap_n_um,
             LEAD=config.lead_length_um,
-            SL_ME=config.top_metal,
+            SL_ME=config.metal,
             port_order=list(config.port_order),
             ground_fixture=_build_fixture(p, config.ground_fixture,
                                           _auto_stub_widths(config)),
@@ -1143,7 +1175,7 @@ class CleanPortXfmTwGenerator(_CleanPortGenerator):
         # xfm_bs/xfm_balun where vias depend on an optional CT/nested mode.
         return _write_geometry_outputs(
             p, cell, config, generator_id=self.generator_id,
-            outdir=outdir, gds_name=gds_name, top_cell=top_cell,
+            outdir=outdir, gds_name=gds_name,
             requires_vias=True)
 
 
@@ -1151,16 +1183,16 @@ class CleanPortXfmIlGenerator(_CleanPortGenerator):
     generator_id = "clean_port_xfm_il"
     config_model = CleanPortXfmIlConfig
 
-    def generate(self, config, *, outdir, gds_name, top_cell=None):
+    def generate(self, config, *, outdir, gds_name):
         p = _clean_port()
         cell = p.xfm_il(
             OD=config.outer_diameter_um,
             W=config.width_um,
             S=config.spacing_um,
             NT_P=config.turns, NT_S=config.turns,
-            OPENING_P=config.opening_p_um, OPENING_S=config.opening_s_um,
-            LEAD_P=config.lead_p_um, LEAD_S=config.lead_s_um,
-            SL_ME=config.top_metal,
+            OPENING_P=config.primary_opening_um, OPENING_S=config.secondary_opening_um,
+            LEAD_P=config.primary_lead_length_um, LEAD_S=config.secondary_lead_length_um,
+            SL_ME=config.metal,
             CT_P_ME=config.ct_primary_metal,
             CT_S_ME=config.ct_secondary_metal,
             port_order=list(config.port_order),
@@ -1173,7 +1205,7 @@ class CleanPortXfmIlGenerator(_CleanPortGenerator):
         # via-ful -- same rationale as xfm_tw's own dive legs.
         return _write_geometry_outputs(
             p, cell, config, generator_id=self.generator_id,
-            outdir=outdir, gds_name=gds_name, top_cell=top_cell,
+            outdir=outdir, gds_name=gds_name,
             requires_vias=True)
 
 
@@ -1193,7 +1225,7 @@ RETIRED_GENERATOR_IDS: dict[str, str] = {
     "clean_port_ind_sym_ct": (
         "the standalone CT inductor was unified into clean_port_ind_sym in "
         "M13: set id: clean_port_ind_sym, add ct_metal: \"<CT metal, e.g. "
-        "8>\" to fixed_parameters (at least two levels below top_metal), "
+        "8>\" to fixed_parameters (at least two levels below metal), "
         "and set port_order: [P1, N1, CT]; all other fields are unchanged "
         "(bottom_metal stays the winding-chain field)."
     ),

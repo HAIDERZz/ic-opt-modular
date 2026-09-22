@@ -293,8 +293,7 @@ def _canonical_config(
             "opening_um": dop(120.0, 6.0),
             "lead_length_um": 20.0,
             "turns": 2,
-            "top_metal": str(top),
-            "bottom_metal": str(top - 1),
+            "metal": str(top),
         }
     if family == "clean_port_xfm_bs":
         return base | {
@@ -314,19 +313,19 @@ def _canonical_config(
     if family == "clean_port_xfm_ms":
         return base | {
             "port_order": xfm_ports,
-            "single_outer_diameter_um": 160.0,
-            "multi_outer_diameter_um": 120.0,
-            "single_width_um": 6.0,
-            "multi_width_um": 6.0,
-            "single_opening_um": dop(160.0, 6.0),
-            "multi_opening_um": dop(120.0, 6.0),
-            "single_lead_length_um": 20.0,
-            "multi_lead_length_um": 20.0,
-            "multi_turns": 2,
-            "multi_spacing_um": spacing(top - 1, 3.0),
+            "primary_outer_diameter_um": 160.0,
+            "secondary_outer_diameter_um": 120.0,
+            "primary_width_um": 6.0,
+            "secondary_width_um": 6.0,
+            "primary_opening_um": dop(160.0, 6.0),
+            "secondary_opening_um": dop(120.0, 6.0),
+            "primary_lead_length_um": 20.0,
+            "secondary_lead_length_um": 20.0,
+            "secondary_turns": 2,
+            "secondary_spacing_um": spacing(top - 1, 3.0),
             "center_spacing_um": 0.0,
-            "single_metal": str(top),
-            "multi_metal": str(top - 1),
+            "primary_metal": str(top),
+            "secondary_metal": str(top - 1),
         }
     if family == "clean_port_xfm_balun":
         od_p, w, s = 120.0, 6.0, spacing(top, 3.0)
@@ -345,7 +344,7 @@ def _canonical_config(
             "primary_turns": 1,
             "secondary_turns": 1,
             "center_spacing_um": 0.0,
-            "balun_metal": str(top),
+            "metal": str(top),
         }
     if family == "clean_port_xfm_tw":
         return base | {
@@ -354,10 +353,10 @@ def _canonical_config(
             "width_um": 6.0,
             "spacing_um": spacing(top, 4.0),
             "ring_count": 3,
-            "opening_p_um": dop(160.0, 6.0),
-            "opening_n_um": dop(160.0, 6.0),
+            "port_gap_p_um": dop(160.0, 6.0),
+            "port_gap_n_um": dop(160.0, 6.0),
             "lead_length_um": 20.0,
-            "top_metal": str(top),
+            "metal": str(top),
         }
     if family == "clean_port_xfm_il":
         od, w, s = 150.0, 6.0, spacing(top, 3.0)
@@ -367,11 +366,11 @@ def _canonical_config(
             "width_um": w,
             "spacing_um": s,
             "turns": 2,
-            "opening_p_um": dop(od, w, 18.0),
-            "opening_s_um": dop(od - 2 * (w + s), w, 18.0),
-            "lead_p_um": 20.0,
-            "lead_s_um": 20.0,
-            "top_metal": str(top),
+            "primary_opening_um": dop(od, w, 18.0),
+            "secondary_opening_um": dop(od - 2 * (w + s), w, 18.0),
+            "primary_lead_length_um": 20.0,
+            "secondary_lead_length_um": 20.0,
+            "metal": str(top),
         }
     raise ValueError(f"unknown generation family: {family}")
 

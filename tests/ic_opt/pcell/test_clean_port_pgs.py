@@ -47,10 +47,10 @@ def test_pgs_keeps_signals_and_forms_one_grounded_tree(tmp_path, generator, conf
         # Existing N65 AP/RV-qualified winding (the N28 5um fixture cannot
         # fit the N65 AP-to-M9 bridge vias, even without a shield).
         payload.update(outer_diameter_um=160., width_um=6., spacing_um=4.)
-    for high, low in [("top_metal", "bottom_metal"), ("primary_metal", "secondary_metal"),
-                      ("single_metal", "multi_metal")]:
-        if high in payload:
-            payload.update({high: "AP", low: lower})
+    if "metal" in payload:
+        payload["metal"] = "AP"
+    if "primary_metal" in payload:
+        payload.update(primary_metal="AP", secondary_metal=lower)
     baseline_config = generator.config_model.model_validate(payload)
     baseline = generator().generate(baseline_config, outdir=tmp_path / "off", gds_name="device.gds")
     none_config = generator.config_model.model_validate({**payload, "pgs": None})

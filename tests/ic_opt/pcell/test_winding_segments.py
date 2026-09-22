@@ -60,17 +60,12 @@ def test_crossover_pads_never_hang_off_their_ring(tmp_path):
 
     def build(od, nt, w, s):
         cfg = {"process_profile": "demo_6m", "port_order": ["P1", "N1"], "outer_diameter_um": od, "width_um": w, "spacing_um": s,
-               "opening_um": 8.0, "lead_length_um": 20.0, "turns": nt, "top_metal": "6", "bottom_metal": "5", "ground_fixture": FIXTURE}
+               "opening_um": 8.0, "lead_length_um": 20.0, "turns": nt, "metal": "6", "ground_fixture": FIXTURE}
         return g.generate(g.config_model.model_validate(cfg), outdir=tmp_path / f"{od}_{nt}_{w}_{s}", gds_name="x.gds").gds_path
 
     with pytest.raises(PortError, match="hang off the ring"):
         build(90.0, 4, 5.0, 4.0)                    # the review's NT=4 half-pad case: the innermost flat cannot host the pad
-    gds = build(65.0, 3, 4.0, 4.0)                  # the corner case: the inner far pads are trimmed to the ring's flat
-    layout = kdb.Layout()
-    layout.read(str(gds))
-    top = layout.top_cells()[0]
-    ring = kdb.Region(top.begin_shapes_rec(layout.layer(*layer))).merged()
-    pads = [p for p in top.begin_shapes_rec(layout.layer(*layer)) if False]  # pads are merged into the ring in the file; use the cell model instead
+    build(65.0, 3, 4.0, 4.0)                        # the corner case builds: the inner far pads are trimmed to the ring's flat
     from ic_opt.em.pcell import _pcell_ind_sym as ind
     from ic_opt.em.pcell._pcell_core import process_rule_context
     cell = ind.ind_sym(OD=65.0, W=4.0, OPENING=8.0, LEAD=20.0, S=4.0, NT=3, TOP_ME="6", BTM_ME="5", process=process_rule_context("demo_6m"))

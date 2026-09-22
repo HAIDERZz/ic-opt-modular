@@ -41,9 +41,16 @@ def replay_point(point_dir: Path, *, plugin_module: str = "builtin:clean_port") 
     recorded = next(iter(sorted(point_dir.glob("*.gds"))))
     generator = get_generator(manifest["generator_id"], plugin_module=plugin_module)
     stratum, point = point_dir.parent.name, point_dir.name
+    config = manifest["geometry"]["config"]
+    if plugin_module == "builtin:clean_port":
+        from ic_opt.em.pcell.generator_plugin import (
+            translate_config,  # older records use the retired field names
+        )
+
+        config = translate_config(manifest["generator_id"], config)
     with tempfile.TemporaryDirectory() as tmp:
         try:
-            result = generator.generate(generator.config_model.model_validate(manifest["geometry"]["config"]), outdir=Path(tmp), gds_name=recorded.name)
+            result = generator.generate(generator.config_model.model_validate(config), outdir=Path(tmp), gds_name=recorded.name)
         except Exception as exc:            # every refusal class counts, not only PortError
             return Replay(stratum, point, "refused", f"{type(exc).__name__}: {exc}")
         cmp = compare_gds(recorded, result.gds_path)

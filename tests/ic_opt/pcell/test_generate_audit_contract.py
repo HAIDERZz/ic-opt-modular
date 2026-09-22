@@ -24,7 +24,7 @@ GRID = [(od, nt, THRESHOLD_W + dw, THRESHOLD_S + ds)
 def test_accepted_builds_pass_the_audit_at_the_wide_parallel_threshold(od, nt, w, s, tmp_path):
     g = get_generator("clean_port_ind_sym", plugin_module="builtin:clean_port")
     cfg = {"process_profile": "demo_6m", "port_order": ["P1", "N1"], "outer_diameter_um": od, "width_um": round(w, 3), "spacing_um": round(s, 3),
-           "opening_um": 8.0, "lead_length_um": 20.0, "turns": nt, "top_metal": "6", "bottom_metal": "5", "ground_fixture": FIXTURE}
+           "opening_um": 8.0, "lead_length_um": 20.0, "turns": nt, "metal": "6", "ground_fixture": FIXTURE}
     try:
         gds = g.generate(g.config_model.model_validate(cfg), outdir=tmp_path, gds_name="x.gds").gds_path
     except PortError:

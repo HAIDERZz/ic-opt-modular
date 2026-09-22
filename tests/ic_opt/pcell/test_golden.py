@@ -29,7 +29,7 @@ XFM_PORTS = ["P1", "N1", "P2", "N2"]
 
 def _ind(**over):
     base = {"port_order": ["P1", "N1"], "outer_diameter_um": 100.0, "width_um": 5.0, "spacing_um": 2.0, "opening_um": 8.0,
-            "lead_length_um": 20.0, "turns": 1, "top_metal": "6", "bottom_metal": "5"}
+            "lead_length_um": 20.0, "turns": 1, "metal": "6"}
     return "clean_port_ind_sym", {**base, **over}
 
 
@@ -41,10 +41,10 @@ def _bs(**over):
 
 
 def _ms(**over):
-    base = {"port_order": XFM_PORTS, "single_outer_diameter_um": 100.0, "multi_outer_diameter_um": 76.0, "single_width_um": 6.0,
-            "multi_width_um": 3.0, "single_opening_um": 8.0, "multi_opening_um": 6.0, "single_lead_length_um": 20.0,
-            "multi_lead_length_um": 15.0, "multi_turns": 3, "multi_spacing_um": 2.0, "center_spacing_um": 0.0,
-            "single_metal": "6", "multi_metal": "5"}
+    base = {"port_order": XFM_PORTS, "primary_outer_diameter_um": 100.0, "secondary_outer_diameter_um": 76.0, "primary_width_um": 6.0,
+            "secondary_width_um": 3.0, "primary_opening_um": 8.0, "secondary_opening_um": 6.0, "primary_lead_length_um": 20.0,
+            "secondary_lead_length_um": 15.0, "secondary_turns": 3, "secondary_spacing_um": 2.0, "center_spacing_um": 0.0,
+            "primary_metal": "6", "secondary_metal": "5"}
     return "clean_port_xfm_ms", {**base, **over}
 
 
@@ -52,19 +52,19 @@ def _balun(**over):
     base = {"port_order": XFM_PORTS, "primary_outer_diameter_um": 200.0, "secondary_outer_diameter_um": 184.0, "primary_width_um": 5.0,
             "secondary_width_um": 5.0, "spacing_um": 3.0, "primary_opening_um": 8.0, "secondary_opening_um": 12.0,
             "primary_lead_length_um": 20.0, "secondary_lead_length_um": 20.0, "primary_turns": 1, "secondary_turns": 1,
-            "center_spacing_um": 0.0, "balun_metal": "6"}
+            "center_spacing_um": 0.0, "metal": "6"}
     return "clean_port_xfm_balun", {**base, **over}
 
 
 def _tw(**over):
     base = {"port_order": XFM_PORTS, "outer_diameter_um": 260.0, "width_um": 6.0, "spacing_um": 6.0, "ring_count": 3,
-            "opening_p_um": 10.0, "opening_n_um": 10.0, "lead_length_um": 20.0, "top_metal": "6"}
+            "port_gap_p_um": 10.0, "port_gap_n_um": 10.0, "lead_length_um": 20.0, "metal": "6"}
     return "clean_port_xfm_tw", {**base, **over}
 
 
 def _il(**over):
     base = {"port_order": XFM_PORTS, "outer_diameter_um": 200.0, "width_um": 5.0, "spacing_um": 2.5, "turns": 3,
-            "opening_p_um": 18.0, "opening_s_um": 18.0, "lead_p_um": 20.0, "lead_s_um": 20.0, "top_metal": "6"}
+            "primary_opening_um": 18.0, "secondary_opening_um": 18.0, "primary_lead_length_um": 20.0, "secondary_lead_length_um": 20.0, "metal": "6"}
     return "clean_port_xfm_il", {**base, **over}
 
 
@@ -75,13 +75,13 @@ CASES = {
     "xfm_bs": _bs(),
     "xfm_bs_ct": _bs(ct_primary_metal="4", ct_secondary_metal="3", port_order=[*XFM_PORTS, "CTP", "CTS"]),
     "xfm_ms_nt3": _ms(),
-    "xfm_ms_nt2": _ms(multi_turns=2),
+    "xfm_ms_nt2": _ms(secondary_turns=2),
     "xfm_balun": _balun(),
     "xfm_balun_nt2": _balun(primary_turns=2, primary_outer_diameter_um=220.0),         # the multi-turn side is the primary
     "xfm_tw_nr3": _tw(),
     "xfm_tw_nr5": _tw(ring_count=5, outer_diameter_um=300.0),
     "xfm_il_nt3": _il(),
-    "xfm_il_nt2_ct": _il(turns=2, top_metal="5", ct_primary_metal="6", ct_secondary_metal="6", port_order=[*XFM_PORTS, "CTP", "CTS"]),   # upward taps
+    "xfm_il_nt2_ct": _il(turns=2, metal="5", ct_primary_metal="6", ct_secondary_metal="6", port_order=[*XFM_PORTS, "CTP", "CTS"]),   # upward taps
 }
 
 # Findings the packaged audit raises on a golden the generator accepted. Empty since M1.2 (the generator judges the

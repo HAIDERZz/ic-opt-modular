@@ -22,14 +22,8 @@ class PassiveDeviceGenerator(ABC):
     geometry_version: int | None = None      # None: an external plugin that does not account for its geometry's generation
 
     @abstractmethod
-    def generate(
-        self,
-        config: BaseModel,
-        *,
-        outdir: Path,
-        gds_name: str,
-        top_cell: str | None = None,
-    ) -> GeometryGenerationResult:
+    def generate(self, config: BaseModel, *, outdir: Path, gds_name: str) -> GeometryGenerationResult:
+        """Write ``<outdir>/<gds_name>`` (its top cell named after the file stem), ``emx_ports.txt`` and ``geometry_manifest.json``."""
         raise NotImplementedError
 
 

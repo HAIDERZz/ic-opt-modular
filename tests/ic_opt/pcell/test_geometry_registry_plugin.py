@@ -73,7 +73,7 @@ def test_plugin_id_mismatch_fails_closed(tmp_path):
         class _Gen(PassiveDeviceGenerator):
             generator_id = "real_id"
             config_model = _Cfg
-            def generate(self, config, *, outdir, gds_name, top_cell=None):
+            def generate(self, config, *, outdir, gds_name):
                 raise NotImplementedError
 
         PLUGIN_GENERATORS = {"other_id": _Gen()}
@@ -102,7 +102,7 @@ def test_plugin_id_colliding_with_builtin_fails_closed(tmp_path, monkeypatch):
         class _Gen(PassiveDeviceGenerator):
             generator_id = "fake_builtin_id"
             config_model = _Cfg
-            def generate(self, config, *, outdir, gds_name, top_cell=None):
+            def generate(self, config, *, outdir, gds_name):
                 raise NotImplementedError
 
         PLUGIN_GENERATORS = {"fake_builtin_id": _Gen()}
@@ -170,7 +170,7 @@ def test_load_plugin_generators_is_thread_safe(tmp_path):
         class _Gen(PassiveDeviceGenerator):
             generator_id = "slow_gen"
             config_model = _Cfg
-            def generate(self, config, *, outdir, gds_name, top_cell=None):
+            def generate(self, config, *, outdir, gds_name):
                 raise NotImplementedError
 
         PLUGIN_GENERATORS = {"slow_gen": _Gen()}

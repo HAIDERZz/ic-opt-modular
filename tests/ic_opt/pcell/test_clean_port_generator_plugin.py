@@ -40,8 +40,7 @@ def _ind_sym_config_dict():
         "opening_um": 8.0,
         "lead_length_um": 20.0,
         "turns": 2,
-        "top_metal": "9",
-        "bottom_metal": "8",
+        "metal": "9",
         "ground_fixture": _fixture_dict(),
     }
 
@@ -61,7 +60,7 @@ def test_config_rejects_extra_fields():
         gp.CleanPortIndSymConfig.model_validate(payload)
 
 
-@pytest.mark.parametrize("field", ["top_metal", "bottom_metal"])
+@pytest.mark.parametrize("field", ["metal"])
 @pytest.mark.parametrize("m1_spelling", ["1", "M1", "m1"])
 def test_ind_sym_config_rejects_m1_metal(field, m1_spelling):
     # Codex review (rounds on 8c5ef3d/fcbbc96/867b65f): every per-layer DRC
@@ -134,7 +133,7 @@ def test_ind_sym_ct_metal_requires_semantic_port_order():
     ticket 03: taps append to the fixed semantic base order; anything
     else fails closed)."""
     gp = _load_plugin()
-    base = {**_ind_sym_config_dict(), "top_metal": "10", "ct_metal": "8"}
+    base = {**_ind_sym_config_dict(), "metal": "10", "ct_metal": "8"}
     for bad in (["p01", "p02"], ["P1", "N1"], ["CT", "P1", "N1"],
                 ["p01", "p02", "p03"], ["P1", "N1", "CT", "X"]):
         with pytest.raises(ValidationError, match="port_order"):
@@ -160,26 +159,40 @@ def test_ind_sym_ct_metal_rejects_one_level_below_top():
     gp = _load_plugin()
     payload = {**_ind_sym_config_dict(), "ct_metal": "8",
                "port_order": ["P1", "N1", "CT"]}
-    assert payload["top_metal"] == "9"
+    assert payload["metal"] == "9"
     with pytest.raises(ValidationError, match="two levels below"):
         gp.CleanPortIndSymConfig.model_validate(payload)
 
 
 def test_ind_sym_ct_metal_accepts_two_levels_below_top():
-    """The N1 guard binds ct_metal to top_metal only: bottom_metal is the
-    winding chain's documented dead parameter (the real crossunder is
-    always top_metal-1), so bottom_metal == ct_metal must NOT reject."""
+    """The N1 guard binds ct_metal to the winding metal: two levels below is fine."""
     gp = _load_plugin()
-    payload = {**_ind_sym_config_dict(), "top_metal": "10", "ct_metal": "8",
+    payload = {**_ind_sym_config_dict(), "metal": "10", "ct_metal": "8",
                "port_order": ["P1", "N1", "CT"]}
     cfg = gp.CleanPortIndSymConfig.model_validate(payload)
     assert cfg.ct_metal == "8"
-    assert cfg.bottom_metal == "8"
+
+
+def test_retired_field_names_are_refused_with_the_new_name():
+    """M2.2: an old spelling never passes silently; the error names the replacement (or says the field is gone)."""
+    gp = _load_plugin()
+    with pytest.raises(ValidationError, match="top_metal is now metal"):
+        gp.CleanPortIndSymConfig.model_validate({**_ind_sym_config_dict(), "top_metal": "9"})
+    with pytest.raises(ValidationError, match="bottom_metal was removed"):
+        gp.CleanPortIndSymConfig.model_validate({**_ind_sym_config_dict(), "bottom_metal": "8"})
+    with pytest.raises(ValidationError, match="multi_turns is now secondary_turns"):
+        gp.CleanPortXfmMsConfig.model_validate({**_xfm_ms_config_dict(), "multi_turns": 2})
+    with pytest.raises(ValidationError, match="opening_p_um is now port_gap_p_um"):
+        gp.CleanPortXfmTwConfig.model_validate({**_xfm_tw_config_dict(), "opening_p_um": 10.0})
+    with pytest.raises(ValidationError, match="lead_p_um is now primary_lead_length_um"):
+        gp.CleanPortXfmIlConfig.model_validate({**_xfm_il_config_dict(), "lead_p_um": 20.0})
+    old = {"top_metal": "9", "bottom_metal": "8", "turns": 2, "outer_diameter_um": 100.0}
+    assert gp.translate_config("clean_port_ind_sym", old) == {"metal": "9", "turns": 2, "outer_diameter_um": 100.0}
 
 
 def test_ind_sym_ct_metal_rejects_m1():
     gp = _load_plugin()
-    payload = {**_ind_sym_config_dict(), "top_metal": "10", "ct_metal": "M1",
+    payload = {**_ind_sym_config_dict(), "metal": "10", "ct_metal": "M1",
                "port_order": ["P1", "N1", "CT"]}
     with pytest.raises(ValidationError, match="reserved for the ground fixture"):
         gp.CleanPortIndSymConfig.model_validate(payload)
@@ -198,12 +211,10 @@ def test_retired_ind_sym_ct_id_absent_with_migration_mapping():
 
 
 def test_plain_ind_sym_config_keeps_accepting_top_minus_one():
-    """The adjacency guard is CT-specific: plain ind_sym's bottom_metal is
-    not the CT lead (its crossunder is implicitly top-1 regardless), so the
-    pinned 9/8 convention for ind_sym stays valid."""
+    """The adjacency guard is CT-specific: a plain ind_sym only names its winding metal."""
     gp = _load_plugin()
     cfg = gp.CleanPortIndSymConfig.model_validate(_ind_sym_config_dict())
-    assert cfg.top_metal == "9" and cfg.bottom_metal == "8"
+    assert cfg.metal == "9"
 
 
 def test_ground_fixture_stub_width_by_port_must_be_positive():
@@ -308,8 +319,7 @@ def test_ind_sym_nt1_is_one_direct_n28_ring_without_bridge_or_vias(tmp_path):
     payload = {
         **_ind_sym_config_dict(),
         "turns": 1,
-        "top_metal": "AP",
-        "bottom_metal": "10",
+        "metal": "AP",
     }
     cfg = gp.CleanPortIndSymConfig.model_validate(payload)
     result = gp.CleanPortIndSymGenerator().generate(
@@ -367,8 +377,7 @@ def test_ind_sym_small_od_wide_single_turn_has_full_width_pin_landing(tmp_path):
         "spacing_um": 2.1,
         "turns": 1,
         "opening_um": 5.6,
-        "top_metal": "10",
-        "bottom_metal": "9",
+        "metal": "10",
     }
     cfg = gp.CleanPortIndSymConfig.model_validate(payload)
     result = gp.CleanPortIndSymGenerator().generate(
@@ -423,8 +432,7 @@ def test_ind_sym_compact_two_turn_uses_reference_bridge_scheme(tmp_path):
         "spacing_um": 2.1,
         "turns": 2,
         "opening_um": 5.6,
-        "top_metal": "10",
-        "bottom_metal": "9",
+        "metal": "10",
     }
     cfg = gp.CleanPortIndSymConfig.model_validate(payload)
     result = gp.CleanPortIndSymGenerator().generate(
@@ -506,8 +514,7 @@ def test_ind_sym_infeasible_compact_two_turn_fails_by_family_name(tmp_path):
         "spacing_um": 2.1,
         "turns": 2,
         "opening_um": 5.6,
-        "top_metal": "10",
-        "bottom_metal": "9",
+        "metal": "10",
     }
     cfg = gp.CleanPortIndSymConfig.model_validate(payload)
     with pytest.raises(
@@ -530,8 +537,7 @@ def test_compact_multiturn_inductor_rejects_body_self_short(tmp_path):
         "spacing_um": 2.1,
         "turns": 3,
         "opening_um": 6.3,
-        "top_metal": "10",
-        "bottom_metal": "9",
+        "metal": "10",
     }
     cfg = gp.CleanPortIndSymConfig.model_validate(payload)
     # The inner-ring fit guard (_check_winding_fit, wired into ind_sym in
@@ -578,7 +584,7 @@ def test_ind_sym_ct_metal_generator_parity_with_direct_module_call(tmp_path):
 
     cfg = gp.CleanPortIndSymConfig.model_validate(
         {**_ind_sym_config_dict(), "port_order": ["P1", "N1", "CT"],
-         "top_metal": "10", "ct_metal": "8"})
+         "metal": "10", "ct_metal": "8"})
     gen = gp.CleanPortIndSymGenerator()
     result = gen.generate(cfg, outdir=tmp_path / "plugin", gds_name="ct_cand.gds")
     assert result.generator_id == "clean_port_ind_sym"
@@ -697,7 +703,7 @@ def test_generated_devices_pass_via_audit(tmp_path):
     gp = _load_plugin()
     cfg = gp.CleanPortIndSymConfig.model_validate(
         {**_ind_sym_config_dict(), "port_order": ["P1", "N1", "CT"],
-         "top_metal": "10", "ct_metal": "8"})
+         "metal": "10", "ct_metal": "8"})
     result = gp.CleanPortIndSymGenerator().generate(
         cfg, outdir=tmp_path, gds_name="ct.gds")
     manifest = json.loads(result.manifest_path.read_text())
@@ -751,7 +757,7 @@ def test_xfm_bs_generator_parity_with_direct_module_call(tmp_path):
 
     cfg = gp.CleanPortXfmBsConfig.model_validate(_xfm_bs_config_dict())
     result = gp.CleanPortXfmBsGenerator().generate(
-        cfg, outdir=tmp_path / "plugin", gds_name="bs.gds", top_cell="legacy_top")
+        cfg, outdir=tmp_path / "plugin", gds_name="bs.gds")
     assert result.generator_id == "clean_port_xfm_bs"
     assert result.top_cell == "bs"
     layout = kdb.Layout()
@@ -902,19 +908,19 @@ def _xfm_ms_config_dict():
     return {
         "process_profile": "n28_1p10m",
         "port_order": ["P1", "N1", "P2", "N2"],
-        "single_outer_diameter_um": 100.0,
-        "multi_outer_diameter_um": 76.0,
-        "single_width_um": 6.0,
-        "multi_width_um": 3.0,
-        "single_opening_um": 8.0,
-        "multi_opening_um": 6.0,
-        "single_lead_length_um": 20.0,
-        "multi_lead_length_um": 15.0,
-        "multi_turns": 3,
-        "multi_spacing_um": 2.0,
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 76.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 3.0,
+        "primary_opening_um": 8.0,
+        "secondary_opening_um": 6.0,
+        "primary_lead_length_um": 20.0,
+        "secondary_lead_length_um": 15.0,
+        "secondary_turns": 3,
+        "secondary_spacing_um": 2.0,
         "center_spacing_um": 0.0,
-        "single_metal": "10",
-        "multi_metal": "9",
+        "primary_metal": "10",
+        "secondary_metal": "9",
         "ground_fixture": {**_fixture_dict(), "stub_width_um": 6.0,
                             "stub_width_by_port_um": {"P2": 3.0, "N2": 3.0}},
     }
@@ -924,10 +930,10 @@ def test_xfm_ms_config_rejects_m1_metal():
     gp = _load_plugin()
     with pytest.raises(ValidationError, match="reserved for the ground fixture"):
         gp.CleanPortXfmMsConfig.model_validate(
-            {**_xfm_ms_config_dict(), "single_metal": "1"})
+            {**_xfm_ms_config_dict(), "primary_metal": "1"})
     with pytest.raises(ValidationError, match="reserved for the ground fixture"):
         gp.CleanPortXfmMsConfig.model_validate(
-            {**_xfm_ms_config_dict(), "multi_metal": "1"})
+            {**_xfm_ms_config_dict(), "secondary_metal": "1"})
 
 
 @pytest.mark.parametrize("multi_metal", ["2", "M2"])
@@ -939,7 +945,7 @@ def test_xfm_ms_config_rejects_low_multi_metal_implicit_bridge_on_m1(
     gp = _load_plugin()
     with pytest.raises(ValidationError, match="reserved for the ground fixture"):
         gp.CleanPortXfmMsConfig.model_validate(
-            {**_xfm_ms_config_dict(), "multi_metal": multi_metal})
+            {**_xfm_ms_config_dict(), "secondary_metal": multi_metal})
 
 
 @pytest.mark.parametrize(
@@ -969,17 +975,17 @@ def test_xfm_ms_compact_multi_turn_uses_reference_bridge_scheme(
     gp = _load_plugin()
     payload = {
         **_xfm_ms_config_dict(),
-        "single_outer_diameter_um": 80.0,
-        "multi_outer_diameter_um": multi_od,
-        "single_width_um": width,
-        "multi_width_um": width,
-        "single_opening_um": 8.0,
-        "multi_opening_um": 8.0,
-        "multi_turns": 2,
-        "multi_spacing_um": 2.1,
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": multi_od,
+        "primary_width_um": width,
+        "secondary_width_um": width,
+        "primary_opening_um": 8.0,
+        "secondary_opening_um": 8.0,
+        "secondary_turns": 2,
+        "secondary_spacing_um": 2.1,
         "center_spacing_um": center_spacing,
-        "single_metal": single_metal,
-        "multi_metal": multi_metal,
+        "primary_metal": single_metal,
+        "secondary_metal": multi_metal,
     }
     cfg = gp.CleanPortXfmMsConfig.model_validate(payload)
     if reject:
@@ -1093,11 +1099,11 @@ def test_unequal_od_xfm_ground_ring_clears_full_winding_body(tmp_path):
             gp.CleanPortXfmMsConfig,
             {
                 **_xfm_ms_config_dict(),
-                "single_outer_diameter_um": 202.6,
-                "multi_outer_diameter_um": 96.0,
-                "single_width_um": 5.0,
-                "multi_width_um": 3.32,
-                "multi_turns": 4,
+                "primary_outer_diameter_um": 202.6,
+                "secondary_outer_diameter_um": 96.0,
+                "primary_width_um": 5.0,
+                "secondary_width_um": 3.32,
+                "secondary_turns": 4,
                 "center_spacing_um": 5.32,
             },
             -5.32 / 2.0 + 202.6 / 2.0,
@@ -1133,7 +1139,7 @@ def _xfm_balun_config_dict():
         "primary_turns": 1,
         "secondary_turns": 1,
         "center_spacing_um": 0.0,
-        "balun_metal": "9",
+        "metal": "9",
         "ground_fixture": _fixture_dict(),
     }
 
@@ -1146,7 +1152,7 @@ def test_xfm_balun_config_rejects_m1_and_m2_balun_metal():
     for bad_metal in ("1", "2"):
         with pytest.raises(ValidationError, match="reserved for the ground fixture"):
             gp.CleanPortXfmBalunConfig.model_validate(
-                {**_xfm_balun_config_dict(), "balun_metal": bad_metal})
+                {**_xfm_balun_config_dict(), "metal": bad_metal})
 
 
 def test_xfm_balun_generator_parity_with_direct_module_call(tmp_path):
@@ -1208,7 +1214,7 @@ def test_xfm_balun_wide_nt2_primary_uses_reference_bridge_scheme(tmp_path):
         "primary_turns": 2,
         "secondary_turns": 1,
         "center_spacing_um": 0.0,
-        "balun_metal": "10",
+        "metal": "10",
     }
     cfg = gp.CleanPortXfmBalunConfig.model_validate(payload)
     result = gp.CleanPortXfmBalunGenerator().generate(
@@ -1378,13 +1384,13 @@ def test_xfm_ms_ct_config_port_sets_and_validators():
     gp = _load_plugin()
     base = _xfm_ms_config_dict()
     cfg = gp.CleanPortXfmMsConfig.model_validate(
-        {**base, "multi_metal": "10", "ct_primary_metal": "9",
+        {**base, "secondary_metal": "10", "ct_primary_metal": "9",
          "ct_secondary_metal": "8",
          "port_order": ["P1", "N1", "P2", "N2", "CTP", "CTS"]})
     assert cfg.ct_primary_metal == "9"
     with pytest.raises(ValidationError, match="port_order"):
         gp.CleanPortXfmMsConfig.model_validate(
-            {**base, "multi_metal": "10", "ct_secondary_metal": "8"})
+            {**base, "secondary_metal": "10", "ct_secondary_metal": "8"})
     with pytest.raises(ValidationError, match="two levels below"):
         gp.CleanPortXfmMsConfig.model_validate(
             {**base, "ct_secondary_metal": "8",
@@ -1404,7 +1410,7 @@ def test_xfm_ms_ct_generator_emits_tap_ports(tmp_path):
     # N28-modeled combo: single AP (tap AP->M10 rides the modeled RV
     # class), multi M10 (tap M10->M8 rides VIA9+VIA8)
     cfg = gp.CleanPortXfmMsConfig.model_validate(
-        {**_xfm_ms_config_dict(), "single_metal": "AP", "multi_metal": "10",
+        {**_xfm_ms_config_dict(), "primary_metal": "AP", "secondary_metal": "10",
          "ct_primary_metal": "10", "ct_secondary_metal": "8",
          "port_order": ["P1", "N1", "P2", "N2", "CTP", "CTS"]})
     result = gp.CleanPortXfmMsGenerator().generate(
@@ -1442,7 +1448,7 @@ def test_ground_fixture_stub_width_optional():
 def _auto_vs_explicit_cases():
     gp = _load_plugin()
     ind = {**_ind_sym_config_dict(), "width_um": 7.0,
-           "top_metal": "10", "ct_metal": "8",
+           "metal": "10", "ct_metal": "8",
            "port_order": ["P1", "N1", "CT"]}
     ind_explicit = {"stub_width_um": 7.0}
     bs = {**_xfm_bs_config_dict(), "primary_width_um": 6.0,
@@ -1451,8 +1457,8 @@ def _auto_vs_explicit_cases():
           "port_order": ["P1", "N1", "P2", "N2", "CTP", "CTS"]}
     bs_explicit = {"stub_width_um": 6.0,
                    "stub_width_by_port_um": {"P2": 3.5, "N2": 3.5, "CTS": 3.5}}
-    ms = {**_xfm_ms_config_dict(), "single_width_um": 6.0, "multi_width_um": 3.0,
-          "single_metal": "AP", "multi_metal": "10",
+    ms = {**_xfm_ms_config_dict(), "primary_width_um": 6.0, "secondary_width_um": 3.0,
+          "primary_metal": "AP", "secondary_metal": "10",
           "ct_primary_metal": "10", "ct_secondary_metal": "8",
           "port_order": ["P1", "N1", "P2", "N2", "CTP", "CTS"]}
     ms_explicit = {"stub_width_um": 6.0,
@@ -1554,7 +1560,7 @@ def test_stub_width_by_port_overrides_auto(tmp_path):
     """A per-port override stacks on top of the auto default."""
     gp = _load_plugin()
     base = {**_ind_sym_config_dict(), "width_um": 7.0,
-            "top_metal": "10", "ct_metal": "8",
+            "metal": "10", "ct_metal": "8",
             "port_order": ["P1", "N1", "CT"]}
     auto_over = gp.CleanPortIndSymConfig.model_validate(
         {**_without_stub_width(base),
@@ -1636,10 +1642,10 @@ def _xfm_tw_config_dict():
         "width_um": 6.0,
         "spacing_um": 6.0,
         "ring_count": 3,
-        "opening_p_um": 10.0,
-        "opening_n_um": 10.0,
+        "port_gap_p_um": 10.0,
+        "port_gap_n_um": 10.0,
         "lead_length_um": 20.0,
-        "top_metal": "AP",
+        "metal": "AP",
         "ground_fixture": _fixture_dict(),
     }
 
@@ -1691,7 +1697,7 @@ def test_xfm_tw_config_has_no_ct_field(bad_ct_field):
 @pytest.mark.parametrize("m1_spelling", ["1", "M1", "m1"])
 def test_xfm_tw_config_rejects_m1_top_metal(m1_spelling):
     gp = _load_plugin()
-    payload = {**_xfm_tw_config_dict(), "top_metal": m1_spelling}
+    payload = {**_xfm_tw_config_dict(), "metal": m1_spelling}
     with pytest.raises(ValidationError, match="reserved for the ground fixture"):
         gp.CleanPortXfmTwConfig.model_validate(payload)
 
@@ -1704,7 +1710,7 @@ def test_xfm_tw_config_rejects_m2_top_metal_implicit_dive_on_m1():
     gp = _load_plugin()
     with pytest.raises(ValidationError, match="reserved for the ground fixture"):
         gp.CleanPortXfmTwConfig.model_validate(
-            {**_xfm_tw_config_dict(), "top_metal": "2"})
+            {**_xfm_tw_config_dict(), "metal": "2"})
 
 
 def test_xfm_tw_config_port_order_must_be_canonical():
@@ -1792,9 +1798,9 @@ def test_xfm_tw_wide_trace_rule_boundary_passes_product_gates(tmp_path):
         "width_um": 10.0,
         "spacing_um": 4.0,
         "ring_count": 3,
-        "opening_p_um": 8.0,
-        "opening_n_um": 8.0,
-        "top_metal": "10",
+        "port_gap_p_um": 8.0,
+        "port_gap_n_um": 8.0,
+        "metal": "10",
     }
     cfg = gp.CleanPortXfmTwConfig.model_validate(payload)
     result = gp.CleanPortXfmTwGenerator().generate(
@@ -1912,11 +1918,11 @@ def _xfm_il_config_dict():
         "width_um": 5.0,
         "spacing_um": 2.5,
         "turns": 3,
-        "opening_p_um": 18.0,
-        "opening_s_um": 18.0,
-        "lead_p_um": 20.0,
-        "lead_s_um": 20.0,
-        "top_metal": "9",
+        "primary_opening_um": 18.0,
+        "secondary_opening_um": 18.0,
+        "primary_lead_length_um": 20.0,
+        "secondary_lead_length_um": 20.0,
+        "metal": "9",
         "ground_fixture": _fixture_dict(),
     }
 
@@ -1955,7 +1961,7 @@ def test_xfm_il_config_rejects_m1_through_m3_top_metal(bad_metal):
     dual-layer-legs fix) -- an M3 top_metal would put leg2 on M1, the
     ground-fixture-reserved layer, just like M1/M2 directly."""
     gp = _load_plugin()
-    payload = {**_xfm_il_config_dict(), "top_metal": bad_metal}
+    payload = {**_xfm_il_config_dict(), "metal": bad_metal}
     with pytest.raises(ValidationError, match="reserved for the ground fixture"):
         gp.CleanPortXfmIlConfig.model_validate(payload)
 
@@ -1963,8 +1969,8 @@ def test_xfm_il_config_rejects_m1_through_m3_top_metal(bad_metal):
 def test_xfm_il_config_accepts_m4_top_metal():
     gp = _load_plugin()
     cfg = gp.CleanPortXfmIlConfig.model_validate(
-        {**_xfm_il_config_dict(), "top_metal": "4"})
-    assert cfg.top_metal == "4"
+        {**_xfm_il_config_dict(), "metal": "4"})
+    assert cfg.metal == "4"
 
 
 def test_xfm_il_config_port_order_must_be_canonical():
@@ -2117,9 +2123,9 @@ def test_xfm_il_wide_boundary_has_full_width_primary_pin_landing(tmp_path):
         "width_um": 8.0,
         "spacing_um": 2.1,
         "turns": 2,
-        "opening_p_um": 21.0,
-        "opening_s_um": 21.0,
-        "top_metal": "10",
+        "primary_opening_um": 21.0,
+        "secondary_opening_um": 21.0,
+        "metal": "10",
     }
     cfg = gp.CleanPortXfmIlConfig.model_validate(payload)
     result = gp.CleanPortXfmIlGenerator().generate(
@@ -2163,9 +2169,9 @@ def test_xfm_il_wide_escape_and_bridge_obey_parallel_spacing(tmp_path):
         "width_um": 9.71,
         "spacing_um": 2.43,
         "turns": 4,
-        "opening_p_um": 24.9,
-        "opening_s_um": 24.9,
-        "top_metal": "10",
+        "primary_opening_um": 24.9,
+        "secondary_opening_um": 24.9,
+        "metal": "10",
     }
     cfg = gp.CleanPortXfmIlConfig.model_validate(payload)
     result = gp.CleanPortXfmIlGenerator().generate(
@@ -2235,7 +2241,7 @@ def test_xfm_il_generator_n28_ap_body_ctp_rejected_message_propagates(tmp_path):
     hint) must reach the caller unmodified through the plugin."""
     gp = _load_plugin()
     cfg = gp.CleanPortXfmIlConfig.model_validate(
-        {**_xfm_il_config_dict(), "top_metal": "AP", "ct_primary_metal": "8",
+        {**_xfm_il_config_dict(), "metal": "AP", "ct_primary_metal": "8",
          "port_order": ["P1", "N1", "P2", "N2", "CTP"]})
     with pytest.raises(ValueError, match="SL_ME='AP' has no metal above it"):
         gp.CleanPortXfmIlGenerator().generate(
@@ -2611,7 +2617,7 @@ def test_xfm_il_config_ct_floor_follows_the_real_stack_on_n65():
     let through by top-3 arithmetic and rejected only at generate()."""
     gp = _load_plugin()
     base = {**_xfm_il_config_dict(), "process_profile": "n65_1p9m",
-            "top_metal": "AP", "port_order": ["P1", "N1", "P2", "N2", "CTP"]}
+            "metal": "AP", "port_order": ["P1", "N1", "P2", "N2", "CTP"]}
     with pytest.raises(ValidationError, match="three levels below"):
         gp.CleanPortXfmIlConfig.model_validate({**base, "ct_primary_metal": "8"})
     gp.CleanPortXfmIlConfig.model_validate({**base, "ct_primary_metal": "7"})

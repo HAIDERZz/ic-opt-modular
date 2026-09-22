@@ -37,12 +37,12 @@ def test_ms_m4_m3_generates_only_the_required_via2_crossunder(tmp_path):
         "process_profile": "n28_1p10m", "port_order": ["P1", "N1", "P2", "N2"],
         "ground_fixture": {"inner_margin_um": 15., "ring_width_um": 50.,
                            "stub_length_um": 2., "stub_chamfer_um": 0.},
-        "single_outer_diameter_um": 180., "multi_outer_diameter_um": 160.,
-        "single_width_um": 2., "multi_width_um": 2.,
-        "single_opening_um": 8., "multi_opening_um": 8.,
-        "single_lead_length_um": 20., "multi_lead_length_um": 20.,
-        "multi_turns": 2, "multi_spacing_um": 3., "center_spacing_um": 0.,
-        "single_metal": "4", "multi_metal": "3",
+        "primary_outer_diameter_um": 180., "secondary_outer_diameter_um": 160.,
+        "primary_width_um": 2., "secondary_width_um": 2.,
+        "primary_opening_um": 8., "secondary_opening_um": 8.,
+        "primary_lead_length_um": 20., "secondary_lead_length_um": 20.,
+        "secondary_turns": 2, "secondary_spacing_um": 3., "center_spacing_um": 0.,
+        "primary_metal": "4", "secondary_metal": "3",
     })
     result = generator.generate(config, outdir=tmp_path, gds_name="device.gds")
     assert _drawn_conductors(result.gds_path, config.process_profile) == {"M1", "M2", "M3", "M4"}

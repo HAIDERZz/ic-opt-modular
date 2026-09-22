@@ -382,14 +382,14 @@ def _ind_recipe(config: dict) -> list[str]:
     # finding, fixed M13 ticket 04). With ct_metal the tap vias stack lands
     # on every level from top-1 down to the CT lead metal, so those
     # conductors join the expected set even for NT=1.
-    top = _metal_index(config["top_metal"])
+    top = _metal_index(config["metal"])
     turns = int(config.get("turns", 2))
     layers = [_metal_name(top)]
     if turns >= 2:
-        layers.append(_conductor_below(config["top_metal"], config.get("process_profile")))
+        layers.append(_conductor_below(config["metal"], config.get("process_profile")))
     ct = config.get("ct_metal")
     if ct is not None:
-        layers += _ct_chain(config["top_metal"], ct, config.get("process_profile"))
+        layers += _ct_chain(config["metal"], ct, config.get("process_profile"))
     return _dedupe(layers)
 
 
@@ -449,17 +449,17 @@ def _xfm_bs_recipe(config: dict) -> list[str]:
 
 
 def _xfm_ms_recipe(config: dict) -> list[str]:
-    multi = config["multi_metal"]
-    # Reference bridge scheme (design-region issue 03): the multi coil is
-    # an ind on multi_metal -- crossovers use multi_metal-1 only.
+    secondary = config["secondary_metal"]
+    # Reference bridge scheme (design-region issue 03): the multi-turn
+    # secondary is an ind on its metal -- crossovers use the level below only.
     layers = [
-        config["single_metal"],
-        multi,
-        _conductor_below(multi, config.get("process_profile")),
+        config["primary_metal"],
+        secondary,
+        _conductor_below(secondary, config.get("process_profile")),
     ]
-    layers += _ct_chain(config["single_metal"],
+    layers += _ct_chain(config["primary_metal"],
                         config.get("ct_primary_metal"), config.get("process_profile"))
-    layers += _ct_chain(multi, config.get("ct_secondary_metal"), config.get("process_profile"))
+    layers += _ct_chain(secondary, config.get("ct_secondary_metal"), config.get("process_profile"))
     return _dedupe(_metal_name(_metal_index(m)) for m in layers)
 
 
@@ -467,7 +467,7 @@ def _xfm_balun_recipe(config: dict) -> list[str]:
     """Balun conductors: the balun plane plus the real conductor below it
     (the nested secondary's escape crossunder always draws there; nesting
     is mandatory since 2026-09-22) plus any CT tap chain."""
-    balun = config["balun_metal"]
+    balun = config["metal"]
     layers = [_metal_name(_metal_index(balun)),
               _conductor_below(balun, config.get("process_profile"))]
     layers += _ct_chain(balun, config.get("ct_primary_metal"), config.get("process_profile"))
@@ -479,7 +479,7 @@ def _xfm_tw_recipe(config: dict) -> list[str]:
     # Both windings share every ring on top_metal; every ring-boundary
     # crossing dives exactly one level (the real conductor below top_metal,
     # xfm-tw tickets 01/02b). No CT exists on this device.
-    top = config["top_metal"]
+    top = config["metal"]
     return [_metal_name(_metal_index(top)),
             _conductor_below(top, config.get("process_profile"))]
 
@@ -527,7 +527,7 @@ def _xfm_il_recipe(config: dict) -> list[str]:
     # dual-layer-legs fix -- unconditionally, since the pcell requires
     # NT_P>=2 (always a crossunder to draw). CT taps (either winding,
     # either direction) add their own via-stack chain on top of that.
-    top = config["top_metal"]
+    top = config["metal"]
     profile = config.get("process_profile")
     layers = [_metal_name(_metal_index(top))] + _conductors_below(top, profile, 2)
     layers += _il_ct_chain(top, config.get("ct_primary_metal"), profile)
