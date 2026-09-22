@@ -13,9 +13,14 @@ spec.yaml  ──►  ic-opt run <recipe> <project> [--plan]  ──►  .icopt/
 ## Install
 
 ```bash
-uv venv .venv && uv pip install -e vendor/open-box -e ".[dev]"     # torch CPU is enough
-ic-opt --version                                                    # ic-opt 0.2.0
+uv venv .venv && uv pip install -e vendor/open-box -e ".[dev,report]"
+ic-opt --version                      # ic-opt 0.2.0
 ```
+
+Extras: `report` (SHAP parameter importance), `turbo` (torch + gpytorch for the
+`turbo` strategy; the CPU build is enough), `prf` (OpenBox random-forest
+surrogate, needs swig). Install everything in **one** `uv pip install` so the
+resolver keeps numpy < 2, which the vendored OpenBox requires.
 
 Cadence tools come from a csh environment file **on the simulation host**:
 pass `--cshrc FILE`, set `IC_OPT_CADENCE_CSHRC`, or put `cshrc:` in

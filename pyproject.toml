@@ -20,21 +20,24 @@ dependencies = [
     "pydantic>=2.7",
     "PyYAML>=6.0",
     "scipy>=1.10",
-    "threadpoolctl>=3.1",
-    "torch>=2.0",
-    "gpytorch>=1.11",
     "typer>=0.12",
 ]
 
 [project.optional-dependencies]
+turbo = [                      # only the `turbo` strategy needs torch (vendor/TuRBO); OpenBox and sobol/random do not
+    "torch>=2.0",
+    "gpytorch>=1.11",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
 ]
-advanced = [
-    "pyrfr==0.9.0",
+report = [                     # parameter-importance section of analyze.report (pins keep numpy < 2 for open-box)
     "shap==0.49.1",
     "lightgbm==4.6.0",
+]
+prf = [                        # OpenBox `openbox_prf_eic` surrogate; needs swig to build
+    "pyrfr==0.9.0",
 ]
 
 [project.scripts]

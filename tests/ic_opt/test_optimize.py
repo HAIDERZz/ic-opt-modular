@@ -9,7 +9,7 @@ from ic_opt.deck import Deck
 from ic_opt.observation import ChildResult, Observation
 from ic_opt.store import RunStore
 from ic_opt.suggesters.turbo import _active_start, _batches
-from tests.ic_opt.fakes import FakeSpectreExecutor, make_spec
+from tests.ic_opt.fakes import FakeSpectreExecutor, make_spec, needs_turbo
 
 TEMPLATE = "simulator lang=spectre\nparameters temperature=27 F={{F}} W={{W}}\ntran tran stop=10n\n"
 
@@ -27,7 +27,7 @@ def project(tmp_path, **spec_overrides):
     return spec, store, ex, Deck(templates={("tb", None): TEMPLATE})
 
 
-@pytest.mark.parametrize("strategy", ["sobol", "turbo", "openbox_gp_eic"])
+@pytest.mark.parametrize("strategy", ["sobol", pytest.param("turbo", marks=needs_turbo), "openbox_gp_eic"])
 def test_optimize_finds_the_bowl_and_never_repeats_a_point(tmp_path, strategy):
     spec, store, ex, deck = project(tmp_path)
     obs = optimize(spec, ex, store, deck=deck, strategy=strategy, budget=12, batch=4, seed=1)
@@ -38,6 +38,7 @@ def test_optimize_finds_the_bowl_and_never_repeats_a_point(tmp_path, strategy):
     assert best.objective < 1.2, f"{strategy} best {best.objective} at {best.params}"
 
 
+@needs_turbo
 def test_rerun_with_bigger_budget_continues_instead_of_restarting(tmp_path):
     spec, store, ex, deck = project(tmp_path)
     first = optimize(spec, ex, store, deck=deck, strategy="turbo", budget=6, batch=3, seed=2)

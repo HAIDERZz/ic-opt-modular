@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import importlib.util
 import shlex
 from pathlib import Path
 
+import pytest
+
 from ic_opt.executor import CommandResult, LocalExecutor
 from ic_opt.spec import Spec
+
+needs_turbo = pytest.mark.skipif(importlib.util.find_spec("torch") is None, reason="turbo strategy needs the [turbo] extra (torch)")
 
 
 def minimal_spec(**overrides) -> dict:

@@ -15,7 +15,7 @@ from ic_opt.recipes import coarse_to_fine, fix_run, optimize, signoff
 from ic_opt.site import Site
 from ic_opt.spec import load_spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor, minimal_spec
+from tests.ic_opt.fakes import FakeSpectreExecutor, minimal_spec, needs_turbo
 from tests.ic_opt.test_blocks import maestro_export
 
 TEMPLATES = sorted((Path(__file__).parent / "fixtures" / "legacy").glob("opt_requirement*.md"))
@@ -136,6 +136,7 @@ def test_signoff_recipe_searches_one_corner_then_checks_all(tmp_path):
     assert {o.key for o in check} <= {o.key for o in search}
 
 
+@needs_turbo
 def test_coarse_to_fine_recipe_warm_starts_the_fine_step(tmp_path):
     run = fake_run(project(tmp_path))
     coarse_to_fine.main(run, coarse_budget=4, fine_budget=3, batch=2, seed=3)

@@ -13,7 +13,7 @@ Rules of thumb:
 - Keep protective code out until a real run needs it; prefer a root-cause fix over a tolerance.
 
 ```bash
-uv venv .venv && uv pip install -e vendor/open-box -e ".[dev]"
+uv venv .venv && uv pip install -e vendor/open-box -e ".[dev,report]"   # add turbo / prf extras in the same command
 .venv/bin/python -m pytest -q            # fake Spectre host, no Cadence needed
 .venv/bin/ruff check src tests
 ```
