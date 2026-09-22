@@ -474,8 +474,9 @@ def test_ind_sym_compact_two_turn_uses_reference_bridge_scheme(tmp_path):
         (143.4, 6.33, 3.2, 6.33),
         # (81, 10, 2.1): the full W x W landing merges the inner turn into
         # a closed (shorted) ring; since 772ce04 rejects such candidates the
-        # largest qualified landing is 5.75.
-        (81.0, 10.0, 2.1, 5.75),
+        # largest qualified landing was 5.75, and since the pads must also sit
+        # entirely on their ring's flat (D4, 2026-09-22) it is 4.0.
+        (81.0, 10.0, 2.1, 4.0),
     ],
 )
 def test_ind_sym_compact_two_turn_uses_largest_drc_clean_via_landing(

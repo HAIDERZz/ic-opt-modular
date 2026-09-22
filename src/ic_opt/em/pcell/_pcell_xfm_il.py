@@ -971,7 +971,13 @@ def _il_bridge_spacing_guard(
     sl: int,
     process: ProcessRuleContext | None,
 ) -> None:
-    """Fail closed on P/S bridge-layer min-space after all landing stacks."""
+    """Fail closed on bridge-layer min-space after all landing stacks: between P and S, and within each winding.
+
+    The lane planner clears one turn's diagonals from the other winding's;
+    a winding's own leg2 landing stack (its intermediate level on the leg1
+    metal) can still crowd the same winding's next-turn leg1 diagonal, which
+    no inter-net check sees -- the random-device campaign of 2026-09-22 found
+    it on 4 of 50 devices, so each winding is space-checked on its own too."""
     if process is None:
         return
     # Real leg1/leg2 conductors, not bare `sl - 1`/`sl - 2` (gdsfactory
@@ -995,6 +1001,14 @@ def _il_bridge_spacing_guard(
                 "finding(s)); adjust OD/W/S/OPENING (lane target is never "
                 "relaxed)"
             )
+        for net, region in (("P", p_region), ("S", s_region)):
+            own = region.space_check(_nm(space), False, kdb.Metrics.Euclidian)
+            if own.count():
+                raise PortError(
+                    f"xfm_il: the {net} winding's own {name} bridge stacks and "
+                    f"diagonals violate min_space {space:.3f} um "
+                    f"({own.count()} finding(s)); increase OD/S or reduce W/NT"
+                )
 
 
 def xfm_il(

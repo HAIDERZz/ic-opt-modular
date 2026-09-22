@@ -28,6 +28,7 @@ from ic_opt.em.pcell._pcell_core import (
     finalize_emx_ports,
     floortogrid,
     max_opening,
+    octagon,
     roundtogrid,
     vias,
 )
@@ -930,8 +931,12 @@ def _compact_two_turn_lane_offsets(
     """
     pitch = W + S
     inner_od = OD - 2.0 * pitch
-    outer_max = max_opening(OD, W) + pad_length / 2.0
-    inner_max = max_opening(inner_od, W) + pad_length / 2.0
+    # A lane's pad (centre g, length pad_length) must keep the ring opening real
+    # (max_opening) AND sit entirely on its ring's flat: its far edge at or
+    # below BA (D4, M1.6 -- the same bound base_ind_hud_cross enforces).
+    cb_delta = chamfer_staircase_delta([OD, inner_od], W, top_met, process)
+    outer_max = min(max_opening(OD, W) + pad_length / 2.0, octagon(OD, W).BA - pad_length / 2.0)
+    inner_max = min(max_opening(inner_od, W) + pad_length / 2.0, octagon(inner_od, W, cb_delta).BA - pad_length / 2.0)
     minimum_total = ceiltogrid(pitch + pad_length)
     maximum_total = floortogrid(outer_max + inner_max)
     # Fifty mask-grid units retain 250-nm lane resolution while keeping this

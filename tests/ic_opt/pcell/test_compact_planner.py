@@ -16,8 +16,10 @@ from ic_opt.em.pcell._pcell_core import (
     GRID_UM,
     PortError,
     ceiltogrid,
+    chamfer_staircase_delta,
     floortogrid,
     max_opening,
+    octagon,
     process_rule_context,
     roundtogrid,
 )
@@ -27,8 +29,9 @@ def exhaustive_lane_offsets(*, OD, W, OPENING, LEAD, S, top_met, pad_length, pro
     """The pre-M1.5 search verbatim: every (total, difference) pair in order, first qualifying wins."""
     pitch = W + S
     inner_od = OD - 2.0 * pitch
-    outer_max = max_opening(OD, W) + pad_length / 2.0
-    inner_max = max_opening(inner_od, W) + pad_length / 2.0
+    cb_delta = chamfer_staircase_delta([OD, inner_od], W, top_met, process)
+    outer_max = min(max_opening(OD, W) + pad_length / 2.0, octagon(OD, W).BA - pad_length / 2.0)
+    inner_max = min(max_opening(inner_od, W) + pad_length / 2.0, octagon(inner_od, W, cb_delta).BA - pad_length / 2.0)
     minimum_total, maximum_total = ceiltogrid(pitch + pad_length), floortogrid(outer_max + inner_max)
     lane_step = 50 * GRID_UM
     memo: dict = {}
