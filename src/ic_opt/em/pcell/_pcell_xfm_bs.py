@@ -7,14 +7,11 @@ from __future__ import annotations
 from ic_opt.em.pcell._pcell_core import (
     _EPS,
     Cell,
-    GroundFixtureConfig,
     PortError,
     ProcessRuleContext,
-    _drawing_bbox_um,
     _metal_index,
     _pin,
     _xfm_order_ports,
-    add_ground_fixture,
     finalize_emx_ports,
     vias,
 )
@@ -30,6 +27,11 @@ from ic_opt.em.pcell._pcell_primitives import (
 )
 from ic_opt.em.pcell._pcell_straight_extension import (
     extend_straight_x,
+)
+from ic_opt.em.pcell.fixture import (
+    GroundFixtureConfig,
+    _drawing_bbox_um,
+    add_ground_fixture,
 )
 
 # ---------------------------------------------------------------------------

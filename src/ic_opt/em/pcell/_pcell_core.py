@@ -218,28 +218,6 @@ class ProcessRuleContext:
     passive_region: bool = True
 
 
-@dataclass(frozen=True)
-class GroundFixtureConfig:
-    """M1 ground reference fixture dimensions (um): an inner-margin gap, a ring
-    width, and per-port stub width/length/chamfer. Mirrors the product
-    ``single_turn_transformer.GroundFixtureConfig`` shape (this port's own
-    non-GPL frozen dataclass, not the product pydantic model).
-
-    ``stub_width_by_port_um`` optionally overrides the stub width for specific
-    ports, keyed by EMX port *name* (the identifier in ``-p name=signal``
-    lines). Ports not listed fall back to the global ``stub_width_um``;
-    unknown keys fail closed in ``add_ground_fixture``. Never hashed and
-    serialized via ``dataclasses.asdict`` (manifest), so the dict field is
-    safe on the frozen dataclass."""
-
-    inner_margin_um: float
-    ring_width_um: float
-    stub_width_um: float
-    stub_length_um: float
-    stub_chamfer_um: float
-    stub_width_by_port_um: dict[str, float] | None = None
-
-
 def process_rule_context(profile_id: str) -> ProcessRuleContext:
     """Load a process rule profile (e.g. "n28_1p10m") for process mode."""
     from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
@@ -928,181 +906,6 @@ def finalize_emx_ports(cell: Cell) -> list[dict]:
     return out
 
 
-# ---------------------------------------------------------------------------
-# ground reference fixture (M1 ring + per-port chamfered stub + G0n pin)
-# ---------------------------------------------------------------------------
-
-
-def _drawing_bbox_um(cell: Cell) -> tuple[float, float, float, float]:
-    xs, ys = [], []
-    for _layer, pts in cell.flat_shapes():
-        for x, y in pts:
-            xs.append(x)
-            ys.append(y)
-    if not xs:
-        raise PortError("ground fixture: cell has no drawing geometry")
-    return (min(xs) * DBU_UM, min(ys) * DBU_UM,
-            max(xs) * DBU_UM, max(ys) * DBU_UM)
-
-
-def _body_bbox_um(
-    cell: Cell, process: ProcessRuleContext | None
-) -> tuple[float, float, float, float]:
-    """Drawing bbox excluding each port's own lead (port contract
-    2026-09-21).
-
-    A lead is identified by its registered ``lead_zone_nm``: subtracted,
-    per same-layer polygon, from that polygon's own region (spec.md's
-    "用zone做区域布尔减法" -- not "does the port's point fall inside some
-    polygon's bbox", which a coordinate a few nm off its own lead could
-    silently miss, or which over-matches a bigger fused polygon that only
-    partly belongs to the lead -- xfm_tw's ring-0 arc, whose own zone now
-    covers only its stub, ``_tw_stub_zone``). What remains after
-    subtraction is the winding body, bridges, and via landings that the
-    ground-ring ``inner_margin_um`` protects; this distinction lets a
-    normal outward lead keep the exact ``stub_length_um`` contract while
-    an unequal-OD winding body can still push the ring farther out
-    instead of lying underneath it. A layer with no registered port zone
-    keeps its whole polygon (nothing to subtract)."""
-    port_zones_by_layer: dict[tuple[int, int], list[tuple[int, int, int, int]]] = {}
-    for port in cell.emx_ports:
-        layer = _metal(port["metal_index"], process)
-        port_zones_by_layer.setdefault(layer, []).append(tuple(port["lead_zone_nm"]))
-
-    xs: list[int] = []
-    ys: list[int] = []
-    for layer, pts in cell.flat_shapes():
-        # Radially impossible compact/multi-turn inputs can collapse an
-        # intermediate polygon to no vertices.  It contributes no drawing
-        # extent; leave feasibility to the product DRC gate instead of
-        # leaking a generic ``min() arg is an empty sequence`` exception.
-        if not pts:
-            continue
-        zones = port_zones_by_layer.get(layer)
-        if zones:
-            poly = kdb.Region(kdb.Polygon([kdb.Point(x, y) for x, y in pts]))
-            leads = kdb.Region()
-            for x0, y0, x1, y1 in zones:
-                leads.insert(
-                    kdb.Box(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
-                )
-            remainder = (poly - leads).merged()
-            if remainder.is_empty():
-                continue
-            b = remainder.bbox()
-            xs.extend((b.left, b.right))
-            ys.extend((b.bottom, b.top))
-            continue
-        xmin = min(x for x, _y in pts)
-        ymin = min(y for _x, y in pts)
-        xmax = max(x for x, _y in pts)
-        ymax = max(y for _x, y in pts)
-        xs.extend((xmin, xmax))
-        ys.extend((ymin, ymax))
-    if not xs:
-        raise PortError("ground fixture: cell has no non-port body geometry")
-    return (min(xs) * DBU_UM, min(ys) * DBU_UM,
-            max(xs) * DBU_UM, max(ys) * DBU_UM)
-
-
-def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
-                       process: ProcessRuleContext | None = None) -> None:
-    """Draw an M1 ground ring + one chamfered stub per port + a ``G{index:02d}``
-    local-ref pin label on the M1 pin layer at each port's ``(x, y)``, then set
-    that port's ``reference`` to its G-pin name. Stub width per port comes from
-    ``fixture.stub_width_by_port_um`` (keyed by port name) with fallback to the
-    global ``stub_width_um``. Each port's stub continues its lead outward --
-    the side is the port's own orientation (M1.3), so left/right ports get
-    horizontal stubs while top/bottom ports (xfm_tw) get vertical stubs and
-    the ring remains outside the body envelope. Fails closed with
-    ``PortError`` when the cell has no ``emx_ports``, M1 has no pin layer, or
-    the per-port map names a port that does not exist on the cell."""
-    if not cell.emx_ports:
-        raise PortError("ground fixture: cell has no emx_ports")
-    if fixture.stub_width_by_port_um:
-        port_names = {p["name"] for p in cell.emx_ports}
-        unknown = sorted(set(fixture.stub_width_by_port_um) - port_names)
-        if unknown:
-            raise PortError(
-                f"ground fixture: stub_width_by_port_um names unknown ports "
-                f"{unknown}; cell ports are {sorted(port_names)}"
-            )
-    m1_draw, m1_pin = metal_drawing_pin(1, process)
-    xmin, ymin, xmax, ymax = _drawing_bbox_um(cell)
-    body_xmin, body_ymin, body_xmax, body_ymax = _body_bbox_um(cell, process)
-    ports = cell.emx_ports
-
-    def xy_um(p: dict) -> tuple[float, float]:
-        # (port contract 2026-09-21) every stub/ring vertex reads the
-        # authoritative integer nm point directly -- never a re-derived float.
-        gx, gy = p["point_nm"]
-        return gx * DBU_UM, gy * DBU_UM
-
-    side_of = {0: "right", 180: "left", 90: "top", 270: "bottom"}
-    distances_by_port = [(p, side_of[p["orientation_deg"]]) for p in ports]
-    left_x = [xy_um(p)[0] for p, side in distances_by_port if side == "left"]
-    right_x = [xy_um(p)[0] for p, side in distances_by_port if side == "right"]
-    bottom_y = [xy_um(p)[1] for p, side in distances_by_port if side == "bottom"]
-    top_y = [xy_um(p)[1] for p, side in distances_by_port if side == "top"]
-    # Every side obeys both constraints: exact stub reach from any port and
-    # inner-margin clearance from the winding body.  The farther-out bound
-    # wins.  Normal outward leads already extend beyond the body margin, so
-    # their historical exact stub_length geometry remains unchanged; only a
-    # protruding unequal-OD body expands the ring.
-    inner_xmin = min(
-        min((x - fixture.stub_length_um for x in left_x), default=xmin),
-        body_xmin - fixture.inner_margin_um,
-    )
-    inner_xmax = max(
-        max((x + fixture.stub_length_um for x in right_x), default=xmax),
-        body_xmax + fixture.inner_margin_um,
-    )
-    inner_ymin = min(
-        min((y - fixture.stub_length_um for y in bottom_y), default=ymin),
-        body_ymin - fixture.inner_margin_um,
-    )
-    inner_ymax = max(
-        max((y + fixture.stub_length_um for y in top_y), default=ymax),
-        body_ymax + fixture.inner_margin_um,
-    )
-    outer_xmin = inner_xmin - fixture.ring_width_um
-    outer_xmax = inner_xmax + fixture.ring_width_um
-    outer_ymin = inner_ymin - fixture.ring_width_um
-    outer_ymax = inner_ymax + fixture.ring_width_um
-    cell.add_rect(m1_draw, outer_xmin, outer_ymin, inner_xmin, outer_ymax)
-    cell.add_rect(m1_draw, inner_xmax, outer_ymin, outer_xmax, outer_ymax)
-    cell.add_rect(m1_draw, inner_xmin, inner_ymax, inner_xmax, outer_ymax)
-    cell.add_rect(m1_draw, inner_xmin, outer_ymin, inner_xmax, inner_ymin)
-    by_port = fixture.stub_width_by_port_um or {}
-    ch = fixture.stub_chamfer_um
-    for index, (p, side) in enumerate(distances_by_port, start=1):
-        x, y = xy_um(p)
-        half = by_port.get(p["name"], fixture.stub_width_um) / 2.0
-        ref_name = f"G{index:02d}"
-        if side == "left":
-            root = inner_xmin
-            cell.add_polygon(m1_draw, [
-                (root, y - half - ch), (x, y - half),
-                (x, y + half), (root, y + half + ch)])
-        elif side == "right":
-            root = inner_xmax
-            cell.add_polygon(m1_draw, [
-                (x, y - half), (root, y - half - ch),
-                (root, y + half + ch), (x, y + half)])
-        elif side == "bottom":
-            root = inner_ymin
-            cell.add_polygon(m1_draw, [
-                (x - half - ch, root), (x - half, y),
-                (x + half, y), (x + half + ch, root)])
-        else:
-            root = inner_ymax
-            cell.add_polygon(m1_draw, [
-                (x - half, y), (x - half - ch, root),
-                (x + half + ch, root), (x + half, y)])
-        cell.add_label(m1_pin, ref_name, x, y)
-        p["reference"] = ref_name
-
-
 def bridge_y_reach(W: float, S: float, met, process: ProcessRuleContext | None) -> float:
     """|y| of the farthest point a same-side-stacked winding's crossunder
     pad reaches from the winding's own centreline (xfm_il ticket 02c).
@@ -1336,98 +1139,21 @@ def _ms_layer_regions(
     return [cell.region(_metal(metal, process)).merged() for metal in metals]
 
 
-# ---------------------------------------------------------------------------
-# xfm_tw (ticket 01: path planner + geometry kernel) -- Type 3 same-layer
-# overlapping-inductor transformer ("twisted"): NR concentric rings shared
-# half-and-half by P (CCW) and S (x-mirror of P, CW), crossing between rings
-# through four classes of X (see .scratch/xfm-tw-twisted/spec.md, approved
-# 2026-07-18). No single .il source models this device.
-#
-# Path planner
-# ------------
-# ``_tw_plan`` is a direct port of the RULE encoded in
-# .scratch/xfm-tw-twisted/gen_topology.py's ``build_p``/``build_s`` (the
-# connectivity authority the spec names) -- boundary slot angles, the
-# odd-boundary "self-crossing" / even-boundary "P x S crossing" dive
-# assignment, and S = x-mirror of P with the even-boundary dive flag
-# flipped -- but expressed in SIZE-DECOUPLED terms (ring index / cardinal
-# angle / desc-or-asc / dive flag) instead of gen_topology's literal
-# coordinates (that script's own G/PSTUB/NSTUB/EXT constants and square-ring
-# ``_walk`` are a diagram-only stand-in; this port's renderer draws real
-# octagon rings sized from OD/W/S and a rule-derived slot half-width, see
-# below). gen_topology.py itself asserts its K=3 output reproduces the
-# user-confirmed v4 replica exactly; ``test_tw_plan_nr3_matches_v4_baseline``
-# pins the same case here as the leg table quoted in the spec.
-#
-# gen_topology's own mirror step (``build_s``) literally mirrors every
-# already-computed (x, y) point and flips the tag ("b"/"c", i.e. dive/
-# same-layer) only on even-boundary legs. Working in (ring, angle) space
-# instead of (x, y), mirroring x negates a point's *signed tangential
-# offset* from its cardinal axis and swaps angle 0<->180 (90/270 fixed) --
-# proved once here and reused by both the planner's ``_tw_mirror_segments``
-# and the renderer's leg/port placement (same tables, same sign rule, so a
-# mirror-derived S is geometrically guaranteed to be the P construction's
-# x-mirror, never a separately-invented topology).
-# ---------------------------------------------------------------------------
 
-
-@dataclass(frozen=True)
-class TwLeg:
-    """One boundary-crossing leg: connects ring ``boundary-1`` (outer) and
-    ring ``boundary`` (inner) at cardinal ``angle`` (0/90/180/270). ``dive``
-    True -> SL_ME-1 (via-ended crossover, ``base_xfm_cross`` TOP_ME=SL/
-    BTM_ME=SL-1); False -> same layer (SL_ME, no cuts)."""
-
-    boundary: int
-    direction: str  # "desc" | "asc"
-    angle: int
-    dive: bool
-
-
-@dataclass(frozen=True)
-class TwArc:
-    """Same-layer (SL_ME) ring conductor on ``ring``, walking the octagon
-    perimeter from ``angle_from`` to ``angle_to`` CCW (``ccw=True``) or CW."""
-
-    ring: int
-    angle_from: int
-    angle_to: int
-    ccw: bool
-
-
-_TW_MIRROR_ANGLE = {0: 180, 90: 90, 180: 0, 270: 270}
+_LAYER_NAMES = {metal_layer(m): f"M{m}" for m in range(1, 11)}
+_LAYER_NAMES.update({via_layer(m): f"via{m}" for m in range(1, 10)})
 
 
 # ---------------------------------------------------------------------------
-# xfm_tw rendering geometry
-#
-# Renderer choice (ticket 01 "renderer 二选一"): rings are drawn as
-# octagon-perimeter WIDE PATHS (explicit centerline waypoints through the
-# family's own 45-degree chamfer vertices, widened via ``kdb.Path``), not by
-# reusing ``base_oct_quad``/``base_oct_half``. Those two primitives are hard
-# -coded for exactly ONE opening per quadrant pair (ind_sym's own single
-# lead/crossunder gap per ring); xfm_tw needs FOUR independent slots per
-# ring (one per cardinal edge, since boundary angles rotate through all of
-# 0/90/180/270 as NR grows -- see spec.md's boundary rule), which does not
-# fit that algebra without forking it per-edge. A direct centerline walk
-# generalizes to any number/position of slots for free, stays visually and
-# electrically consistent with the family's chamfered-octagon convention
-# (same DIV=2+sqrt(2) chamfer ratio as ``base_oct_quad``), and composes
-# cleanly with the explicit two-endpoint legs (``_tw_leg``, below) since
-# both share one abstraction: a signed tangential offset from a ring's
-# cardinal axis.
+# path extrusion: a width along a centreline, mitred and snapped to the mask grid
 # ---------------------------------------------------------------------------
 
-_TW_CARDINAL_UNIT = {0: (1, 0), 90: (0, 1), 180: (-1, 0), 270: (0, -1)}
-_TW_TANGENT_CCW = {0: (0, 1), 90: (-1, 0), 180: (0, -1), 270: (1, 0)}
+GRID_DBU = int(round(GRID_UM / DBU_UM))  # 5 (0.005 um mask grid, in nm)
 
 
-_TW_GRID_DBU = int(round(GRID_UM / DBU_UM))  # 5 (0.005 um mask grid, in nm)
-
-
-def _tw_snap_dbu_to_grid(v: int) -> int:
+def snap_nm_to_grid(v: int) -> int:
     """Snap an integer dbu (nm) coordinate to the nearest 0.005 um mask-grid
-    multiple.
+    multiple (every path-extruded conductor: xfm_tw's rings and legs, the NT=2 compact bridge legs).
 
     ``kdb.Path(...).polygon()`` mitres each turn by offsetting the
     centerline perpendicular to its own local direction; for anything other
@@ -1443,28 +1169,22 @@ def _tw_snap_dbu_to_grid(v: int) -> int:
     two-plus orders of magnitude below any clearance margin this module
     derives) is the correct point to fix it, mirroring how every other
     device in this file grid-snaps its own hand-computed polygon vertices."""
-    return int(round(v / _TW_GRID_DBU)) * _TW_GRID_DBU
+    return int(round(v / GRID_DBU)) * GRID_DBU
 
 
-def _tw_add_wide_path(cell: Cell, layer: tuple[int, int], pts_um: list,
+def add_wide_path(cell: Cell, layer: tuple[int, int], pts_um: list,
                       width_um: float) -> None:
     """Draw a width-``width_um`` conductor along the ``pts_um`` centerline
     (mitred polygon via ``kdb.Path``, matching the octagon chamfer vertices
     already baked into the waypoints), snapped to the 0.005 um mask grid
-    (``_tw_snap_dbu_to_grid``, see its own docstring for why the mitre
+    (``snap_nm_to_grid``, see its own docstring for why the mitre
     corners need this even though the centerline waypoints are grid-exact)."""
     pts_nm = [kdb.Point(_nm(x), _nm(y)) for x, y in pts_um]
     poly = kdb.Path(pts_nm, _nm(width_um)).polygon()
-    cell.shapes.append(Shape(layer, [
-        (_tw_snap_dbu_to_grid(p.x), _tw_snap_dbu_to_grid(p.y))
+    cell.add_shape(Shape(layer, [
+        (snap_nm_to_grid(p.x), snap_nm_to_grid(p.y))
         for p in poly.each_point_hull()
     ]))
-
-
-_TW_FIXED_PORT_ORDER = ["P1", "N1", "P2", "N2"]
-
-_LAYER_NAMES = {metal_layer(m): f"M{m}" for m in range(1, 11)}
-_LAYER_NAMES.update({via_layer(m): f"via{m}" for m in range(1, 10)})
 
 
 def _process_layer_names(process: ProcessRuleContext) -> dict[tuple[int, int], str]:

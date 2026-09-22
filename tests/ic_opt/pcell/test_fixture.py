@@ -14,11 +14,13 @@ from pydantic import ValidationError
 from ic_opt.em.pcell import get_generator
 from ic_opt.em.pcell._pcell_core import (
     Cell,
-    GroundFixtureConfig,
-    add_ground_fixture,
     finalize_emx_ports,
     metal_drawing_pin,
     metal_layer,
+)
+from ic_opt.em.pcell.fixture import (
+    GroundFixtureConfig,
+    add_ground_fixture,
 )
 from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
 from tests.ic_opt.pcell.test_golden import FIXTURE, XFM_PORTS

@@ -8,17 +8,14 @@ import math
 
 from ic_opt.em.pcell._pcell_core import (
     Cell,
-    GroundFixtureConfig,
     PortError,
     ProcessRuleContext,
-    _drawing_bbox_um,
     _effective_min_spacing,
     _metal_below,
     _metal_index,
     _metal_name,
     _pin,
     _xfm_order_ports,
-    add_ground_fixture,
     chamfer_staircase_delta,
     finalize_emx_ports,
     floortogrid,
@@ -45,6 +42,11 @@ from ic_opt.em.pcell._pcell_primitives import (
 from ic_opt.em.pcell._pcell_xfm_bs import (
     _bs_center_tap,
     ct_lead_to_edge,
+)
+from ic_opt.em.pcell.fixture import (
+    GroundFixtureConfig,
+    _drawing_bbox_um,
+    add_ground_fixture,
 )
 
 # ---------------------------------------------------------------------------

@@ -2585,9 +2585,9 @@ def test_port_lattice_xfm_tw_zone_edge_and_audit_lead_off_5nm_mask_grid(
     profile_id, sl_me, lead_residue_nm, tmp_path
 ):
     """xfm_tw's own wide-path stub goes through a SECOND, independent
-    grid-snap no other family's lead polygon needs: `_tw_add_wide_path`
+    grid-snap no other family's lead polygon needs: `add_wide_path`
     re-snaps every drawn hull vertex to the 0.005 um mask grid
-    (`_tw_snap_dbu_to_grid`) after mitring, to fix irrational-trig corner
+    (`snap_nm_to_grid`) after mitring, to fix irrational-trig corner
     noise from diagonal/45-degree segments -- but that snap also touches
     the stub's own flush end cap, whose along-stub coordinate is
     `LEAD`-derived. `LEAD=20.045` (every other xfm_tw fixture in this

@@ -6,14 +6,11 @@ from __future__ import annotations
 
 from ic_opt.em.pcell._pcell_core import (
     Cell,
-    GroundFixtureConfig,
     PortError,
     ProcessRuleContext,
-    _drawing_bbox_um,
     _metal_index,
     _metal_name,
     _xfm_order_ports,
-    add_ground_fixture,
     finalize_emx_ports,
 )
 from ic_opt.em.pcell._pcell_guards import _xfm_net_short
@@ -30,6 +27,11 @@ from ic_opt.em.pcell._pcell_xfm_bs import (
     _bs_winding,
     check_stacked_overlap,
     ct_lead_to_edge,
+)
+from ic_opt.em.pcell.fixture import (
+    GroundFixtureConfig,
+    _drawing_bbox_um,
+    add_ground_fixture,
 )
 
 

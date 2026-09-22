@@ -12,7 +12,6 @@ from ic_opt.em.pcell._pcell_core import (
     _EPS,
     GRID_UM,
     Cell,
-    GroundFixtureConfig,
     PortError,
     ProcessRuleContext,
     _metal,
@@ -22,8 +21,7 @@ from ic_opt.em.pcell._pcell_core import (
     _ms_layer_regions,
     _nm,
     _pin,
-    _tw_add_wide_path,
-    add_ground_fixture,
+    add_wide_path,
     ceiltogrid,
     chamfer_staircase_delta,
     cross_endpoint_offset,
@@ -49,6 +47,10 @@ from ic_opt.em.pcell._pcell_primitives import (
 )
 from ic_opt.em.pcell._pcell_straight_extension import (
     extend_straight_x,
+)
+from ic_opt.em.pcell.fixture import (
+    GroundFixtureConfig,
+    add_ground_fixture,
 )
 
 # ---------------------------------------------------------------------------
@@ -811,8 +813,8 @@ def _compact_two_turn_candidate(
     # reference-honored convention), flush with the ring arm ends; only
     # leg1 keeps real via stacks. The former top_met-2 routing spent an
     # extra layer + longer stacks without necessity.
-    _tw_add_wide_path(cell, _metal(bottom_met, process), leg1, W)
-    _tw_add_wide_path(cell, _metal(top_met, process), leg2, W)
+    add_wide_path(cell, _metal(bottom_met, process), leg1, W)
+    add_wide_path(cell, _metal(top_met, process), leg2, W)
     for bottom, endpoints in (
         (bottom_met, (outer_up, inner_down)),
         (top_met, (outer_down, inner_up)),

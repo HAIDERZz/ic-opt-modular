@@ -13,7 +13,6 @@ from ic_opt.em.pcell._pcell_core import (
     _ORIENTS,
     GRID_UM,
     Cell,
-    GroundFixtureConfig,
     PortError,
     ProcessRuleContext,
     _effective_min_spacing,
@@ -26,7 +25,6 @@ from ic_opt.em.pcell._pcell_core import (
     _pin,
     _required_parallel_spacing,
     _xfm_order_ports,
-    add_ground_fixture,
     bridge_y_reach,
     ceiltogrid,
     chamfer_staircase_delta,
@@ -58,6 +56,10 @@ from ic_opt.em.pcell._pcell_primitives import (
 from ic_opt.em.pcell._pcell_xfm_balun import (
     _balun_crossunder,
     _escape_tip_pad_width,
+)
+from ic_opt.em.pcell.fixture import (
+    GroundFixtureConfig,
+    add_ground_fixture,
 )
 
 # ---------------------------------------------------------------------------

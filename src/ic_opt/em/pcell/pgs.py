@@ -36,9 +36,9 @@ def add_pgs(cell, config: CleanPortPgsConfig, process_profile: str,
         Cell,
         PortError,
         Shape,
-        _body_bbox_um,
         process_rule_context,
     )
+    from .fixture import _body_bbox_um
 
     context = process_rule_context(process_profile)
     rule = context.adapter.metal_rule("M1")

@@ -4826,7 +4826,7 @@ def test_tw_leg_polygon_edges_are_45_degree_multiples():
     W=4/S=2/M9 that's atan2(2*G, 6) with G > pitch/2 = 3, i.e. > 45 degrees
     off-vertical and not a 45-degree multiple -- so this fails red against
     the un-reworked shape. Grid-snap perturbation is <=2.5 nm
-    (``_tw_snap_dbu_to_grid``), negligible against multi-um edges, so a
+    (``snap_nm_to_grid``), negligible against multi-um edges, so a
     tight 0.05-degree tolerance cannot be satisfied by grid noise alone."""
     G = _tw_leg_test_g()
     for dive in (True, False):
@@ -4977,7 +4977,7 @@ def test_tw_port_stub_merges_flush_with_arc_as_one_path():
     vertices...), not two independently-drawn rectangles that only touch
     at a corner. Ground truth is built HERE from the same primitives the
     render path itself uses (_tw_edge_point / _tw_oct_walk_pts /
-    _tw_add_wide_path) -- an independent re-derivation, not a copy of the
+    add_wide_path) -- an independent re-derivation, not a copy of the
     implementation -- then compared by exact region XOR against whatever
     the actual SL_ME shapes in the rendered ``pri`` sub-cell cover in that
     same footprint. Fails red under ticket 01/02's split-rectangle design:
@@ -5003,7 +5003,7 @@ def test_tw_port_stub_merges_flush_with_arc_as_one_path():
     arc_pts = port._tw_oct_walk_pts(H[first.ring], BA, first.angle_from, attach,
                                     first.angle_to, nxt_start, first.ccw)
     ideal_cell = port.Cell("ideal", "ideal", {})
-    port._tw_add_wide_path(ideal_cell, port.metal_layer(sl), [tip] + arc_pts, W)
+    port.add_wide_path(ideal_cell, port.metal_layer(sl), [tip] + arc_pts, W)
     ideal_poly = kdb.Polygon(
         [kdb.Point(x, y) for x, y in ideal_cell.shapes[0].points_nm]
     )
@@ -5335,7 +5335,7 @@ def test_tw_n28_ap_body_ring_pitch_guard_equality_and_shortfall():
 # pinned values (46->42, 86->82, 166->162, 326->322). This is the expected,
 # re-measured consequence of retiring the standalone ``_tw_port_lead``: the
 # 4 port stubs (P1/N1 on `pri`, P2/N2 on `sec`) are no longer their own
-# Shape entries -- each is now merged into the SAME ``_tw_add_wide_path``
+# Shape entries -- each is now merged into the SAME ``add_wide_path``
 # call as the ring-0 arc it attaches to (``_tw_render_winding``), so total
 # polygon COUNT drops by exactly 4 (one per port) while the device's own
 # topology/shape is unchanged. Re-verified via a fresh independent build

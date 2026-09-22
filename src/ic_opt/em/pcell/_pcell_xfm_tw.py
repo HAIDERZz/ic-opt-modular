@@ -5,21 +5,15 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 from ic_opt.em.pcell._pcell_core import (
     _EPS,
-    _TW_CARDINAL_UNIT,
-    _TW_FIXED_PORT_ORDER,
-    _TW_MIRROR_ANGLE,
-    _TW_TANGENT_CCW,
     DBU_UM,
     GRID_UM,
     Cell,
-    GroundFixtureConfig,
     PortError,
     ProcessRuleContext,
-    TwArc,
-    TwLeg,
     _effective_min_spacing,
     _metal,
     _metal_below,
@@ -28,16 +22,15 @@ from ic_opt.em.pcell._pcell_core import (
     _min_met_spacing,
     _nm,
     _pin,
-    _tw_add_wide_path,
-    _tw_snap_dbu_to_grid,
     _xfm_order_ports,
-    add_ground_fixture,
+    add_wide_path,
     ceiltogrid,
     chamfer,
     finalize_emx_ports,
     floortogrid,
     max_opening,
     octagon,
+    snap_nm_to_grid,
     vias,
 )
 from ic_opt.em.pcell._pcell_guards import (
@@ -47,6 +40,98 @@ from ic_opt.em.pcell._pcell_guards import (
 from ic_opt.em.pcell._pcell_primitives import (
     _pad_trim_floor,
 )
+from ic_opt.em.pcell.fixture import (
+    GroundFixtureConfig,
+    add_ground_fixture,
+)
+
+# ---------------------------------------------------------------------------
+# xfm_tw (ticket 01: path planner + geometry kernel) -- Type 3 same-layer
+# overlapping-inductor transformer ("twisted"): NR concentric rings shared
+# half-and-half by P (CCW) and S (x-mirror of P, CW), crossing between rings
+# through four classes of X (see .scratch/xfm-tw-twisted/spec.md, approved
+# 2026-07-18). No single .il source models this device.
+#
+# Path planner
+# ------------
+# ``_tw_plan`` is a direct port of the RULE encoded in
+# .scratch/xfm-tw-twisted/gen_topology.py's ``build_p``/``build_s`` (the
+# connectivity authority the spec names) -- boundary slot angles, the
+# odd-boundary "self-crossing" / even-boundary "P x S crossing" dive
+# assignment, and S = x-mirror of P with the even-boundary dive flag
+# flipped -- but expressed in SIZE-DECOUPLED terms (ring index / cardinal
+# angle / desc-or-asc / dive flag) instead of gen_topology's literal
+# coordinates (that script's own G/PSTUB/NSTUB/EXT constants and square-ring
+# ``_walk`` are a diagram-only stand-in; this port's renderer draws real
+# octagon rings sized from OD/W/S and a rule-derived slot half-width, see
+# below). gen_topology.py itself asserts its K=3 output reproduces the
+# user-confirmed v4 replica exactly; ``test_tw_plan_nr3_matches_v4_baseline``
+# pins the same case here as the leg table quoted in the spec.
+#
+# gen_topology's own mirror step (``build_s``) literally mirrors every
+# already-computed (x, y) point and flips the tag ("b"/"c", i.e. dive/
+# same-layer) only on even-boundary legs. Working in (ring, angle) space
+# instead of (x, y), mirroring x negates a point's *signed tangential
+# offset* from its cardinal axis and swaps angle 0<->180 (90/270 fixed) --
+# proved once here and reused by both the planner's ``_tw_mirror_segments``
+# and the renderer's leg/port placement (same tables, same sign rule, so a
+# mirror-derived S is geometrically guaranteed to be the P construction's
+# x-mirror, never a separately-invented topology).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TwLeg:
+    """One boundary-crossing leg: connects ring ``boundary-1`` (outer) and
+    ring ``boundary`` (inner) at cardinal ``angle`` (0/90/180/270). ``dive``
+    True -> SL_ME-1 (via-ended crossover, ``base_xfm_cross`` TOP_ME=SL/
+    BTM_ME=SL-1); False -> same layer (SL_ME, no cuts)."""
+
+    boundary: int
+    direction: str  # "desc" | "asc"
+    angle: int
+    dive: bool
+
+
+@dataclass(frozen=True)
+class TwArc:
+    """Same-layer (SL_ME) ring conductor on ``ring``, walking the octagon
+    perimeter from ``angle_from`` to ``angle_to`` CCW (``ccw=True``) or CW."""
+
+    ring: int
+    angle_from: int
+    angle_to: int
+    ccw: bool
+
+
+_TW_MIRROR_ANGLE = {0: 180, 90: 90, 180: 0, 270: 270}
+
+
+# ---------------------------------------------------------------------------
+# xfm_tw rendering geometry
+#
+# Renderer choice (ticket 01 "renderer 二选一"): rings are drawn as
+# octagon-perimeter WIDE PATHS (explicit centerline waypoints through the
+# family's own 45-degree chamfer vertices, widened via ``kdb.Path``), not by
+# reusing ``base_oct_quad``/``base_oct_half``. Those two primitives are hard
+# -coded for exactly ONE opening per quadrant pair (ind_sym's own single
+# lead/crossunder gap per ring); xfm_tw needs FOUR independent slots per
+# ring (one per cardinal edge, since boundary angles rotate through all of
+# 0/90/180/270 as NR grows -- see spec.md's boundary rule), which does not
+# fit that algebra without forking it per-edge. A direct centerline walk
+# generalizes to any number/position of slots for free, stays visually and
+# electrically consistent with the family's chamfered-octagon convention
+# (same DIV=2+sqrt(2) chamfer ratio as ``base_oct_quad``), and composes
+# cleanly with the explicit two-endpoint legs (``_tw_leg``, below) since
+# both share one abstraction: a signed tangential offset from a ring's
+# cardinal axis.
+# ---------------------------------------------------------------------------
+
+_TW_CARDINAL_UNIT = {0: (1, 0), 90: (0, 1), 180: (-1, 0), 270: (0, -1)}
+_TW_TANGENT_CCW = {0: (0, 1), 90: (-1, 0), 180: (0, -1), 270: (1, 0)}
+
+
+_TW_FIXED_PORT_ORDER = ["P1", "N1", "P2", "N2"]
 
 
 def _tw_mirror_angle(a: int) -> int:
@@ -587,7 +672,7 @@ def _tw_leg(cell: Cell, seg: TwLeg, H: list, W: float, G: float,
         # is contiguous (reference mode and every N28 body today).
         dive_met = _metal_below(sl, process)
         layer = _metal(dive_met, process)
-        _tw_add_wide_path(cell, layer, drawn_pts, W)
+        add_wide_path(cell, layer, drawn_pts, W)
         u_start_ring, u_end_ring, _eg, _lg = _tw_leg_frame(seg, G, mirrored)
         for (px, py), ridx in ((start, u_start_ring), (end, u_end_ring)):
             # Corridor trim (design-region issue 04): the pad on the
@@ -638,7 +723,7 @@ def _tw_leg(cell: Cell, seg: TwLeg, H: list, W: float, G: float,
             cell.inst(via_cell, (ox, oy), "R0")
     else:
         layer = _metal(sl, process)
-        _tw_add_wide_path(cell, layer, drawn_pts, W)
+        add_wide_path(cell, layer, drawn_pts, W)
     return start, end
 
 
@@ -662,7 +747,7 @@ def _tw_stub_zone(
     that axis from ``base`` to ``tip`` exactly (flush with the ring arc's
     own polygon at ``base``, not past it) and the other axis by ``+-W/2``
     about the (constant) coordinate the stub carries along it, matching
-    the W-wide wide-path ``_tw_add_wide_path`` actually draws."""
+    the W-wide wide-path ``add_wide_path`` actually draws."""
     bx, by = base
     tx, ty = tip
     if bx == tx:
@@ -675,11 +760,11 @@ def _tw_stub_zone(
 def _tw_drawn_tip_um(
     base: tuple[float, float], tip: tuple[float, float]
 ) -> tuple[float, float]:
-    """The port tip AS ``_tw_add_wide_path`` ACTUALLY DRAWS IT (port
+    """The port tip AS ``add_wide_path`` ACTUALLY DRAWS IT (port
     contract 2026-09-21), not the unsnapped waypoint ``_tw_render_winding``
     builds its wide-path centerline from: that primitive re-snaps every
     hull vertex of its mitred polygon to the 0.005 um mask grid
-    (``_tw_snap_dbu_to_grid``) after mitring, to fix irrational-trig corner
+    (``snap_nm_to_grid``) after mitring, to fix irrational-trig corner
     noise from the diagonal/45-degree segments elsewhere on the same path
     -- but the blanket per-vertex snap also touches the stub's own flush
     end cap, whose along-stub coordinate is ``LEAD``-derived and so is not
@@ -689,7 +774,7 @@ def _tw_drawn_tip_um(
     (break-the-contract review: ``tw_mitre_snap_vs_port_probe.py``); this
     predicts the SAME snapped vertex instead, so the registered port
     matches what actually lands in the GDS. It does not change
-    ``_tw_add_wide_path``'s own input -- ``_tw_render_winding`` still
+    ``add_wide_path``'s own input -- ``_tw_render_winding`` still
     passes the unsnapped ``tip`` into that primitive's waypoint list
     unchanged, so the drawn polygon itself is untouched (HARD RULE 5);
     this is a parallel prediction of one of its own vertices, not a
@@ -704,8 +789,8 @@ def _tw_drawn_tip_um(
     bx, by = base
     tx, ty = tip
     if bx != tx:
-        return (_tw_snap_dbu_to_grid(_nm(tx)) * DBU_UM, ty)
-    return (tx, _tw_snap_dbu_to_grid(_nm(ty)) * DBU_UM)
+        return (snap_nm_to_grid(_nm(tx)) * DBU_UM, ty)
+    return (tx, snap_nm_to_grid(_nm(ty)) * DBU_UM)
 
 
 def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
@@ -715,7 +800,7 @@ def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
                        start_port_name: str, end_port_name: str,
                        mirrored: bool) -> None:
     """Render one winding's ordered plan (``_tw_plan``'s per-winding segment
-    list) as concrete same-layer ring arcs (``_tw_add_wide_path``) and
+    list) as concrete same-layer ring arcs (``add_wide_path``) and
     explicit-endpoint crossing legs (``_tw_leg``), in GLOBAL coordinates.
     Callable for both P's own plan (``mirrored=False``) and S's already
     mirrored one (``mirrored=True``, see ``_tw_mirror_segments`` and the
@@ -734,7 +819,7 @@ def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
     now gets an extra radially-outward waypoint (the port TIP, ``LEAD`` um
     out along the arc's own cardinal direction at that end) PREPENDED
     (first arc) or APPENDED (last arc) to its own point list, so the port
-    stub is drawn as part of the SAME ``_tw_add_wide_path`` call as the
+    stub is drawn as part of the SAME ``add_wide_path`` call as the
     ring arc it attaches to -- one mitred polygon, not two independently
     -drawn rectangles that only touch at a corner (ticket 01/02's own
     design: a purely tangential arc end and a purely radial stub, two
@@ -802,7 +887,7 @@ def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
                 end_base = end
                 end_tip = (end[0] + LEAD * eux, end[1] + LEAD * euy)
                 pts = [*pts, end_tip]
-            _tw_add_wide_path(cell, layer, pts, W)
+            add_wide_path(cell, layer, pts, W)
             cur = end
         else:
             _start, end = _tw_leg(cell, seg, H, W, G, sl, process, mirrored,
@@ -816,7 +901,7 @@ def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
     # The wide-path polygon above was built from the UNSNAPPED start_tip/
     # end_tip (untouched -- HARD RULE 5, conductor geometry unchanged);
     # the port registers at _tw_drawn_tip_um's prediction of the SAME
-    # vertex after _tw_add_wide_path's own per-vertex 0.005 um grid snap,
+    # vertex after add_wide_path's own per-vertex 0.005 um grid snap,
     # not the unsnapped waypoint, so the point lands on the real drawn
     # conductor even when LEAD's nm value is not a 5nm multiple
     # (port contract 2026-09-21, break-the-contract review). lead_zone_um

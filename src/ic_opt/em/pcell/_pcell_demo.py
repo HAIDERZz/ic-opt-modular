@@ -11,7 +11,6 @@ from ic_opt.em.pcell._pcell_core import (
     _LAYER_COLORS,
     DBU_UM,
     GRID_UM,
-    GroundFixtureConfig,
     ProcessRuleContext,
     _layer_display_name,
     _mode_metadata,
@@ -39,6 +38,9 @@ from ic_opt.em.pcell._pcell_xfm_bs import xfm_bs
 from ic_opt.em.pcell._pcell_xfm_il import xfm_il
 from ic_opt.em.pcell._pcell_xfm_ms import xfm_ms
 from ic_opt.em.pcell._pcell_xfm_tw import xfm_tw
+from ic_opt.em.pcell.fixture import (
+    GroundFixtureConfig,
+)
 
 # ---------------------------------------------------------------------------
 # output generation: GDS + PNG (rendered from the GDS) + coordinates JSON

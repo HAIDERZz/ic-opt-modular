@@ -9,9 +9,7 @@ import pytest
 from ic_opt.em.pcell import generator_plugin as gp
 from ic_opt.em.pcell._pcell_core import (
     Cell,
-    GroundFixtureConfig,
     PortError,
-    _drawing_bbox_um,
     _nm,
     metal_layer,
     process_rule_context,
@@ -24,6 +22,10 @@ from ic_opt.em.pcell._pcell_straight_extension import (
 )
 from ic_opt.em.pcell._pcell_xfm_bs import xfm_bs
 from ic_opt.em.pcell._pcell_xfm_ms import xfm_ms
+from ic_opt.em.pcell.fixture import (
+    GroundFixtureConfig,
+    _drawing_bbox_um,
+)
 from tests.ic_opt.pcell.conftest import requires_profile
 from tests.ic_opt.pcell.test_clean_port_generator_plugin import (
     _ind_sym_config_dict,
