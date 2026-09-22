@@ -56,6 +56,10 @@ Point-level status: `ok`, `constraint_failed`, `metric_failed`, `failed:<stage>`
 - `failed:spectre` with a license message → retry later; `failed:ocean` → check the metric expression in `metrics/probe.ocn`; `metric_failed` → the OCEAN expression returned nil/non-finite (see `ocean_scalars.tsv`).
 - `BudgetExceeded` → raise `budget.max_simulations` in `spec.yaml` (the spec fingerprint changes; previous observations still reuse by point).
 
+## EM devices
+
+A spec with `devices` (pcell generator instances: `generator`, `profile`, `ports`, `fixed`, `variables`), `em` (EMX settings, `process_file` on the simulation host) and `bindings` (which testbench nport instance takes which device's sNp, `terminals` in sNp column order) runs the EM circuit pipeline `pcell → emx → bind_nport → spectre → ocean → extract` with the same recipes; a spec with devices but no testbenches runs `pcell → emx → measure` (device metrics: `quantity` Lp/Qp/Ls/Qs/k at `frequency_hz`, or Lp_lf / Lp_res / Qp_peak / SRF_p / k_lf). Set `IC_OPT_PROFILE_DIRS` to the directory holding the private `<profile>/rule.yaml`. Real EMX runs need the user's approval after `--plan` (site rules: `simultaneous_frequencies: 0`, `threads` × `memory_gb` inside the envelope); EMX results are cached per device by geometry + settings + process file. `ic-opt migrate` converts em-opt's `em_opt_requirement.md`. Failures: `failed:pcell` (unbuildable geometry / DRC), `failed:emx:<device>`, `failed:bind_nport` (instance or terminal count), `failed:measure` (quantity outside the sweep, no resonance for SRF).
+
 ## Remote hosts
 
 `--ssh-profile P` (an OpenSSH alias or `user@host`) runs every simulation on that host; the spec's paths are remote paths, netlists are fetched through SSH, results come back to `.icopt/`. Nothing on the controller reads remote paths directly (see `docs/adr/0001-remote-filesystem-boundary.md`).

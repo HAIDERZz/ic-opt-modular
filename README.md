@@ -17,9 +17,9 @@ uv venv .venv && uv pip install -e vendor/open-box -e ".[dev,report]"
 ic-opt --version                      # ic-opt 0.2.0
 ```
 
-Extras: `report` (SHAP parameter importance), `turbo` (torch + gpytorch for the
-`turbo` strategy; the CPU build is enough), `prf` (OpenBox random-forest
-surrogate, needs swig). Install everything in **one** `uv pip install` so the
+Extras: `em` (klayout for the pcell geometry library), `report` (SHAP parameter
+importance), `turbo` (torch + gpytorch for the `turbo` strategy; the CPU build
+is enough), `prf` (OpenBox random-forest surrogate, needs swig). Install everything in **one** `uv pip install` so the
 resolver keeps numpy < 2, which the vendored OpenBox requires.
 
 Cadence tools come from a csh environment file **on the simulation host**:
@@ -71,10 +71,48 @@ def main(run, *, per_dim=3):
 
 ### Evaluation = engine + stages
 
-`sim.evaluate` is a generic engine (dedup, budget, lock, tb × corner fan-out,
-corner aggregation, retention) running a pipeline of stages. The Spectre
-pipeline is `render → spectre → ocean → extract`; other simulators (EM
-extraction, for instance) are new stages, not new engines.
+`sim.evaluate` is a generic engine (dedup, budget, lock, testbench × corner
+and device fan-out, corner aggregation, point-stage cache, retention) running
+a pipeline of stages. The Spectre pipeline is `render → spectre → ocean →
+extract`; the EM pipelines add stages in front of it, not another engine:
+
+```text
+Point ─pcell─▶ Geometry ─emx (per device, cached)─▶ ┬─ bind_nport ─▶ spectre ─▶ ocean ─▶ extract   (testbench children)
+                                                     └─ measure                                       (device children)
+```
+
+`evaluate` picks the pipeline from the spec: `devices` + `testbenches` →
+EM circuit, `devices` only → EM characterization (`pcell → emx → measure`),
+neither → Spectre. The recipes do not change.
+
+### EM devices
+
+```yaml
+devices:
+  - id: xfmr_in
+    generator: clean_port_xfm_bs          # six clean-port families ship in ic_opt.em.pcell (plugin: builtin:clean_port)
+    profile: n28_1p10m                    # process rule profile: IC_OPT_PROFILE_DIRS=/path/to/profiles (demo_6m ships)
+    ports: [P1, N1, P2, N2]
+    fixed: {primary_outer_diameter_um: 90, primary_metal: "10", secondary_metal: "9", ground_fixture: {...}}
+    variables: {primary_width_um: xfmr_in.wp}    # default: spec variables named <id>.<field>
+em:
+  process_file: /site/tsmcN28.proc      # on the simulation host
+  frequencies: {start_hz: 0, stop_hz: 200e9, step_hz: 1e9}
+  accuracy: standard
+  three_d_metals: [M10, AP]
+  threads: 4                            # --parallel;  memory_gb: 32 -> --max-memory; both bound the worker count
+bindings:
+  - {testbench: lo_xfmr_tb, instance: NPORT0, device: xfmr_in, terminals: [P1, N1, P2, N2]}   # sNp columns follow this order
+metrics:
+  - {name: gain, unit: dB, testbench: lo_xfmr_tb, expression: 'value(db20(getData("gain" ?result "sp")) 4e10)'}
+  - {name: Qp, unit: ratio, device: xfmr_in, quantity: Qp_peak}        # Lp/Qp/Ls/Qs/k at frequency_hz, or L*_lf L*_res Q*_peak SRF_* k_lf
+```
+
+Every EMX run is cached under `.icopt/cache/emx:<device>/` by GDS bytes, port
+order, physics settings and the process file's content hash. `ic-opt migrate`
+converts em-opt's `em_opt_requirement.md` (Geometry Generator / EM Devices /
+EMX Settings / Nport Bindings). The private process profiles never enter the
+repository. Install with `uv pip install -e ".[em]"` (klayout).
 
 ### Site envelope
 
@@ -100,7 +138,8 @@ place and runs the matching recipe, printing the 0.2 command it used.
 
 ```bash
 .venv/bin/python -m pytest -q          # 70 tests, ~12 s, no Cadence needed (fake Spectre host)
-# replay-parity tests against recorded 0.1.10 runs: IC_OPT_RECORDED_RUNS=/path/run1:/path/run2
+# replay parity against recordings: IC_OPT_RECORDED_RUNS (Spectre), IC_OPT_EM_RECORDED_RUNS, IC_OPT_EM_SWEEPS,
+# IC_OPT_EM_OPT_REPO, IC_OPT_EM_DB (EM), plus IC_OPT_PROFILE_DIRS for the private process profiles
 .venv/bin/ruff check src tests
 ```
 

@@ -50,6 +50,10 @@ src/ic_opt/
     engine.py        通用引擎（~170 行）：复用（spec_fp, pipeline_fp, key, tb×corner 集）、预算、锁、并发、聚合、落观测、保留
   stages/
     spectre_chain.py Render → Spectre → Ocean → Extract 四阶段一个文件 + spectre_pipeline()
+    em_chain.py      Pcell（点级）→ Emx（点级，每器件一个，引擎按指纹缓存）→ BindNport（testbench 子链）/ Measure（device 子链）
+                     + em_circuit_pipeline / em_only_pipeline；blocks.evaluate.default_pipeline 按 spec 形状选择
+  em/                EM 库（不认识引擎）：pcell/（六家族几何库，搬自 em-opt）、emx.py（argv/运行/指纹）、touchstone.py（读取/校验）、
+                     measure.py（S→Z、理想 balun、L/Q/k/SRF）、nport.py（网表 nport 绑定）
   suggesters/
     base.py          Proposal、Suggester 协议 propose(spec, history, n, *, seed)、penalized_objective
     turbo.py         TuRBO（从观测表按 origin 标签重建信任域）
@@ -61,6 +65,8 @@ src/ic_opt/
   recipes/
     optimize.py  fix_run.py  coarse_to_fine.py  signoff.py
 ```
+
+T9（2026-09-22）实现与 §4.1 的偏差：子级阶段声明 `unit`（testbench / device），一条流水线可同时含两条子链；`Stage.fingerprint(inp, ctx)` / `save(out, dir)` / `load(dir, inp, ctx)` 由引擎驱动缓存（`.icopt/cache/<stage>/<fp>/`）；`Emx` 每器件一个阶段而不是一个阶段扇出；`Resources` 只用于并发槽（无实时内存监控）；查询库/代理模型（`predict`、`stratum_gp`、`points.from_db`）**暂缓**。
 
 与本文件原契约的偏差（代码为准）：四个 Spectre 阶段合在 `stages/spectre_chain.py`；`sim/spectre_ocean.py` 拆成 `netlist.py` + `ocean.py`；
 `env.executor` 不是 Block，而是 `recipe.load_run()`；单块 CLI 是 `ic-opt call NAME`，不是 `ic-opt NAME`；Stage 没有 `input_type/output_type`
