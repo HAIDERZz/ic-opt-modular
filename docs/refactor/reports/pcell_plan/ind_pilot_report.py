@@ -24,7 +24,7 @@ TOPO = measure.Topology.from_labels([("P1", "N1")], [], ["P1", "N1"])
 
 def log_stats(log: Path) -> dict:
     text = log.read_text(errors="replace")
-    grab = lambda pattern: (float(m.group(1)) if (m := re.search(pattern, text)) else None)  # noqa: E731
+    grab = lambda pattern: (float(m.group(1)) if (m := re.search(pattern, text)) else None)
     return {"wall_s": grab(r"Wall-clock time ([0-9.]+) sec"), "peak_gb": grab(r"Peak memory usage ([0-9.]+) GB"),
             "basis": grab(r"(\d+) basis functions")}
 
