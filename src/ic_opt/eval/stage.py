@@ -42,6 +42,7 @@ class StageContext:
     remote_dir: str                  # executor-side working directory (same path for LocalExecutor)
     unit: str | None = None          # child-level stages only: testbench id or device id
     corner: str | None = None
+    point: Any = None                # the Point being evaluated (child stages of EM pipelines render the circuit from it)
     cache: dict[str, str] = field(default_factory=dict)         # point-level stage name -> "hit" | "miss"
     cshrc: str | None = None
     trace: list[dict[str, Any]] = field(default_factory=list)   # command records for the child

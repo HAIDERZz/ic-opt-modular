@@ -49,15 +49,20 @@ class Render:
         return None
 
     def run(self, point: Point, ctx: StageContext) -> Netlist:
-        try:
-            template = self.deck.template(ctx.unit, ctx.corner)
-        except KeyError as exc:
-            raise StageFailure(f"deck has no template for {ctx.unit}/{ctx.corner}") from exc
-        bundle = self.deck.bundle(ctx.unit)
-        if bundle is not None:   # Maestro's support files (.modelFiles, .designVariables, ...) travel with the deck
-            shutil.copytree(bundle, ctx.workdir / "netlist", dirs_exist_ok=True)
-        circuit = {name: point.params[name] for name in ctx.spec.circuit_variables}
-        return Netlist(netlist_kernel.render(template, circuit))
+        return render_netlist(self.deck, point, ctx)
+
+
+def render_netlist(deck: Deck, point: Point, ctx: StageContext) -> Netlist:
+    """The child's netlist: the deck template for (testbench, corner) with the circuit variables filled in; support files copied alongside."""
+    try:
+        template = deck.template(ctx.unit, ctx.corner)
+    except KeyError as exc:
+        raise StageFailure(f"deck has no template for {ctx.unit}/{ctx.corner}") from exc
+    bundle = deck.bundle(ctx.unit)
+    if bundle is not None:   # Maestro's support files (.modelFiles, .designVariables, ...) travel with the deck
+        shutil.copytree(bundle, ctx.workdir / "netlist", dirs_exist_ok=True)
+    circuit = {name: point.params[name] for name in ctx.spec.circuit_variables}
+    return Netlist(netlist_kernel.render(template, circuit))
 
 
 class Spectre:

@@ -42,10 +42,17 @@ def spec_from_requirement(md_path: str | Path) -> tuple[Spec, dict[str, Any]]:
     corners_section = s.get("Process Corners") or {}
     optimizer = s.get("Optimizer Settings") or {}
     spectre = s["Spectre Settings"]
+    devices, em, bindings = _em_sections(s)
+    simulator = _simulator(spectre)
+    if em is not None and "max_parallel_jobs" in s["EMX Settings"]:   # em-opt: candidate workers = min(batch, EMX jobs, Spectre jobs)
+        simulator["parallel_jobs"] = min(simulator["parallel_jobs"], int(s["EMX Settings"]["max_parallel_jobs"]))
     payload = {
         "project": project["project_name"],
         "description": project.get("description", ""),
         "testbenches": [_testbench(tb) for tb in testbenches],
+        "devices": devices,
+        "em": em,
+        "bindings": bindings,
         "corners": [_corner(c) for c in corners_section.get("corners", [])],
         "corner_policy": {
             "objective": corners_section.get("objective_policy", "worst_case"),
@@ -55,11 +62,71 @@ def spec_from_requirement(md_path: str | Path) -> tuple[Spec, dict[str, Any]]:
         "metrics": [_metric(m) for m in s.get("Metrics", [])],
         "constraints": s.get("Constraints", []),
         "objective": s.get("Objective"),
-        "simulator": _simulator(spectre),
-        "budget": {"max_simulations": _budget(optimizer, len(testbenches), len(corners_section.get("corners", [])))},
+        "simulator": simulator,
+        "budget": {"max_simulations": _budget(optimizer, len(testbenches) + len(devices), len(corners_section.get("corners", [])))},
     }
-    hints = {k: s[k] for k in ("Workflow", "Optimizer Settings", "Fixed Points", "Waveform Exports", "History Warm Start") if k in s}
+    hints = {k: s[k] for k in ("Workflow", "Optimizer Settings", "Fixed Points", "Waveform Exports", "History Warm Start",
+                               "Passive Diagnostic Constraints") if k in s}
     return Spec.model_validate(payload), hints
+
+
+# -- em-opt sections: Geometry Generator / EM Devices / EMX Settings / Nport Bindings ---------------------
+
+_RETIRED = {"clean_port_ind_sym_ct": ("clean_port_ind_sym", {"ct_metal": "7"}, ["P1", "N1", "CT"])}   # em-opt M13: CT is an option of ind_sym
+_CT_LABELS = {"p01": "P1", "p02": "N1", "p03": "CT"}                                                   # the retired generator named its labels p01..
+
+
+def _device(device_id: str, generator: dict[str, Any], prefix: str | None) -> dict[str, Any]:
+    gen_id, extra_fixed, ports = _RETIRED.get(generator["id"], (generator["id"], {}, None))
+    labels = ports or [_CT_LABELS.get(p, p) for p in generator["port_order"]]
+    fields = list(generator.get("parameters", []))
+    return {
+        "id": device_id,
+        "generator": gen_id,
+        "plugin": "builtin:clean_port" if generator["id"] in _RETIRED else generator.get("plugin_module", "builtin:clean_port"),
+        "profile": generator["process_profile"],
+        "ports": labels,
+        "fixed": {**generator.get("fixed_parameters", {}), **extra_fixed},
+        "variables": {f: (f"{prefix}.{f}" if prefix else f) for f in fields},
+    }
+
+
+def _em_settings(emx: dict[str, Any]) -> dict[str, Any]:
+    sweep = emx.get("sweep") or {}
+    extra = list(emx.get("extra_args") or [])
+    resource = {a.split("=", 1)[0]: a.split("=", 1)[1] for a in extra if a.startswith(("--max-memory", "--simultaneous-frequencies", "--parallel"))}
+    grid = {k: emx[k] for k in ("edge_width_um", "max_splits", "thickness_um") if emx.get(k) is not None}
+    memory = emx.get("max_memory_gb") or float(resource.get("--max-memory", "32G").rstrip("G"))
+    simultaneous = emx.get("simultaneous_frequencies")
+    if simultaneous is None and "--simultaneous-frequencies" in resource:
+        simultaneous = int(resource["--simultaneous-frequencies"])
+    return {
+        "binary": emx.get("binary", "emx"), "process_file": emx["process_file"], "mode": emx.get("mode", "quasistatic"),
+        "frequencies": ({"start_hz": sweep.get("start_hz") or 0, "stop_hz": sweep["stop_hz"], "step_hz": sweep.get("step_hz"), "num_steps": sweep.get("num_steps")}
+                        if sweep.get("enabled") else list(emx.get("frequency_hz") or [])),
+        "accuracy": emx.get("accuracy") if emx.get("accuracy") else (grid or None),
+        "three_d_metals": emx.get("three_d_metals") or [], "via_separation_um": emx.get("via_separation_um"),
+        "via_inductance": emx.get("via_inductance") or [], "via_sidewalls": emx.get("via_sidewalls") or [], "modes": emx.get("modes") or [],
+        "s_impedance": emx.get("s_impedance", 50.0), "threads": emx.get("max_cpu_per_job", 4), "memory_gb": memory,
+        "simultaneous_frequencies": simultaneous, "verbose": emx.get("verbose"),
+        "extra_args": [a for a in extra if a.split("=", 1)[0] not in resource],
+    }
+
+
+def _em_sections(s: dict[str, Any]) -> tuple[list[dict], dict | None, list[dict]]:
+    if "EM Devices" in s:
+        devices = [_device(d["id"], d["geometry"]["generator"], d.get("parameter_prefix") or d["id"]) for d in s["EM Devices"]["devices"]]
+    elif "Geometry Generator" in s:
+        devices = [_device("device", s["Geometry Generator"]["generator"], None)]
+    else:
+        return [], None, []
+    em = _em_settings(s["EMX Settings"]) if "EMX Settings" in s else None
+    ports = {d["id"]: d["ports"] for d in devices}
+    # em-opt ordered the sNp columns by the EMX port *names* (p01..); its bindings' terminal_order are circuit node names,
+    # so the semantic terminal order is the device's port labels in that column order.
+    bindings = [{"testbench": b["testbench"], "instance": b["instance"], "device": b.get("device_id") or "device",
+                 "terminals": ports[b.get("device_id") or "device"]} for b in (s.get("Nport Bindings") or {}).get("nport_bindings", [])]
+    return devices, em, bindings
 
 
 def spec_from_config_dir(config_dir: str | Path) -> Spec:
@@ -173,5 +240,7 @@ def recipe_note(hints: dict[str, Any], new_project: Path) -> str:
              f"    ic-opt run {recipe} {new_project} {args}"]
     if (hints.get("History Warm Start") or {}).get("enabled"):
         lines += ["", "History warm start: pass those observations as `initial=` in a recipe (see coarse_to_fine.py)."]
+    if hints.get("Passive Diagnostic Constraints"):
+        lines += ["", "Passive Diagnostic Constraints were dropped: em-opt never evaluated them; declare device metrics (quantity + frequency_hz) and constraints instead."]
     lines += ["", "Preview first: add `--plan`. Remote: add `--ssh-profile PROFILE`."]
     return "\n".join(lines) + "\n"

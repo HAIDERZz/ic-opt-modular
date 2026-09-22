@@ -16,12 +16,16 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from ic_opt import space
+from ic_opt.deck import Deck
 from ic_opt.em import emx as emx_kernel
+from ic_opt.em import nport as nport_kernel
 from ic_opt.em.pcell import get_generator
 from ic_opt.em.pcell.base import EmxPort, read_emx_ports
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
+from ic_opt.sim.ocean import WaveformExport
 from ic_opt.space import Point
 from ic_opt.spec import Device, Spec, VariableKind
+from ic_opt.stages.spectre_chain import Extract, Netlist, Ocean, Spectre, render_netlist
 
 
 @dataclass
@@ -142,6 +146,7 @@ class Emx:
 
     name = "emx"
     level = "point"
+    runs = 1                            # one EMX simulation per point (unless the engine's cache serves it)
 
     def __init__(self, spec: Spec, device: str) -> None:
         if spec.em is None:
@@ -188,4 +193,53 @@ class Emx:
 
 def emx_stages(spec: Spec) -> list[Emx]:
     return [Emx(spec, d.id) for d in spec.devices]
+
+
+class BindNport:
+    """Testbench child: render the circuit, drop each bound device's sNp under ``netlist/models/`` and point the nport instance at it."""
+
+    name = "bind_nport"
+    level = "child"
+    unit = "testbench"
+    resources = Resources()
+
+    def __init__(self, deck: Deck) -> None:
+        self.deck = deck
+
+    def fingerprint(self, geometry: Geometry, ctx: StageContext) -> str | None:
+        return None
+
+    def run(self, geometry: Geometry, ctx: StageContext) -> Netlist:
+        netlist = render_netlist(self.deck, ctx.point, ctx)
+        text = netlist.text
+        models = ctx.workdir / "netlist" / "models"
+        for binding in [b for b in ctx.spec.bindings if b.testbench == ctx.unit]:
+            sp = geometry.sparams.get(binding.device)
+            if sp is None:
+                raise StageFailure(f"{binding.instance}: device {binding.device} has no S-parameters")
+            if sp.port_labels != list(binding.terminals):        # by construction (snp_order) unless the spec changed under the cache
+                raise StageFailure(f"{binding.instance}: sNp columns are {sp.port_labels} but the instance's terminals are {binding.terminals}")
+            models.mkdir(parents=True, exist_ok=True)
+            target = models / f"{binding.device}{sp.path.suffix}"
+            target.write_bytes(sp.path.read_bytes())
+            try:
+                patched = nport_kernel.patch(text, instance=binding.instance, replacement=f"models/{target.name}", n_ports=len(binding.terminals))
+            except nport_kernel.NportError as exc:
+                raise StageFailure(f"{ctx.unit}: {exc}") from exc
+            text = patched.text
+            ctx.trace.append({"label": f"bind:{binding.instance}", "device": binding.device, "signal_nodes": patched.signal_nodes,
+                              "terminals": list(binding.terminals), "replaced": patched.original_file})
+        return Netlist(text)
+
+
+def em_circuit_pipeline(spec: Spec, deck: Deck, *, waveforms: list[WaveformExport] = ()) -> list:
+    """pcell -> emx per device -> bind_nport -> spectre -> ocean -> extract (the device chain is added by T9.3's measure)."""
+    sim = spec.simulator
+    return [Pcell(spec), *emx_stages(spec), BindNport(deck), Spectre(preset=sim.preset, threads=sim.threads_per_run, timeout_s=sim.timeout_s),
+            Ocean(timeout_s=sim.timeout_s, waveforms=list(waveforms)), Extract()]
+
+
+def em_only_pipeline(spec: Spec) -> list:
+    """pcell -> emx per device -> measure (device chain); the measure stage lands with T9.3."""
+    raise NotImplementedError("em_only pipeline needs the measure stage (T9.3)")
 

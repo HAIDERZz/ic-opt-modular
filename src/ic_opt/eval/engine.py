@@ -66,6 +66,16 @@ def children_of(spec: Spec, pipeline: list[Stage], corner_ids: list[str | None])
     return children
 
 
+def point_runs(pipeline: list[Stage]) -> int:
+    """Simulations a point-level stage costs when it runs (``runs`` attribute; EMX declares 1)."""
+    return sum(getattr(s, "runs", 0) for s in pipeline if s.level == "point")
+
+
+def simulations(observation: Observation) -> int:
+    """What an observation cost: its children plus every point-level stage that ran instead of hitting the cache."""
+    return len(observation.children) + sum(1 for v in observation.cache.values() if v == "miss")
+
+
 def workers_for(spec: Spec, pipeline: list[Stage], parallel_jobs: int | None, site: Site | None) -> int:
     """Concurrent points: the requested parallelism, capped by what the site allows for the heaviest stage."""
     wanted = max(1, parallel_jobs or spec.simulator.parallel_jobs)
@@ -99,7 +109,7 @@ def run(
         raise ValueError("pipeline produces no children for this spec (no testbenches for its testbench chain, no devices for its device chain)")
     spec_fp, pipe_fp = spec.fingerprint(), pipeline_fingerprint(pipeline)
     children_wanted = {c.key for c in children}
-    sims_per_point = len(children)
+    sims_per_point = len(children) + point_runs(pipeline)         # worst case: every cacheable point stage misses
     workers = workers_for(spec, pipeline, parallel_jobs, site)
 
     with store.lock():
@@ -107,7 +117,7 @@ def run(
         reusable = {o.key: o for o in existing
                     if o.spec_fingerprint == spec_fp and o.pipeline_fingerprint == pipe_fp and o.status == "ok"
                     and set(o.children) == children_wanted}
-        used = sum(len(o.children) for o in existing)
+        used = sum(simulations(o) for o in existing)
         next_index = len(existing) + 1
         jobs: list[Job] = []
         for point in points:
@@ -150,7 +160,7 @@ def run(
 
     store.log_step(
         step, "ok", points=len(points), new=sum(not j.reused for j in jobs), reused=sum(j.reused for j in jobs),
-        simulations=sum(len(j.observation.children) for j in jobs if not j.reused), workers=workers,
+        simulations=sum(simulations(j.observation) for j in jobs if not j.reused), workers=workers,
         seconds=round(sum(j.seconds for j in jobs), 1),
     )
     return Observations(j.observation for j in jobs)
@@ -192,7 +202,7 @@ def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child]
     point_dir = store.root / "sims" / job.obs_id
     point_dir.mkdir(parents=True, exist_ok=True)
     ctx = StageContext(spec=spec, executor=executor, store=store, obs_id=job.obs_id, workdir=point_dir,
-                       remote_dir=executor.scratch(job.obs_id), cshrc=cshrc)
+                       remote_dir=executor.scratch(job.obs_id), cshrc=cshrc, point=job.point)
     try:
         point_output = _run_stages(point_stages, job.point, ctx)
     except StageFailure as failure:
@@ -205,7 +215,7 @@ def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child]
         workdir = store.sim_dir(job.obs_id, child.unit, child.corner)
         cctx = StageContext(spec=spec, executor=executor, store=store, obs_id=job.obs_id, workdir=workdir,
                             remote_dir=executor.scratch(f"{job.obs_id}/{child.key}"),
-                            unit=child.unit, corner=child.corner, cshrc=cshrc)
+                            unit=child.unit, corner=child.corner, cshrc=cshrc, point=job.point)
         started = time.monotonic()
         try:
             result = _run_stages(chain, point_output, cctx)

@@ -79,7 +79,7 @@ class FakeSpectreExecutor(LocalExecutor):
             s_file = next(a for a in argv if a.startswith("--s-file=")).split("=", 1)[1]
             z0 = float(next(a for a in argv if a.startswith("--s-impedance=")).split("=", 1)[1])
             n_ports = sum(a == "-p" for a in argv)
-            (work / s_file).write_text(self.snp_fn(argv, n_ports, z0))
+            (work / s_file).write_text(_call(self.snp_fn, argv, n_ports, z0, cwd=str(work)))
             (work / "emx.log").write_text("fake emx\n")
             return CommandResult(0, "", "", argv, 0.01)
         if argv[0] not in ("spectre", "ocean"):
@@ -99,13 +99,21 @@ class FakeSpectreExecutor(LocalExecutor):
                 return CommandResult(2, "", "ocean: replay failed", argv, 0.01)
             params = _params_from_netlist((work / "netlist" / "input.scs").read_text())
             rows = ["metric\tvalue\tunit\tstatus\tmessage"]
-            for name, value in self.metric_fn(params, tb, corner).items():
+            for name, value in _call(self.metric_fn, params, tb, corner, cwd=str(work)).items():
                 rows.append(f"{name}\t{value!r}\tx\tpass\t" if value is not None else f"{name}\t\tx\tfail\tnon_scalar")
             (work / "metrics" / "ocean_scalars.tsv").write_text("\n".join(rows) + "\n")
             for line in (work / "metrics" / "probe.ocn").read_text().splitlines():
                 if line.startswith("; waveform export: ") and (name := line.split(": ", 1)[1]) not in self.nil_waveforms:
                     (work / "metrics" / "waveforms" / f"{name}.csv").write_text("freq,value\n1e9,1.0\n2e9,1.5\n")
         return CommandResult(0, "", "", argv, 0.01)
+
+
+def _call(fn, *args, cwd: str):
+    """Call a test hook with ``cwd`` only when it takes it (replay hooks do; the simple metric functions do not)."""
+    import inspect
+
+    positional = [p for p in inspect.signature(fn).parameters.values() if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+    return fn(*args, cwd) if len(positional) > len(args) else fn(*args)
 
 
 def _tb_corner(child_dir: Path) -> tuple[str, str | None]:

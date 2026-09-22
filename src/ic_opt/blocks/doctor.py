@@ -93,7 +93,9 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
                   f"{spec.em.threads} threads / {spec.em.memory_gb:g} GB per EMX → {slots} concurrent within {site.max_threads} threads / {site.max_memory_gb:g} GB"))
 
     if store is not None:
-        used = sum(len(o.children) for o in store.observations())
+        from ic_opt.eval.engine import simulations
+
+        used = sum(simulations(o) for o in store.observations())
         add(Check("budget", used < spec.budget.max_simulations, f"{used}/{spec.budget.max_simulations} simulations used"))
         store.log_step("doctor", "ok" if report.ok else "fail", checks=[(c.name, c.ok) for c in report.checks])
     return report

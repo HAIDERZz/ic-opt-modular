@@ -21,7 +21,6 @@ from ic_opt.sim.ocean import WaveformExport
 from ic_opt.site import Site
 from ic_opt.space import Point
 from ic_opt.spec import Spec
-from ic_opt.stages import spectre_pipeline
 from ic_opt.store import RunStore
 
 
@@ -86,13 +85,13 @@ def optimize(
     **strategy_kwargs,
 ) -> Observations:
     """Run suggest ⇄ evaluate until this step holds ``budget`` observations. Re-running continues."""
-    from ic_opt.blocks.evaluate import plan_shape
+    from ic_opt.blocks.evaluate import default_pipeline, plan_shape
     from ic_opt.recipe import PLAN_MODE
 
     fp = spec.fingerprint()
     if PLAN_MODE.get():
         done = len(Observations(o for o in store.observations() if o.spec_fingerprint == fp).by_step(step))
-        shape = pipeline if pipeline is not None else spectre_pipeline(spec, deck or Deck(), waveforms=list(waveforms))
+        shape = pipeline if pipeline is not None else default_pipeline(spec, deck or Deck(), waveforms)
         print(f"[plan] opt.optimize step={step!r} strategy={strategy}: {done}/{budget} points done, "
               f"up to {max(0, budget - done)} more in batches of {batch} × "
               f"{plan_shape(spec, shape, corners, executor, parallel_jobs, site)} (spec budget {spec.budget.max_simulations})")
