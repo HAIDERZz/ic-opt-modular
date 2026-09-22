@@ -320,7 +320,7 @@ class CleanPortXfmBsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     secondary_opening_um: float = Field(gt=0)
     primary_lead_length_um: float = Field(gt=0)
     secondary_lead_length_um: float = Field(gt=0)
-    center_spacing_um: float = Field(ge=0)
+    center_spacing_um: float = Field(ge=0, multiple_of=0.01, allow_inf_nan=False)      # half of it is a coordinate: keep it on the grid (D9)
     primary_metal: str = Field(min_length=1)
     secondary_metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
@@ -395,7 +395,7 @@ class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     multi_lead_length_um: float = Field(gt=0)
     multi_turns: int = Field(ge=2)
     multi_spacing_um: float = Field(gt=0)
-    center_spacing_um: float = Field(ge=0)
+    center_spacing_um: float = Field(ge=0, multiple_of=0.01, allow_inf_nan=False)      # half of it is a coordinate: keep it on the grid (D9)
     single_metal: str = Field(min_length=1)
     multi_metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
@@ -472,7 +472,7 @@ class CleanPortXfmBalunConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBas
     secondary_lead_length_um: float = Field(gt=0)
     primary_turns: int = Field(ge=1)
     secondary_turns: int = Field(ge=1)
-    center_spacing_um: float = Field(ge=0)
+    center_spacing_um: float = Field(ge=0, multiple_of=0.01, allow_inf_nan=False)      # half of it is a coordinate: keep it on the grid (D9)
     balun_metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
     ct_secondary_metal: str | None = None

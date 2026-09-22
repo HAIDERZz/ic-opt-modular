@@ -981,11 +981,12 @@ def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
     local-ref pin label on the M1 pin layer at each port's ``(x, y)``, then set
     that port's ``reference`` to its G-pin name. Stub width per port comes from
     ``fixture.stub_width_by_port_um`` (keyed by port name) with fallback to the
-    global ``stub_width_um``. Each port is assigned to its nearest body edge,
-    so left/right ports get horizontal stubs while top/bottom ports (xfm_tw)
-    get vertical stubs and the ring remains outside the body envelope. Fails
-    closed with ``PortError`` when the cell has no ``emx_ports``, M1 has no pin
-    layer, or the per-port map names a port that does not exist on the cell."""
+    global ``stub_width_um``. Each port's stub continues its lead outward --
+    the side is the port's own orientation (M1.3), so left/right ports get
+    horizontal stubs while top/bottom ports (xfm_tw) get vertical stubs and
+    the ring remains outside the body envelope. Fails closed with
+    ``PortError`` when the cell has no ``emx_ports``, M1 has no pin layer, or
+    the per-port map names a port that does not exist on the cell."""
     if not cell.emx_ports:
         raise PortError("ground fixture: cell has no emx_ports")
     if fixture.stub_width_by_port_um:
@@ -1002,22 +1003,13 @@ def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
     ports = cell.emx_ports
 
     def xy_um(p: dict) -> tuple[float, float]:
-        # (port contract 2026-09-21) the classification below and every
-        # stub/ring vertex it drives read the authoritative integer nm
-        # point directly -- never a re-derived float.
+        # (port contract 2026-09-21) every stub/ring vertex reads the
+        # authoritative integer nm point directly -- never a re-derived float.
         gx, gy = p["point_nm"]
         return gx * DBU_UM, gy * DBU_UM
 
-    distances_by_port = []
-    for p in ports:
-        x, y = xy_um(p)
-        distances = {
-            "left": abs(x - xmin),
-            "right": abs(xmax - x),
-            "bottom": abs(y - ymin),
-            "top": abs(ymax - y),
-        }
-        distances_by_port.append((p, min(distances, key=distances.get)))
+    side_of = {0: "right", 180: "left", 90: "top", 270: "bottom"}
+    distances_by_port = [(p, side_of[p["orientation_deg"]]) for p in ports]
     left_x = [xy_um(p)[0] for p, side in distances_by_port if side == "left"]
     right_x = [xy_um(p)[0] for p, side in distances_by_port if side == "right"]
     bottom_y = [xy_um(p)[1] for p, side in distances_by_port if side == "bottom"]
