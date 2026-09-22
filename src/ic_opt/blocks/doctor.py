@@ -88,6 +88,7 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
         emx = executor.run("which emx", cshrc=cshrc, timeout_s=120)
         add(Check("emx", emx.ok, emx.stdout.strip() if emx.ok else "emx not on PATH"))
         add(Check("em:process_file", executor.exists(spec.em.process_file), spec.em.process_file))
+        add(_stack_check(spec, executor, cshrc))
         slots = site.slots(spec.em.threads, spec.em.memory_gb)
         add(Check("em:envelope", spec.em.threads <= site.max_threads and spec.em.memory_gb <= site.max_memory_gb,
                   f"{spec.em.threads} threads / {spec.em.memory_gb:g} GB per EMX → {slots} concurrent within {site.max_threads} threads / {site.max_memory_gb:g} GB"))
@@ -99,6 +100,26 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
         add(Check("budget", used < spec.budget.max_simulations, f"{used}/{spec.budget.max_simulations} simulations used"))
         store.log_step("doctor", "ok" if report.ok else "fail", checks=[(c.name, c.ok) for c in report.checks])
     return report
+
+
+def _stack_check(spec: Spec, executor: Executor, cshrc: str | None) -> Check:
+    """Every device profile's conductor thicknesses agree with the EMX .proc on the executor host (M2.3)."""
+    from ic_opt.em.pcell.proc_file import conductor_thicknesses, stack_mismatches
+    from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
+
+    text = executor.run(f"cat {shlex.quote(spec.em.process_file)}", cshrc=cshrc, timeout_s=120)
+    if not text.ok:
+        return Check("em:stack", False, f"cannot read {spec.em.process_file} on {executor.host}")
+    proc = conductor_thicknesses(text.stdout)
+    problems = []
+    for profile in sorted({d.profile for d in spec.devices}):
+        try:
+            stack = get_geometry_rule_adapter(profile).stack_summary()["conductors"]
+        except (ValueError, OSError) as exc:
+            problems.append(f"{profile}: {str(exc).splitlines()[0]}")
+            continue
+        problems += [f"{profile} {m}" for m in stack_mismatches(stack, proc)]
+    return Check("em:stack", not problems, "; ".join(problems) if problems else f"{len(proc)} .proc conductors agree with every device profile")
 
 
 def _device_check(device) -> Check:

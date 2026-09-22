@@ -172,6 +172,7 @@ def test_doctor_checks_the_em_sections(tmp_path):
     assert names["device:ind"].ok and names["device:ind"].detail == "clean_port_ind_sym on demo_6m"
     assert names["emx"].ok and names["emx"].detail == "/cad/bin/emx"
     assert not names["em:process_file"].ok                       # /site/n28.proc does not exist on the fake host
+    assert names["em:stack"].ok and names["em:stack"].detail == "6 .proc conductors agree with every device profile"
     assert names["em:envelope"].ok and names["em:envelope"].detail.startswith("4 threads / 64 GB per EMX → 2 concurrent")
 
     missing = spec.model_copy(update={"devices": [spec.devices[0].model_copy(update={"profile": "nope"})]})

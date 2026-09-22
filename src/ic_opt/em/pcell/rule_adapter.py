@@ -64,6 +64,13 @@ class ViaArrayPlan:
 
 
 @dataclass(frozen=True)
+class Stack:
+    name: str
+    emx_name: str
+    thickness_um: float
+
+
+@dataclass(frozen=True)
 class GeometryRuleAdapter:
     profile: ProcessRuleProfile
 
@@ -212,6 +219,21 @@ class GeometryRuleAdapter:
             "modeled": tuple(coverage.modeled),
             "not_yet_modeled": tuple(coverage.not_yet_modeled),
         }
+
+    def stack(self, metal: str) -> Stack:
+        """The conductor's 3D data the profile's ``emx_stack`` carries (M2.3): its thickness and the EMX name it has in the .proc."""
+        conductor = resolve_conductor(self.profile, metal)
+        rule = self.profile.emx_stack.conductors.get(conductor.name)
+        if rule is None:
+            raise ValueError(f"{self.profile.process_id}: emx_stack has no thickness for conductor {conductor.name}")
+        return Stack(name=conductor.name, emx_name=conductor.emx_name, thickness_um=rule.thickness_um)
+
+    def stack_summary(self) -> dict:
+        """``{"geometry_scaling", "conductors": {emx_name: thickness_um}, "via_models": {via emx_name: effective size}}`` -- what a manifest records."""
+        stack = self.profile.emx_stack
+        conductors = {c.emx_name: stack.conductors[name].thickness_um for name, c in self.profile.layer_catalog.conductors.items() if name in stack.conductors}
+        vias = {self.profile.layer_catalog.vias[m.via].emx_name: m.emx_effective_size_um for m in stack.via_models.values() if m.via in self.profile.layer_catalog.vias}
+        return {"geometry_scaling": stack.geometry_scaling, "conductors": conductors, "via_models": vias}
 
     def manifest(self) -> dict:
         coverage = self.profile.coverage

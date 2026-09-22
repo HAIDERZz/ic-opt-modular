@@ -36,6 +36,7 @@ from ic_opt.em.pcell.base import (
 )
 from ic_opt.em.pcell.path_safety import validate_output_file_name
 from ic_opt.em.pcell.pgs import CleanPortPgsConfig, add_pgs
+from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
 
 _PORT_NAME_RE = re.compile(r"[A-Za-z0-9_]+")
 
@@ -804,8 +805,6 @@ def audit_via_landing(gds_path: Path, process_profile: str) -> dict:
     """
     import klayout.db as kdb
 
-    from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
-
     adapter = get_geometry_rule_adapter(process_profile)
     ly = kdb.Layout()
     ly.read(str(gds_path))
@@ -880,8 +879,6 @@ def audit_port_lattice(gds_path: Path, ports: list[dict], process_profile: str) 
     ``label_xy_um`` can never diverge).
     """
     import klayout.db as kdb
-
-    from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
 
     adapter = get_geometry_rule_adapter(process_profile)
     ly = kdb.Layout()
@@ -996,6 +993,7 @@ def _write_geometry_outputs(
         "generator_id": generator_id,
         "geometry_version": GEOMETRY_VERSION,
         "geometry": {"config": config.model_dump(mode="json")},
+        "stack": get_geometry_rule_adapter(config.process_profile).stack_summary(),      # the 3D data this geometry assumes (M2.3)
         "ports": [_manifest_port(port) for port in cell.emx_ports],
         "suggested_emx_ports": port_lines,
         "suggested_emx_ports_note": (

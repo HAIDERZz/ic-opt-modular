@@ -36,6 +36,19 @@ def make_spec(**overrides) -> Spec:
     return Spec.model_validate(minimal_spec(**overrides))
 
 
+# An EMX .proc in demo_6m's stack: only the conductor lines matter to the stack check (thicknesses as in
+# ic_opt/em/pcell/profiles/demo_6m/rule.yaml; a real .proc carries sheet resistances and vias too).
+DEMO_PROC = """assume microns
+conductor 0.2 m1_rsh M1 bias 0
+conductor 0.2 m2_rsh M2 bias 0
+conductor 0.2 m3_rsh M3 bias 0
+conductor 0.2 m4_rsh M4 bias 0
+conductor 0.9 m5_rsh M5 bias 0
+conductor 3.0 m6_rsh M6 bias 0
+via M1 M2 { 0.1 => 0.12, 1e6 S/m } VIA1
+"""
+
+
 class FakeSpectreExecutor(LocalExecutor):
     """A LocalExecutor whose ``run`` fakes ``spectre`` and ``ocean``.
 
@@ -70,6 +83,8 @@ class FakeSpectreExecutor(LocalExecutor):
             return CommandResult(0, "spectre version 23.1.0.242.isr4 64bit\n", "", argv, 0.01)
         if argv[0] == "sha256sum":                   # the emx stage hashes the process file on the host
             return CommandResult(0, f"{'ab' * 32}  {argv[1]}\n", "", argv, 0.01)
+        if argv[0] == "cat" and argv[1].endswith(".proc"):    # the doctor reads the EMX process file: the fake host serves demo_6m's stack
+            return CommandResult(0, DEMO_PROC, "", argv, 0.01)
         if argv[0] == "emx":
             work = Path(cwd)
             device = work.name

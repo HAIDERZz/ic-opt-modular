@@ -31,6 +31,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from ic_opt.em.pcell.proc_file import conductor_thicknesses, stack_mismatches
 from ic_opt.em.pcell.process_rules import (
     PROFILE_DIRS_ENV_VAR,
     ProcessRuleProfile,
@@ -214,10 +215,17 @@ def _proc_stage(
                 for name in missing
             ],
         )
+    # M2.3: names agreeing is not the stack agreeing -- compare the conductor thicknesses numerically
+    from ic_opt.em.pcell.rule_adapter import GeometryRuleAdapter
+
+    stack = GeometryRuleAdapter(profile).stack_summary()["conductors"]
+    mismatches = stack_mismatches(stack, conductor_thicknesses(text))
+    if mismatches:
+        return StageResult("emx-names-vs-proc", "FAIL", [f"emx_stack vs {proc_path.name}: {m}" for m in mismatches])
     return StageResult(
         "emx-names-vs-proc",
         "PASS",
-        [f"{len(wanted)} emx_names found in {proc_path.name}"],
+        [f"{len(wanted)} emx_names found in {proc_path.name}; {len(stack)} conductor thicknesses agree"],
     )
 
 
