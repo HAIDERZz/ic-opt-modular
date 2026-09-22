@@ -90,7 +90,7 @@ def fingerprint(em: EmSettings, *, gds_sha256: str, ports: list[EmxPort], proc_s
 def run(em: EmSettings, ctx: StageContext, *, device: str, gds_path: Path, top_cell: str, ports: list[EmxPort]) -> Path:
     """Upload the GDS, run EMX in ``<remote>/em/<device>/`` with relative file names, bring back the sNp and log; return the local sNp."""
     local = ctx.workdir / "em" / device
-    remote = f"{ctx.remote_dir}/em/{device}"
+    remote = ctx.executor.scratch(f"{ctx.obs_id}/em/{device}")      # created on the host (scp cannot make directories)
     s_file = f"{device}.s{len(ports)}p"
     ctx.executor.put(gds_path, f"{remote}/{gds_path.name}")
     command = " ".join(shlex.quote(a) for a in argv(em, gds_file=gds_path.name, top_cell=top_cell, s_file=s_file, log_file="emx.log", ports=ports))
