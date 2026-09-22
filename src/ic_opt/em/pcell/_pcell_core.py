@@ -329,6 +329,8 @@ _ORIENTS = {
     "MX": lambda x, y: (x, -y),
     "MY": lambda x, y: (-x, y),
 }
+# the same six maps as klayout transformations (rotation code, mirror): exact on integer coordinates
+_KDB_ORIENTS = {"R0": (0, False), "R90": (1, False), "R180": (2, False), "R270": (3, False), "MX": (0, True), "MY": (2, True)}
 
 
 def transform_point(point_nm: tuple[int, int], orient: str) -> tuple[int, int]:
@@ -476,10 +478,15 @@ class Cell:
     # add_emx_port appended here directly and every family hand-rolled its
     # own transplant loop to carry a child cell's ports upward.
     emx_ports: list[dict] = field(default_factory=list)
+    _regions: dict = field(default_factory=dict, repr=False, compare=False)     # ``region`` memo, dropped on every mutation
+
+    def add_shape(self, shape: Shape) -> None:
+        """Append an already-snapped shape (the seam heal and the PGS build produce those)."""
+        self.shapes.append(shape)
+        self._regions.clear()
 
     def add_polygon(self, layer: tuple[int, int], points_um) -> None:
-        pts = [(_nm(x), _nm(y)) for x, y in points_um]
-        self.shapes.append(Shape(layer, pts))
+        self.add_shape(Shape(layer, [(_nm(x), _nm(y)) for x, y in points_um]))
 
     def add_rect(self, layer, x1_um, y1_um, x2_um, y2_um) -> None:
         self.add_polygon(
@@ -542,6 +549,29 @@ class Cell:
         if orient not in _ORIENTS:
             raise PortError(f"unsupported orientation {orient!r}")
         self.insts.append(Inst(child, (_nm(origin_um[0]), _nm(origin_um[1])), orient))
+        self._regions.clear()
+
+    def region(self, layer: tuple[int, int]) -> kdb.Region:
+        """Every polygon on ``layer`` under this cell, in its own frame, as one (unmerged) klayout Region.
+
+        The same integer transform chain ``_flat`` applies, done by klayout
+        (``Region.transformed`` with the six axis-preserving orientations is
+        exact on integer coordinates) and memoized per cell, so a child that
+        several parents or candidates share is flattened once (M1.5)."""
+        cached = self._regions.get(layer)
+        if cached is not None:
+            return cached
+        region = kdb.Region()
+        for shape in self.shapes:
+            if shape.layer == layer and shape.points_nm:
+                region.insert(kdb.Polygon([kdb.Point(x, y) for x, y in shape.points_nm]))
+        for inst in self.insts:
+            child = inst.cell.region(layer)
+            if not child.is_empty():
+                rot, mirror = _KDB_ORIENTS[inst.orient]
+                region.insert(child.transformed(kdb.Trans(rot, mirror, inst.origin_nm[0], inst.origin_nm[1])))
+        self._regions[layer] = region
+        return region
 
     def flat_shapes(self):
         """Yield (layer, points_nm) with all instance transforms applied."""
@@ -1302,18 +1332,8 @@ def _ms_layer_regions(
     metals: tuple[int, ...],
     process: ProcessRuleContext,
 ) -> list[kdb.Region]:
-    """Collect several metal regions in one hierarchy traversal."""
-    drawings = {
-        _metal(metal, process): index for index, metal in enumerate(metals)
-    }
-    regions = [kdb.Region() for _ in metals]
-    for layer, points in cell.flat_shapes():
-        index = drawings.get(layer)
-        if index is not None and points:
-            regions[index].insert(
-                kdb.Polygon([kdb.Point(x, y) for x, y in points])
-            )
-    return [region.merged() for region in regions]
+    """The merged region of each metal under ``cell`` (``Cell.region``, memoized per sub-cell)."""
+    return [cell.region(_metal(metal, process)).merged() for metal in metals]
 
 
 # ---------------------------------------------------------------------------

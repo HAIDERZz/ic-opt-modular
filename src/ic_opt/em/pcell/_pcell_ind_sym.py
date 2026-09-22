@@ -669,6 +669,21 @@ def _compact_two_turn_via_length(
     )
 
 
+def _memoized(memo: dict | None):
+    """``build(fn, **kw)``: ``fn(**kw)``, cached in ``memo`` by the call (the process by its profile id)."""
+    if memo is None:
+        return lambda fn, **kw: fn(**kw)
+
+    def build(fn, **kw):
+        key = (fn.__name__, tuple(sorted((k, v.profile_id if k == "process" else v) for k, v in kw.items())))
+        cell = memo.get(key)
+        if cell is None:
+            cell = memo[key] = fn(**kw)
+        return cell
+
+    return build
+
+
 def _compact_two_turn_candidate(
     *,
     OD: float,
@@ -684,8 +699,15 @@ def _compact_two_turn_candidate(
     process: ProcessRuleContext,
     render_via_cuts: bool = True,
     semantic_port_roles: bool = True,
+    memo: dict | None = None,
 ) -> Cell:
     """Render one compact two-turn MS winding candidate.
+
+    ``memo`` (M1.5, the lane search only): rings and the lead pair are pure
+    functions of their parameters, and most of them repeat from candidate to
+    candidate, so the search reuses the Cell objects (and their memoized
+    ``region``) instead of rebuilding and re-flattening them thousands of
+    times; the final render passes no memo and owns fresh children.
 
     The two exact straight-45-straight bridge legs use the coil plane and
     its actual adjacent lower metal. Their endpoint lanes are equal-and-opposite
@@ -737,47 +759,23 @@ def _compact_two_turn_candidate(
             "process": process.profile_id,
         },
     )
+    build = _memoized(memo)
     cell.inst(
-        base_oct(
-            OD=OD,
-            W=W,
-            LOP=outer_opening,
-            ROP=OPENING,
-            MET=top_met,
-            process=process,
-        ),
+        build(base_oct, OD=OD, W=W, LOP=outer_opening, ROP=OPENING, MET=top_met, process=process),
         (0.0, 0.0),
         "R0",
     )
     cell.inst(
-        base_oct(
-            OD=inner_od,
-            W=W,
-            LOP=inner_opening,
-            ROP=0.0,
-            MET=top_met,
-            process=process,
-            chamfer_bias=cb_delta,
-        ),
+        build(base_oct, OD=inner_od, W=W, LOP=inner_opening, ROP=0.0, MET=top_met, process=process, chamfer_bias=cb_delta),
         (0.0, 0.0),
         "R0",
     )
     pin = _pin(top_met, process)
     cell.inst(
-        base_lead_pair(
-            W=W,
-            OPENING=OPENING,
-            LEAD=LEAD + W,
-            TOP_ME=str(top_met),
-            LEAD_ME=str(top_met),
-            P1TXT=port_order[0],
-            N1TXT=port_order[1],
-            process=process,
-            port_metal=top_met,
-            port_label_layer=pin,
-            port_p1_logical_name=("P1" if semantic_port_roles else None),
-            port_n1_logical_name=("N1" if semantic_port_roles else None),
-        ),
+        build(base_lead_pair, W=W, OPENING=OPENING, LEAD=LEAD + W, TOP_ME=str(top_met), LEAD_ME=str(top_met),
+              P1TXT=port_order[0], N1TXT=port_order[1], process=process, port_metal=top_met, port_label_layer=pin,
+              port_p1_logical_name=("P1" if semantic_port_roles else None),
+              port_n1_logical_name=("N1" if semantic_port_roles else None)),
         (OD / 2.0 - W, 0.0),
         "R0",
     )
@@ -906,8 +904,19 @@ def _compact_two_turn_lane_offsets(
     port_order: list[str],
     process: ProcessRuleContext,
     candidate_qualifier=None,
+    memo: dict | None = None,
 ) -> tuple[float, float] | None:
-    """Return the first DRC-clean symmetric lane pair for one pad length."""
+    """Return the closest DRC-clean symmetric lane pair for one pad length.
+
+    Lane pairs are ordered by their total (outer_g + inner_g, ascending) and
+    then by their difference (ascending); the answer is the first qualifying
+    pair. Only each total's most balanced admissible pair is judged (M1.5):
+    a larger difference moves the inner lane toward y=0 and the outer lane
+    toward the chamfer and never rescues a total whose balanced pair fails --
+    over 3,951 totals on demo_6m and N28 the first admissible difference was
+    the first qualifying one every time, so this is the same answer with ~30
+    times fewer candidates.
+    """
     pitch = W + S
     inner_od = OD - 2.0 * pitch
     outer_max = max_opening(OD, W) + pad_length / 2.0
@@ -952,11 +961,12 @@ def _compact_two_turn_lane_offsets(
                 port_order=port_order,
                 process=process,
                 render_via_cuts=False,
+                memo=memo,
             )
             if not _compact_two_turn_candidate_is_qualified(
                 candidate, top_met=top_met, process=process
             ):
-                continue
+                break                         # this total's balanced pair fails: no larger difference will pass
             if candidate_qualifier is None:
                 return outer_g, inner_g
             # The optional qualifier represents an OUTER nested-net
@@ -987,6 +997,7 @@ def _compact_two_turn_lane_offsets(
                     port_order=port_order,
                     process=process,
                     render_via_cuts=False,
+                    memo=memo,
                 )
                 if _compact_two_turn_candidate_is_qualified(
                     refined, top_met=top_met, process=process
@@ -1053,6 +1064,7 @@ def _compact_two_turn_winding(
     # landing, matching the established crossover primitive.
     best: tuple[float, float, float] | None = None
     low, high = 0, len(pad_candidates) - 1
+    memo: dict = {}
     while low <= high:
         middle = (low + high) // 2
         pad = pad_candidates[middle]
@@ -1067,6 +1079,7 @@ def _compact_two_turn_winding(
             port_order=port_order,
             process=process,
             candidate_qualifier=candidate_qualifier,
+            memo=memo,
         )
         if offsets is None:
             high = middle - 1

@@ -259,7 +259,7 @@ def _heal_seam_notches(cell: Cell, process: ProcessRuleContext | None) -> None:
                 break
             region = candidate
             for f in fills:
-                cell.shapes.append(
+                cell.add_shape(
                     Shape(layer, [(p.x, p.y) for p in f.each_point_hull()]))
 
 

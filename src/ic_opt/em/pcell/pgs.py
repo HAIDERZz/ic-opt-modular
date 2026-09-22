@@ -61,7 +61,7 @@ def add_pgs(cell, config: CleanPortPgsConfig, process_profile: str,
         if drawing == layer:
             ground.insert(kdb.Polygon([kdb.Point(x, y) for x, y in points]))
         else:
-            body.shapes.append(Shape(drawing, points))
+            body.add_shape(Shape(drawing, points))
     ground.merge()
     if ground.count() != 1:
         raise PortError("PGS requires one connected M1 ground-reference fixture")
@@ -110,7 +110,7 @@ def add_pgs(cell, config: CleanPortPgsConfig, process_profile: str,
             and not shield.sized(-round(rule.max_width_um / (2 * DBU_UM))).is_empty()):
         raise PortError("PGS junction exceeds the process M1 maximum width")
     for polygon in shield.each():
-        cell.shapes.append(Shape(layer, [(p.x, p.y) for p in polygon.each_point_hull()]))
+        cell.add_shape(Shape(layer, [(p.x, p.y) for p in polygon.each_point_hull()]))
     return {
         "kind": "fishbone", "metal": "M1", "drawing": list(layer),
         "connection": "single upper ground-ring connection",
