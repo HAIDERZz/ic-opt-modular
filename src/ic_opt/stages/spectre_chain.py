@@ -45,7 +45,7 @@ class Render:
     def __init__(self, deck: Deck) -> None:
         self.deck = deck
 
-    def fingerprint(self, point: Point) -> str | None:
+    def fingerprint(self, point: Point, ctx: StageContext) -> str | None:
         return None
 
     def run(self, point: Point, ctx: StageContext) -> Netlist:
@@ -69,7 +69,7 @@ class Spectre:
         self.preset, self.threads, self.timeout_s, self.output_format = preset, threads, timeout_s, output_format
         self.resources = Resources(threads=threads)
 
-    def fingerprint(self, netlist: Netlist) -> str | None:
+    def fingerprint(self, netlist: Netlist, ctx: StageContext) -> str | None:
         return None
 
     def argv(self) -> list[str]:
@@ -107,7 +107,7 @@ class Ocean:
         self.timeout_s = timeout_s
         self.waveforms = list(waveforms)
 
-    def fingerprint(self, raw: RawSim) -> str | None:
+    def fingerprint(self, raw: RawSim, ctx: StageContext) -> str | None:
         return None
 
     def run(self, raw: RawSim, ctx: StageContext) -> Scalars:
@@ -153,7 +153,7 @@ class Extract:
     level = "child"
     resources = Resources()
 
-    def fingerprint(self, scalars: Scalars) -> str | None:
+    def fingerprint(self, scalars: Scalars, ctx: StageContext) -> str | None:
         return None
 
     def run(self, scalars: Scalars, ctx: StageContext) -> ChildResult:

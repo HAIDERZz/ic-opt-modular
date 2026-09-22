@@ -64,18 +64,19 @@ class Stage(Protocol):
     resources: Resources
     # child-level stages also declare ``unit: Literal["testbench", "device"]`` (default "testbench")
 
-    def fingerprint(self, inp: Any) -> str | None:
-        """Cache key for this input, or None when the stage must always run."""
+    def fingerprint(self, inp: Any, ctx: StageContext) -> str | None:
+        """Cache key for this input, or None when the stage must always run (may consult the executor, e.g. to hash a remote file)."""
         ...
 
     # cacheable point-level stages also implement:
     #   def save(self, out: Any, directory: Path) -> None      persist the output under ``directory``
-    #   def load(self, directory: Path, ctx: StageContext) -> Any   rebuild the output for this point from ``directory``
+    #   def load(self, directory: Path, inp: Any, ctx: StageContext) -> Any   rebuild the output from ``directory`` (+ the input)
 
     def run(self, inp: Any, ctx: StageContext) -> Any: ...
 
 
 def pipeline_fingerprint(stages: list[Stage]) -> str:
+    """Stage names plus each stage's ``identity`` (settings that change its answer, e.g. EMX physics + process file)."""
     import hashlib
 
-    return hashlib.sha256("|".join(s.name for s in stages).encode()).hexdigest()[:16]
+    return hashlib.sha256("|".join(f"{s.name}:{getattr(s, 'identity', '')}" for s in stages).encode()).hexdigest()[:16]

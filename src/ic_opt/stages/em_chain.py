@@ -16,6 +16,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from ic_opt import space
+from ic_opt.em import emx as emx_kernel
 from ic_opt.em.pcell import get_generator
 from ic_opt.em.pcell.base import EmxPort, read_emx_ports
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
@@ -35,8 +36,19 @@ class DeviceGeometry:
 
 
 @dataclass
+class DeviceSParams:
+    device: str
+    path: Path                          # local sNp
+    port_labels: list[str]              # semantic labels in sNp column order
+    z0: float
+
+
+@dataclass
 class Geometry:
+    """Point-level state of the EM chain: every device's geometry, then its S-parameters as the emx stages fill them in."""
+
     devices: dict[str, DeviceGeometry] = field(default_factory=dict)
+    sparams: dict[str, DeviceSParams] = field(default_factory=dict)
 
     def to_json(self) -> dict:
         return {k: {**asdict(v), "gds_path": str(v.gds_path), "ports": [asdict(p) for p in v.ports]} for k, v in self.devices.items()}
@@ -73,7 +85,7 @@ class Pcell:
     def __init__(self, spec: Spec) -> None:
         self.generators = {d.id: get_generator(d.generator, plugin_module=d.plugin) for d in spec.devices}
 
-    def fingerprint(self, point: Point) -> str | None:
+    def fingerprint(self, point: Point, ctx: StageContext) -> str | None:
         return None
 
     def run(self, point: Point, ctx: StageContext) -> Geometry:
@@ -123,3 +135,57 @@ def _audit(device: Device, model, gds_path: Path) -> None:
     if record["outcome"] != "pass":
         raise StageFailure(f"device {device.id}: DRC audit found {len(record['violations'])} violation(s)",
                            *[f"[{v['kind']}] {v['layer']} x{v['count']}" for v in record["violations"]])
+
+
+class Emx:
+    """One EMX run per device: ``Geometry`` -> ``Geometry`` with ``sparams[device]`` filled; cached by the engine on geometry + physics + process file."""
+
+    name = "emx"
+    level = "point"
+
+    def __init__(self, spec: Spec, device: str) -> None:
+        if spec.em is None:
+            raise ValueError("emx stage needs the spec's em section")
+        self.em = spec.em
+        self.device = device
+        self.name = f"emx:{device}"
+        self.resources = Resources(threads=spec.em.threads, memory_gb=spec.em.memory_gb)
+        self.identity = json.dumps(emx_kernel.physics_key(spec.em), sort_keys=True, separators=(",", ":"))
+        self._proc_sha: str | None = None
+
+    def ports(self, geometry: Geometry) -> list[EmxPort]:
+        g = geometry.devices[self.device]
+        return emx_kernel.numbered_ports(g.snp_order, {p.signal: p.reference for p in g.ports})
+
+    def fingerprint(self, geometry: Geometry, ctx: StageContext) -> str:
+        if self._proc_sha is None:          # once per stage: sha256 of the process file on the executor host
+            self._proc_sha = emx_kernel.process_file_digest(self.em, ctx)
+        g = geometry.devices[self.device]
+        return emx_kernel.fingerprint(self.em, gds_sha256=g.gds_sha256, ports=self.ports(geometry), proc_sha256=self._proc_sha)
+
+    def run(self, geometry: Geometry, ctx: StageContext) -> Geometry:
+        g = geometry.devices[self.device]
+        snp = emx_kernel.run(self.em, ctx, device=self.device, gds_path=g.gds_path, top_cell=g.top_cell, ports=self.ports(geometry))
+        geometry.sparams[self.device] = DeviceSParams(self.device, snp, list(g.snp_order), self.em.s_impedance)
+        return geometry
+
+    def save(self, geometry: Geometry, directory: Path) -> None:
+        sp = geometry.sparams[self.device]
+        (directory / sp.path.name).write_bytes(sp.path.read_bytes())
+        log = sp.path.parent / "emx.log"
+        if log.exists():
+            (directory / "emx.log").write_bytes(log.read_bytes())
+
+    def load(self, directory: Path, geometry: Geometry, ctx: StageContext) -> Geometry:
+        g = geometry.devices[self.device]
+        local = ctx.workdir / "em" / self.device
+        local.mkdir(parents=True, exist_ok=True)
+        cached = next(directory.glob("*.s*p"))
+        (local / cached.name).write_bytes(cached.read_bytes())
+        geometry.sparams[self.device] = DeviceSParams(self.device, local / cached.name, list(g.snp_order), self.em.s_impedance)
+        return geometry
+
+
+def emx_stages(spec: Spec) -> list[Emx]:
+    return [Emx(spec, d.id) for d in spec.devices]
+

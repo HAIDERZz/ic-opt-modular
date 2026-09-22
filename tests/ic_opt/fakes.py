@@ -47,13 +47,17 @@ class FakeSpectreExecutor(LocalExecutor):
     ``nil_waveforms`` names them (OCEAN returned nil).
     """
 
-    def __init__(self, scratch_root: Path, metric_fn, *, fail_spectre=None, fail_ocean=None, nil_waveforms=()) -> None:
+    def __init__(self, scratch_root: Path, metric_fn=None, *, fail_spectre=None, fail_ocean=None, nil_waveforms=(),
+                 snp_fn=None, fail_emx=None) -> None:
         super().__init__(scratch_root)
-        self.metric_fn = metric_fn
+        self.metric_fn = metric_fn or (lambda p, tb, c: {})
         self.fail_spectre = fail_spectre or (lambda tb, corner: False)
         self.fail_ocean = fail_ocean or (lambda tb, corner: False)
         self.nil_waveforms = set(nil_waveforms)
+        self.snp_fn = snp_fn or synthetic_snp          # (argv, n_ports, z0) -> touchstone text
+        self.fail_emx = fail_emx or (lambda device: False)
         self.commands: list[str] = []
+        self.emx_runs = 0
 
     def run(self, command, *, cwd=None, timeout_s=None, cshrc=None) -> CommandResult:
         self.commands.append(command)
@@ -62,10 +66,24 @@ class FakeSpectreExecutor(LocalExecutor):
             return CommandResult(0, "\n".join(f"/cad/bin/{tool}" for tool in argv[1:]) + "\n", "", argv, 0.01)
         if argv[0] == "lmstat":
             return CommandResult(0, "Users of spectre:  (Total of 10 licenses issued;  Total of 2 licenses in use)\n", "", argv, 0.01)
-        if argv[0] not in ("spectre", "ocean"):
-            return super().run(command, cwd=cwd, timeout_s=timeout_s, cshrc=cshrc)
         if argv[:2] == ["spectre", "-V"]:
             return CommandResult(0, "spectre version 23.1.0.242.isr4 64bit\n", "", argv, 0.01)
+        if argv[0] == "sha256sum":                   # the emx stage hashes the process file on the host
+            return CommandResult(0, f"{'ab' * 32}  {argv[1]}\n", "", argv, 0.01)
+        if argv[0] == "emx":
+            work = Path(cwd)
+            device = work.name
+            self.emx_runs += 1
+            if self.fail_emx(device):
+                return CommandResult(3, "", "emx: license unavailable", argv, 0.01)
+            s_file = next(a for a in argv if a.startswith("--s-file=")).split("=", 1)[1]
+            z0 = float(next(a for a in argv if a.startswith("--s-impedance=")).split("=", 1)[1])
+            n_ports = sum(a == "-p" for a in argv)
+            (work / s_file).write_text(self.snp_fn(argv, n_ports, z0))
+            (work / "emx.log").write_text("fake emx\n")
+            return CommandResult(0, "", "", argv, 0.01)
+        if argv[0] not in ("spectre", "ocean"):
+            return super().run(command, cwd=cwd, timeout_s=timeout_s, cshrc=cshrc)
         work = Path(cwd)
         if argv[0] == "spectre":
             tb, corner = _tb_corner(work.parent)
@@ -100,3 +118,20 @@ def _params_from_netlist(text: str) -> dict[str, str]:
         if line.startswith("parameters"):
             return dict(token.split("=", 1) for token in line.split()[1:])
     return {}
+
+
+def synthetic_snp(argv: list[str], n_ports: int, z0: float, *, freqs=(1e9, 5e9, 10e9)) -> str:
+    """A small, header-valid Touchstone file: a lossy coupled inductor (L=1 nH, R=1 Ω, k=0.5) in the EMX RI format."""
+    import numpy as np
+
+    lines = ["! Touchstone simulation data from EMX version 2024.1.0 (fake)", "! EMX was run on fake as:", "! " + " ".join(argv[:3]), f"# Hz S RI R {z0:g}"]
+    for f in freqs:
+        w = 2 * np.pi * f
+        z = np.full((n_ports, n_ports), 0.5j * w * 1e-9, dtype=complex)
+        np.fill_diagonal(z, 1.0 + 1j * w * 1e-9)
+        s = np.linalg.solve(z + z0 * np.eye(n_ports), z - z0 * np.eye(n_ports))
+        if n_ports == 2:
+            s = s.T                                   # touchstone's 2-port column order S11 S21 S12 S22
+        lines.append(f"{f:.0f} " + " ".join(f"{v.real:.9e} {v.imag:.9e}" for v in s.reshape(-1)))
+    return "\n".join(lines) + "\n"
+

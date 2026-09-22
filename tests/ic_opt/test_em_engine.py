@@ -37,7 +37,7 @@ class Build:
         self.cacheable = cacheable
         self.runs = 0
 
-    def fingerprint(self, point: Point) -> str | None:
+    def fingerprint(self, point: Point, ctx: StageContext) -> str | None:
         return f"fp-{point.params['d.od']}" if self.cacheable else None
 
     def run(self, point: Point, ctx: StageContext) -> Built:
@@ -47,7 +47,7 @@ class Build:
     def save(self, out: Built, directory: Path) -> None:
         (directory / "built.json").write_text(json.dumps(out.values))
 
-    def load(self, directory: Path, ctx: StageContext) -> Built:
+    def load(self, directory: Path, point: Point, ctx: StageContext) -> Built:
         return Built(json.loads((directory / "built.json").read_text()))
 
 
@@ -57,7 +57,7 @@ class Measure:
     unit = "device"
     resources = Resources()
 
-    def fingerprint(self, inp):
+    def fingerprint(self, inp, ctx):
         return None
 
     def run(self, built: Built, ctx: StageContext) -> ChildResult:
@@ -74,7 +74,7 @@ class CircuitChild:
     unit = "testbench"
     resources = Resources(threads=10)
 
-    def fingerprint(self, inp):
+    def fingerprint(self, inp, ctx):
         return None
 
     def run(self, built: Built, ctx: StageContext) -> ChildResult:

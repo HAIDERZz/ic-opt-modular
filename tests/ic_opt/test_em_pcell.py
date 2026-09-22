@@ -95,7 +95,7 @@ def test_pcell_runs_through_the_engine_with_a_device_child(tmp_path):
     class Size:
         name, level, unit, resources = "size", "child", "device", Resources()
 
-        def fingerprint(self, inp):
+        def fingerprint(self, inp, ctx):
             return None
 
         def run(self, geometry: Geometry, ctx):

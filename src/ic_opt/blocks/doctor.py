@@ -81,11 +81,35 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
     add(Check("envelope", threads <= site.max_threads,
               f"{spec.simulator.parallel_jobs} jobs × {spec.simulator.threads_per_run} threads = {threads} ≤ {site.max_threads}"))
 
+    if spec.devices:
+        for device in spec.devices:
+            add(_device_check(device))
+    if spec.em is not None:
+        emx = executor.run("which emx", cshrc=cshrc, timeout_s=120)
+        add(Check("emx", emx.ok, emx.stdout.strip() if emx.ok else "emx not on PATH"))
+        add(Check("em:process_file", executor.exists(spec.em.process_file), spec.em.process_file))
+        slots = site.slots(spec.em.threads, spec.em.memory_gb)
+        add(Check("em:envelope", spec.em.threads <= site.max_threads and spec.em.memory_gb <= site.max_memory_gb,
+                  f"{spec.em.threads} threads / {spec.em.memory_gb:g} GB per EMX → {slots} concurrent within {site.max_threads} threads / {site.max_memory_gb:g} GB"))
+
     if store is not None:
         used = sum(len(o.children) for o in store.observations())
         add(Check("budget", used < spec.budget.max_simulations, f"{used}/{spec.budget.max_simulations} simulations used"))
         store.log_step("doctor", "ok" if report.ok else "fail", checks=[(c.name, c.ok) for c in report.checks])
     return report
+
+
+def _device_check(device) -> Check:
+    """The generator resolves and the process profile loads on the controller, where pcell runs."""
+    from ic_opt.em.pcell import get_generator
+    from ic_opt.em.pcell.process_rules import get_process_rule_profile
+
+    try:
+        generator = get_generator(device.generator, plugin_module=device.plugin)
+        get_process_rule_profile(device.profile)
+    except (ValueError, OSError, ImportError) as exc:
+        return Check(f"device:{device.id}", False, str(exc).splitlines()[0])
+    return Check(f"device:{device.id}", True, f"{generator.generator_id} on {device.profile}")
 
 
 def plan_line(spec: Spec, executor: Executor, site: site_module.Site | None = None) -> str:

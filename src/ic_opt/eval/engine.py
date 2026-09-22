@@ -169,13 +169,13 @@ def _run_stages(stages: list[Stage], value, ctx: StageContext):
 
 def _run_cached(stage: Stage, value, ctx: StageContext):
     """Point-level stages with a fingerprint are served from the store's cache; the engine owns the cache, the stage its format."""
-    fingerprint = stage.fingerprint(value)
+    fingerprint = stage.fingerprint(value, ctx)
     if fingerprint is None:
         return stage.run(value, ctx)
     entry = ctx.store.cache_dir(stage.name, fingerprint)
     if (entry / ".complete").exists():
         ctx.cache[stage.name] = "hit"
-        return stage.load(entry, ctx)
+        return stage.load(entry, value, ctx)
     out = stage.run(value, ctx)
     ctx.cache[stage.name] = "miss"
     staging = Path(tempfile.mkdtemp(prefix=f".{fingerprint}.", dir=entry.parent))
