@@ -1412,8 +1412,7 @@ def test_report_maps_python_functions_to_pcell_sources(generated):
         assert mapping[fn]["parameters"], f"report misses parameters of {fn}"
     assert mapping["vias"]["pcell_source"].startswith("(library PCell")
     md = (generated / "pcell_inductor_python_port_report.md").read_text()
-    assert "GPL" in md
-    assert "must not be merged" in md.lower()
+    assert "MIT" in md and "GPL" not in md and "must not be merged" not in md.lower()      # M2.5: original code, licensed with the repository
     assert report["known_deviations"], "deviations must be listed (fail closed)"
 
 

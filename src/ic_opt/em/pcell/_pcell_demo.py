@@ -910,14 +910,10 @@ def _write_report(out_dir, manifest):
     import json
 
     report = {
-        "title": "PCell inductor Python port (clean-room experimental reference)",
+        "title": "PCell inductor Python port (clean-port families)",
         "provenance": {
             "license": "MIT (original code; construction conventions follow the reference SKILL PCells)",
-            "status": "reference/prototype only",
-            "restriction": (
-                "This experimental code must not be merged into the formal "
-                "src/ product code without an explicit licensing decision."
-            ),
+            "status": "in-package product implementation (ic_opt.em.pcell)",
             "independent_gds_reference": "/home/zzchen/Prj/Prj_For_N65/ind_ref.gds",
         },
         "layer_mapping": {
@@ -952,11 +948,9 @@ def _write_report(out_dir, manifest):
     lines = [
         "# PCell Inductor Python Port (clean)",
         "",
-        "This directory holds a *reference/prototype* Python port of the",
-        "reference SKILL PCell construction chain (original MIT-licensed code).",
-        "It exists for structure learning and GDS comparison only and",
-        "**must not be merged** into the formal `src/` product code without",
-        "an explicit licensing decision.",
+        "The six clean-port families' construction chain (original code,",
+        "licensed with the repository under MIT); its function names follow the",
+        "reference SKILL PCells each construction was first studied against.",
         "",
         "## Function mapping",
         "",
