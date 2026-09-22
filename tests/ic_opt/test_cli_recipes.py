@@ -64,7 +64,8 @@ def test_run_plan_prints_shape_and_simulates_nothing(tmp_path):
     assert "recipe optimize  spec demo" in out and "params {'budget': 12, 'batch': 4, 'strategy': 'turbo'}" in out
     assert "[plan] [FAIL] tools" in out                       # this machine has no spectre; the preview still completes
     assert "[plan] netlist.import tb:" in out and "corners ['tt', 'ss']" in out
-    assert "[plan] opt.optimize step='optimize' strategy=turbo: 0/12 points done, up to 12 more × 2 sims = 24 simulations in batches of 4" in out
+    assert ("[plan] opt.optimize step='optimize' strategy=turbo: 0/12 points done, up to 12 more in batches of 4 × "
+            "(2 testbench sims) = 2 simulations per point on local, 2 workers × 4 threads (spectre)") in out
     assert not (root / ".icopt" / "observations.jsonl").exists() and not any((root / ".icopt" / "decks").iterdir())
 
 

@@ -72,12 +72,12 @@ def test_three_testbenches_three_corners_worst_case(tmp_path):
 def test_corner_policy_nominal_and_constraint_scope():
     spec = make_spec(**three_by_three())
     children = {
-        "cg/tt": ChildResult(testbench="cg", corner="tt", status="ok", metrics={"NF": 8.0}),
-        "iip3/tt": ChildResult(testbench="iip3", corner="tt", status="ok", metrics={"IIP3": 2.0}),
-        "cg/ss": ChildResult(testbench="cg", corner="ss", status="ok", metrics={"NF": 9.5}),   # violates NF < 9
-        "iip3/ss": ChildResult(testbench="iip3", corner="ss", status="ok", metrics={"IIP3": 1.0}),
-        "cg/ff": ChildResult(testbench="cg", corner="ff", status="ok", metrics={"NF": 7.0}),
-        "iip3/ff": ChildResult(testbench="iip3", corner="ff", status="ok", metrics={"IIP3": 3.0}),
+        "cg/tt": ChildResult(unit="cg", corner="tt", status="ok", metrics={"NF": 8.0}),
+        "iip3/tt": ChildResult(unit="iip3", corner="tt", status="ok", metrics={"IIP3": 2.0}),
+        "cg/ss": ChildResult(unit="cg", corner="ss", status="ok", metrics={"NF": 9.5}),   # violates NF < 9
+        "iip3/ss": ChildResult(unit="iip3", corner="ss", status="ok", metrics={"IIP3": 1.0}),
+        "cg/ff": ChildResult(unit="cg", corner="ff", status="ok", metrics={"NF": 7.0}),
+        "iip3/ff": ChildResult(unit="iip3", corner="ff", status="ok", metrics={"IIP3": 3.0}),
     }
     worst = aggregate(spec, children)
     assert worst.status == "constraint_failed" and worst.selected_corner == "ss" and not worst.feasible

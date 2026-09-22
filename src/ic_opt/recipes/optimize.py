@@ -10,6 +10,6 @@ def main(run: Run, *, strategy: str = "openbox_gp_eic", budget: int = 30, batch:
     b.doctor(run.spec, run.executor, cshrc=run.cshrc, store=run.store, site=run.site).require_pass()
     deck = b.import_netlists(run.spec, run.executor, run.store)
     obs = b.optimize(run.spec, run.executor, run.store, deck=deck, strategy=strategy, budget=budget, batch=batch,
-                     seed=seed, corners=corners, cshrc=run.cshrc, parallel_jobs=run.jobs)
+                     seed=seed, corners=corners, cshrc=run.cshrc, parallel_jobs=run.jobs, site=run.site)
     if obs:
         run.note(f"report: {b.report(run.spec, obs, run.store)}")

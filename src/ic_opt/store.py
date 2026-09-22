@@ -76,7 +76,9 @@ class RunStore:
         return self.root / "decks" / fingerprint
 
     def cache_dir(self, stage: str, fingerprint: str) -> Path:
-        return self.root / "cache" / stage / fingerprint
+        path = self.root / "cache" / stage / fingerprint
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
 
     def reports_dir(self) -> Path:
         return self.root / "reports"

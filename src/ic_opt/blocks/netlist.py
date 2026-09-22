@@ -29,7 +29,7 @@ def import_netlists(spec: Spec, executor: Executor, store: RunStore) -> Deck:
     staging = store.root / "decks" / ".staging"
     shutil.rmtree(staging, ignore_errors=True)
     deck = Deck()
-    names = [v.name for v in spec.variables]
+    names = spec.circuit_variables
     for tb in spec.testbenches:
         local = staging / tb.id
         executor.get(f"{tb.maestro_point_root}/netlist", local, dereference=True)

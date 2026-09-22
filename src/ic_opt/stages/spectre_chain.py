@@ -22,6 +22,7 @@ from ic_opt.sim.ocean import Scalars, WaveformExport
 from ic_opt.space import Point
 
 OCEAN_ATTEMPTS = 3
+TRANSIENT_SOCKET_FAILURE = "can't create server socket"
 
 
 @dataclass
@@ -36,6 +37,7 @@ class RawSim:
 
 
 class Render:
+    unit = "testbench"
     name = "render"
     level = "child"
     resources = Resources()
@@ -48,16 +50,18 @@ class Render:
 
     def run(self, point: Point, ctx: StageContext) -> Netlist:
         try:
-            template = self.deck.template(ctx.testbench, ctx.corner)
+            template = self.deck.template(ctx.unit, ctx.corner)
         except KeyError as exc:
-            raise StageFailure(f"deck has no template for {ctx.testbench}/{ctx.corner}") from exc
-        bundle = self.deck.bundle(ctx.testbench)
+            raise StageFailure(f"deck has no template for {ctx.unit}/{ctx.corner}") from exc
+        bundle = self.deck.bundle(ctx.unit)
         if bundle is not None:   # Maestro's support files (.modelFiles, .designVariables, ...) travel with the deck
             shutil.copytree(bundle, ctx.workdir / "netlist", dirs_exist_ok=True)
-        return Netlist(netlist_kernel.render(template, point.params))
+        circuit = {name: point.params[name] for name in ctx.spec.circuit_variables}
+        return Netlist(netlist_kernel.render(template, circuit))
 
 
 class Spectre:
+    unit = "testbench"
     name = "spectre"
     level = "child"
 
@@ -80,13 +84,12 @@ class Spectre:
         local.mkdir(parents=True, exist_ok=True)
         (local / "input.scs").write_text(netlist.text, encoding="utf-8")
         ctx.executor.put(local, f"{ctx.remote_dir}/netlist")
-        result = ctx.executor.run(
-            " ".join(shlex.quote(a) for a in self.argv()),
-            cwd=f"{ctx.remote_dir}/netlist",
-            timeout_s=self.timeout_s,
-            cshrc=ctx.cshrc,
-        )
-        ctx.record("spectre", result)
+        command = " ".join(shlex.quote(a) for a in self.argv())
+        for attempt in (1, 2):                    # one retry on the transient "can't create server socket" failure (legacy rule)
+            result = ctx.executor.run(command, cwd=f"{ctx.remote_dir}/netlist", timeout_s=self.timeout_s, cshrc=ctx.cshrc)
+            ctx.record(f"spectre#{attempt}", result)
+            if result.ok or TRANSIENT_SOCKET_FAILURE not in (result.stdout + result.stderr):
+                break
         (ctx.workdir / "spectre.stdout").write_text(result.stdout, encoding="utf-8")
         (ctx.workdir / "spectre.stderr").write_text(result.stderr, encoding="utf-8")
         if not result.ok:
@@ -95,6 +98,7 @@ class Spectre:
 
 
 class Ocean:
+    unit = "testbench"
     name = "ocean"
     level = "child"
     resources = Resources()
@@ -107,8 +111,8 @@ class Ocean:
         return None
 
     def run(self, raw: RawSim, ctx: StageContext) -> Scalars:
-        metrics = ctx.spec.metrics_for(ctx.testbench)
-        waveforms = [w for w in self.waveforms if w.testbench in (None, ctx.testbench)]
+        metrics = ctx.spec.metrics_for(ctx.unit)
+        waveforms = [w for w in self.waveforms if w.testbench in (None, ctx.unit)]
         local = ctx.workdir / "metrics"
         (local / "waveforms").mkdir(parents=True, exist_ok=True)
         script = ocean_kernel.replay_script(
@@ -144,6 +148,7 @@ class Ocean:
 
 
 class Extract:
+    unit = "testbench"
     name = "extract"
     level = "child"
     resources = Resources()
@@ -153,7 +158,7 @@ class Extract:
 
     def run(self, scalars: Scalars, ctx: StageContext) -> ChildResult:
         metrics, issues = {}, []
-        for metric in ctx.spec.metrics_for(ctx.testbench):
+        for metric in ctx.spec.metrics_for(ctx.unit):
             row = scalars.rows.get(metric.name)
             if row is None:
                 issues.append(f"metric {metric.name} missing from OCEAN output")
@@ -163,7 +168,7 @@ class Extract:
                 metrics[metric.name] = row.value
         issues += [f"waveform {name} returned nil" for name, path in scalars.waveforms.items() if path is None]
         return ChildResult(
-            testbench=ctx.testbench, corner=ctx.corner, metrics=metrics, issues=issues,
+            unit=ctx.unit, corner=ctx.corner, metrics=metrics, issues=issues,
             status="ok" if not issues else "failed:extract",
         )
 

@@ -17,6 +17,6 @@ def main(run: Run, *, points: str = "points.json", waveforms: str | None = None,
     b.doctor(run.spec, run.executor, cshrc=run.cshrc, store=run.store, site=run.site).require_pass()
     deck = b.import_netlists(run.spec, run.executor, run.store)
     obs = b.evaluate(run.spec, b.points_fixed(run.spec, rows), run.executor, run.store, deck=deck, corners=corners,
-                     waveforms=exports, step="fix_run", cshrc=run.cshrc, parallel_jobs=run.jobs)
+                     waveforms=exports, step="fix_run", cshrc=run.cshrc, parallel_jobs=run.jobs, site=run.site)
     if obs:
         run.note(f"report: {b.report(run.spec, obs, run.store)}")

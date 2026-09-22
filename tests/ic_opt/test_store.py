@@ -7,7 +7,7 @@ from ic_opt.store import RunStore
 def make_obs(obs_id: str, f: str, objective: float | None, feasible: bool, step: str = "opt") -> Observation:
     return Observation(
         obs_id=obs_id, params={"F": f, "W": "0.6u"}, origin="suggest:turbo",
-        children={"tb/nominal": ChildResult(testbench="tb", corner=None, status="ok", metrics={"NF": 8.0})},
+        children={"tb/nominal": ChildResult(unit="tb", corner=None, status="ok", metrics={"NF": 8.0})},
         metrics={"NF": 8.0}, fom=objective, objective=objective, feasible=feasible,
         status="ok" if feasible else "constraint_failed", spec_fingerprint="s", pipeline_fingerprint="p",
         step=step, started_at="t0", finished_at="t1",

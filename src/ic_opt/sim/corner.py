@@ -41,15 +41,17 @@ def aggregate(spec: Spec, children: dict[str, ChildResult]) -> Aggregate:
         worst = failed[0]
         return Aggregate(
             status=worst.status,
-            issues=[f"{c.testbench}/{c.corner or 'nominal'}: {issue}" for c in failed for issue in c.issues],
+            issues=[f"{c.unit}/{c.corner or 'nominal'}: {issue}" for c in failed for issue in c.issues],
         )
 
-    present = {c.corner or "nominal" for c in children.values()}          # a run may cover a subset of the corners
+    cornered = [c for c in children.values() if c.corner is not None]
+    shared = {k: v for c in children.values() if c.corner is None for k, v in c.metrics.items()}   # corner-less children (EM devices)
+    present = {c.corner for c in cornered} or {"nominal"}                   # a run may cover a subset of the corners
     corner_ids = [cid for cid in ([c.id for c in spec.corners] or ["nominal"]) if cid in present]
     nominal = "nominal" if "nominal" in corner_ids else corner_ids[0]
-    per_corner: dict[str, dict[str, float]] = {cid: {} for cid in corner_ids}
-    for child in children.values():
-        per_corner[child.corner or "nominal"].update(child.metrics)
+    per_corner: dict[str, dict[str, float]] = {cid: dict(shared) for cid in corner_ids}
+    for child in cornered:
+        per_corner[child.corner].update(child.metrics)
 
     evaluations = {cid: objective_contract.evaluate(spec, metrics) for cid, metrics in per_corner.items()}
     objectives = {cid: ev.objective for cid, ev in evaluations.items()}

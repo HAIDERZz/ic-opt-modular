@@ -1,6 +1,6 @@
 # T9：把 em-opt 的 EM 能力作为阶段与模块并入 ic-opt
 
-- 状态：**规划稿，待用户批准后执行**（2026-09-22）
+- 状态：**执行中**（2026-09-22 用户裁定：几何代码许可无问题——docstring 里的 GPL 溯源早已失效，代码基本原创，可并入本仓库；**查询库暂缓**，先做 EM 仿真核心：T9.1 → T9.2 → T9.4 → T9.5 → T9.3；T9.6 的库/代理模型另行规划）
 - 依据：`analysis/em/01_em_evaluation_chain.md`（评估链，415 行）、`02_pcell_geometry_layer.md`（几何层）、`03_device_db_and_surrogate.md`（查询库与代理模型，580 行）、`04_recorded_data_and_fakes.md`（记录数据与假件，481 行）——对 em-opt `main@06be907` / 0.2.1 的源码级研读，全部带文件/行号；本文引用处以报告为准
 - 上游约束：`DESIGN_CN.md` §4.1（评估 = 通用引擎 + 可插阶段）、`docs/adr/0001`（远端只经 Executor）、用户红线（真实 EMX 须 `--plan` 后批准；总线程 ≤ 128、内存 ≤ 128 GB；工艺数值永不进 src；GDS topcell == 文件名 stem）
 
@@ -139,16 +139,13 @@ em-opt 查询库每一行（参数 → L/Q/SRF/k…）就是 `em_only` 流水线
 
 ## 5. 包布局与依赖
 
-几何库的落点有一个此前没看到的硬约束：`pcell_inductor_port_clean.py` 的模块 docstring 写明"This experimental port must NOT be merged into the formal src/ product code without an explicit licensing decision: the geometry construction is a derivative work of the GPL SKILL sources"，而同目录 README 又说它"已经就是产品代码"（`02` §10.6）。ic-opt-modular 是 MIT 许可的公开仓库，在许可结论出来之前，六家族几何代码不能进这个仓库。好在 em-opt 的插件机制本来就允许 `plugin_module: /path/to/plugin.py`，所以：
-
-- **ic-opt 仓库只放 EM 的"接口层"**：`Pcell` 阶段、插件注册表（`generator: "path/to/plugin.py:id"`）、`PassiveDeviceGenerator` / `GeometryGenerationResult` 抽象契约、profile 加载与 `IC_OPT_PROFILE_DIRS`、DRC 审计接口，以及一个几十行的公开 `demo_spiral` 生成器（配 `demo_6m` profile）供测试与文档。
-- **六家族几何库单独成包 `ic-opt-pcell`**（私有仓库或按许可结论选择协议）：`devices/clean_port/*`、`geometry/{rule_adapter,drc_audit,gds_compare}`、`process_rules` 原样搬运，作为插件被 ic-opt 加载。这也正是"新器件 = 新插件包"的模块化形态。
+研读报告 `02` §10.6 提到六家族几何代码的 docstring 自述为 GPL SKILL 衍生作品；用户裁定该表述早已失效（至多是 MIT gdsfactory 的二次开发，现已基本原创），因此几何库**并入本仓库** `ic_opt/em/pcell/`，作为 `builtin:clean_port` 插件；外部器件仍可用 `plugin: /path/to/plugin.py` 接入。
 
 ```text
-src/ic_opt/em/                     EM 接口层与内核（不认识引擎）
-  geometry.py                      PassiveDeviceGenerator / GeometryGenerationResult 契约、插件注册表（builtin:demo | path:id）、
-                                   profile 搜索（IC_OPT_PROFILE_DIRS）+ 进程内缓存、DRC 审计接口（≈200 行，从 em-opt geometry/{base,registry}.py 搬运）
-  demo_spiral.py                   公开的最小生成器（矩形螺旋电感，klayout），只为测试与文档（≈150 行）
+src/ic_opt/em/                     EM 库（不认识引擎）
+  pcell/                           从 em-opt devices/clean_port + geometry/ 搬入：primitives、core、六家族、guards、pgs、straight_extension、
+                                   rule_adapter、process_rules（profile 搜索 IC_OPT_PROFILE_DIRS + 进程内缓存）、drc_audit、gds_compare、
+                                   registry（builtin:clean_port | /path/plugin.py）（≈11.5k 行搬运；em-opt 的 8 个几何测试文件随迁）
   emx.py                           argv 构造 + 经 Executor 运行 + 头部校验（≈150 行）
   touchstone.py                    sNp 解析（numpy）、列序、量的计算（= device_db/measure.py 内核，≈300 行）
   nport.py                         nport 实例定位/改写、端子核对（≈120 行）
@@ -162,12 +159,11 @@ src/ic_opt/recipes/em_optimize.py  em_sweep.py  em_inverse.py（各 ≤ 25 行�
 src/ic_opt/migrate.py              + em_opt_requirement.md 的 EM 段（≈80 行；Passive Diagnostic Constraints → device 指标 + 约束，em-opt 里它什么都不算，`01` §5）
 tests/ic_opt/                      fakes.py 加 `emx` 分支（按几何指纹回放录制的 sNp）+ 解析式耦合电感替身（借 em-opt `mock_snp.py`）；
                                    fixture 用 `gdsfactory_xfmr_spike/emx_smoke/*.s4p`（真实 EMX 输出，1–2 KB）
-<ic-opt-pcell>/                    六家族几何库（≈11.5k 行搬运 + em-opt 的 8 个几何测试文件 ≈ 10k 行，377+164+80 用例本机已验证全绿，无需 EMX）
 ```
 
-依赖：`[em]` extra = `klayout>=0.30`（`demo_spiral`、DRC 接口、六家族库共同的唯一第三方依赖）+ `scikit-learn`（StratumGP；open-box 已带）。核心包不依赖 klayout。
+依赖：`[em]` extra = `klayout>=0.30`（几何层唯一第三方依赖）+ `scikit-learn`（StratumGP；open-box 已带）。核心包不依赖 klayout。
 
-净效果：ic-opt 新增 ≈ 2.5k 行接口/内核；六家族库 ≈ 11.5k 行原样迁到插件包；em-opt 62k 行退役。
+净效果：ic-opt 新增 ≈ 14k 行（11.5k 是搬运的几何库）；em-opt 62k 行退役。
 
 ## 6. 验证策略（每条都有真实记录做金标准）
 
@@ -187,7 +183,7 @@ tests/ic_opt/                      fakes.py 加 `emx` 分支（按几何指纹�
 | # | 任务 | 产出 | 完成判据 |
 | --- | --- | --- | --- |
 | T9.1 | 引擎与 spec 的通用扩展 | `spec.py`（devices / em / bindings / topology / Metric.device+quantity）、`eval/engine.py`（两条子链、缓存、资源槽）、`ChildResult.unit`、`Spectre` socket 重试 | 现有 67 测试不变绿；新增：device 子链的假流水线、缓存命中/未命中/冲突、槽数计算、两条子链并存 |
-| T9.2 | 几何接口层 + 插件包 | `ic_opt/em/geometry.py`、`demo_spiral.py`、`[em]` extra、`demo_6m` 随包、`IC_OPT_PROFILE_DIRS`、`Pcell` 阶段、`em.feasible`；`ic-opt-pcell` 插件包（六家族 + 其测试原样迁入） | V1 通过（需插件包 + `IC_OPT_PROFILE_DIRS` 指向本机私有 profile，无则跳过）；插件包 621 个几何用例全绿；demo_spiral 在 demo_6m 上生成并过 DRC 接口 |
+| T9.2 | 几何库搬入 | `ic_opt/em/pcell/`（六家族 + registry + rules + drc + 其 8 个测试文件）、`[em]` extra、`demo_6m` 随包、`IC_OPT_PROFILE_DIRS`、`Pcell` 阶段、`em.feasible` | V1 通过（需 `IC_OPT_PROFILE_DIRS` 指向本机私有 profile，无则跳过）；迁入的几何用例全绿；demo_6m 上六家族各生成一次 |
 | T9.3 | 测量与 EM-only | `em/touchstone.py`、`Measure`、`em_only_pipeline`、`em_sweep` recipe、假 EMX（解析式） | V2 通过；`em_sweep` 端到端；`ind_ct` 3 端口拓扑（CT 接地）有测试 |
 | T9.4 | EMX 阶段 | `em/emx.py`、`Emx`（超时、cwd、缓存、资源）、doctor 四项 EM 检查、`--plan` 打印槽数 | V3 通过；缓存命中不再调用 executor；远端路径只经 Executor |
 | T9.5 | nport 绑定与 EM-电路链 | `em/nport.py`、`BindNport`（物理列序检查）、`em_circuit_pipeline`、`em_optimize` recipe、migrate 的 EM 段 | V4 通过（30 点、patched sha256 相等）；em-opt 两份 requirement 模板能 migrate |
@@ -199,8 +195,8 @@ tests/ic_opt/                      fakes.py 加 `emx` 分支（按几何指纹�
 
 ## 8. 需要用户拍板的点
 
-1. **几何库的许可与落点（先于一切）**：`02` §10.6 指出六家族几何代码自述为 GPL SKILL 源的衍生作品，与 MIT 公开仓库冲突。建议：ic-opt 只放接口层 + 公开 demo 生成器，六家族库单独成包 `ic-opt-pcell`（私有或 GPL，由你定）；若你确认该 docstring 已过时、代码是干净重写，则可并入本仓库 `ic_opt/em/pcell/`。
-2. **器件库迁移**：把 12,767 行 sqlite 导入为 12 个库工程的观测表（建议；sNp 内容寻址复制约 400 MB），还是继续维护 sqlite + `hermes-db`。
+1. ~~几何库的许可与落点~~ **已裁定**：并入本仓库（docstring 的 GPL 溯源已失效，代码基本原创）。
+2. **器件库迁移**：**暂缓**（用户 2026-09-22：先做 EM 仿真核心，库的嵌入方式之后再定）。
 3. **真实 EMX 冒烟**（T9.7）：按 §6 V5 的资源请求执行，需你批准；是否顺带用真实 EMX 重跑 V1 抽样中的少量点做"同机复现"对照（每点 2–3 s，建议 12 点）。
 4. **em-opt 退役范围**（T9.8）：仓库归档还是删除；`experiments/` 5.6 GB 数据的去向（建议原地保留，新仓库用绝对路径 / 环境变量引用）。
 5. **行为变更确认**：失败状态细分为 `failed:pcell|emx|bind_nport|measure|predict`（em-opt 折叠成一个 `real_check_failed`，数值惩罚相同）；器件诊断量真正参与约束（em-opt 的 Passive Diagnostic Constraints 不计算）；`bind_nport` 加物理列序检查（em-opt 只查网表自洽）。都是更严格，不会让原本通过的工程失败，除非它本来接错了线。

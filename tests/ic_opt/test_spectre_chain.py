@@ -19,7 +19,7 @@ def run_chain(tmp_path: Path, executor, corner=None):
     workdir = store.sim_dir("obs_0001", "tb", corner)
     ctx = StageContext(
         spec=spec, executor=executor, store=store, obs_id="obs_0001", workdir=workdir,
-        remote_dir=executor.scratch(f"obs_0001/tb/{corner or 'nominal'}"), testbench="tb", corner=corner, cshrc="/env.csh",
+        remote_dir=executor.scratch(f"obs_0001/tb/{corner or 'nominal'}"), unit="tb", corner=corner, cshrc="/env.csh",
     )
     value: object = Point({"F": "24", "W": "0.8u"}, "user")
     for stage in spectre_pipeline(spec, deck):
@@ -31,8 +31,8 @@ def test_chain_produces_child_result_from_point(tmp_path):
     executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {"NF": 8.0 + int(p["F"]) / 100})
     child, ctx = run_chain(tmp_path, executor)
 
-    assert child.status == "ok" and child.metrics == {"NF": 8.24} and child.testbench == "tb"
-    assert [c["label"] for c in ctx.trace] == ["spectre", "ocean#1"]
+    assert child.status == "ok" and child.metrics == {"NF": 8.24} and child.unit == "tb"
+    assert [c["label"] for c in ctx.trace] == ["spectre#1", "ocean#1"]
     assert (ctx.workdir / "netlist" / "input.scs").read_text().splitlines()[1] == "parameters temperature=27 F=24 W=0.8u"
     assert executor.commands[0].startswith("spectre -64 input.scs +escchars +preset=ax +mt=10")
     assert (ctx.workdir / "metrics" / "probe.ocn").exists()
@@ -56,3 +56,21 @@ def test_missing_metric_is_an_extract_failure_not_an_exception(tmp_path):
     executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {"NF": None})
     child, _ = run_chain(tmp_path, executor)
     assert child.status == "failed:extract" and child.metrics == {} and "non_scalar" in child.issues[0]
+
+
+def test_spectre_retries_once_on_a_transient_socket_failure(tmp_path):
+    from ic_opt.executor import CommandResult
+    from ic_opt.stages.spectre_chain import TRANSIENT_SOCKET_FAILURE
+
+    class FlakySocket(FakeSpectreExecutor):
+        calls = 0
+
+        def run(self, command, *, cwd=None, timeout_s=None, cshrc=None):
+            if command.startswith("spectre") and self.calls == 0:
+                self.calls += 1
+                return CommandResult(1, "", f"spectre: {TRANSIENT_SOCKET_FAILURE}", ["spectre"], 0.01)
+            return super().run(command, cwd=cwd, timeout_s=timeout_s, cshrc=cshrc)
+
+    executor = FlakySocket(tmp_path / ".icopt" / "sims", lambda p, tb, c: {"NF": 8.0})
+    child, ctx = run_chain(tmp_path, executor)
+    assert child.status == "ok" and [c["label"] for c in ctx.trace] == ["spectre#1", "spectre#2", "ocean#1"]

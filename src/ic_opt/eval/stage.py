@@ -1,9 +1,16 @@
 """Stage protocol: the pluggable unit inside the evaluation engine.
 
 A stage turns one typed input into one typed output for one point (level
-``"point"``) or one testbench × corner child (level ``"child"``). The engine
-chains stages, gives each a :class:`StageContext`, and turns a
-:class:`StageFailure` into ``status = "failed:<stage>"`` on the observation.
+``"point"``) or one child (level ``"child"``). A child is a testbench × corner
+(``unit = "testbench"``, the Spectre chain) or an EM device (``unit =
+"device"``, measure / predict); one pipeline may carry both child chains, fed
+by the same point-level output. The engine chains stages, gives each a
+:class:`StageContext`, and turns a :class:`StageFailure` into
+``status = "failed:<stage>"`` on the observation.
+
+A point-level stage whose ``fingerprint(inp)`` is not None is cached by the
+engine under ``.icopt/cache/<name>/<fingerprint>/`` through its ``save(out,
+dir)`` / ``load(dir)`` pair.
 """
 
 from __future__ import annotations
@@ -33,8 +40,9 @@ class StageContext:
     obs_id: str
     workdir: Path                    # local directory for this point/child under .icopt/sims/
     remote_dir: str                  # executor-side working directory (same path for LocalExecutor)
-    testbench: str | None = None     # child-level stages only
+    unit: str | None = None          # child-level stages only: testbench id or device id
     corner: str | None = None
+    cache: dict[str, str] = field(default_factory=dict)         # point-level stage name -> "hit" | "miss"
     cshrc: str | None = None
     trace: list[dict[str, Any]] = field(default_factory=list)   # command records for the child
 
@@ -54,10 +62,15 @@ class Stage(Protocol):
     name: str
     level: Literal["point", "child"]
     resources: Resources
+    # child-level stages also declare ``unit: Literal["testbench", "device"]`` (default "testbench")
 
     def fingerprint(self, inp: Any) -> str | None:
         """Cache key for this input, or None when the stage must always run."""
         ...
+
+    # cacheable point-level stages also implement:
+    #   def save(self, out: Any, directory: Path) -> None      persist the output under ``directory``
+    #   def load(self, directory: Path, ctx: StageContext) -> Any   rebuild the output for this point from ``directory``
 
     def run(self, inp: Any, ctx: StageContext) -> Any: ...
 

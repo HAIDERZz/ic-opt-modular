@@ -10,9 +10,9 @@ from ic_opt.space import Point
 
 
 class ChildResult(BaseModel):
-    """Outcome of one testbench × corner simulation."""
+    """Outcome of one child: a testbench × corner simulation or an EM device's measurement."""
 
-    testbench: str
+    unit: str                                     # testbench id or device id
     corner: str | None = None
     status: str                                   # "ok" | "failed:<stage>"
     metrics: dict[str, float] = Field(default_factory=dict)
@@ -25,7 +25,7 @@ class Observation(BaseModel):
     obs_id: str
     params: dict[str, str]
     origin: str
-    children: dict[str, ChildResult] = Field(default_factory=dict)   # "<tb>/<corner>" -> result
+    children: dict[str, ChildResult] = Field(default_factory=dict)   # "<unit>/<corner>" -> result
     metrics: dict[str, float] = Field(default_factory=dict)          # aggregated across corners
     fom: float | None = None
     objective: float | None = None                                   # minimization form
@@ -36,6 +36,7 @@ class Observation(BaseModel):
     spec_fingerprint: str
     pipeline_fingerprint: str
     step: str = ""
+    cache: dict[str, str] = Field(default_factory=dict)              # point-level stage -> "hit" | "miss"
     started_at: str
     finished_at: str
 

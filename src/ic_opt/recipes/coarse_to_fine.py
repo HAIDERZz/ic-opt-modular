@@ -10,8 +10,8 @@ def main(run: Run, *, coarse_budget: int = 40, fine_budget: int = 40, batch: int
     b.doctor(run.spec, run.executor, cshrc=run.cshrc, store=run.store, site=run.site).require_pass()
     deck = b.import_netlists(run.spec, run.executor, run.store)
     coarse = b.optimize(run.spec, run.executor, run.store, deck=deck, strategy="openbox_gp_eic", budget=coarse_budget,
-                        batch=batch, seed=seed, step="coarse", cshrc=run.cshrc, parallel_jobs=run.jobs)
+                        batch=batch, seed=seed, step="coarse", cshrc=run.cshrc, parallel_jobs=run.jobs, site=run.site)
     fine = b.optimize(run.spec, run.executor, run.store, deck=deck, strategy="turbo", budget=fine_budget, batch=batch,
-                      seed=seed, step="fine", initial=coarse, cshrc=run.cshrc, parallel_jobs=run.jobs)
+                      seed=seed, step="fine", initial=coarse, cshrc=run.cshrc, parallel_jobs=run.jobs, site=run.site)
     if coarse or fine:
         run.note(f"report: {b.report(run.spec, [*coarse, *fine], run.store)}")
