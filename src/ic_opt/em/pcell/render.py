@@ -39,8 +39,10 @@ def layer_names(profile_id: str) -> dict[str, str]:
 
 
 def render(gds: Path | str, out: Path | str, *, boxes: list[Box] | tuple[Box, ...] = (), zoom: Box | None = None,
-           title: str = "", names: dict[str, str] | None = None, dpi: int = 110, size_in: float = 6.4) -> Path:
-    """Draw ``gds``'s top cell into ``out`` (PNG); ``zoom`` and ``boxes`` are (left, bottom, right, top) in um."""
+           title: str = "", names: dict[str, str] | None = None, dpi: int = 110, size_in: float = 6.4, bare: bool = False) -> Path:
+    """Draw ``gds``'s top cell into ``out`` (PNG); ``zoom`` and ``boxes`` are (left, bottom, right, top) in um.
+
+    ``bare`` drops the axes, legend, title and port labels: a thumbnail for a contact sheet."""
     layout = kdb.Layout()
     layout.read(str(gds))
     top = layout.top_cells()[0]
@@ -64,7 +66,8 @@ def render(gds: Path | str, out: Path | str, *, boxes: list[Box] | tuple[Box, ..
             iterator.next()
     for x, y, string in texts:
         ax.plot(x, y, marker="+", color="black", markersize=6)
-        ax.annotate(string, (x, y), fontsize=7, xytext=(2, 2), textcoords="offset points")
+        if not bare:
+            ax.annotate(string, (x, y), fontsize=7, xytext=(2, 2), textcoords="offset points")
     for left, bottom, right, top_ in boxes:
         pad = 0.02 * max(right - left, top_ - bottom, 1.0)      # a degenerate (edge-thin) box still shows
         ax.add_patch(Rectangle((left - pad, bottom - pad), right - left + 2 * pad, top_ - bottom + 2 * pad, fill=False, edgecolor="red", linewidth=1.8))
@@ -75,12 +78,16 @@ def render(gds: Path | str, out: Path | str, *, boxes: list[Box] | tuple[Box, ..
     ax.set_xlim(zoom[0], zoom[2])
     ax.set_ylim(zoom[1], zoom[3])
     ax.set_aspect("equal")
-    ax.set_xlabel("µm")
-    ax.set_ylabel("µm")
-    ax.set_title(title, fontsize=10)
-    if drawn:
-        ax.legend(loc="upper right", fontsize=7, framealpha=0.8)
-    fig.tight_layout()
+    if bare:
+        ax.axis("off")
+        fig.subplots_adjust(0, 0, 1, 1)
+    else:
+        ax.set_xlabel("µm")
+        ax.set_ylabel("µm")
+        ax.set_title(title, fontsize=10)
+        if drawn:
+            ax.legend(loc="upper right", fontsize=7, framealpha=0.8)
+        fig.tight_layout()
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out)

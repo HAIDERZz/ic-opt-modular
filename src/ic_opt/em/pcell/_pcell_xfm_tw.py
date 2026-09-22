@@ -842,10 +842,15 @@ def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
     # already clears -- the entire pre-existing sweep territory.
     if process is not None and len(H) > 1:
         floor_eff = _effective_min_spacing(sl, W, process)
+        # The centrelines' diagonal separation, less what add_wide_path's
+        # per-vertex mask-grid snap can take off the two drawn outlines
+        # (half a grid each): the DRC engine measures the outlines, and at
+        # S == the floor they came out 2-3 nm short of it (random campaign
+        # 2026-09-22, an AP body at S=2.0).
         worst = min(
             ((H[i] - H[i + 1]) + chamfer[i][1] - chamfer[i + 1][1])
             / math.sqrt(2.0) - W
-            for i in range(len(H) - 1))
+            for i in range(len(H) - 1)) - GRID_UM
         if worst < floor_eff - 1e-9:
             delta = math.ceil(
                 (floor_eff - worst) * math.sqrt(2.0) / GRID_UM - 1e-9)

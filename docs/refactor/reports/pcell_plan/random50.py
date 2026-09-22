@@ -210,7 +210,7 @@ def main() -> None:
             built_s = time.perf_counter() - t0
             manifest = json.loads(result.manifest_path.read_text())
             checks = check(family, config, result.gds_path, manifest, args.profile)
-            render(result.gds_path, outdir / "thumb.png", names=names, dpi=48, size_in=2.4, title="")
+            render(result.gds_path, outdir / "thumb.png", names=names, dpi=60, size_in=2.4, bare=True)
             devices.append({"index": accepted, "config": config, "gds": str(result.gds_path), "build_s": round(built_s, 3), **checks})
             accepted += 1
             print(f"{family} {accepted:02d}/{args.per_family} refused_so_far={refused} ok={checks['ok']} {built_s:.2f}s", flush=True)

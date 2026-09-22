@@ -2112,7 +2112,10 @@ def test_xfm_il_generator_parity_with_direct_module_call(tmp_path):
 
 
 def test_xfm_il_wide_boundary_has_full_width_primary_pin_landing(tmp_path):
-    """The first feasible W=8 NT=2 IL keeps a full-width P-side joint."""
+    """The first feasible W=8 NT=2 IL keeps a full-width P-side joint.
+
+    secondary_opening 19.5 (was 21): since 2026-09-22 the secondary escape's
+    arm-tip pad must sit on the secondary's flat (OPENING_S + tip <= BA)."""
     import klayout.db as kdb
 
     from ic_opt.em.pcell.drc_audit import (
@@ -2129,7 +2132,7 @@ def test_xfm_il_wide_boundary_has_full_width_primary_pin_landing(tmp_path):
         "spacing_um": 2.1,
         "turns": 2,
         "primary_opening_um": 21.0,
-        "secondary_opening_um": 21.0,
+        "secondary_opening_um": 19.5,
         "metal": "10",
     }
     cfg = gp.CleanPortXfmIlConfig.model_validate(payload)

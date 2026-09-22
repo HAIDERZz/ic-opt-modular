@@ -1371,6 +1371,17 @@ def xfm_il(
         where=f"xfm_il: OD={OD}, OD_S={OD_S}, W={W}, OPENING_S={OPENING_S}",
         corridor="primary outermost ring's chamfer corridor",
         advice="increase OD or reduce OPENING_S/W")
+    if process is not None:
+        # The escape's arm-tip pad spans OPENING_S .. OPENING_S + tip along S's outermost arm; past that ring's BA the
+        # arm turns 45 degrees and the pad's corner would hang outside it (D4; a 10% hang on a 92 um NT=2 device, 2026-09-22).
+        flat = octagon(OD_S, W, s_biases[0]).BA
+        reach = OPENING_S + (W if tip_w is None else tip_w)
+        if reach > flat + 1e-9:
+            raise PortError(
+                f"xfm_il: OD_S={OD_S}, W={W}, OPENING_S={OPENING_S}: the secondary escape's arm-tip pad reaches "
+                f"{reach:.3f} um along the arm, past the ring's flat (BA={flat} um) -- the pad would hang off the ring; "
+                "reduce OPENING_S or W, or increase OD"
+            )
     _balun_crossunder(s_local, 0.0, OD_S, W, OPENING_S, LEAD_S,
                       0.0, OD, sl, leg1, S, "P2", "N2", process,
                       tip_pad_width=tip_w)
