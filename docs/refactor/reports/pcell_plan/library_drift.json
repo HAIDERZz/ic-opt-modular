@@ -1,0 +1,98 @@
+{
+ "per_stratum": {
+  "ind_sym_ap": {
+   "equal": 31,
+   "different": 9,
+   "sampled": 40,
+   "total": 445
+  },
+  "ind_sym_m10": {
+   "equal": 30,
+   "different": 7,
+   "refused": 3,
+   "sampled": 40,
+   "total": 443
+  },
+  "xfm_balun_ap": {
+   "equal": 33,
+   "refused": 1,
+   "different": 6,
+   "sampled": 40,
+   "total": 494
+  },
+  "xfm_balun_m10": {
+   "equal": 36,
+   "different": 4,
+   "sampled": 40,
+   "total": 470
+  },
+  "xfm_bs_apm10": {
+   "equal": 36,
+   "different": 4,
+   "sampled": 40,
+   "total": 425
+  },
+  "xfm_bs_m10m9": {
+   "equal": 31,
+   "different": 9,
+   "sampled": 40,
+   "total": 434
+  },
+  "xfm_il_ap": {
+   "equal": 37,
+   "different": 2,
+   "refused": 1,
+   "sampled": 40,
+   "total": 707
+  },
+  "xfm_il_m10": {
+   "equal": 37,
+   "different": 3,
+   "sampled": 40,
+   "total": 672
+  },
+  "xfm_ms_apm10": {
+   "different": 22,
+   "refused": 4,
+   "equal": 14,
+   "sampled": 40,
+   "total": 676
+  },
+  "xfm_ms_m10m9": {
+   "different": 29,
+   "equal": 11,
+   "sampled": 40,
+   "total": 688
+  },
+  "xfm_tw_ap": {
+   "equal": 23,
+   "different": 17,
+   "sampled": 40,
+   "total": 951
+  },
+  "xfm_tw_m10": {
+   "equal": 36,
+   "different": 4,
+   "sampled": 40,
+   "total": 623
+  }
+ },
+ "refusal_reasons": [
+  [
+   "xfm_ms_apm10: PortError: ind_sym: innermost facing-bearing turn OD=# (NT=#, PITCH=#) cannot host the crossunder fac",
+   4
+  ],
+  [
+   "ind_sym_m10: PortError: ind_sym: innermost facing-bearing turn OD=# (NT=#, PITCH=#) cannot host the crossunder fac",
+   3
+  ],
+  [
+   "xfm_balun_ap: PortError: n#_#p#m: M#->AP: cannot fit RV passive via array in #um x #um window",
+   1
+  ],
+  [
+   "xfm_il_ap: PortError: n#_#p#m: M#->AP: cannot fit RV passive via array in #um x #um window",
+   1
+  ]
+ ]
+}

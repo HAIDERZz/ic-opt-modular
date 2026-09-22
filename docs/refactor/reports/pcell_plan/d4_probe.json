@@ -1,0 +1,135 @@
+{
+ "tally": {
+  "clean": 83,
+  "refused": 52,
+  "violations": 9
+ },
+ "violations": [
+  {
+   "od": 70,
+   "nt": 3,
+   "w": 5,
+   "s": 2,
+   "n": 1,
+   "kinds": [
+    [
+     "wide_parallel_spacing",
+     "M6"
+    ]
+   ],
+   "first": "Violation(kind='wide_parallel_spacing', layer='M6', count=2, detail='wide parallel edge pair(s) violate W>5.0 um, L>20.0 um requires space>=2.0 um')"
+  },
+  {
+   "od": 90,
+   "nt": 3,
+   "w": 5,
+   "s": 2,
+   "n": 1,
+   "kinds": [
+    [
+     "wide_parallel_spacing",
+     "M6"
+    ]
+   ],
+   "first": "Violation(kind='wide_parallel_spacing', layer='M6', count=1, detail='wide parallel edge pair(s) violate W>5.0 um, L>20.0 um requires space>=2.0 um')"
+  },
+  {
+   "od": 90,
+   "nt": 4,
+   "w": 5,
+   "s": 2,
+   "n": 1,
+   "kinds": [
+    [
+     "wide_parallel_spacing",
+     "M6"
+    ]
+   ],
+   "first": "Violation(kind='wide_parallel_spacing', layer='M6', count=1, detail='wide parallel edge pair(s) violate W>5.0 um, L>20.0 um requires space>=2.0 um')"
+  },
+  {
+   "od": 100,
+   "nt": 3,
+   "w": 5,
+   "s": 2,
+   "n": 1,
+   "kinds": [
+    [
+     "wide_parallel_spacing",
+     "M6"
+    ]
+   ],
+   "first": "Violation(kind='wide_parallel_spacing', layer='M6', count=3, detail='wide parallel edge pair(s) violate W>5.0 um, L>20.0 um requires space>=2.0 um')"
+  },
+  {
+   "od": 100,
+   "nt": 4,
+   "w": 5,
+   "s": 2,
+   "n": 1,
+   "kinds": [
+    [
+     "wide_parallel_spacing",
+     "M6"
+    ]
+   ],
+   "first": "Violation(kind='wide_parallel_spacing', layer='M6', count=3, detail='wide parallel edge pair(s) violate W>5.0 um, L>20.0 um requires space>=2.0 um')"
+  },
+  {
+   "od": 100,
+   "nt": 5,
+   "w": 5,
+   "s": 2,
+   "n": 1,
+   "kinds": [
+    [
+     "wide_parallel_spacing",
+     "M6"
+    ]
+   ],
+   "first": "Violation(kind='wide_parallel_spacing', layer='M6', count=3, detail='wide parallel edge pair(s) violate W>5.0 um, L>20.0 um requires space>=2.0 um')"
+  },
+  {
+   "od": 120,
+   "nt": 3,
+   "w": 5,
+   "s": 2,
+   "n": 1,
+   "kinds": [
+    [
+     "wide_parallel_spacing",
+     "M6"
+    ]
+   ],
+   "first": "Violation(kind='wide_parallel_spacing', layer='M6', count=6, detail='wide parallel edge pair(s) violate W>5.0 um, L>20.0 um requires space>=2.0 um')"
+  },
+  {
+   "od": 120,
+   "nt": 4,
+   "w": 5,
+   "s": 2,
+   "n": 1,
+   "kinds": [
+    [
+     "wide_parallel_spacing",
+     "M6"
+    ]
+   ],
+   "first": "Violation(kind='wide_parallel_spacing', layer='M6', count=8, detail='wide parallel edge pair(s) violate W>5.0 um, L>20.0 um requires space>=2.0 um')"
+  },
+  {
+   "od": 120,
+   "nt": 5,
+   "w": 5,
+   "s": 2,
+   "n": 1,
+   "kinds": [
+    [
+     "wide_parallel_spacing",
+     "M6"
+    ]
+   ],
+   "first": "Violation(kind='wide_parallel_spacing', layer='M6', count=8, detail='wide parallel edge pair(s) violate W>5.0 um, L>20.0 um requires space>=2.0 um')"
+  }
+ ]
+}
