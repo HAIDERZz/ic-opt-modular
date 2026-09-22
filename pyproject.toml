@@ -32,6 +32,9 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.5",
 ]
+em = [                         # EM stages: the pcell geometry library and the DRC audit are built on klayout
+    "klayout>=0.30",
+]
 report = [                     # parameter-importance section of analyze.report (pins keep numpy < 2 for open-box)
     "shap==0.49.1",
     "lightgbm==4.6.0",
@@ -46,6 +49,9 @@ ic-opt = "ic_opt.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"ic_opt.em.pcell" = ["profiles/*/rule.yaml", "README.md"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
@@ -53,3 +59,8 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint.per-file-ignores]
+# the geometry library moved from em-opt as-is; style-only findings are not worth diverging its history
+"src/ic_opt/em/pcell/*" = ["ISC004", "C408", "C402", "RUF046", "RUF007", "RUF059", "TRY004", "B023", "BLE001", "PIE810"]
+"tests/ic_opt/pcell/*" = ["ISC004", "C408", "C402", "RUF046", "RUF007", "RUF059", "TRY004", "B023", "BLE001", "PIE810"]
