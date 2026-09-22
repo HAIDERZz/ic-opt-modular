@@ -8,7 +8,16 @@ resolves ``builtin:clean_port`` (this package) or an external plugin file.
 from ic_opt.em.pcell.base import GeometryGenerationResult, PassiveDeviceGenerator
 from ic_opt.em.pcell.registry import get_generator, resolve_plugin_module_path
 
+# The generation of the built-in families' default geometry. Bump it when a
+# change makes any existing configuration's GDS physically different (the
+# gds_compare sense): the generators stamp it into geometry_manifest.json and
+# the Pcell stage carries it in the pipeline fingerprint, so observations of an
+# older generation are never reused for a newer one. 6 = em-opt's
+# ingest.CURRENT_GEOM_VERSION at the move (port contract + taps + landing fixes).
+GEOMETRY_VERSION = 6
+
 __all__ = [
+    "GEOMETRY_VERSION",
     "GeometryGenerationResult",
     "PassiveDeviceGenerator",
     "Report",

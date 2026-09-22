@@ -92,6 +92,8 @@ class Pcell:
 
     def __init__(self, spec: Spec) -> None:
         self.generators = {d.id: get_generator(d.generator, plugin_module=d.plugin) for d in spec.devices}
+        # each device's geometry generation: a bump retires every observation built on the older geometry
+        self.identity = json.dumps({d: g.geometry_version for d, g in sorted(self.generators.items())}, separators=(",", ":"))
 
     def fingerprint(self, point: Point, ctx: StageContext) -> str | None:
         return None

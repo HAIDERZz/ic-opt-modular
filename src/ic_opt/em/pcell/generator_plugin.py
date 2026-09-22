@@ -28,6 +28,7 @@ from pydantic import (
     model_validator,
 )
 
+from ic_opt.em.pcell import GEOMETRY_VERSION
 from ic_opt.em.pcell.base import (
     GeometryGenerationResult,
     PassiveDeviceGenerator,
@@ -960,6 +961,7 @@ def _write_geometry_outputs(
     manifest_path.write_text(json.dumps({
         "schema_version": "1.0",
         "generator_id": generator_id,
+        "geometry_version": GEOMETRY_VERSION,
         "geometry": {"config": config.model_dump(mode="json")},
         "suggested_emx_ports": port_lines,
         "suggested_emx_ports_note": (
@@ -980,7 +982,13 @@ def _write_geometry_outputs(
         emx_ports_path=emx_ports_path)
 
 
-class CleanPortIndSymGenerator(PassiveDeviceGenerator):
+class _CleanPortGenerator(PassiveDeviceGenerator):
+    """The six built-in families share the package's geometry generation."""
+
+    geometry_version = GEOMETRY_VERSION
+
+
+class CleanPortIndSymGenerator(_CleanPortGenerator):
     generator_id = "clean_port_ind_sym"
     config_model = CleanPortIndSymConfig
 
@@ -1004,7 +1012,7 @@ class CleanPortIndSymGenerator(PassiveDeviceGenerator):
             requires_vias=(config.turns >= 2 or config.ct_metal is not None))
 
 
-class CleanPortXfmBsGenerator(PassiveDeviceGenerator):
+class CleanPortXfmBsGenerator(_CleanPortGenerator):
     generator_id = "clean_port_xfm_bs"
     config_model = CleanPortXfmBsConfig
 
@@ -1037,7 +1045,7 @@ class CleanPortXfmBsGenerator(PassiveDeviceGenerator):
             requires_vias=has_ct)
 
 
-class CleanPortXfmMsGenerator(PassiveDeviceGenerator):
+class CleanPortXfmMsGenerator(_CleanPortGenerator):
     generator_id = "clean_port_xfm_ms"
     config_model = CleanPortXfmMsConfig
 
@@ -1067,7 +1075,7 @@ class CleanPortXfmMsGenerator(PassiveDeviceGenerator):
             requires_vias=True)
 
 
-class CleanPortXfmBalunGenerator(PassiveDeviceGenerator):
+class CleanPortXfmBalunGenerator(_CleanPortGenerator):
     generator_id = "clean_port_xfm_balun"
     config_model = CleanPortXfmBalunConfig
 
@@ -1101,7 +1109,7 @@ class CleanPortXfmBalunGenerator(PassiveDeviceGenerator):
             requires_vias=True)
 
 
-class CleanPortXfmTwGenerator(PassiveDeviceGenerator):
+class CleanPortXfmTwGenerator(_CleanPortGenerator):
     generator_id = "clean_port_xfm_tw"
     config_model = CleanPortXfmTwConfig
 
@@ -1131,7 +1139,7 @@ class CleanPortXfmTwGenerator(PassiveDeviceGenerator):
             requires_vias=True)
 
 
-class CleanPortXfmIlGenerator(PassiveDeviceGenerator):
+class CleanPortXfmIlGenerator(_CleanPortGenerator):
     generator_id = "clean_port_xfm_il"
     config_model = CleanPortXfmIlConfig
 

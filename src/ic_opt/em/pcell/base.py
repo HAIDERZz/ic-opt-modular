@@ -19,6 +19,7 @@ class GeometryGenerationResult:
 class PassiveDeviceGenerator(ABC):
     generator_id: str
     config_model: type[BaseModel]
+    geometry_version: int | None = None      # None: an external plugin that does not account for its geometry's generation
 
     @abstractmethod
     def generate(

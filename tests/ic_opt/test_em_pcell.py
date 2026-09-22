@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from ic_opt.em.pcell import get_generator
-from ic_opt.eval.stage import StageContext, StageFailure
+from ic_opt.em.pcell import GEOMETRY_VERSION, get_generator
+from ic_opt.eval.stage import StageContext, StageFailure, pipeline_fingerprint
 from ic_opt.executor import LocalExecutor
 from ic_opt.observation import ChildResult
 from ic_opt.space import Point
@@ -65,6 +65,19 @@ def test_pcell_builds_the_device_and_records_ports_and_hash(tmp_path):
     assert json.loads((ctx.workdir / "em" / "geometry.json").read_text())["ind"]["gds_sha256"] == g.gds_sha256
     again = Pcell(spec).run(Point({"outer_diameter_um": "100", "width_um": "5"}, "user"), point_context(spec, tmp_path / "b"))
     assert again.devices["ind"].gds_sha256 == g.gds_sha256                       # byte-deterministic geometry
+
+
+def test_geometry_version_reaches_the_manifest_and_retires_older_pipelines(tmp_path, monkeypatch):
+    spec = demo_spec()
+    ctx = point_context(spec, tmp_path)
+    Pcell(spec).run(Point({"outer_diameter_um": "100", "width_um": "5"}, "user"), ctx)
+    manifest = json.loads((ctx.workdir / "em" / "ind" / "geometry_manifest.json").read_text())
+    assert manifest["geometry_version"] == GEOMETRY_VERSION
+    stage = Pcell(spec)
+    assert stage.identity == json.dumps({"ind": GEOMETRY_VERSION}, separators=(",", ":"))
+    before = pipeline_fingerprint([stage])
+    monkeypatch.setattr(type(stage.generators["ind"]), "geometry_version", GEOMETRY_VERSION + 1)
+    assert pipeline_fingerprint([Pcell(spec)]) != before                          # a bump means no reuse of older observations
 
 
 def test_pcell_two_devices_take_prefixed_variables_and_the_binding_sets_the_snp_order(tmp_path):
