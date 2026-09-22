@@ -101,10 +101,10 @@ def add_pgs(cell, config: CleanPortPgsConfig, process_profile: str,
 
     combined = (ground + shield).merged()
     minimum_width = math.ceil(rule.min_width_um / DBU_UM)
-    wide_count, _ = wide_parallel_spacing_violations(
+    wide = wide_parallel_spacing_violations(
         combined, metal_name="M1", adapter=context.adapter, dbu=DBU_UM)
     if (not combined.width_check(minimum_width).is_empty()
-            or not combined.space_check(clearance).is_empty() or wide_count):
+            or not combined.space_check(clearance).is_empty() or wide.count):
         raise PortError("PGS and ground fixture violate the process M1 width/spacing rules")
     if (rule.max_width_um is not None
             and not shield.sized(-round(rule.max_width_um / (2 * DBU_UM))).is_empty()):

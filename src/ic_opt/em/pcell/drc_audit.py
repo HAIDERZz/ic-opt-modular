@@ -24,6 +24,8 @@ from ic_opt.em.pcell.rule_adapter import (
     get_geometry_rule_adapter,
 )
 
+Box = tuple[float, float, float, float]        # left, bottom, right, top in um
+
 
 @dataclass(frozen=True)
 class Violation:
@@ -31,6 +33,7 @@ class Violation:
     layer: str
     count: int
     detail: str
+    boxes_um: tuple[Box, ...] = ()              # where: one bounding box per violating edge pair or region
 
 
 @dataclass
@@ -74,6 +77,22 @@ def _um_to_dbu(value_um: float, dbu: float) -> int:
     return int(round(value_um / dbu))
 
 
+def _box_um(box: kdb.Box, dbu: float) -> Box:
+    return (box.left * dbu, box.bottom * dbu, box.right * dbu, box.top * dbu)
+
+
+def _pair_box(pair: kdb.EdgePair) -> kdb.Box:
+    return kdb.Box(pair.first.p1, pair.first.p2) + kdb.Box(pair.second.p1, pair.second.p2)
+
+
+def _pair_boxes(edge_pairs: kdb.EdgePairs, dbu: float) -> tuple[Box, ...]:
+    return tuple(_box_um(_pair_box(pair), dbu) for pair in edge_pairs.each())
+
+
+def _region_boxes(region: kdb.Region, dbu: float) -> tuple[Box, ...]:
+    return tuple(_box_um(polygon.bbox(), dbu) for polygon in region.each())
+
+
 def _edge_key(edge: kdb.Edge) -> tuple[tuple[int, int], tuple[int, int]]:
     """Orientation-independent identity for one merged-region boundary edge."""
     return tuple(sorted(((edge.p1.x, edge.p1.y), (edge.p2.x, edge.p2.y))))
@@ -88,6 +107,13 @@ def _edge_pair_key(
     return tuple(sorted((_edge_key(pair.first), _edge_key(pair.second))))
 
 
+@dataclass(frozen=True)
+class WideParallelFinding:
+    count: int                       # unique violating edge pairs
+    details: list[str]               # one line per rule that fired
+    boxes_um: tuple[Box, ...]        # one bounding box per violating edge pair
+
+
 def wide_parallel_spacing_violations(
     region: kdb.Region,
     *,
@@ -95,10 +121,11 @@ def wide_parallel_spacing_violations(
     adapter: GeometryRuleAdapter,
     dbu: float,
     other: kdb.Region | None = None,
-) -> tuple[int, list[str]]:
-    """Return unique profile-rule findings within/between metal regions."""
+) -> WideParallelFinding:
+    """Unique profile-rule findings within/between metal regions."""
     rules = adapter.profile.layout_rules.passive_region.wide_parallel_spacing
     violation_keys = set()
+    boxes: list[Box] = []
     rule_details = []
     for rule in rules:
         if metal_name not in rule.metals:
@@ -146,6 +173,8 @@ def wide_parallel_spacing_violations(
                 _edge_key(pair.first) not in first_narrow
                 and _edge_key(pair.second) not in second_narrow
             ):
+                if _edge_pair_key(pair) not in violation_keys:
+                    boxes.append(_box_um(_pair_box(pair), dbu))
                 violation_keys.add(_edge_pair_key(pair))
                 rule_hit = True
         if rule_hit:
@@ -154,7 +183,7 @@ def wide_parallel_spacing_violations(
                 f"L>{rule.when_parallel_length_gt_um} um requires "
                 f"space>={rule.min_space_um} um"
             )
-    return len(violation_keys), rule_details
+    return WideParallelFinding(len(violation_keys), rule_details, tuple(boxes))
 
 
 def _audit_wide_parallel_spacing(
@@ -173,21 +202,22 @@ def _audit_wide_parallel_spacing(
             continue
 
         report.checked.append(f"wide_parallel_spacing:{metal_name}")
-        count, rule_details = wide_parallel_spacing_violations(
+        finding = wide_parallel_spacing_violations(
             region,
             metal_name=metal_name,
             adapter=adapter,
             dbu=layout.dbu,
         )
-        if count:
+        if finding.count:
             report.violations.append(Violation(
                 kind="wide_parallel_spacing",
                 layer=metal_name,
-                count=count,
+                count=finding.count,
                 detail=(
                     "wide parallel edge pair(s) violate "
-                    + "; ".join(rule_details)
+                    + "; ".join(finding.details)
                 ),
+                boxes_um=finding.boxes_um,
             ))
 
 
@@ -215,7 +245,8 @@ def _audit_metal_rules(
             if n:
                 report.violations.append(Violation(
                     kind="min_width", layer=metal_name, count=n,
-                    detail=f"edge(s) narrower than min_width={rule.min_width_um} um"))
+                    detail=f"edge(s) narrower than min_width={rule.min_width_um} um",
+                    boxes_um=_pair_boxes(edge_pairs, layout.dbu)))
 
         if rule.min_space_um is not None:
             report.checked.append(f"min_space:{metal_name}")
@@ -225,7 +256,8 @@ def _audit_metal_rules(
             if n:
                 report.violations.append(Violation(
                     kind="min_space", layer=metal_name, count=n,
-                    detail=f"edge pair(s) closer than min_space={rule.min_space_um} um"))
+                    detail=f"edge pair(s) closer than min_space={rule.min_space_um} um",
+                    boxes_um=_pair_boxes(edge_pairs, layout.dbu)))
 
         if rule.max_width_um is not None:
             report.checked.append(f"max_width:{metal_name}")
@@ -233,7 +265,8 @@ def _audit_metal_rules(
             if not eroded.is_empty():
                 report.violations.append(Violation(
                     kind="max_width", layer=metal_name, count=eroded.count(),
-                    detail=f"region wider than max_width={rule.max_width_um} um"))
+                    detail=f"region wider than max_width={rule.max_width_um} um",
+                    boxes_um=_region_boxes(eroded, layout.dbu)))
 
 
 def _audit_via_enclosure(
@@ -257,6 +290,7 @@ def _audit_via_enclosure(
     report.checked.append(f"via_enclosure:{via_name}")
     total_violations = 0
     detail_bits: list[str] = []
+    boxes: list[Box] = []
     for metal_name, enclosure_um in ((lower_metal, lower_enc), (upper_metal, upper_enc)):
         metal_layer = adapter.layer(metal_name)
         metal_region = _region_for(layout, top, metal_layer.drawing)
@@ -265,13 +299,14 @@ def _audit_via_enclosure(
         if not under_enclosed.is_empty():
             n = under_enclosed.count()
             total_violations += n
+            boxes += _region_boxes(under_enclosed, layout.dbu)
             detail_bits.append(
                 f"{n} cut(s) under-enclosed by {metal_name} "
                 f"(< {enclosure_um} um min_enclosure)")
     if total_violations:
         report.violations.append(Violation(
             kind="via_enclosure", layer=via_name, count=total_violations,
-            detail="; ".join(detail_bits)))
+            detail="; ".join(detail_bits), boxes_um=tuple(boxes)))
 
 
 # Via classes whose cut-array legality (count/spacing/enclosure-in-window) is

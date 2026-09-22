@@ -303,14 +303,14 @@ def _xfm_nets_are_drc_separate(a, b, process) -> bool:
             rb[layer], _nm(spacing), False, kdb.Metrics.Euclidian
         ).count():
             return False
-        wide_count, _details = wide_parallel_spacing_violations(
+        wide = wide_parallel_spacing_violations(
             ra[layer].merged(),
             metal_name=name,
             adapter=process.adapter,
             dbu=DBU_UM,
             other=rb[layer].merged(),
         )
-        if wide_count:
+        if wide.count:
             return False
     return True
 
