@@ -7,6 +7,7 @@ from __future__ import annotations
 import math
 
 from ic_opt.em.pcell._pcell_core import (
+    _EPS,
     GRID_UM,
     Cell,
     PortError,
@@ -17,6 +18,7 @@ from ic_opt.em.pcell._pcell_core import (
     _metal_below,
     _metal_index,
     _metal_name,
+    add_wide_path,
     ceiltogrid,
     chamfer,
     cross_endpoint_offset,
@@ -601,6 +603,40 @@ def base_lead(
     return cell
 
 
+def base_lead_jog(
+    L: float,
+    W: float,
+    DY: float,
+    LEAD_ME: str,
+    *,
+    port_name: str,
+    port_logical_name: str | None,
+    port_metal: int,
+    port_label_layer: tuple[int, int],
+    process: ProcessRuleContext | None = None,
+    RUN: float = 0.0,
+) -> Cell:
+    """``base_lead`` whose tip is shifted ``DY`` across (M3.1, ``port_spacing``): straight out of the ring for
+    W + ``RUN``, a 45-degree jog of |DY|, then straight to ``L``. The port sits at the tip; its zone is the
+    straight tail, which must be at least W long (``L >= 2 W + RUN + |DY|``).
+
+    ``RUN`` keeps an outward jog's 45-degree edge clear of the ring arm it leaves: the wedge between the arm's
+    outer edge and the diagonal is ``RUN / sqrt2`` wide at its narrowest, so the caller sets ``RUN`` to
+    ``sqrt2`` times the metal's spacing floor."""
+    tail = L - W - RUN - abs(DY)
+    if tail < W - _EPS:
+        raise PortError(
+            f"base_lead_jog: lead {L} um cannot hold a {abs(DY):.3f} um jog plus a W={W} um tail "
+            f"(needs LEAD >= {2 * W + RUN + abs(DY):.3f} um); increase the lead length or reduce the port spacing change"
+        )
+    cell = Cell(f"base_lead_jog_L{L}_W{W}_DY{DY}_R{RUN}_M{LEAD_ME}", "base_lead_jog", {"L": L, "W": W, "DY": DY, "RUN": RUN, "LEAD_ME": LEAD_ME})
+    yc = W / 2.0
+    add_wide_path(cell, _metal(_metal_index(LEAD_ME), process), [(0.0, yc), (W + RUN, yc), (W + RUN + abs(DY), yc + DY), (L, yc + DY)], W)
+    cell.add_emx_port(name=port_name, logical_name=port_logical_name or port_name, metal=port_metal, label_layer=port_label_layer,
+                      x_um=L, y_um=yc + DY, lead_zone_um=(L - tail, DY, L, DY + W))
+    return cell
+
+
 # ---------------------------------------------------------------------------
 # base_lead_pair (gdsgen_ref/pcell/common/base_lead_pair.il)
 # ---------------------------------------------------------------------------
@@ -620,6 +656,7 @@ def base_lead_pair(
     port_label_layer: tuple[int, int] | None = None,
     port_p1_logical_name: str | None = None,
     port_n1_logical_name: str | None = None,
+    PORT_SPACING: float | None = None,
 ) -> Cell:
     """P/N lead pair on LEAD_ME plus WxW via blocks when TOP_ME != LEAD_ME.
 
@@ -654,8 +691,12 @@ def base_lead_pair(
     }
     if process is not None:
         params["process"] = process.profile_id
+    suffix = ""
+    if PORT_SPACING is not None:
+        params["PORT_SPACING"] = PORT_SPACING
+        suffix = f"_PS{PORT_SPACING}"
     cell = Cell(
-        f"base_lead_pair_W{W}_O{OPENING}_L{LEAD}_T{TOP_ME}_LM{LEAD_ME}",
+        f"base_lead_pair_W{W}_O{OPENING}_L{LEAD}_T{TOP_ME}_LM{LEAD_ME}{suffix}",
         "base_lead_pair",
         params,
     )
@@ -663,6 +704,30 @@ def base_lead_pair(
     LM = _metal_index(LEAD_ME)
     port_name_p1 = P1TXT if port_metal is not None else None
     port_name_n1 = N1TXT if port_metal is not None else None
+    # M3.1: an independent tip spacing. The ring opening fixes where the leads
+    # leave (centres +-(OPENING + W/2)); a PORT_SPACING that differs jogs each
+    # lead by half the difference on its way out. Two leads closer than the
+    # metal's spacing floor are refused here, not discovered by DRC.
+    natural = 2 * OPENING + W
+    if PORT_SPACING is not None and abs(PORT_SPACING - natural) > _EPS:
+        if port_metal is None:
+            raise PortError("base_lead_pair: PORT_SPACING needs registered ports (port_metal)")
+        floor = _effective_min_spacing(LM, W, process) if process is not None else 0.0
+        if PORT_SPACING - W < floor - _EPS:
+            raise PortError(
+                f"base_lead_pair: port spacing {PORT_SPACING} um leaves {PORT_SPACING - W:.3f} um between the two "
+                f"W={W} um leads, below the {_metal_name(LM)} spacing floor {floor} um"
+            )
+        dy = (PORT_SPACING - natural) / 2.0
+        run = ceiltogrid(floor * math.sqrt(2.0)) if dy > 0 else 0.0        # an outward jog must clear the ring arm it leaves
+        for txt, logical, y0, sign in ((P1TXT, port_p1_logical_name, OPENING, 1.0), (N1TXT, port_n1_logical_name, -OPENING - W, -1.0)):
+            cell.inst(
+                base_lead_jog(L=LEAD, W=W, DY=sign * dy, LEAD_ME=LEAD_ME, port_name=txt, port_logical_name=logical,
+                              port_metal=port_metal, port_label_layer=port_label_layer, process=process, RUN=run),
+                (0.0, y0),
+                "R0",
+            )
+        return cell
     cell.inst(
         base_lead(
             L=LEAD,

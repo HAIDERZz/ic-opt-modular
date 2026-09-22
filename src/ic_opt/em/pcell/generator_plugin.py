@@ -220,6 +220,7 @@ class _CleanPortInductorConfigBase(_CleanPortDeviceConfigBase):
     lead_length_um: float = Field(gt=0)
     turns: int = Field(ge=1)
     metal: str = Field(min_length=1)
+    port_spacing_um: float | None = Field(default=None, gt=0, multiple_of=0.01)      # tip-to-tip centre spacing; default 2*opening + width (M3.1)
 
     @field_validator("metal")
     @classmethod
@@ -342,6 +343,8 @@ class CleanPortXfmBsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     secondary_metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
     ct_secondary_metal: str | None = None
+    primary_port_spacing_um: float | None = Field(default=None, gt=0, multiple_of=0.01)     # M3.1: per winding, default 2*opening + width
+    secondary_port_spacing_um: float | None = Field(default=None, gt=0, multiple_of=0.01)
 
     @field_validator("ct_primary_metal", "ct_secondary_metal")
     @classmethod
@@ -426,6 +429,8 @@ class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     secondary_metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
     ct_secondary_metal: str | None = None
+    primary_port_spacing_um: float | None = Field(default=None, gt=0, multiple_of=0.01)     # M3.1: per winding, default 2*opening + width
+    secondary_port_spacing_um: float | None = Field(default=None, gt=0, multiple_of=0.01)
 
     @field_validator("primary_metal")
     @classmethod
@@ -503,6 +508,7 @@ class CleanPortXfmBalunConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBas
     metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
     ct_secondary_metal: str | None = None
+    primary_port_spacing_um: float | None = Field(default=None, gt=0, multiple_of=0.01)     # M3.1 (the nested secondary's escape leads are fixed)
 
     @field_validator("metal")
     @classmethod
@@ -1043,6 +1049,7 @@ class CleanPortIndSymGenerator(_CleanPortGenerator):
             ground_fixture=_build_fixture(p, config.ground_fixture,
                                           _auto_stub_widths(config)),
             process=p.process_rule_context(config.process_profile),
+            PORT_SPACING=config.port_spacing_um,
         )
         return _write_geometry_outputs(
             p, cell, config, generator_id=self.generator_id,
@@ -1072,6 +1079,8 @@ class CleanPortXfmBsGenerator(_CleanPortGenerator):
             ground_fixture=_build_fixture(p, config.ground_fixture,
                                           _auto_stub_widths(config)),
             process=p.process_rule_context(config.process_profile),
+            PORT_SPACING_P=config.primary_port_spacing_um,
+            PORT_SPACING_S=config.secondary_port_spacing_um,
         )
         # the broadside windings are via-less; the tap stacks are the only
         # via source, so via expectation follows the CT fields (M13)
@@ -1106,6 +1115,8 @@ class CleanPortXfmMsGenerator(_CleanPortGenerator):
                                           _auto_stub_widths(config)),
             process=p.process_rule_context(config.process_profile),
             STRAIGHT_EXTENSION=config.straight_extension_um,
+            PORT_SPACING_S=config.primary_port_spacing_um,
+            PORT_SPACING_M=config.secondary_port_spacing_um,
         )
         return _write_geometry_outputs(
             p, cell, config, generator_id=self.generator_id,
@@ -1136,6 +1147,7 @@ class CleanPortXfmBalunGenerator(_CleanPortGenerator):
             ground_fixture=_build_fixture(p, config.ground_fixture,
                                           _auto_stub_widths(config)),
             process=p.process_rule_context(config.process_profile),
+            PORT_SPACING_P=config.primary_port_spacing_um,
         )
         # vias exist only when something actually drops below the balun
         # plane: the nested-mode escape crossunder, a multi-turn winding's

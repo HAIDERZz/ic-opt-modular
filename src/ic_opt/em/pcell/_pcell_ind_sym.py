@@ -415,6 +415,7 @@ def ind_sym(
     STRAIGHT_EXTENSION: float = 0.0,
     semantic_port_roles: bool = True,
     CT_LEAD: float | None = None,
+    PORT_SPACING: float | None = None,
 ) -> Cell:
     """Symmetric inductor: stacked hud crosses + innermost turn + lead pair.
 
@@ -511,6 +512,7 @@ def ind_sym(
             process=process,
             family="ind_sym",
             semantic_port_roles=semantic_port_roles,
+            port_spacing=PORT_SPACING,
         )
         compact = extend_straight_x(compact, STRAIGHT_EXTENSION, process=process)
         compact.emx_ports = finalize_emx_ports(compact)
@@ -591,6 +593,7 @@ def ind_sym(
             port_label_layer=top_pin,
             port_p1_logical_name=("P1" if semantic_port_roles else None),
             port_n1_logical_name=("N1" if semantic_port_roles else None),
+            PORT_SPACING=PORT_SPACING,
         ),
         (OD / 2 - W if overlap_lead else OD / 2, 0.0),
         "R0",
@@ -706,6 +709,7 @@ def _compact_two_turn_candidate(
     render_via_cuts: bool = True,
     semantic_port_roles: bool = True,
     memo: dict | None = None,
+    port_spacing: float | None = None,
 ) -> Cell:
     """Render one compact two-turn MS winding candidate.
 
@@ -781,7 +785,7 @@ def _compact_two_turn_candidate(
         build(base_lead_pair, W=W, OPENING=OPENING, LEAD=LEAD + W, TOP_ME=str(top_met), LEAD_ME=str(top_met),
               P1TXT=port_order[0], N1TXT=port_order[1], process=process, port_metal=top_met, port_label_layer=pin,
               port_p1_logical_name=("P1" if semantic_port_roles else None),
-              port_n1_logical_name=("N1" if semantic_port_roles else None)),
+              port_n1_logical_name=("N1" if semantic_port_roles else None), PORT_SPACING=port_spacing),
         (OD / 2.0 - W, 0.0),
         "R0",
     )
@@ -911,6 +915,7 @@ def _compact_two_turn_lane_offsets(
     process: ProcessRuleContext,
     candidate_qualifier=None,
     memo: dict | None = None,
+    port_spacing: float | None = None,
 ) -> tuple[float, float] | None:
     """Return the closest DRC-clean symmetric lane pair for one pad length.
 
@@ -968,6 +973,7 @@ def _compact_two_turn_lane_offsets(
                 process=process,
                 render_via_cuts=False,
                 memo=memo,
+                port_spacing=port_spacing,
             )
             if not _compact_two_turn_candidate_is_qualified(
                 candidate, top_met=top_met, process=process
@@ -1004,6 +1010,7 @@ def _compact_two_turn_lane_offsets(
                     process=process,
                     render_via_cuts=False,
                     memo=memo,
+                    port_spacing=port_spacing,
                 )
                 if _compact_two_turn_candidate_is_qualified(
                     refined, top_met=top_met, process=process
@@ -1027,6 +1034,7 @@ def _compact_two_turn_winding(
     max_pad_length: float | None = None,
     candidate_qualifier=None,
     semantic_port_roles: bool = True,
+    port_spacing: float | None = None,
 ) -> Cell:
     """Find the closest DRC-clean symmetric lane pair for compact NT=2.
 
@@ -1086,6 +1094,7 @@ def _compact_two_turn_winding(
             process=process,
             candidate_qualifier=candidate_qualifier,
             memo=memo,
+            port_spacing=port_spacing,
         )
         if offsets is None:
             high = middle - 1
@@ -1109,6 +1118,7 @@ def _compact_two_turn_winding(
             process=process,
             semantic_port_roles=semantic_port_roles,
             render_via_cuts=True,
+            port_spacing=port_spacing,
         )
     raise PortError(
         f"{family}: no DRC-clean compact two-turn bridge fits OD={OD:.3f}, "

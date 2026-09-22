@@ -54,6 +54,8 @@ def xfm_ms(
     ground_fixture: GroundFixtureConfig | None = None,
     process: ProcessRuleContext | None = None,
     STRAIGHT_EXTENSION: float = 0.0,
+    PORT_SPACING_S: float | None = None,
+    PORT_SPACING_M: float | None = None,
 ) -> Cell:
     """Impedance-transforming transformer: a single-turn winding on the higher
     metal (SINGLE_ME) broadside over a multi-turn winding on the lower metal
@@ -117,7 +119,7 @@ def xfm_ms(
     # first because its outer extent sizes the multi winding's tap lead.
     sing = Cell("xfm_ms_single", "xfm_ms_single", {})
     _bs_winding(sing, xS, OD_S, W_S, OPENING_S, LEAD_S, SINGLE_ME, "left",
-                "P1", "N1", process)
+                "P1", "N1", process, port_spacing=PORT_SPACING_S)
     sing_xmin, _, sing_xmax, _ = _drawing_bbox_um(sing)
     # The multi tap (ind_sym's CT) exits right for even NT_M, left for odd;
     # its lead runs on to the single winding's outer edge on that side so
@@ -144,6 +146,7 @@ def xfm_ms(
             # xfm_ms's OWN P2/N2 (or CTS), not ind_sym's -- see ind_sym's
             # semantic_port_roles docstring.
             semantic_port_roles=False,
+            port_spacing=PORT_SPACING_M,
         )
         multi = extend_straight_x(multi, STRAIGHT_EXTENSION, process=process)
     else:
@@ -173,6 +176,7 @@ def xfm_ms(
             # port contract 2026-09-21: see the compact branch's own note
             # above -- same reason, same override.
             semantic_port_roles=False,
+            PORT_SPACING=PORT_SPACING_M,
             CT_LEAD=multi_ct_lead,
         )
     # (port contract 2026-09-21) mult.inst(multi, ...) alone carries

@@ -45,7 +45,7 @@ from ic_opt.em.pcell.fixture import (
 
 
 def _bs_winding(cell, center_x, OD, W, OPENING, LEAD, MET, side,
-                p_txt, n_txt, process):
+                p_txt, n_txt, process, port_spacing=None):
     """Single-turn open octagon on MET at center_x + P/N lead pair; 2 ports.
 
     ``side='right'`` opens/exits +x; ``side='left'`` opens/exits -x
@@ -68,7 +68,8 @@ def _bs_winding(cell, center_x, OD, W, OPENING, LEAD, MET, side,
         cell.inst(base_lead_pair(W=W, OPENING=OPENING, LEAD=LEAD + W,
                                  TOP_ME=str(met), LEAD_ME=str(met),
                                  P1TXT=p_txt, N1TXT=n_txt, process=process,
-                                 port_metal=met, port_label_layer=pin),
+                                 port_metal=met, port_label_layer=pin,
+                                 PORT_SPACING=port_spacing),
                   (center_x + OD / 2 - W, 0.0), "R0")
     else:
         cell.inst(base_oct(OD=OD, W=W, LOP=OPENING, ROP=0.0, MET=met,
@@ -76,7 +77,8 @@ def _bs_winding(cell, center_x, OD, W, OPENING, LEAD, MET, side,
         cell.inst(base_lead_pair(W=W, OPENING=OPENING, LEAD=LEAD + W,
                                  TOP_ME=str(met), LEAD_ME=str(met),
                                  P1TXT=p_txt, N1TXT=n_txt, process=process,
-                                 port_metal=met, port_label_layer=pin),
+                                 port_metal=met, port_label_layer=pin,
+                                 PORT_SPACING=port_spacing),
                   (center_x - OD / 2 + W, 0.0), "MY")
 
 
@@ -154,6 +156,8 @@ def xfm_bs(
     ground_fixture: GroundFixtureConfig | None = None,
     process: ProcessRuleContext | None = None,
     STRAIGHT_EXTENSION: float = 0.0,
+    PORT_SPACING_P: float | None = None,
+    PORT_SPACING_S: float | None = None,
 ) -> Cell:
     """Broadside single-turn two-layer transformer with independent primary/
     secondary outer diameters (OD_P/OD_S) and adjustable center-to-center
@@ -197,10 +201,10 @@ def xfm_bs(
                 "xfm_bs", params)
     pri = Cell("xfm_bs_pri", "xfm_bs_pri", {})
     _bs_winding(pri, xP, OD_P, W_P, OPENING_P, LEAD_P, PRI_ME, "left",
-                "P1", "N1", process)
+                "P1", "N1", process, port_spacing=PORT_SPACING_P)
     sec = Cell("xfm_bs_sec", "xfm_bs_sec", {})
     _bs_winding(sec, xS, OD_S, W_S, OPENING_S, LEAD_S, SEC_ME, "right",
-                "P2", "N2", process)
+                "P2", "N2", process, port_spacing=PORT_SPACING_S)
     # Each tap exits toward the OTHER winding; its lead runs on to that
     # winding's outer edge (never shorter than LEAD), so the tap port is a
     # true peripheral port and its ground stub keeps the designed length

@@ -59,7 +59,8 @@ def _ci_winding(cell, center_x, OD, W, OPENING, LEAD, S, NT, side,
                 direct_leads: bool = True,
                 compact_pad_max: float | None = None,
                 compact_candidate_qualifier=None,
-                chamfer_bias: int = 0):
+                chamfer_bias: int = 0,
+                port_spacing: float | None = None):
     """One coplanar balun winding on BALUN_ME.
 
     NT>=2 uses ind_sym (axis-aligned VIA crossover on BALUN_ME-1); NT==1 uses
@@ -90,6 +91,7 @@ def _ci_winding(cell, center_x, OD, W, OPENING, LEAD, S, NT, side,
                 # replacement for this function's own deleted transplant
                 # loop's "logical_name": q["name"] line).
                 semantic_port_roles=False,
+                port_spacing=port_spacing,
             )
         else:
             coil = ind_sym(
@@ -104,6 +106,7 @@ def _ci_winding(cell, center_x, OD, W, OPENING, LEAD, S, NT, side,
                 port_order=[p_txt, n_txt],
                 process=process,
                 semantic_port_roles=False,
+                PORT_SPACING=port_spacing,
             )
         cell.inst(coil, (center_x, 0.0), orient)
         # (port contract 2026-09-21) coil's own ports (registered on its
@@ -148,7 +151,8 @@ def _ci_winding(cell, center_x, OD, W, OPENING, LEAD, S, NT, side,
                                  LEAD=LEAD + W if overlap_lead else LEAD,
                                  TOP_ME=str(me), LEAD_ME=str(me),
                                  P1TXT=p_txt, N1TXT=n_txt, process=process,
-                                 port_metal=me, port_label_layer=pin),
+                                 port_metal=me, port_label_layer=pin,
+                                 PORT_SPACING=port_spacing),
                   (center_x - OD / 2 + W if overlap_lead
                    else center_x - OD / 2, 0.0), "MY")
     else:
@@ -156,7 +160,8 @@ def _ci_winding(cell, center_x, OD, W, OPENING, LEAD, S, NT, side,
                                  LEAD=LEAD + W if overlap_lead else LEAD,
                                  TOP_ME=str(me), LEAD_ME=str(me),
                                  P1TXT=p_txt, N1TXT=n_txt, process=process,
-                                 port_metal=me, port_label_layer=pin),
+                                 port_metal=me, port_label_layer=pin,
+                                 PORT_SPACING=port_spacing),
                   (center_x + OD / 2 - W if overlap_lead
                    else center_x + OD / 2, 0.0), "R0")
     _heal_seam_notches(cell, process)
@@ -278,6 +283,7 @@ def xfm_balun(
     CT_P_ME: str | None = None, CT_S_ME: str | None = None,
     ground_fixture: GroundFixtureConfig | None = None,
     process: ProcessRuleContext | None = None,
+    PORT_SPACING_P: float | None = None,
 ) -> Cell:
     """Classic same-layer (coplanar) balun: primary and secondary octagon
     windings on ONE metal-generic plane BALUN_ME, the secondary nested
@@ -353,6 +359,7 @@ def xfm_balun(
             process,
             compact_pad_max=compact_pad_max,
             compact_candidate_qualifier=compact_candidate_qualifier,
+            port_spacing=PORT_SPACING_P,
         )
         return candidate, selected_pad
 

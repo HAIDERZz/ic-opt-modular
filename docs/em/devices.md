@@ -40,6 +40,7 @@ Ports: `P1, N1` (+ `CT` with `ct_metal`)
 | `lead_length_um` | float | > 0 | required |
 | `turns` | int | >= 1 | required |
 | `metal` | str | min length 1 | required |
+| `port_spacing_um` | float or None | > 0, multiple of 0.01 | none |
 | `pgs` | CleanPortPgsConfig or None |  | none |
 | `straight_extension_um` | float | >= 0, multiple of 0.01 | `0` |
 | `ct_metal` | str or None |  | none |
@@ -71,6 +72,8 @@ Ports: `P1, N1, P2, N2` (+ `CTP` / `CTS` with `ct_primary_metal` / `ct_secondary
 | `secondary_metal` | str | min length 1 | required |
 | `ct_primary_metal` | str or None |  | none |
 | `ct_secondary_metal` | str or None |  | none |
+| `primary_port_spacing_um` | float or None | > 0, multiple of 0.01 | none |
+| `secondary_port_spacing_um` | float or None | > 0, multiple of 0.01 | none |
 
 ## `clean_port_xfm_ms`
 
@@ -101,6 +104,8 @@ Ports: `P1, N1` = the single-turn primary, `P2, N2` = the multi-turn secondary (
 | `secondary_metal` | str | min length 1 | required |
 | `ct_primary_metal` | str or None |  | none |
 | `ct_secondary_metal` | str or None |  | none |
+| `primary_port_spacing_um` | float or None | > 0, multiple of 0.01 | none |
+| `secondary_port_spacing_um` | float or None | > 0, multiple of 0.01 | none |
 
 Retired names (refused with the replacement): `single_outer_diameter_um` → `primary_outer_diameter_um`, `multi_outer_diameter_um` → `secondary_outer_diameter_um`, `single_width_um` → `primary_width_um`, `multi_width_um` → `secondary_width_um`, `single_opening_um` → `primary_opening_um`, `multi_opening_um` → `secondary_opening_um`, `single_lead_length_um` → `primary_lead_length_um`, `multi_lead_length_um` → `secondary_lead_length_um`, `multi_turns` → `secondary_turns`, `multi_spacing_um` → `secondary_spacing_um`, `single_metal` → `primary_metal`, `multi_metal` → `secondary_metal`
 
@@ -129,6 +134,7 @@ Ports: `P1, N1, P2, N2` (+ `CTP` / `CTS`)
 | `metal` | str | min length 1 | required |
 | `ct_primary_metal` | str or None |  | none |
 | `ct_secondary_metal` | str or None |  | none |
+| `primary_port_spacing_um` | float or None | > 0, multiple of 0.01 | none |
 
 Retired names (refused with the replacement): `balun_metal` → `metal`
 
