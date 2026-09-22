@@ -67,6 +67,23 @@ def est_plot() -> str:
     return png(fig)
 
 
+def nt1_ratio_plot() -> str:
+    fig, ax = plt.subplots(figsize=(5.6, 3.6))
+    for metal, marker in (("AP", "o"), ("10", "s")):
+        for od, color in ((60.0, "#b5651d"), (80.0, "#8a7a3d"), (120.0, "#2e6f95"), (240.0, "#4f8f55")):
+            v = sorted((r["w"], r["L_nH"] / r["L_est_nH"]) for r in ok if r["metal"] == metal and r["turns"] == 1 and r["od"] == od and r["L_nH"] and r["L_est_nH"])
+            if v:
+                ax.plot([w for w, _ in v], [x for _, x in v], marker=marker, ms=4, color=color, lw=1, alpha=0.85, label=f"{'AP' if metal == 'AP' else 'M10'} OD={od:g}")
+    ax.axhline(1.15, color="#b33", lw=0.8, ls="--")
+    ax.axhline(0.85, color="#b33", lw=0.8, ls="--")
+    ax.set_xlabel("width W (um), NT=1")
+    ax.set_ylabel("EMX L / estimated L")
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=7, ncol=2)
+    fig.tight_layout()
+    return png(fig)
+
+
 def cost_plot() -> str:
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(10, 3.4))
     for nt in range(1, 6):
@@ -100,6 +117,12 @@ for project in ("ind_sym_ap", "ind_sym_ap_nt1", "ind_sym_m10", "ind_sym_m10_nt1"
     proj_rows.append(f"<tr><td><code>{project}</code></td><td>{band}</td><td class='num'>{len(v)}</td><td class='num'>{len(g)}</td>"
                      f"<td class='num'>{min(ls):.3f}–{max(ls):.2f}</td><td class='num'>{min(qs):.1f}–{max(qs):.1f}</td>"
                      f"<td class='num'>{len(srf)}/{len(g)}</td><td class='num'>{(min(srf) if srf else 0):.1f}–{(max(srf) if srf else 0):.1f}</td></tr>")
+off = [r for r in ok if r["L_nH"] and r["L_est_nH"] and abs(r["L_nH"] / r["L_est_nH"] - 1) > 0.15]
+off_html = "".join(f"<tr><td><code>{r['project']} {r['obs']}</code></td><td class='num'>{r['turns']}</td><td class='num'>{r['od']:g}</td><td class='num'>{r['w']:g}</td><td class='num'>{r['s']:g}</td>"
+                   f"<td class='num'>{r['L_nH']:.3f}</td><td class='num'>{r['L_est_nH']:.3f}</td><td class='num'>{100 * (r['L_nH'] / r['L_est_nH'] - 1):+.1f}%</td></tr>" for r in off)
+renders = [("data:image/png;base64," + base64.b64encode((Path(__file__).parent / f).read_bytes()).decode(), c)
+           for f, c in (("ind_nt1_od60_w10.png", "AP NT=1 OD=60 W=10 S=2"), ("ind_m10_nt1_od60_w10.png", "M10 NT=1 OD=60 W=10 S=2"))
+           if (Path(__file__).parent / f).exists()]
 bad = [r for r in rs if r["status"] != "ok"]
 bad_html = "".join(f"<li><code>{html.escape(r['project'])} {r['obs']}</code> NT={r['turns']} OD={r['od']:g} W={r['w']:g} S={r['s']:g}: {html.escape('; '.join(r['issues'][:2]))}</li>" for r in bad) or "<li>无</li>"
 log = (root / "run.log").read_text() if (root / "run.log").exists() else ""
@@ -158,6 +181,12 @@ figcaption {{ font-size:12.5px; color:var(--muted); margin-top:6px; }}
 <figure><img src="{scatter('SRF_GHz', 'SRF (GHz)', True)}" alt="SRF vs OD"><figcaption>只画带内有谐振的点；NT=1 扫到 250 GHz，其余到 150 GHz。</figcaption></figure>
 <h2>与估算的一致性</h2>
 <figure style="max-width:560px"><img src="{est_plot()}" alt="EMX L vs estimate"><figcaption>EMX L_lf 对 Mohan 电流片估算（旧库标定）：|误差| 中位 {errs[len(errs) // 2]:.1f}%，p90 {errs[int(0.9 * len(errs))]:.1f}%，最大 {errs[-1]:.1f}%。偏离大的点会首先暴露几何或端口问题。</figcaption></figure>
+<h2>偏离估算超过 15% 的点</h2>
+<div class="table-wrap"><table><thead><tr><th>点</th><th class="num">NT</th><th class="num">OD</th><th class="num">W</th><th class="num">S</th><th class="num">EMX L nH</th><th class="num">估算 nH</th><th class="num">偏差</th></tr></thead>
+<tbody>{off_html or "<tr><td colspan='8'>无</td></tr>"}</tbody></table></div>
+<p>结论：全部是单圈、外径 60 µm 的点，是估算公式的局限，不是几何问题。依据：（1）比值随线宽平滑单调变化：AP 从 W=4 的 1.03 升到 W=10 的 1.19，M10 从 1.13 升到 1.27；（2）外径越大比值越回落，外径 120 µm 时 AP 为 0.94–0.99、M10 为 1.02–1.05；（3）M10 在每个外径上都比 AP 高约 8%，与 M10 更薄、内感更大一致，而电流片公式不计金属厚度（标定来自旧库）。小外径宽线单圈的内径只剩约 40 µm，开口段与引线在总感值中占比变大，公式也不计这部分。抽查 AP W=10、M10 W=5 与 W=10 三个点的 GDS：设计规则审计 0 违例，端口连通正常（P1、N1 各两处，两个地 pin 各一处），manifest 为第 7 代几何。库里存的是 EMX 实测值，查询不受影响。</p>
+<figure style="max-width:620px"><img src="{nt1_ratio_plot()}" alt="NT=1 EMX/estimate vs width"><figcaption>单圈电感 EMX/估算 比值对线宽，按外径分线；红色虚线为 ±15%。</figcaption></figure>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">{"".join(f'<figure><img src="{u}" alt="{c}"><figcaption>{c} 的实际 GDS（含地环夹具）。</figcaption></figure>' for u, c in renders)}</div>
 <h2>代价</h2>
 <figure><img src="{cost_plot()}" alt="cost"><figcaption>8 个 EMX 并发（每个 8 线程、上限 32 GB）下的单点墙钟与峰值内存。</figcaption></figure>
 <h2>失败点</h2>
