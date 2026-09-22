@@ -189,7 +189,7 @@ tests/ic_opt/                      fakes.py 加 `emx` 分支（按几何指纹�
 | T9.5 | nport 绑定与 EM-电路链 | `em/nport.py`、`BindNport`（物理列序检查）、`em_circuit_pipeline`、`em_optimize` recipe、migrate 的 EM 段 | V4 通过（30 点、patched sha256 相等）；em-opt 两份 requirement 模板能 migrate |
 | T9.6 | 库与代理模型 | `em.import_library`、`suggesters/stratum.py`、`Predict`、`surrogate_pipeline`、`em_inverse` recipe、报告的库覆盖一节 | V6 通过；`ic-opt run em_inverse` 在导入库上给出候选，`signoff` 走 `em_only` |
 | T9.7 | 真实冒烟 + 文档 | V5（用户批准后）；README / SKILL 的 EM 段；`DESIGN_CN.md` §4.1 表更新；archify `ic-opt-evaluate-stages` 图按实现重绘 | 两工程本地 + 隔离 SSH 全 PASS；文档与代码一致 |
-| T9.8 | 退役 em-opt | em-opt 仓库只保留 `process_data/`、`experiments/`（数据）与一页 README 指向新仓库；`author-process-rule` skill 迁到 ic-opt | 新仓库能覆盖 em-opt 三个 CLI 的全部用例（列表见 T9.5 / T9.6 的 recipe） |
+| T9.8 | 退役 em-opt | **用户裁定（2026-09-22）：em-opt 工作区原样保留，不删不改**（回放金标准 + 私有工艺数据）；本仓库视角的功能对照表见 `T10_LIBRARY_PLAN_CN.md` §9 | 对照表齐全 |
 
 顺序：T9.1 → T9.2 → T9.3 → T9.4 → T9.5 → T9.6 → T9.7 → T9.8；T9.2 与 T9.3 可并行。
 
@@ -198,7 +198,7 @@ tests/ic_opt/                      fakes.py 加 `emx` 分支（按几何指纹�
 1. ~~几何库的许可与落点~~ **已裁定**：并入本仓库（docstring 的 GPL 溯源已失效，代码基本原创）。
 2. **器件库迁移**：**暂缓**（用户 2026-09-22：先做 EM 仿真核心，库的嵌入方式之后再定）。
 3. **真实 EMX 冒烟**（T9.7）：按 §6 V5 的资源请求执行，需你批准；是否顺带用真实 EMX 重跑 V1 抽样中的少量点做"同机复现"对照（每点 2–3 s，建议 12 点）。
-4. **em-opt 退役范围**（T9.8）：仓库归档还是删除；`experiments/` 5.6 GB 数据的去向（建议原地保留，新仓库用绝对路径 / 环境变量引用）。
+4. ~~em-opt 退役范围~~ **已裁定**：原始工程不动；本仓库内视为退役（`T10_LIBRARY_PLAN_CN.md` §9）。
 5. **行为变更确认**：失败状态细分为 `failed:pcell|emx|bind_nport|measure|predict`（em-opt 折叠成一个 `real_check_failed`，数值惩罚相同）；器件诊断量真正参与约束（em-opt 的 Passive Diagnostic Constraints 不计算）；`bind_nport` 加物理列序检查（em-opt 只查网表自洽）。都是更严格，不会让原本通过的工程失败，除非它本来接错了线。
 
 ## 9. 与研读报告的对应（执行时逐项核对）
