@@ -77,8 +77,10 @@ class Library:
             x, y = ds.matrix(rows), ds.values(quantity, rows)
             if quantity.startswith("SRF"):
                 y = y / 1e9                                  # GHz keeps the log-GP numerically tame; mapped back on output
+            feature_map = self.manifest.strata[stratum].quantities[quantity.split("@")[0]].feature_map
             settings = {"dims": ds.dims, "ranges": self.ranges(stratum), "log_target": bool((y > 0).all()),
-                        "nt_mode": "per_nt" if ds.nt_dim else "joint", "kernel": "matern52", "nt_dim": ds.nt_dim}
+                        "nt_mode": "per_nt" if ds.nt_dim and not feature_map else "joint", "kernel": "matern52", "nt_dim": ds.nt_dim,
+                        "feature_map": feature_map}
             calibration = self._calibration(ds, quantity, x, y, settings)
             model = gp.StratumGP(**settings, k_scale=calibration["k_scale"]).fit(x, y)
             guard = domain.DomainGuard(x, ds.dims, settings["ranges"], nt_dim=ds.nt_dim, ids=list(range(len(rows))))

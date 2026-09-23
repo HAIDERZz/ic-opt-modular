@@ -86,14 +86,16 @@ def parse_objective(text: str | None) -> tuple[str, str] | None:
 
 
 def implied_srf(targets: list[Target], objective: tuple[str, str] | None, margin: float) -> list[Target]:
-    """Anchored quantities are only defined below the resonance: add SRF >= margin x the highest anchor per drive."""
+    """Anchored quantities are only defined below the resonance: add SRF >= margin x the highest anchor per drive
+    (both drives for the coupling ``k``, as the dataset only keeps a ``k@f0`` row below both resonances)."""
     named = {t.quantity for t in targets}
     extra, highest = [], {}
     for q in [t.quantity for t in targets] + ([objective[1]] if objective else []):
         m = _ANCHOR.match(q)
         if m:
-            srf = "SRF_s" if m.group(1) in ("Ls", "Qs") else "SRF_p"
-            highest[srf] = max(highest.get(srf, 0.0), float(m.group(2)) * 1e9)
+            drives = {"Lp": ("SRF_p",), "Qp": ("SRF_p",), "Ls": ("SRF_s",), "Qs": ("SRF_s",), "k": ("SRF_p", "SRF_s")}[m.group(1)]
+            for srf in drives:
+                highest[srf] = max(highest.get(srf, 0.0), float(m.group(2)) * 1e9)
     for srf, f0 in highest.items():
         if srf not in named:
             extra.append(Target(srf, "min", margin * f0))

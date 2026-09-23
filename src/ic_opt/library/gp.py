@@ -12,18 +12,25 @@ Changed after the T13.0 verification:
   says which rows the model can answer (the query layer reports those as domain criterion 2);
 - ``k_scale`` widens every interval; ``calibration_scale`` derives it from held-out residuals so the
   nominal 2-sigma interval covers 95% (never narrower than the GP's own);
-- the transformer dimensionless k feature maps are not here: they come with T13.7 in the new
-  primary / secondary vocabulary and are re-validated on the new transformer library.
+- the transformer dimensionless feature maps (T13.7) speak the primary / secondary vocabulary: coupling
+  is nearly scale-invariant, so a model with ``feature_map`` sees mean-diameter scale, diameter ratio,
+  widths (and the secondary's spacing) over their diameters, the centre offset over the mean radius and,
+  for xfm_ms, the secondary's turns as one feature -- one joint GP, never split per turns level.
+  Scaling ranges of the features are the extremes over the corners of the dims' box (every feature is
+  monotone in each dim), so they follow from the same ``ranges`` as the identity map.
 """
 
 from __future__ import annotations
 
+import itertools
 import warnings
 
 import numpy as np
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern, WhiteKernel
+
+from ic_opt.library.manifest import FEATURE_MAP_DIMS, XFM_BS_DIMS, XFM_MS_DIMS
 
 KERNELS = ("rbf", "matern52")
 NT_MODES = ("joint", "per_nt")
@@ -40,6 +47,21 @@ def prediction_bounds(mu, sigma, *, log_target: bool, k: float) -> tuple[np.ndar
     return mu - k * sigma, mu + k * sigma
 
 
+def _xfm_bs_features(dims: list[str], x: np.ndarray) -> np.ndarray:
+    op, os_, wp, ws, cs = (x[:, dims.index(d)] for d in XFM_BS_DIMS)
+    return np.column_stack((np.log((op + os_) / 2), np.log(op / os_), wp / op, ws / os_, 4 * cs / (op + os_)))
+
+
+def _xfm_ms_features(dims: list[str], x: np.ndarray) -> np.ndarray:
+    os_, ss, nt = (x[:, dims.index(d)] for d in ("secondary_outer_diameter_um", "secondary_spacing_um", "secondary_turns"))
+    return np.column_stack((_xfm_bs_features(dims, x), ss / os_, nt))
+
+
+#: name -> (the dims it consumes -- all of the stratum's dims --, the features)
+FEATURE_MAPS = {"xfm_bs_dimensionless": (XFM_BS_DIMS, _xfm_bs_features), "xfm_ms_dimensionless": (XFM_MS_DIMS, _xfm_ms_features)}
+assert {name: dims for name, (dims, _) in FEATURE_MAPS.items()} == FEATURE_MAP_DIMS
+
+
 def _kernel(n_dims: int, kernel: str):
     if kernel == "rbf":
         base = RBF(length_scale=[0.3] * n_dims, length_scale_bounds=(1e-2, 1e2))
@@ -54,15 +76,23 @@ class StratumGP:
     MIN_NT_SAMPLES = 25                              # a turns level needs this many rows for its own sub-GP
 
     def __init__(self, *, dims: list[str], ranges: dict[str, tuple[float, float]], log_target: bool = False,
-                 nt_mode: str = "joint", kernel: str = "rbf", nt_dim: str | None = None, k_scale: float = 1.0):
+                 nt_mode: str = "joint", kernel: str = "rbf", nt_dim: str | None = None, k_scale: float = 1.0,
+                 feature_map: str | None = None):
         if nt_mode not in NT_MODES:
             raise ValueError(f"unknown nt_mode {nt_mode!r}; expected one of {NT_MODES}")
         if kernel not in KERNELS:
             raise ValueError(f"unknown kernel {kernel!r}; expected one of {KERNELS}")
+        if feature_map is not None:
+            if feature_map not in FEATURE_MAPS:
+                raise ValueError(f"unknown feature_map {feature_map!r}; expected one of {sorted(FEATURE_MAPS)}")
+            if set(FEATURE_MAPS[feature_map][0]) != set(dims):
+                raise ValueError(f"feature_map {feature_map} needs the dims {list(FEATURE_MAPS[feature_map][0])}, got {list(dims)}")
+            nt_mode = "joint"                        # the map folds turns into its features; a split would starve each level
         if nt_mode == "per_nt" and (nt_dim is None or nt_dim not in dims):
             raise ValueError(f"per_nt needs an nt_dim among the dims {dims}")
         self.dims, self.ranges, self.log_target = list(dims), dict(ranges), log_target
         self.nt_mode, self.kernel, self.nt_dim, self.k_scale = nt_mode, kernel, nt_dim, k_scale
+        self.feature_map = feature_map
         self._gp: GaussianProcessRegressor | None = None
         self._sub: dict[int, StratumGP] = {}
         self._nt_idx: int | None = None
@@ -89,7 +119,7 @@ class StratumGP:
                 sub = StratumGP(dims=others, ranges={d: self.ranges[d] for d in others}, log_target=self.log_target, kernel=self.kernel)
                 self._sub[level] = sub.fit(np.delete(x[mask], self._nt_idx, axis=1), y[mask])
             return self
-        self._gp = GaussianProcessRegressor(kernel=_kernel(len(self.dims), self.kernel), normalize_y=True,
+        self._gp = GaussianProcessRegressor(kernel=_kernel(self._scale(x[:1]).shape[1], self.kernel), normalize_y=True,
                                             n_restarts_optimizer=4, random_state=0)
         with warnings.catch_warnings():              # hyperparameters at a bound (near-noiseless EM data) are expected, not news
             warnings.simplefilter("ignore", ConvergenceWarning)
@@ -136,7 +166,13 @@ class StratumGP:
         hi = np.array([self.ranges[d][1] for d in self.dims], dtype=float)
         if not (hi > lo).all():
             raise ValueError(f"degenerate range for dims {[d for d, ok in zip(self.dims, hi > lo) if not ok]}")
-        return (x - lo) / (hi - lo)
+        if self.feature_map is None:
+            return (x - lo) / (hi - lo)
+        features = FEATURE_MAPS[self.feature_map][1]
+        corners = features(self.dims, np.array(list(itertools.product(*zip(lo, hi)))))
+        f_lo, f_hi = corners.min(axis=0), corners.max(axis=0)
+        span = np.where(f_hi > f_lo, f_hi - f_lo, 1.0)
+        return (features(self.dims, x) - f_lo) / span
 
 
 # -- held-out evaluation and calibration ---------------------------------------------------------------------

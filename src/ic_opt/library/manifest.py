@@ -23,6 +23,9 @@ SCHEMA = "ic-opt-library-v1"
 SCALARS = ("Lp_lf", "Lp_res", "Qp_peak", "SRF_p", "Ls_lf", "Ls_res", "Qs_peak", "SRF_s", "k_lf")
 CURVES = ("Lp", "Qp", "Ls", "Qs", "k")
 PEAKS = ("Qp_peak", "Qs_peak")
+XFM_BS_DIMS = ("primary_outer_diameter_um", "secondary_outer_diameter_um", "primary_width_um", "secondary_width_um", "center_spacing_um")
+XFM_MS_DIMS = (*XFM_BS_DIMS, "secondary_spacing_um", "secondary_turns")
+FEATURE_MAP_DIMS = {"xfm_bs_dimensionless": XFM_BS_DIMS, "xfm_ms_dimensionless": XFM_MS_DIMS}   # a map consumes exactly these dims
 
 
 class Part(Model):
@@ -34,7 +37,7 @@ class Quantity(Model):
     band_ghz: float | None = Field(default=None, gt=0)    # peaks only: search 0 < f <= band, the same for every part
     anchors_ghz: list[float] = Field(default_factory=list)   # curves only: sample at these frequencies
     srf_margin: float = Field(default=1.25, ge=1.0)       # an anchored row is usable at f0 only if its resonance lies above margin x f0
-    feature_map: str | None = None                        # model hint (e.g. the transformer k maps); read by the model layer
+    feature_map: str | None = None                        # the model's input features (FEATURE_MAP_DIMS; default: the dims themselves)
 
     @field_validator("anchors_ghz")
     @classmethod
@@ -74,6 +77,11 @@ class Stratum(Model):
                     raise ValueError(f"band_ghz does not apply to the curve {name}")
             else:
                 raise ValueError(f"unknown quantity {name!r}; scalars {SCALARS}, curves {CURVES}")
+            if q.feature_map is not None:
+                if q.feature_map not in FEATURE_MAP_DIMS:
+                    raise ValueError(f"{name}: unknown feature_map {q.feature_map!r}; expected one of {sorted(FEATURE_MAP_DIMS)}")
+                if set(FEATURE_MAP_DIMS[q.feature_map]) != set(self.dims):
+                    raise ValueError(f"{name}: feature_map {q.feature_map} needs the dims {list(FEATURE_MAP_DIMS[q.feature_map])}, not {self.dims}")
         return self
 
     def columns(self) -> list[str]:
