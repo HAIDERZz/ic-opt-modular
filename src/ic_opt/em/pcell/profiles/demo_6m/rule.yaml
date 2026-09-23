@@ -5,9 +5,9 @@
 # process-rule-profile-v1 (real-process profiles are NDA-bound and never
 # ship). It is also a working profile: every clean-port device family can
 # generate under it and pass the rule-profile DRC audit
-# (`hermes-workflow validate-profile demo_6m --generate`).
+# (`ic-opt call em.validate_profile <this directory> generate=true`).
 #
-# Authoring guide: .claude/skills/author-process-rule/SKILL.md keeps a
+# Authoring guide: skills/author-process-rule/SKILL.md keeps a
 # byte-identical copy of this file as its worked example -- update both
 # together (a test pins the sync).
 schema_version: process-rule-profile-v1
