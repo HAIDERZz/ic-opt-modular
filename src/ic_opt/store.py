@@ -62,8 +62,17 @@ class RunStore:
         rows.sort(key=lambda o: o.obs_id)
         return observation
 
+    def next_obs_index(self) -> int:
+        """The first free observation number: past every recorded observation and every ``sims/obs_*`` directory.
+
+        Parallel points finish out of order, so a run interrupted mid-batch leaves holes; counting the observations
+        would hand a new point the number, and the directory, of one that already finished.
+        """
+        names = [o.obs_id for o in self.observations()] + [p.name for p in (self.root / "sims").glob("obs_*")]
+        return 1 + max((int(n[4:]) for n in names if n[4:].isdigit()), default=0)
+
     def next_obs_id(self) -> str:
-        return f"obs_{len(self.observations()) + 1:04d}"
+        return f"obs_{self.next_obs_index():04d}"
 
     # -- directories -------------------------------------------------------
 

@@ -118,7 +118,7 @@ def run(
                     if o.spec_fingerprint == spec_fp and o.pipeline_fingerprint == pipe_fp and o.status == "ok"
                     and set(o.children) == children_wanted}
         used = sum(simulations(o) for o in existing)
-        next_index = len(existing) + 1
+        next_index = store.next_obs_index()
         jobs: list[Job] = []
         for point in points:
             if point.key in reusable:

@@ -115,6 +115,24 @@ def test_reuse_budget_and_rerun_is_continuation(tmp_path):
     assert len(RunStore(tmp_path).observations()) == 3 and first[0].key == again[0].key or True
 
 
+def test_resume_after_interrupted_parallel_run_never_reuses_a_finished_number(tmp_path):
+    spec = make_spec()
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 8.0})
+    deck = deck_for(spec)
+    evaluate(spec, [Point({"F": str(f), "W": "0.6u"}, "user") for f in (20, 22, 24)], ex, store, deck=deck)
+    # killed while obs_0002 was still simulating: 0001 and 0003 had finished, 0002 left only its directory
+    lines = store.observations_path.read_text().splitlines()
+    store.observations_path.write_text("".join(line + "\n" for line in lines if '"obs_0002"' not in line))
+    assert (store.root / "sims" / "obs_0002").is_dir()
+
+    store = RunStore(tmp_path)                                      # the restarted process reads the store afresh
+    resumed = evaluate(spec, [Point({"F": "26", "W": "0.6u"}, "user")], ex, store, deck=deck)
+    assert [o.obs_id for o in resumed] == ["obs_0004"]
+    assert [o.obs_id for o in store.observations()] == ["obs_0001", "obs_0003", "obs_0004"]
+    assert store.next_obs_id() == "obs_0005"
+
+
 def test_retention_drops_psf_of_failed_runs_when_configured(tmp_path):
     spec = make_spec(simulator={"parallel_jobs": 1, "timeout_s": 10, "keep_failed_runs": False, "keep_successful_runs": True})
     store = RunStore(tmp_path)
