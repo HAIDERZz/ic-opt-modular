@@ -179,6 +179,10 @@ def inverse_offline(lib: query.Library, stratum: str, tol: float = 0.05) -> dict
 EXAMPLES = {   # stratum -> (name, targets, objective)
     "xfm_bs_ap": [("Lp 0.30 nH +-5 %, Ls 0.30 nH +-5 %, max k_lf", {"Lp_lf": {"target": 0.30e-9, "tol": 0.05}, "Ls_lf": {"target": 0.30e-9, "tol": 0.05}}, "max:k_lf"),
                   ("k@28 >= 0.7, Lp 0.5 nH +-5 %, max Qp_peak", {"k@28": {"min": 0.7}, "Lp_lf": {"target": 0.5e-9, "tol": 0.05}}, "max:Qp_peak")],
+    "xfm_bs_m10": [("Lp 0.25 nH +-5 %, Ls 0.25 nH +-5 %, max k_lf", {"Lp_lf": {"target": 0.25e-9, "tol": 0.05}, "Ls_lf": {"target": 0.25e-9, "tol": 0.05}}, "max:k_lf"),
+                   ("k@28 >= 0.7, Lp 0.4 nH +-5 %, max Qp_peak", {"k@28": {"min": 0.7}, "Lp_lf": {"target": 0.4e-9, "tol": 0.05}}, "max:Qp_peak")],
+    "xfm_ms_ap": [("Lp 0.2 nH +-5 %, Ls 0.6 nH +-5 % (1:1.7), max k_lf", {"Lp_lf": {"target": 0.2e-9, "tol": 0.05}, "Ls_lf": {"target": 0.6e-9, "tol": 0.05}}, "max:k_lf")],
+    "xfm_ms_m10": [("Lp 0.2 nH +-5 %, Ls 0.6 nH +-5 % (1:1.7), max k_lf", {"Lp_lf": {"target": 0.2e-9, "tol": 0.05}, "Ls_lf": {"target": 0.6e-9, "tol": 0.05}}, "max:k_lf")],
 }
 
 
