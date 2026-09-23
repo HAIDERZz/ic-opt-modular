@@ -1,6 +1,6 @@
 # T13：器件查询库嵌入 ic-opt 的开发方案
 
-- 状态：**规划稿，待用户批准后执行**（2026-09-23）
+- 状态：**已批准，执行中**（2026-09-23）：§5 六项按建议拍板；追加"工艺接入"三项（§2.4、T13.9–T13.11）
 - 取代：`T10_LIBRARY_PLAN_CN.md`（2026-09-22）。T10 以"从 em-opt 的 sqlite 导入 12,767 行"为前提；按 T12 的决定，各器件族改为用第 7 代几何、细网格全波在 ic-opt 里直接重建，这个前提已不成立
 - 依据：电感查询库验证（`reports/library_query/IND_QUERY_VERIFY_CN.html`）、T12 建库记录（`EXECUTION_PLAN_CN.md`）、em-opt 查询栈分析（`analysis/em/03_device_db_and_surrogate.md`）
 - 架构图与开发流程图（archify 生成，可交互）：`reports/library_query/arch/t13-library-module.architecture.html`、`reports/library_query/arch/t13-dev-plan.workflow.html`
@@ -82,6 +82,22 @@ strata:
 - em-opt 工作区只读：移植是复制代码并注明出处，不改、不删原工程。
 - GP 拟合的 BLAS 线程受限（默认 4），与 EMX 共机时不挤占 128 线程额度；真实 EMX 只在 `lib_signoff` 里跑，先 `--plan`，受站点资源上限约束。
 
+### 2.4 工艺接入：用户为自己的工艺建库要提供什么
+
+| # | 用户提供 | 内容 | 来源 |
+| --- | --- | --- | --- |
+| 1 | 工艺规则 profile `<IC_OPT_PROFILE_DIRS>/<profile>/rule.yaml` | `layer_catalog`（金属 / 过孔 / 标记的 GDS 图层号与 pin 层、各层在 .proc 里的名字）、`emx_stack`（各金属厚度须与 .proc 一致、过孔等效尺寸）、`layout_rules`（线宽 / 线距 / 最大线宽、过孔尺寸 / 间距 / 包围、过孔阵列、宽线平行间距）、`coverage` | foundry 设计规则手册与 PDK 图层表；只填生成器用到的核心规则 |
+| 2 | EMX 工艺文件 `.proc` | 叠层厚度、介质、电导率、GDS 图层号到各层的映射 | 通常由 PDK 提供 |
+| 3 | 运行环境 | EMX 与 license、Cadence 环境 csh、站点资源上限 | 用户站点 |
+
+依据：仿真叠层以 `.proc` 为准（EMX 直接读它）；版图几何按 profile 的 `layout_rules` 画，代码里不写死任何工艺数值；`drc_audit` 是按 profile 的 5 类核心检查（最小线宽、最小线距、最大线宽、过孔包围、宽线平行间距）加端口连通检查，**不是 foundry 签核 DRC**（密度、开槽、天线、线端等不查），流片前仍须用 foundry 的签核规则。
+
+三项新增：
+
+1. **编写指南迁入（T13.9）**：把 em-opt 的 `author-process-rule` 技能搬进本仓库 `skills/author-process-rule/SKILL.md`，以 demo_6m 为完整示例（与 `profiles/demo_6m/rule.yaml` 逐字节同步，由测试守住）；把 profile 文件头里失效的 `hermes-workflow validate-profile` 引用改成本仓库的接口。
+2. **`em.validate_profile` 接口（T13.10）**：把已有的 `validate_profile` 暴露为 block，经 `ic-opt call em.validate_profile <profile 目录> proc=<.proc> generate=true` 调用（`call` 也识别含 `rule.yaml` 的目录）。检查分四关：格式 → 内部一致性 → 与 .proc 核对（层名、厚度，**新增 GDS 图层号核对**：profile 的 drawing / pin 图层号须与 .proc 的 `layer` 映射一致，否则 EMX 认不出几何或端口）→ 每个器件族实造一个并做 DRC 审计与连通检查。
+3. **金属按 profile 顺序编号（T13.11）**：现在代码按名字编号（M1…M10 为 1–10，AP 写死为 11），超过 10 层金属或顶层不叫 AP 的工艺接不进来。改为按 profile 中导体的上下顺序编号，名字任意（RDL、UTM 等均可）；`M1` 仍专供接地夹具（改为"最底层导体"并在 profile 里显式声明）。要求对现有 profile（demo_6m、N28、N65）**生成结果逐字节不变**，不升几何代。
+
 ## 3. 验证结论如何进入方案
 
 | 验证发现 | 方案里的落点 | 验收门 |
@@ -105,20 +121,25 @@ strata:
 | T13.6 | EMX 复核与回流 | recipe `lib_signoff`、复核报告（z 分数、2σ 覆盖）、`adopt` 回流 | G3：经批准后对约 10 个候选跑真实 EMX，实测落在 2σ 内的比例 ≥ 90% |
 | T13.7 | 变压器接入 | xfm_bs / xfm_ms 四个分层；k、Lp、Ls、SRF_p、SRF_s；k 的无量纲映射在新库上重验 | 变压器库建成后，按本次同样的验证流程出报告 |
 | T13.8 | 文档与交付 | `docs/guide` 查询库一章、SKILL 查询段、T10 标注作废、`EXECUTION_PLAN_CN.md` | 文档与代码一致 |
+| T13.9 | profile 编写指南迁入 | `skills/author-process-rule/SKILL.md`（demo_6m 示例逐字节同步）；修正 profile 文件头的失效引用 | 同步测试通过；指南里的命令在本仓库可执行 |
+| T13.10 | `em.validate_profile` 接口 | block + `call` 识别 `rule.yaml` 目录；新增 GDS 图层号与 .proc 映射核对 | demo_6m 全关通过；故意改错图层号 / 厚度 / 名字各报一条可定位的错误；N28、N65 私有 profile 全关通过 |
+| T13.11 | 金属按 profile 顺序编号 | `_metal_index` 等按 profile 导体顺序编号；夹具层显式声明；名字不再限于 M1…M10 / AP | 13 个黄金 GDS 逐字节不变；demo_6m / N28 / N65 各族实造结果不变；新增一个 12 层、顶层叫 RDL 的合成 profile 能生成全部器件族 |
 
-规模：移植约 1.2k 行，新写约 900 行，另加测试。T13.1–T13.5 不需要 EMX；T13.6 需要批准；T13.7 等变压器库跑完（预计 2026-09-24 中午前后）。
+规模：移植约 1.2k 行，新写约 1.3k 行（含工艺接入约 400 行），另加测试。执行顺序：T13.1 → T13.5（查询内核），T13.11 → T13.10 → T13.9（工艺接入；T13.11 改动生成器内核，放在变压器正式批跑完之后），T13.7 等变压器库跑完（预计 2026-09-24 中午前后），T13.6 先 `--plan` 经确认再跑，T13.8 收尾。T13.1–T13.5、T13.9–T13.11 都不需要 EMX。
 
-## 5. 需要用户拍板
+## 5. 已拍板（2026-09-23）
 
-1. **旧 em-opt 库不导入**：建议如此。各族按 T12 的流程重建；balun / il / tw 等后续族也走同一流程。
-2. **`library.yaml` 放在库根（仓库外）**，仓库只放 demo_6m 示例：建议如此。
-3. **CLI 只让 `call` 识别 `library.yaml` 目录**，不新增子命令：建议如此。
-4. **SRF 改用 GP**（替代 em-opt 的 5 近邻规则）：建议如此。
-5. **σ 校准**（按留出残差放大 k 到 95% 覆盖）：建议如此。
-6. **T13.6 的真实 EMX 复核**：变压器库跑完后再申请批准（约 10 点，每点 8 线程），现在不跑。
+1. 旧 em-opt 库不导入；各族按 T12 的流程重建。
+2. `library.yaml` 放在库根（仓库外），仓库只放 demo_6m 示例。
+3. CLI 只让 `call` 识别 `library.yaml`（以及 T13.10 的 `rule.yaml`）目录，不新增子命令。
+4. SRF 改用 GP。
+5. σ 按留出残差校准到 95% 覆盖。
+6. T13.6 的真实 EMX 复核：变压器库跑完后先给 `--plan`，经确认再跑（约 10 点，每点 8 线程）。
+7. 追加工艺接入三项：编写指南迁入（T13.9）、`em.validate_profile` 接口含图层号核对（T13.10）、金属按 profile 顺序编号（T13.11）。
 
 ## 6. 风险
 
 - 变压器 k 的无量纲映射的证据来自旧库（粗网格、准静态），需在新库上重验（T13.7）。
 - 变压器分层每层上千行，GP 拟合是 O(n³)：n≈1500 为秒级到十秒级，可接受；超过时再做稀疏化或分块。
+- T13.11 改动生成器内核的编号逻辑，一旦几何有变就会让在跑或已建的库失去复用；必须对现有 profile 逐字节不变、不升几何代，并放在变压器正式批跑完之后做。
 - 公开仓库：库数值与 N28 渲染图不进仓库；本方案的报告页与验证数字属于同一类待处理内容，推送前统一处理（已记在推送前清单）。

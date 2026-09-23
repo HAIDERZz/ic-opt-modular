@@ -14,9 +14,9 @@ from pathlib import Path
 plan_md, arch_dir, out = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
 FIGURES = {  # heading prefix -> (screenshot, interactive html, caption)
     "2. 模块设计": ("t13-library-module.architecture.visual-check.1440x900.light.png", "t13-library-module.architecture.html",
-                "模块架构（archify）：主路径是正向查询；上方是实造、代理流水线与统一重算，下方是 EMX 复核与回流；库与清单在仓库外。"),
+                "模块架构（archify）：主路径是正向查询；左上是用户提供的工艺文件与 validate_profile，上方是实造与代理流水线，下方是 EMX 复核与回流；库与清单在仓库外。"),
     "4. 任务分解": ("t13-dev-plan.workflow.visual-check.1440x900.light.png", "t13-dev-plan.workflow.html",
-                "开发方案（archify）：主线 T13.0 → T13.6；两道离线金标准门（G1 CV 复现、G2 留出命中）与一道批准门（真实 EMX）。"),
+                "开发方案（archify）：查询主线 T13.1 → T13.6，两道离线金标准门（G1、G2）与一道确认门（真实 EMX）；第三条泳道是工艺接入 T13.11 → T13.10 → T13.9 与扩展。"),
 }
 
 
@@ -114,7 +114,7 @@ figure img {{ width:100%; max-width:100%; height:auto; display:block; border-rad
 figcaption {{ font-size:12.5px; color:var(--muted); margin-top:6px; }}
 </style>
 <div class="wrap">
-<header><div class="eyebrow">ic-opt-modular · T13 · 规划稿 · 待批准</div><h1>{inline(title)}</h1></header>
+<header><div class="eyebrow">ic-opt-modular · T13 · 已批准 · 执行中</div><h1>{inline(title)}</h1></header>
 {body}
 </div>
 """

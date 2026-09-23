@@ -41,10 +41,19 @@
         "focus": [
           "manifest",
           "dataset",
-          "measure",
           "library"
         ],
-        "note": "库清单声明分层与口径，数据集从 sNp 统一重算，口径变了只需重算不必重跑 EMX。"
+        "note": "库清单声明分层与口径，数据集从 sNp 统一重算：口径变了只需重算，不必重跑 EMX。"
+      },
+      {
+        "id": "process-onboarding",
+        "label": "工艺接入",
+        "focus": [
+          "profile",
+          "validate",
+          "pcell"
+        ],
+        "note": "用户提供 rule.yaml 与 .proc，四关校验（含图层号）通过后，生成器才按该工艺出图。"
       }
     ]
   },
@@ -111,7 +120,7 @@
       "id": "dataset",
       "type": "backend",
       "label": "库数据集",
-      "sublabel": "统一口径 + 缓存",
+      "sublabel": "em.measure 统一重算",
       "pos": [
         960,
         300
@@ -142,20 +151,6 @@
       "sublabel": "分层 · 部件 · 口径",
       "pos": [
         1190,
-        120
-      ],
-      "size": [
-        130,
-        60
-      ]
-    },
-    {
-      "id": "measure",
-      "type": "backend",
-      "label": "em.measure",
-      "sublabel": "sNp → L/Q/SRF/k",
-      "pos": [
-        960,
         120
       ],
       "size": [
@@ -204,6 +199,35 @@
         140,
         60
       ]
+    },
+    {
+      "id": "profile",
+      "type": "database",
+      "label": "rule.yaml + .proc",
+      "sublabel": "用户提供的工艺文件",
+      "pos": [
+        30,
+        120
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "validate",
+      "type": "backend",
+      "label": "validate_profile",
+      "sublabel": "四关校验 + 实造审计",
+      "pos": [
+        255,
+        120
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "tag": "新增"
     }
   ],
   "boundaries": [
@@ -215,10 +239,10 @@
         "blocks",
         "models",
         "dataset",
-        "measure",
         "predict",
         "pcell",
-        "signoff"
+        "signoff",
+        "validate"
       ]
     },
     {
@@ -234,6 +258,13 @@
       "label": "--plan 批准 · ≤128 线程 / ≤256 GB",
       "wraps": [
         "signoff"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "用户提供 · IC_OPT_PROFILE_DIRS",
+      "wraps": [
+        "profile"
       ]
     }
   ],
@@ -291,14 +322,6 @@
       "labelDy": 24
     },
     {
-      "id": "dataset-measure",
-      "from": "dataset",
-      "to": "measure",
-      "label": "统一重算",
-      "fromSide": "top",
-      "toSide": "bottom"
-    },
-    {
       "id": "manifest-library",
       "from": "manifest",
       "to": "library",
@@ -322,6 +345,18 @@
       "variant": "security",
       "fromSide": "right",
       "toSide": "bottom"
+    },
+    {
+      "id": "profile-validate",
+      "from": "profile",
+      "to": "validate",
+      "label": "工艺接入"
+    },
+    {
+      "id": "validate-pcell",
+      "from": "validate",
+      "to": "pcell",
+      "label": "校验通过"
     }
   ],
   "cards": [
@@ -329,27 +364,27 @@
       "dot": "cyan",
       "title": "数据",
       "items": [
-        "库在仓库外（IC_OPT_LIBRARY），数值不进公开仓库",
-        "library.yaml 声明分层、部件与查询口径",
-        "建议不导入旧 em-opt 库：各族按第 7 代几何重建"
+        "库与清单在仓库外（IC_OPT_LIBRARY）",
+        "不导入旧 em-opt 库：各族按第 7 代几何重建",
+        "数据集从 sNp 按统一口径重算"
       ]
     },
     {
       "dot": "violet",
-      "title": "模型",
+      "title": "模型与接口",
       "items": [
-        "StratumGP 与域守卫从 em-opt 移植",
-        "修正单圈层退化维度与未拟合层的处理",
-        "SRF 改用 GP 预测（验证中位误差 0.3%，旧 5 近邻法 8%）"
+        "StratumGP 与域守卫移植并修正",
+        "SRF 走 GP；σ 按留出残差校准到 95%",
+        "lib.* 经 ic-opt call；EMX 复核先 --plan"
       ]
     },
     {
-      "dot": "emerald",
-      "title": "接口",
+      "dot": "amber",
+      "title": "工艺接入",
       "items": [
-        "lib.query / suggest / coverage 经 ic-opt call 调用",
-        "--format json 供 Agent 解析",
-        "EMX 复核走 lib_signoff，先 --plan 批准"
+        "用户提供 rule.yaml 与 .proc",
+        "validate_profile 核对名字、厚度、图层号并实造审计",
+        "金属按 profile 顺序编号，现有工艺逐字节不变"
       ]
     }
   ]
