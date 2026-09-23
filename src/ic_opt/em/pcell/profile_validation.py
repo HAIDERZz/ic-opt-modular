@@ -12,7 +12,11 @@ authoring-side counterpart:
   marker, enclosure keys and wide-parallel metals;
 * optionally, every catalog ``emx_name`` is checked against a site EMX proc
   file, token-wise -- the proc is the naming authority EMX itself reads, so
-  a name absent there would only fail much later, at simulation time.
+  a name absent there would only fail much later, at simulation time -- and
+  every conductor's and via's drawing layer against the proc's ``define``
+  statements (``define M1 = fill(l31t0+..., ...)``): a GDS layer the proc does
+  not map is geometry EMX silently ignores. Pin layers are reported, not
+  failed (EMX's label lookup is not spelled out in the defines).
 
 Generation smoke (build one canonical device per family and DRC-audit it)
 is layered on top by the CLI's ``--generate`` flag; see
@@ -83,6 +87,14 @@ class ProfileValidationReport:
     @property
     def passed(self) -> bool:
         return all(stage.status != "FAIL" for stage in self.stages)
+
+    @property
+    def ok(self) -> bool:
+        """``passed`` under the report convention the CLI's ``call`` exits on (as ``env.doctor``)."""
+        return self.passed
+
+    def __str__(self) -> str:
+        return self.format()
 
     def format(self) -> str:
         header = f"profile: {self.profile_id}"
@@ -196,12 +208,7 @@ def _proc_stage(
         return StageResult(
             "emx-names-vs-proc", "FAIL", [f"cannot read proc file: {exc}"]
         )
-    tokens: set[str] = set()
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("#") or stripped.startswith("*"):
-            continue
-        tokens.update(_TOKEN_RE.findall(line.split("#", 1)[0]))
+    tokens = _proc_tokens(text)
     catalog = profile.layer_catalog
     wanted = {rule.emx_name for rule in catalog.conductors.values()}
     wanted |= {rule.emx_name for rule in catalog.vias.values()}
@@ -227,6 +234,77 @@ def _proc_stage(
         "PASS",
         [f"{len(wanted)} emx_names found in {proc_path.name}; {len(stack)} conductor thicknesses agree"],
     )
+
+
+def _proc_tokens(text: str) -> set[str]:
+    tokens: set[str] = set()
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or stripped.startswith("*"):
+            continue
+        tokens.update(_TOKEN_RE.findall(line.split("#", 1)[0]))
+    return tokens
+
+
+_DEFINE_RE = re.compile(r"^\s*define\s+(\w+)\s*=\s*(.+)$")
+_GDS_REF_RE = re.compile(r"\bl(\d+)t(\d+)\b")
+
+
+def proc_layer_map(text: str) -> dict[str, set[tuple[int, int]]]:
+    """``{define name: GDS (layer, datatype) set}`` of a proc -- ``l<L>t<D>`` terms, through defines that name other defines
+    (``define via7 = via7raw-cbm-ctm``; a subtracted operand's layers count too, which only ever widens the set)."""
+    raw: dict[str, str] = {}
+    for line in text.splitlines():
+        m = _DEFINE_RE.match(line.split("#", 1)[0])
+        if m:
+            raw[m.group(1)] = m.group(2)
+    resolved: dict[str, set[tuple[int, int]]] = {}
+
+    def layers(name: str, trail: frozenset[str]) -> set[tuple[int, int]]:
+        if name not in resolved:
+            out = {(int(a), int(b)) for a, b in _GDS_REF_RE.findall(raw[name])}
+            for token in _TOKEN_RE.findall(raw[name]):
+                if token in raw and token not in trail:
+                    out |= layers(token, trail | {token})
+            resolved[name] = out
+        return resolved[name]
+
+    return {name: layers(name, frozenset({name})) for name in raw}
+
+
+def _gds_layers_stage(profile: ProcessRuleProfile, proc_path: Path | None) -> StageResult:
+    """Every conductor / via drawing layer is in the proc's define of its emx_name (the GDS -> EMX layer map)."""
+    name = "gds-layers-vs-proc"
+    if proc_path is None:
+        return StageResult(name, "SKIPPED", ["no --proc given"])
+    try:
+        text = Path(proc_path).read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return StageResult(name, "FAIL", [f"cannot read proc file: {exc}"])
+    defines = proc_layer_map(text)
+    if not defines:
+        return StageResult(name, "SKIPPED", [f"{Path(proc_path).name} has no define statements; its GDS layer map is not checked"])
+    tokens = _proc_tokens(text)
+    catalog = profile.layer_catalog
+    rules = [(n, r.emx_name, r.drawing, r.pin) for n, r in catalog.conductors.items()]
+    rules += [(n, r.emx_name, r.drawing, None) for n, r in catalog.vias.items()]
+    problems, notes = [], []
+    for layer, emx_name, drawing, pin in rules:
+        mapped = defines.get(emx_name)
+        if mapped is None:
+            if emx_name in tokens:                      # a name absent from the proc altogether is the emx-names stage's finding
+                problems.append(f"{layer}: {emx_name} has no 'define {emx_name} = ...' in {Path(proc_path).name}")
+        elif not mapped:
+            notes.append(f"warn: {layer}: the define of {emx_name} names no l<layer>t<datatype> term; its drawing layer is not checked")
+        elif drawing not in mapped:
+            problems.append(f"{layer}: drawing layer {drawing[0]}/{drawing[1]} is not in the define of {emx_name} "
+                            f"({', '.join(f'{a}/{b}' for a, b in sorted(mapped))}) -- EMX would not see this geometry")
+        elif pin is not None and pin[0] not in {a for a, _ in mapped}:
+            notes.append(f"warn: {layer}: pin layer {pin[0]}/{pin[1]} is on a layer number the define of {emx_name} does not name "
+                         "-- check that EMX attaches the port labels")
+    if problems:
+        return StageResult(name, "FAIL", problems + notes)
+    return StageResult(name, "PASS", [f"{len(rules)} drawing layers mapped by the defines of {Path(proc_path).name}", *notes])
 
 
 def _smoke_top_metal_index(profile: ProcessRuleProfile) -> int:
@@ -552,6 +630,7 @@ def validate_profile(
     if profile is not None:
         stages.append(_consistency_stage(profile, profile_id))
         stages.append(_proc_stage(profile, proc_path))
+        stages.append(_gds_layers_stage(profile, proc_path))
         if generate:
             stages.append(
                 _generation_stage(

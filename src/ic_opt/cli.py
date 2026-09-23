@@ -132,7 +132,8 @@ def call(
     ssh_profile: Annotated[str | None, typer.Option("--ssh-profile")] = None,
     cshrc: Annotated[str | None, typer.Option("--cshrc")] = None,
 ) -> None:
-    """Call one block; spec / executor / store / observations are filled in from the project (a library root fills in the library)."""
+    """Call one block; spec / executor / store / observations are filled in from the project (a library root fills in the library,
+    a process profile directory -- one holding rule.yaml -- the profile). A report that failed (``ok`` false) exits 1."""
     if name not in blocks.REGISTRY:
         typer.echo(f"unknown block {name!r}; run `ic-opt blocks`", err=True)
         raise typer.Exit(code=2)
@@ -140,6 +141,8 @@ def call(
     kwargs = _params(params or [])
     if library_manifest.is_library(project):                        # a library root: library blocks get the library, not a run
         provided: dict[str, object] = {"library": library_query.Library(project)}
+    elif (project / "rule.yaml").is_file():                          # a process profile directory
+        provided = {"profile_dir": project}
     else:
         ctx = _run(project, ssh_profile, cshrc)
         provided = {"spec": ctx.spec, "executor": ctx.executor, "store": ctx.store, "observations": ctx.store.observations(), "cshrc": ctx.cshrc}
@@ -150,6 +153,8 @@ def call(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(_render(result))
+    if getattr(result, "ok", True) is False:                        # env.doctor, em.validate_profile: a failed check fails the command
+        raise typer.Exit(code=1)
 
 
 def _render(result: object) -> str:

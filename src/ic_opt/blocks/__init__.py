@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from ic_opt.blocks import analyze as _analyze
 from ic_opt.blocks import library as _library
 from ic_opt.blocks import points as _points
+from ic_opt.blocks import profile as _profile
 from ic_opt.blocks.doctor import doctor as _doctor
 from ic_opt.blocks.evaluate import evaluate as _evaluate
 from ic_opt.blocks.netlist import import_netlists as _import_netlists
@@ -69,6 +70,8 @@ lib_load = block("lib.load", "Build or read each stratum's dataset; integrity ev
 lib_coverage = block("lib.coverage", "What a stratum covers: rows, ranges, levels, quantities")(_library.coverage)
 lib_query = block("lib.query", "Measured values, or predictions with calibrated bounds and domain verdicts")(_library.query)
 lib_suggest = block("lib.suggest", "Designs meeting targets with margin: measured first, then built predictions")(_library.suggest)
+validate_profile = block("em.validate_profile", "Check a process profile: schema, consistency, site .proc (names, thicknesses, GDS layers), one device per family")(
+    _profile.validate_profile)
 score_model = _analyze.score_model
 store = RunStore
 
@@ -76,5 +79,5 @@ __all__ = [
     "REGISTRY", "Block", "best", "block", "describe", "doctor", "evaluate", "import_netlists", "lib_coverage", "lib_load", "lib_query", "lib_suggest",
     "load_spec", "optimize",
     "points_fixed", "points_from", "points_grid", "points_one_at_a_time", "points_sobol", "report", "score_model",
-    "spectre_pipeline", "store", "suggest",
+    "spectre_pipeline", "store", "suggest", "validate_profile",
 ]
