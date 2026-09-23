@@ -13,10 +13,11 @@ authoring-side counterpart:
 * optionally, every catalog ``emx_name`` is checked against a site EMX proc
   file, token-wise -- the proc is the naming authority EMX itself reads, so
   a name absent there would only fail much later, at simulation time -- and
-  every conductor's and via's drawing layer against the proc's ``define``
-  statements (``define M1 = fill(l31t0+..., ...)``): a GDS layer the proc does
-  not map is geometry EMX silently ignores. Pin layers are reported, not
-  failed (EMX's label lookup is not spelled out in the defines).
+  every conductor's and via's drawing layer, and every conductor's pin layer,
+  against the proc's ``define`` statements (``define M1 = fill(l31t0+...,
+  ...)``): a GDS layer the proc does not map is geometry EMX silently ignores,
+  and EMX looks for a conductor's port labels only on the layers its define
+  names (EMX User Manual, Ports), which is where the pcell writes them.
 
 Generation smoke (build one canonical device per family and DRC-audit it)
 is layered on top by the CLI's ``--generate`` flag; see
@@ -273,7 +274,8 @@ def proc_layer_map(text: str) -> dict[str, set[tuple[int, int]]]:
 
 
 def _gds_layers_stage(profile: ProcessRuleProfile, proc_path: Path | None) -> StageResult:
-    """Every conductor / via drawing layer is in the proc's define of its emx_name (the GDS -> EMX layer map)."""
+    """Every conductor / via drawing layer and every conductor pin layer is in the proc's define of its emx_name
+    (the GDS -> EMX layer map; the pin layer carries the port labels). ``nolabels(...)`` in a define is not modeled."""
     name = "gds-layers-vs-proc"
     if proc_path is None:
         return StageResult(name, "SKIPPED", ["no --proc given"])
@@ -299,12 +301,13 @@ def _gds_layers_stage(profile: ProcessRuleProfile, proc_path: Path | None) -> St
         elif drawing not in mapped:
             problems.append(f"{layer}: drawing layer {drawing[0]}/{drawing[1]} is not in the define of {emx_name} "
                             f"({', '.join(f'{a}/{b}' for a, b in sorted(mapped))}) -- EMX would not see this geometry")
-        elif pin is not None and pin[0] not in {a for a, _ in mapped}:
-            notes.append(f"warn: {layer}: pin layer {pin[0]}/{pin[1]} is on a layer number the define of {emx_name} does not name "
-                         "-- check that EMX attaches the port labels")
+        elif pin is not None and pin not in mapped:
+            problems.append(f"{layer}: pin layer {pin[0]}/{pin[1]} is not in the define of {emx_name} "
+                            f"({', '.join(f'{a}/{b}' for a, b in sorted(mapped))}) -- EMX would not find the port labels")
     if problems:
         return StageResult(name, "FAIL", problems + notes)
-    return StageResult(name, "PASS", [f"{len(rules)} drawing layers mapped by the defines of {Path(proc_path).name}", *notes])
+    pins = sum(pin is not None for *_, pin in rules)
+    return StageResult(name, "PASS", [f"{len(rules)} drawing and {pins} pin layers mapped by the defines of {Path(proc_path).name}", *notes])
 
 
 def _smoke_top_metal_index(profile: ProcessRuleProfile) -> int:

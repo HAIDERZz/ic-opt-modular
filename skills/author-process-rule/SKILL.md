@@ -63,10 +63,12 @@ ict/itf + layer map -- the PDK originals are the ground truth. When both
 exist, take numbers from either but cross-check once and record which
 you used. The proc is still the **naming and layer-map authority**: EMX
 consumes it at runtime, so every `emx_name` you write must appear in it,
-and every drawing layer must appear in the `define` of its `emx_name`
-(`define M1 = fill(l<layer>t<datatype>+..., ...)`) -- a layer the proc
-does not map is geometry EMX silently ignores. The validator checks
-names, thicknesses and layers with `proc=`.
+and every drawing layer -- and every conductor's pin layer -- must appear
+in the `define` of its `emx_name` (`define M1 = fill(l<layer>t<datatype>+...,
+...)`): a layer the proc does not map is geometry EMX silently ignores, and
+EMX looks for a conductor's port labels (the pcell writes them on the pin
+layer) only on the layers its define names. The validator checks names,
+thicknesses and layers with `proc=`.
 
 The DRM is a first-class source, not a fallback: for width/space/
 enclosure numbers its tables are usually cleaner than reverse-reading a
@@ -93,7 +95,7 @@ encrypted blocks.
 
 | rule.yaml section | Read from | What to extract |
 | --- | --- | --- |
-| `layer_catalog.conductors` | layer map (+ proc for `emx_name`) | one entry per metal: `drawing: [layer, dt]` (the pair the proc's `define` for that `emx_name` lists), optional `pin: [layer, dt]`, `emx_name` exactly as the proc spells it, informational `class` (`thin_metal` / `intermediate_top_metal` / `thick_top_metal` / `aluminum_pad` / `poly` / `diffusion`) |
+| `layer_catalog.conductors` | layer map (+ proc for `emx_name`) | one entry per metal: `drawing: [layer, dt]` and `pin: [layer, dt]` (both pairs the proc's `define` for that `emx_name` lists; a conductor without `pin` cannot carry a port), `emx_name` exactly as the proc spells it, informational `class` (`thin_metal` / `intermediate_top_metal` / `thick_top_metal` / `aluminum_pad` / `poly` / `diffusion`) |
 | `layer_catalog.vias` | layer map + stack order | `drawing`, `emx_name`, `connects: [lower, upper]` (exactly two, distinct) |
 | `layer_catalog.markers` | DRM passive-device chapter | the passive-region marker layer (plus any other marker `layout_rules` cites) |
 | `emx_stack.conductors` | ict/itf `thickness` fields, or proc | `thickness_um` per conductor (must equal the proc's `conductor` thickness; the validator compares them) |
@@ -124,8 +126,8 @@ profile typically models only its top three via classes.
 Naming rules with teeth:
 
 - `emx_name` must match the proc **token-for-token**, and the proc's
-  `define` of that name must list the entry's `drawing` pair;
-  `em.validate_profile ... proc=` fails on either mismatch.
+  `define` of that name must list the entry's `drawing` and `pin` pairs;
+  `em.validate_profile ... proc=` fails on any mismatch.
 - Conductor keys are `M1`..`M<n>` plus `AP` for an aluminium
   redistribution top metal: the pcell layer helpers index metals by that
   spelling (`AP` is stack index 11), so today a stack must fit `M1`..`M10`
@@ -341,7 +343,7 @@ profile: <profile_id> (...)
 [emx-names-vs-proc] PASS
   - <n> emx_names found in <proc>; <n> conductor thicknesses agree
 [gds-layers-vs-proc] PASS
-  - <n> drawing layers mapped by the defines of <proc>
+  - <n> drawing and <n> pin layers mapped by the defines of <proc>
 [generation] PASS
   - 6 PASS, 0 FAIL, 0 SKIP
 result: PASS
@@ -370,7 +372,7 @@ Iterate fix -> re-run until `result: PASS`. Common errors:
 | `emx_stack vs <proc>: <name>: profile thickness ...` | transcribe the thickness from the same stack the proc was built from |
 | `<layer>: drawing layer L/D is not in the define of <name> (...)` | the catalog `drawing` disagrees with the proc's layer map: recheck that layer map row, datatype included, against the proc's `define` |
 | `<layer>: <name> has no 'define <name> = ...'` | the proc uses the name but maps no GDS layer to it: pick the name the proc defines, or complete the proc |
-| `warn: <layer>: pin layer ...` | EMX may not attach port labels drawn there: recheck the pin datatype in the layer map |
+| `<layer>: pin layer L/D is not in the define of <name> (...)` | EMX finds port labels only on the layers the define names: take the pin pair the proc includes (recheck the layer map's pin / label datatype), or complete the proc |
 | `[generation] FAIL ... min_width/min_space/via_enclosure` | a transcription slip (recheck the DRM number), or the process genuinely cannot host the canonical device -- confirm against the DRM before touching anything |
 | `[generation] FAIL ... PortError ... via array` | a via the devices need has no `via_array_rules` entry (it sat in `not_yet_modeled`) |
 

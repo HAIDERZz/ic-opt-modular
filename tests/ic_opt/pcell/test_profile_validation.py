@@ -1,8 +1,9 @@
 """em.validate_profile: schema, authoring-level consistency, the site .proc (names, thicknesses, GDS layer map) and the CLI face.
 
 Ported from em-opt's validate-profile tests (the minimal 2-metal profile breaks exactly one thing per test so
-the rendered error must point at it), plus T13.10: the drawing layers against the proc's ``define`` statements,
-and one deliberate mistake -- a layer number, a thickness, a name -- reporting exactly one locatable error.
+the rendered error must point at it), plus T13.10: the drawing and pin layers against the proc's ``define``
+statements, and one deliberate mistake -- a layer number, a datatype, a pin pair, a thickness, a name -- reporting
+exactly one locatable error.
 """
 from __future__ import annotations
 
@@ -189,7 +190,7 @@ def test_proc_checks_pass_when_names_thicknesses_and_layers_agree(tmp_path: Path
     report = validate_profile("min2m", extra_dirs=(write_profile(tmp_path, MINIMAL_PROFILE),), proc_path=proc)
     assert report.passed, report.format()
     assert "[emx-names-vs-proc] PASS" in report.format() and "[gds-layers-vs-proc] PASS" in report.format()
-    assert "3 drawing layers mapped" in report.format()
+    assert "3 drawing and 0 pin layers mapped" in report.format()
 
 
 def test_proc_check_lists_missing_names(tmp_path: Path) -> None:
@@ -245,10 +246,11 @@ def test_name_used_in_the_proc_but_never_defined_fails(tmp_path: Path) -> None:
 
 
 def demo_proc(profile: dict) -> str:
-    """The proc demo_6m would have: one define per conductor / via on its drawing layer, conductor thicknesses from its stack."""
+    """The proc demo_6m would have: one define per conductor (drawing + pin layer) / via, conductor thicknesses from its stack."""
     catalog, stack = profile["layer_catalog"], profile["emx_stack"]["conductors"]
     lines = ["assume microns", "define fillsize = 0"]
-    lines += [f"define {r['emx_name']} = fill(l{r['drawing'][0]}t{r['drawing'][1]}, fillsize)" for r in catalog["conductors"].values()]
+    lines += [f"define {r['emx_name']} = fill(l{r['drawing'][0]}t{r['drawing'][1]}+l{r['pin'][0]}t{r['pin'][1]}, fillsize)"
+              for r in catalog["conductors"].values()]
     lines += [f"define {r['emx_name']} = merge(l{r['drawing'][0]}t{r['drawing'][1]}, 0.2)" for r in catalog["vias"].values()]
     lines += [f"conductor {stack[name]['thickness_um']} 0.05 {r['emx_name']}" for name, r in catalog["conductors"].items()]
     lines += [f"via 0.5 0.9 {r['emx_name']} {r['connects'][0]} {r['connects'][1]}" for r in catalog["vias"].values()]
@@ -269,12 +271,12 @@ def test_demo_6m_passes_every_stage_against_its_proc(tmp_path: Path) -> None:
     report = check_demo(tmp_path)
     assert report.passed, report.format()
     assert [s.status for s in report.stages] == ["PASS", "PASS", "PASS", "PASS", "SKIPPED"]
-    assert "11 drawing layers mapped by the defines of demo_6m.proc" in report.format()
+    assert "11 drawing and 6 pin layers mapped by the defines of demo_6m.proc" in report.format()
 
 
 def test_wrong_layer_number_reports_one_error(tmp_path: Path) -> None:
     report = check_demo(tmp_path, lambda d: d["layer_catalog"]["conductors"]["M3"].__setitem__("drawing", [163, 0]))
-    assert errors(report) == ["M3: drawing layer 163/0 is not in the define of M3 (63/0) -- EMX would not see this geometry"]
+    assert errors(report) == ["M3: drawing layer 163/0 is not in the define of M3 (63/0, 63/2) -- EMX would not see this geometry"]
 
 
 def test_wrong_via_datatype_reports_one_error(tmp_path: Path) -> None:
@@ -292,10 +294,9 @@ def test_wrong_name_reports_one_error(tmp_path: Path) -> None:
     assert errors(report) == ["emx_name not found in demo_6m.proc: MET4"]
 
 
-def test_pin_layer_off_the_define_warns_but_passes(tmp_path: Path) -> None:
-    report = check_demo(tmp_path, lambda d: d["layer_catalog"]["conductors"]["M6"].__setitem__("pin", [166, 2]))
-    assert report.passed
-    assert "warn: M6: pin layer 166/2 is on a layer number the define of M6 does not name" in report.format()
+def test_wrong_pin_datatype_reports_one_error(tmp_path: Path) -> None:
+    report = check_demo(tmp_path, lambda d: d["layer_catalog"]["conductors"]["M6"].__setitem__("pin", [66, 20]))
+    assert errors(report) == ["M6: pin layer 66/20 is not in the define of M6 (66/0, 66/2) -- EMX would not find the port labels"]
 
 
 # ---- the CLI face: ic-opt call em.validate_profile <profile dir>

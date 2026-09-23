@@ -172,7 +172,7 @@ ic-opt call em.validate_profile /path/to/profiles/<profile> proc=/path/to/site.p
 ```
 
 This runs schema, consistency, the site proc (names, conductor thicknesses,
-and every drawing layer in the proc's `define` of its EMX name), and one
+and every drawing and pin layer in the proc's `define` of its EMX name), and one
 device per family through the generator and its DRC audit. The command
 exits 1 on any failed stage. The pcell finds the profile through
 `IC_OPT_PROFILE_DIRS`. The audit covers the generator's core rules only
