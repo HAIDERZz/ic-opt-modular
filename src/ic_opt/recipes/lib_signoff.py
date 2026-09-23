@@ -1,6 +1,6 @@
 """Built-in recipe: lib_signoff -- run library candidates through real EMX, compare with the predictions, optionally adopt them.
 
-``ic-opt run lib_signoff PROJECT library=<root> candidates=<json> [stratum=...] [top=10] [adopt=false] --plan``
+``ic-opt run lib_signoff PROJECT library=<root> candidates=<json> [stratum=...] [top=10] [adopt=false] [threads=N memory_gb=G] --plan``
 
 ``candidates`` is a ``lib_design`` report (``leaders``), a ``lib.suggest`` answer (``candidates``) or a list of
 parameter dicts. Each candidate is simulated with the spec of the stratum part that holds its turns level
@@ -11,7 +11,8 @@ own definitions (band, anchors, margin) and reported per candidate: predicted mu
 measured value, z in the model's space, inside or not. ``adopt=true`` copies every ok observation, sims
 directory included, into the part store it was simulated for, under fresh obs ids and an ``origin`` naming
 the sign-off run, so the next dataset build includes it. Real EMX: run with ``--plan`` first; it is the
-approval point.
+approval point. ``threads`` / ``memory_gb`` replace the part's EMX thread count and memory cap (EMX's cap is
+soft: give the candidates' real peak); they are not physics, so the generation stays the library's.
 """
 
 from __future__ import annotations
@@ -64,7 +65,8 @@ def _point(params: dict) -> Point:
     return Point({d: (str(int(v)) if float(v).is_integer() else f"{v:g}") for d, v in params.items()}, "signoff")
 
 
-def main(run: Run, *, library: str, candidates: str, stratum: str | None = None, top: int = 10, adopt: bool = False, k: float = 2.0) -> None:
+def main(run: Run, *, library: str, candidates: str, stratum: str | None = None, top: int = 10, adopt: bool = False, k: float = 2.0,
+         threads: int | None = None, memory_gb: float | None = None) -> None:
     lib = query.Library(library)
     name = stratum or (lib.strata()[0] if len(lib.strata()) == 1 else None)
     if name is None:
@@ -81,7 +83,10 @@ def main(run: Run, *, library: str, candidates: str, stratum: str | None = None,
     before = {p.key: query.query(lib, name, {d: float(p.params[d]) for d in ds.dims}, None, k=float(k)) for pts in groups.values() for p in pts}
     done: list[tuple[str, object]] = []
     for part, pts in groups.items():
-        spec = dataset._spec(lib.root / part).model_copy(update={"project": f"{run.spec.project}_signoff_{part}"})
+        spec = dataset._spec(lib.root / part)
+        resources = {k2: v for k2, v in (("threads", threads), ("memory_gb", memory_gb)) if v is not None}
+        spec = spec.model_copy(update={"project": f"{run.spec.project}_signoff_{part}",
+                                       "em": spec.em.model_copy(update={k2: type(getattr(spec.em, k2))(v) for k2, v in resources.items()})})
         obs = b.evaluate(spec, pts, run.executor, run.store, pipeline=em_only_pipeline(spec), step=f"lib_signoff:{part}",
                          cshrc=run.cshrc, parallel_jobs=run.jobs, site=run.site)
         done += [(part, o) for o in obs]

@@ -213,7 +213,7 @@ def holdout(x, y, *, seeds=SEEDS, fraction: float = HOLDOUT, **model) -> dict:
             "p90_rel": float(np.quantile(rel_a, 0.9)) if rel else float("nan"),
             "max_rel": float(rel_a.max()) if rel else float("nan"),
             "coverage_2sigma": float(np.mean(inside)) if inside else float("nan"),
-            "median_rel_by_level": by_level, "z": z}
+            "median_rel_by_level": by_level, "z": z, "rel": rel}
 
 
 def calibration_scale(report: dict, level: float = 0.95, k: float = 2.0) -> float:

@@ -65,3 +65,19 @@ def test_lib_signoff_compares_real_measurements_with_predictions_and_adopts(tmp_
     assert len(rows) == before + 1 and adopted["origin"].startswith("signoff:signoff:") and adopted["obs_id"] == f"obs_{before + 1:04d}"
     assert (lib_root / "nt2" / ".icopt" / "sims" / adopted["obs_id"] / "em" / "ind" / "ind.s2p").is_file()
     assert "adopted.yaml" in {p.name for p in (lib_root / "nt2" / ".icopt").iterdir()}
+
+
+def test_lib_signoff_resource_overrides_reach_emx_but_not_the_generation(tmp_path):
+    lib_root = build_library(tmp_path / "lib")
+    (tmp_path / "cand.json").write_text(json.dumps([{"outer_diameter_um": 155, "width_um": 4.5, "spacing_um": 2.5, "turns": 2}]), encoding="utf-8")
+    main = load_recipe("lib_signoff")
+    fingerprints, commands = [], []
+    for name, extra in (("plain", {}), ("heavy", {"threads": 2, "memory_gb": 6})):
+        run, _ = make_run(tmp_path, name)
+        main(run, library=str(lib_root), candidates=str(tmp_path / "cand.json"), stratum="ind_demo", **extra)
+        (o,) = run.store.observations()
+        fingerprints.append(o.pipeline_fingerprint)
+        commands.append((run.store.root / "sims" / o.obs_id / "em" / "ind" / "emx.cmd").read_text())
+    assert fingerprints[0] == fingerprints[1]                                    # threads / memory are not physics
+    assert "--parallel=1" in commands[0] and "--max-memory=4G" in commands[0]
+    assert "--parallel=2" in commands[1] and "--max-memory=6G" in commands[1]
