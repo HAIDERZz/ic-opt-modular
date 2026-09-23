@@ -22,7 +22,7 @@ from ic_opt.spec import Spec, load_spec
 from ic_opt.store import RunStore
 
 PLAN_MODE: contextvars.ContextVar[bool] = contextvars.ContextVar("ic_opt_plan_mode", default=False)
-BUILTIN_RECIPES = ("optimize", "fix_run", "coarse_to_fine", "signoff")
+BUILTIN_RECIPES = ("optimize", "fix_run", "coarse_to_fine", "signoff", "lib_design")
 
 
 @dataclass

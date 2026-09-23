@@ -37,6 +37,7 @@ class Observation(BaseModel):
     pipeline_fingerprint: str
     step: str = ""
     cache: dict[str, str] = Field(default_factory=dict)              # point-level stage -> "hit" | "miss"
+    simulations: int | None = None                                   # what this point cost; None on observations recorded before 0.2.x
     started_at: str
     finished_at: str
 

@@ -71,8 +71,15 @@ def point_runs(pipeline: list[Stage]) -> int:
     return sum(getattr(s, "runs", 0) for s in pipeline if s.level == "point")
 
 
+def child_simulates(pipeline: list[Stage]) -> bool:
+    """Whether a pipeline's children are simulations (a child stage declares ``simulates = False`` when it is not, e.g. a prediction)."""
+    return any(getattr(s, "simulates", True) for s in pipeline if s.level == "child")
+
+
 def simulations(observation: Observation) -> int:
-    """What an observation cost: its children plus every point-level stage that ran instead of hitting the cache."""
+    """What an observation cost: as recorded, else (older records) its children plus every point-level stage that ran instead of hitting the cache."""
+    if observation.simulations is not None:
+        return observation.simulations
     return len(observation.children) + sum(1 for v in observation.cache.values() if v == "miss")
 
 
@@ -109,7 +116,8 @@ def run(
         raise ValueError("pipeline produces no children for this spec (no testbenches for its testbench chain, no devices for its device chain)")
     spec_fp, pipe_fp = spec.fingerprint(), pipeline_fingerprint(pipeline)
     children_wanted = {c.key for c in children}
-    sims_per_point = len(children) + point_runs(pipeline)         # worst case: every cacheable point stage misses
+    child_sims = child_simulates(pipeline)
+    sims_per_point = (len(children) if child_sims else 0) + point_runs(pipeline)         # worst case: every cacheable point stage misses
     workers = workers_for(spec, pipeline, parallel_jobs, site)
 
     with store.lock():
@@ -147,6 +155,7 @@ def run(
                 metrics=agg.metrics, fom=agg.fom, objective=agg.objective, feasible=agg.feasible,
                 constraint_penalty=agg.constraint_penalty, status=agg.status, issues=agg.issues,
                 spec_fingerprint=spec_fp, pipeline_fingerprint=pipe_fp, step=step, cache=cache,
+                simulations=(len(results) if child_sims else 0) + sum(1 for v in cache.values() if v == "miss"),
                 started_at=started_at, finished_at=utc_now(),
             )
             job.seconds = time.monotonic() - started
