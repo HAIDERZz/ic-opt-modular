@@ -1,6 +1,6 @@
 ---
 name: ic-opt
-description: Drive IC-Opt 0.2 from a project directory — write or migrate spec.yaml, preview with --plan, run built-in or custom recipes (optimize, fix_run, coarse_to_fine, signoff), read .icopt results and reports, and advise on Spectre/OCEAN design optimization, locally or over SSH.
+description: Drive IC-Opt 0.2 from a project directory — write or migrate spec.yaml, preview with --plan, run built-in or custom recipes (optimize, fix_run, coarse_to_fine, signoff), read .icopt results and reports, and advise on Spectre/OCEAN design optimization, locally or over SSH; query, design on and sign off EM device libraries.
 ---
 
 # IC-Opt operator
@@ -11,8 +11,8 @@ The user owns the design question; you own the mechanics and the evidence.
 ## Mental model
 
 - `spec.yaml` = WHAT: testbenches, corners, variables (grid), metrics, constraints, objective, simulator limits, budget.
-- Recipe = HOW: `main(run, **params)` composing blocks. Built-ins: `optimize`, `fix_run`, `coarse_to_fine`, `signoff`.
-- Blocks: `env.doctor`, `netlist.import`, `points.{fixed,sobol,grid,one_at_a_time,from}`, `sim.evaluate`, `opt.suggest`, `opt.optimize`, `analyze.best`, `analyze.report`. `ic-opt blocks` lists them, `ic-opt describe NAME` shows a signature.
+- Recipe = HOW: `main(run, **params)` composing blocks. Built-ins: `optimize`, `fix_run`, `coarse_to_fine`, `signoff`, and for the device library `lib_design`, `lib_signoff`.
+- Blocks: `env.doctor`, `netlist.import`, `points.{fixed,sobol,grid,one_at_a_time,from}`, `sim.evaluate`, `opt.suggest`, `opt.optimize`, `analyze.best`, `analyze.report`; device library `lib.{load,coverage,query,suggest}`; process profiles `em.validate_profile`. `ic-opt blocks` lists them, `ic-opt describe NAME` shows a signature.
 - Results: `PROJECT/.icopt/observations.jsonl` (fact table), `steps.jsonl`, `sims/<obs>/<tb>/<corner>/`, `reports/report.md|html`.
 - Re-running continues: `opt.optimize` stops when its step holds `budget` observations; raise `budget` to go on.
 
@@ -59,6 +59,12 @@ Point-level status: `ok`, `constraint_failed`, `metric_failed`, `failed:<stage>`
 ## EM devices
 
 A spec with `devices` (pcell generator instances: `generator`, `profile`, `ports`, `fixed`, `variables`), `em` (EMX settings, `process_file` on the simulation host) and `bindings` (which testbench nport instance takes which device's sNp, `terminals` in sNp column order) runs the EM circuit pipeline `pcell → emx → bind_nport → spectre → ocean → extract` with the same recipes; a spec with devices but no testbenches runs `pcell → emx → measure` (device metrics: `quantity` Lp/Qp/Ls/Qs/k at `frequency_hz`, or Lp_lf / Lp_res / Qp_peak / SRF_p / k_lf). Set `IC_OPT_PROFILE_DIRS` to the directory holding the private `<profile>/rule.yaml`. Real EMX runs need the user's approval after `--plan` (site rules: `simultaneous_frequencies: 0`, `threads` × `memory_gb` inside the envelope); EMX results are cached per device by geometry + settings + process file. `ic-opt migrate` converts em-opt's `em_opt_requirement.md`. Failures: `failed:pcell` (unbuildable geometry / DRC), `failed:emx:<device>`, `failed:bind_nport` (instance or terminal count), `failed:measure` (quantity outside the sweep, no resonance for SRF).
+
+## Device library and process profiles
+
+A library is a directory of em_only run stores plus `library.yaml` (strata = family × metal body, parts, dims, quantities named after the measure kernel); `ic-opt call lib.<name> LIBRARY_ROOT key=value` answers from it (dicts print as JSON). `lib.load` / `lib.coverage` show what is there; `lib.query stratum=S 'params={...}'` returns per quantity `measured`, `predicted` (mu with calibrated ~95% bounds `lo`/`hi`), `uncertain`, `out_of_domain` (criterion + reason + nearest rows) or `above_sweep` (SRF); `lib.suggest stratum=S 'targets={"Lp_lf": {"target": 1.2e-9, "tol": 0.03}}' objective=max:Qp_peak` lists measured designs first, then predicted candidates that meet the targets with their whole interval and pass the real generator + DRC audit. `ic-opt run lib_design PROJECT library=ROOT` optimizes an em_only spec on predictions (no EMX, no budget spent); `ic-opt run lib_signoff PROJECT library=ROOT candidates=REPORT --plan` then real EMX compares predictions with measurements (z, inside) and `adopt=true` folds the rows back into the library. Never present a `predicted` value as measured; say which answers were out of domain and why. Guide: `docs/em/library.md`.
+
+A new process needs `<profile>/rule.yaml` (authoring guide `skills/author-process-rule/SKILL.md`) proven by `ic-opt call em.validate_profile PROFILE_DIR proc=SITE.proc generate=true` (exit 1 on any failed stage) before any EMX run.
 
 ## Remote hosts
 

@@ -110,6 +110,21 @@ metrics:
 
 Every family's fields, constraints and retired names: [docs/em/devices.md](docs/em/devices.md) (generated from the config models).
 
+A **device library** (a directory of em_only run stores plus `library.yaml`) answers
+L / Q / SRF / k for a geometry, suggests geometries for targets, and serves as a
+surrogate pipeline for optimization before a real-EMX sign-off:
+
+```bash
+ic-opt call lib.query LIBRARY stratum=ind_sym_top 'params={"outer_diameter_um": 150, "width_um": 5, "spacing_um": 3, "turns": 2}'
+ic-opt call lib.suggest LIBRARY stratum=ind_sym_top 'targets={"Lp_lf": {"target": 1.2e-9, "tol": 0.03}}' objective=max:Qp_peak
+ic-opt run lib_design PROJECT library=LIBRARY          # optimize on predictions (no EMX)
+ic-opt run lib_signoff PROJECT library=LIBRARY candidates=REPORT --plan
+ic-opt call em.validate_profile PROFILE_DIR proc=SITE.proc generate=true    # bring up a new process profile
+```
+
+Building, querying and growing a library: [docs/em/library.md](docs/em/library.md); writing a
+process profile: [skills/author-process-rule/SKILL.md](skills/author-process-rule/SKILL.md).
+
 Every EMX run is cached under `.icopt/cache/emx:<device>/` by GDS bytes, port
 order, physics settings and the process file's content hash. `ic-opt migrate`
 converts em-opt's `em_opt_requirement.md` (Geometry Generator / EM Devices /

@@ -1,6 +1,7 @@
 # T10：查询库（器件特性库 / 代理模型 / 逆向推荐）的嵌入方案
 
-- 状态：**规划稿，待用户批准后执行**（2026-09-22）
+- 状态：**已作废（2026-09-23）**——被 `T13_LIBRARY_MODULE_PLAN_CN.md` 取代：不导入旧 em-opt 库（本文的 `em.import_library`、V7/V8 与 12,767 行导入全部取消），库按 T12 流程重建，`library.yaml` 放库根。下文仅作历史记录。
+- 原状态：规划稿，待用户批准后执行（2026-09-22）
 - 前提：T9 的 EM 核心已就绪并经真实冒烟（`EXECUTION_PLAN_CN.md` §3 T9.1–T9.7）；本文只讨论 em-opt 第二条产品线"查询库"（`device_db/` 4.7k 行 + `surrogate/` 2.2k 行 + `hermes-db` 9 个动词 + `experiments/device_db_sweep_n28/` 的扫参工具）怎么进来
 - 依据：`analysis/em/03_device_db_and_surrogate.md`（schema v4、测量、StratumGP、域守卫、逆向算法、扫参计划、13 条陷阱）、`04_recorded_data_and_fakes.md` §1（数据清单）
 - 原则不变：做减法；库不进评估链（`DESIGN_CN.md` 4.1 已定）；新需求 = 新 block / 新 recipe，不是新 CLI

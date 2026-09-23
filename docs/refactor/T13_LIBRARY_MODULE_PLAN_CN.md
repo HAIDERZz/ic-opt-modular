@@ -1,6 +1,6 @@
 # T13：器件查询库嵌入 ic-opt 的开发方案
 
-- 状态：**已批准，执行中**（2026-09-23）：§5 六项按建议拍板；追加"工艺接入"三项（§2.4、T13.9–T13.11）
+- 状态：**已批准，执行中**（2026-09-23）：§5 六项按建议拍板；追加"工艺接入"三项（§2.4、T13.9–T13.11）。已提交 T13.1–T13.6（94310db、7144b3c、e7a507a、5007e9e、d0073d6、13a1523；T13.6 的真实 EMX 复核未跑）、T13.10（9c74db5）、T13.9（5c4136a）、T13.8 文档；待办 T13.7、T13.11（变压器正式批跑完后）与 T13.6 真实复核（先 `--plan` 经确认）
 - 取代：`T10_LIBRARY_PLAN_CN.md`（2026-09-22）。T10 以"从 em-opt 的 sqlite 导入 12,767 行"为前提；按 T12 的决定，各器件族改为用第 7 代几何、细网格全波在 ic-opt 里直接重建，这个前提已不成立
 - 依据：电感查询库验证（`reports/library_query/IND_QUERY_VERIFY_CN.html`）、T12 建库记录（`EXECUTION_PLAN_CN.md`）、em-opt 查询栈分析（`analysis/em/03_device_db_and_surrogate.md`）
 - 架构图与开发流程图（archify 生成，可交互）：`reports/library_query/arch/t13-library-module.architecture.html`、`reports/library_query/arch/t13-dev-plan.workflow.html`
@@ -44,34 +44,35 @@
 | `lib_design` | recipe | `opt.optimize(pipeline=surrogate)` → 取前 k → 实造审计；零 EMX |
 | `lib_signoff` | recipe | 对候选跑 `em_only` 真实 EMX（先 `--plan`，受站点资源上限约束）→ 报告实测与预测的 z 分数和 2σ 覆盖 → `opt.adopt` 回流进对应分层的库工程（`origin = signoff:<run>`） |
 
-CLI 不新增子命令：`ic-opt call lib.query <library> stratum=ind_sym_ap params=… --format json`。唯一的 CLI 改动是 `call` 识别含 `library.yaml` 的目录（此时向 block 提供 `library` 而不是 `spec` / `store`）。
+CLI 不新增子命令：`ic-opt call lib.query <library> stratum=ind_sym_ap 'params={…}'`，dict 结果直接打印为 JSON（原计划的 `--format json` 选项因此不需要）。唯一的 CLI 改动是 `call` 识别含 `library.yaml` 的目录（此时向 block 提供 `library` 而不是 `spec` / `store`）。
 
 ### 2.2 库清单 `library.yaml`（放在库根，仓库外）
 
 ```yaml
-# <library>/<process>/library.yaml —— 仓库里只放 demo_6m 的示例
+# <库根>/library.yaml —— 仓库外；仓库里只有测试用的 demo_6m 合成库（实现后的写法，量名即测量内核的量名）
+schema_version: ic-opt-library-v1
 process_profile: <profile>
 strata:
   ind_sym_ap:
     generator: clean_port_ind_sym
     dims: [outer_diameter_um, width_um, spacing_um, turns]
     nt_dim: turns
-    parts:                        # 一个分层可由多个库工程组成
-      - {store: ind_sym_ap, stop_ghz: 150}
-      - {store: ind_sym_ap_nt1, stop_ghz: 250}
+    parts:                        # 一个分层可由多个库工程组成，扫频上限从各自的 sNp 读
+      - {store: ind_sym_ap}       # 0–150 GHz
+      - {store: ind_sym_ap_nt1}   # 单圈 0–250 GHz
+    steps: {outer_diameter_um: 1, width_um: 0.1, spacing_um: 0.1, turns: 1}   # 逆向推荐的候选分辨率
     quantities:
-      L_lf: {}
-      L_res: {}
-      Q_peak: {band_ghz: 150}     # 统一口径
-      SRF: {model: gp}            # 扫频内无谐振的区域返回"高于扫频上限"
-      L@f: {anchors_ghz: [10, 28, 60], srf_margin: 1.25}
-      Q@f: {anchors_ghz: [10, 28, 60], srf_margin: 1.25}
-  xfm_bs_ap:
+      Lp_lf: {}
+      Lp_res: {}
+      Qp_peak: {band_ghz: 150}    # 统一口径：各部件都在 0–150 GHz 内找峰
+      SRF_p: {}                   # GP 建模；扫频内无谐振 → above_sweep
+      Lp: {anchors_ghz: [10, 28, 60]}   # 列 Lp@10 / Lp@28 / Lp@60；srf_margin 默认 1.25
+      Qp: {anchors_ghz: [10, 28, 60]}
+  xfm_bs_ap:                      # T13.7 定稿
     generator: clean_port_xfm_bs
-    dims: [primary_outer_diameter_um, secondary_outer_diameter_um, primary_width_um, secondary_width_um, center_spacing_um]
-    nt_dim: null
-    parts: [{store: xfm_bs_ap, stop_ghz: 200}]
-    quantities: {Lp_lf: {}, Ls_lf: {}, k_lf: {feature_map: xfm_bs_dimensionless}, Qp_peak: {band_ghz: 150}, SRF_p: {model: gp}}
+    dims: [<变压器库的坐标维>]
+    parts: [{store: xfm_bs_ap}]
+    quantities: {Lp_lf: {}, Ls_lf: {}, k_lf: {feature_map: <k 的无量纲映射>}, Qp_peak: {band_ghz: 150}, Qs_peak: {band_ghz: 150}, SRF_p: {}, SRF_s: {}}
 ```
 
 代际：数据集只收 `pipeline_fingerprint` 与清单声明的代际一致的行（几何代 `GEOMETRY_VERSION` + EMX 物理设置 + `.proc` 内容哈希），天然不混代。
