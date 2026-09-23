@@ -70,9 +70,17 @@ strata:
 ```
 
 Scalars: `Lp_lf Lp_res Qp_peak SRF_p` and, for transformers, `Ls_lf Ls_res
-Qs_peak SRF_s k_lf`. Curves sampled at anchors: `Lp Qp Ls Qs k`. Every value
-is recomputed from the sNp with these definitions, so parts swept to
-different stop frequencies still answer on one basis.
+Qs_peak SRF_s k_lf`, plus `SRF`, the system SRF (the lowest resonance over
+all drives; `SRF_p` for an inductor). Curves sampled at anchors: `Lp Qp Ls
+Qs k`. Every value is recomputed from the sNp with these definitions, so
+parts swept to different stop frequencies still answer on one basis.
+
+For a transformer, query `SRF` rather than `SRF_p` / `SRF_s`: the secondary's
+resonance reflects into the primary's impedance as a sharp dip, and whether
+that dip crosses zero decides whether `SRF_p` lands on it or on the primary's
+own, much higher resonance. Two neighbouring geometries can differ by tens of
+GHz in `SRF_p` while `SRF` stays continuous. For the same reason every
+anchored curve of a coupled pair is used only below the system SRF.
 
 ## 3. Check it
 

@@ -4,7 +4,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from ic_opt.library import gp, manifest, query
+from ic_opt.em import measure
+from ic_opt.library import dataset, gp, manifest, query
 from ic_opt.library import suggest as s
 from tests.ic_opt.library_fixtures import (
     XFM_DIMS,
@@ -24,12 +25,23 @@ def xfm_library(tmp_path_factory):
 
 def test_dataset_carries_the_secondary_and_coupling_columns(xfm_library):
     ds = query.Library(xfm_library).dataset("xfm_demo")
-    assert set(ds.columns) == {"Lp_lf", "Ls_lf", "k_lf", "Qp_peak", "Qs_peak", "SRF_p", "SRF_s", "k@10"} and len(ds.rows) == 224
+    assert set(ds.columns) == {"Lp_lf", "Ls_lf", "k_lf", "Qp_peak", "Qs_peak", "SRF_p", "SRF_s", "SRF", "k@10"} and len(ds.rows) == 224
     geometry = xfm_points()[57]
     row, truth = ds.find(dict(zip(XFM_DIMS, geometry))), xfm_truth(geometry)
     for q in ("Lp_lf", "Ls_lf", "k_lf", "Qs_peak"):
         assert row.values[q] == pytest.approx(truth[q], rel=1e-9)
     assert row.values["k_lf"] == pytest.approx(xfm_physics(*geometry)["k"], rel=2e-3)          # the drives (P1, N1), (N2, P2) couple positively
+    resonant = [r for r in ds.rows if r.values["SRF_p"] is not None or r.values["SRF_s"] is not None]
+    assert resonant and all(r.values["SRF"] == min(v for v in (r.values["SRF_p"], r.values["SRF_s"]) if v is not None) for r in resonant)
+    assert all(r.values["SRF"] is None for r in ds.rows if r.values["SRF_p"] is None and r.values["SRF_s"] is None)
+
+
+def test_anchored_curves_of_a_coupled_pair_stop_below_the_lower_resonance():
+    """The other winding's resonance reflects into this drive's impedance: SRF_p may sit far above it, the curve may not."""
+    q = measure.Quantities(np.array([0.0]), {}, {"SRF_p": 150e9, "SRF_s": 70e9, "SRF": 70e9})
+    assert all(dataset._drive_srf(q, curve) == 70e9 for curve in ("Lp", "Qp", "Ls", "Qs", "k"))
+    single = measure.Quantities(np.array([0.0]), {}, {"SRF_p": 90e9, "SRF": 90e9})
+    assert dataset._drive_srf(single, "Lp") == 90e9
 
 
 def test_feature_maps_see_scale_only_in_their_first_feature():
@@ -84,11 +96,12 @@ def test_query_predicts_coupling_and_both_inductances(xfm_library):
         assert a["status"] == "predicted" and a["value"] == pytest.approx(true, rel=3e-2) and a["lo"] < a["value"] < a["hi"]
 
 
-def test_anchored_coupling_targets_imply_both_resonances(xfm_library):
+def test_anchored_coupling_targets_imply_the_system_resonance(xfm_library):
     goals = s.parse_targets({"k@10": {"min": 0.5}})
-    assert {(t.quantity, t.value) for t in s.implied_srf(goals, None, 1.25)} == {("SRF_p", 12.5e9), ("SRF_s", 12.5e9)}
+    assert {(t.quantity, t.value) for t in s.implied_srf(goals, None, 1.25)} == {("SRF_p", 12.5e9), ("SRF_s", 12.5e9)}   # per drive: both
+    assert {(t.quantity, t.value) for t in s.implied_srf(goals, None, 1.25, ["SRF", "SRF_p"])} == {("SRF", 12.5e9)}
     answer = s.suggest(query.Library(xfm_library), "xfm_demo", {"k@10": {"min": 0.5}}, "max:k_lf", n=1, verify_build=False)
-    assert {t["quantity"] for t in answer["targets"]} == {"k@10", "SRF_p", "SRF_s"}
+    assert {t["quantity"] for t in answer["targets"]} == {"k@10", "SRF"}
 
 
 def test_suggest_returns_built_transformers_that_meet_the_targets(xfm_library):

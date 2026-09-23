@@ -6,7 +6,10 @@ balun contributes a common-mode clamp (V_plus + V_minus = 0) and a differential
 drive (I_plus - I_minus = 2 Ia); grounded ports contribute V = 0.
 
 Curves per drive N (names p, s): L<N>(f), Q<N>(f), plus k(f) for two drives.
-Scalars: L<N>_lf, L<N>_res, Q<N>_peak, SRF_<N>, k_lf.
+Scalars: L<N>_lf, L<N>_res, Q<N>_peak, SRF_<N>, k_lf, and SRF -- the system SRF, the lowest finite SRF over
+all drives (a one-drive device: SRF_p). A drive's first Im(Z) zero can be the other winding's resonance
+reflected through the coupling or its own, depending on how deep the reflected dip goes, so SRF_<N> of a
+coupled pair may jump between the two between neighbouring geometries; SRF does not.
 """
 
 from __future__ import annotations
@@ -151,6 +154,7 @@ def quantities(freqs: np.ndarray, s: np.ndarray, topo: Topology, *, z0: float = 
             scalars[f"SRF_{nm}"] = _srf_first_sign_flip(freqs, np.imag(zii))
         finite = [scalars[f"SRF_{nm}"] for nm in names if scalars[f"SRF_{nm}"] is not None]
         srf_cap = min(finite) if finite else None
+        scalars["SRF"] = srf_cap
         for nm in names:
             scalars[f"L{nm}_res"] = scalars[f"L{nm}_lf"] if srf_cap is None else _l_res(freqs, curves[f"L{nm}"], srf_cap, nm)
         if len(topo.drives) == 2:

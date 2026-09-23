@@ -85,15 +85,18 @@ def parse_objective(text: str | None) -> tuple[str, str] | None:
     return sense, quantity
 
 
-def implied_srf(targets: list[Target], objective: tuple[str, str] | None, margin: float) -> list[Target]:
-    """Anchored quantities are only defined below the resonance: add SRF >= margin x the highest anchor per drive
-    (both drives for the coupling ``k``, as the dataset only keeps a ``k@f0`` row below both resonances)."""
+def implied_srf(targets: list[Target], objective: tuple[str, str] | None, margin: float, columns: list[str] | tuple[str, ...] = ()) -> list[Target]:
+    """Anchored quantities are only defined below the resonance: add SRF >= margin x the highest anchor. The system
+    ``SRF`` when the stratum has it (what its anchored columns were cut by); else per drive, both drives for ``k``."""
     named = {t.quantity for t in targets}
     extra, highest = [], {}
     for q in [t.quantity for t in targets] + ([objective[1]] if objective else []):
         m = _ANCHOR.match(q)
         if m:
-            drives = {"Lp": ("SRF_p",), "Qp": ("SRF_p",), "Ls": ("SRF_s",), "Qs": ("SRF_s",), "k": ("SRF_p", "SRF_s")}[m.group(1)]
+            if "SRF" in columns:
+                drives = ("SRF",)
+            else:
+                drives = {"Lp": ("SRF_p",), "Qp": ("SRF_p",), "Ls": ("SRF_s",), "Qs": ("SRF_s",), "k": ("SRF_p", "SRF_s")}[m.group(1)]
             for srf in drives:
                 highest[srf] = max(highest.get(srf, 0.0), float(m.group(2)) * 1e9)
     for srf, f0 in highest.items():
@@ -228,7 +231,7 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
     goals = parse_targets(targets)
     obj = parse_objective(objective)
     margin = min((r.srf_margin for r in library.manifest.strata[stratum].quantities.values()), default=1.25)
-    goals += implied_srf(goals, obj, margin)
+    goals += implied_srf(goals, obj, margin, ds.columns)
     names = sorted({t.quantity for t in goals} | ({obj[1]} if obj else set()))
     unknown = [q for q in names if q not in ds.columns]
     if unknown:

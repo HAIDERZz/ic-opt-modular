@@ -20,7 +20,7 @@ from ic_opt.spec import Model
 
 MANIFEST = "library.yaml"
 SCHEMA = "ic-opt-library-v1"
-SCALARS = ("Lp_lf", "Lp_res", "Qp_peak", "SRF_p", "Ls_lf", "Ls_res", "Qs_peak", "SRF_s", "k_lf")
+SCALARS = ("Lp_lf", "Lp_res", "Qp_peak", "SRF_p", "Ls_lf", "Ls_res", "Qs_peak", "SRF_s", "k_lf", "SRF")   # SRF: the system SRF
 CURVES = ("Lp", "Qp", "Ls", "Qs", "k")
 PEAKS = ("Qp_peak", "Qs_peak")
 XFM_BS_DIMS = ("primary_outer_diameter_um", "secondary_outer_diameter_um", "primary_width_um", "secondary_width_um", "center_spacing_um")

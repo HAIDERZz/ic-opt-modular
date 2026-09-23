@@ -81,7 +81,7 @@ def srf_knn(lib: query.Library, stratum: str) -> dict:
     out = {}
     lo = np.array([lib.ranges(stratum)[d][0] for d in lib.dataset(stratum).dims])
     span = np.array([lib.ranges(stratum)[d][1] for d in lib.dataset(stratum).dims]) - lo
-    for q in ("SRF_p", "SRF_s"):
+    for q in ("SRF", "SRF_p", "SRF_s"):
         if q not in lib.dataset(stratum).columns:
             continue
         x, y = xy(lib, stratum, q)

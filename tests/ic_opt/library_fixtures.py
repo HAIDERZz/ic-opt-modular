@@ -137,7 +137,7 @@ def xfm_points() -> list[tuple[float, float, float, float, float]]:
 
 
 def build_xfm_library(root: Path, *, feature_map: str | None = "xfm_bs_dimensionless") -> Path:
-    """Stratum xfm_demo (one part, 224 rows): Lp_lf, Ls_lf, k_lf, Qp_peak, Qs_peak, SRF_p, SRF_s and k@10 (k with ``feature_map``)."""
+    """Stratum xfm_demo (one part, 224 rows): Lp_lf, Ls_lf, k_lf, Qp_peak, Qs_peak, SRF_p, SRF_s, SRF and k@10 (k with ``feature_map``)."""
     project = root / "xfm"
     (project / ".icopt").mkdir(parents=True)
     (project / "spec.yaml").write_text(yaml.safe_dump(xfm_part_spec("xfm").model_dump(mode="json")), encoding="utf-8")
@@ -157,7 +157,7 @@ def build_xfm_library(root: Path, *, feature_map: str | None = "xfm_bs_dimension
                                    "steps": {"primary_outer_diameter_um": 1, "secondary_outer_diameter_um": 1, "primary_width_um": 0.1,
                                              "secondary_width_um": 0.1, "center_spacing_um": 0.5},
                                    "quantities": {"Lp_lf": {}, "Ls_lf": {}, "k_lf": k_rule, "Qp_peak": {"band_ghz": XFM_STOP_GHZ},
-                                                  "Qs_peak": {"band_ghz": XFM_STOP_GHZ}, "SRF_p": {}, "SRF_s": {},
+                                                  "Qs_peak": {"band_ghz": XFM_STOP_GHZ}, "SRF_p": {}, "SRF_s": {}, "SRF": {},
                                                   "k": {"anchors_ghz": [10], **k_rule}}}}}
     (root / "library.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
     return root

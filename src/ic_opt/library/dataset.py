@@ -29,7 +29,7 @@ from ic_opt.library import manifest
 from ic_opt.observation import Observation
 from ic_opt.spec import Spec
 
-DATASET_VERSION = 1
+DATASET_VERSION = 2                                  # 2: anchored curves of a coupled pair are limited by the system SRF
 UNBANDED = ("Lp_lf", "Lp_res", "SRF_p", "Ls_lf", "Ls_res", "SRF_s", "k_lf")     # compared with the stored quantities.json
 _PORT = re.compile(r"^p(\d+)=([^:]+)(?::(.+))?$")
 
@@ -227,13 +227,9 @@ def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: 
 
 
 def _drive_srf(q: measure.Quantities, curve: str) -> float | None:
-    """The resonance that limits a curve: its own drive's SRF; k needs both drives below theirs."""
-    if curve in ("Lp", "Qp"):
-        return q.scalars.get("SRF_p")
-    if curve in ("Ls", "Qs"):
-        return q.scalars.get("SRF_s")
-    finite = [s for s in (q.scalars.get("SRF_p"), q.scalars.get("SRF_s")) if s is not None]
-    return min(finite) if finite else None
+    """The resonance that limits a curve: the system SRF. For one drive that is its own; for a coupled pair the
+    other winding's resonance reflects into this drive's impedance too, so every curve stops below the lowest."""
+    return q.scalars.get("SRF")
 
 
 def _cache_key(stratum: manifest.Stratum, obs_files: list[Path]) -> str:
