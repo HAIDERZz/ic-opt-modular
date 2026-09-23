@@ -80,7 +80,10 @@ resonance reflects into the primary's impedance as a sharp dip, and whether
 that dip crosses zero decides whether `SRF_p` lands on it or on the primary's
 own, much higher resonance. Two neighbouring geometries can differ by tens of
 GHz in `SRF_p` while `SRF` stays continuous. For the same reason every
-anchored curve of a coupled pair is used only below the system SRF.
+anchored curve of a coupled pair is used only below the system SRF, and a
+peak (`Qp_peak`, `Qs_peak`) is searched only below it: a multi-turn
+secondary resonates inside the sweep, and above that the primary's Q curve
+can climb again to the band edge.
 
 ## 3. Check it
 

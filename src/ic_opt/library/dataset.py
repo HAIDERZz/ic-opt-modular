@@ -29,7 +29,7 @@ from ic_opt.library import manifest
 from ic_opt.observation import Observation
 from ic_opt.spec import Spec
 
-DATASET_VERSION = 2                                  # 2: anchored curves of a coupled pair are limited by the system SRF
+DATASET_VERSION = 3                                  # 2: anchored curves of a coupled pair stop below the system SRF; 3: so do peaks
 UNBANDED = ("Lp_lf", "Lp_res", "SRF_p", "Ls_lf", "Ls_res", "SRF_s", "k_lf")     # compared with the stored quantities.json
 _PORT = re.compile(r"^p(\d+)=([^:]+)(?::(.+))?$")
 
@@ -210,9 +210,7 @@ def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: 
             band = rule.band_ghz * 1e9
             if stop < band * (1 - 1e-9):
                 raise DatasetError(f"{part}: {name} band is {rule.band_ghz:g} GHz but the sweep stops at {stop / 1e9:g} GHz")
-            curve = q.curves[name.split("_")[0]]
-            mask = (q.freqs > 0) & (q.freqs <= band * (1 + 1e-12)) & np.isfinite(curve)
-            values[name] = float(np.max(curve[mask])) if mask.any() else None
+            values[name] = _peak(q.freqs, q.curves[name.split("_")[0]], band, q.scalars.get("SRF"))
         else:
             if name not in q.scalars:
                 raise DatasetError(f"{part}: {name} needs two drives; this device has {len(topo.drives)}")
@@ -224,6 +222,16 @@ def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: 
         stored_match = all(stored.get(k) == q.scalars.get(k) for k in UNBANDED if k in stored or k in q.scalars)
     return Row(part, o.obs_id, {d: float(o.params[d]) for d in stratum.dims}, values, stop, len(ts.freqs), ts.n_ports,
                float(np.linalg.svd(ts.s, compute_uv=False).max()), stored_match, str(snp.relative_to(root)))
+
+
+def _peak(freqs: np.ndarray, curve: np.ndarray, band_hz: float, srf_hz: float | None) -> float | None:
+    """The largest finite value of a Q curve in (0, band], below the system SRF. Above the lowest resonance a coupled
+    pair's Q curve can rise again towards the band edge (a multi-turn secondary resonates inside the sweep), which is
+    not the device's quality factor; an inductor's peak always lies below its SRF, so for one drive nothing changes."""
+    mask = (freqs > 0) & (freqs <= band_hz * (1 + 1e-12)) & np.isfinite(curve)
+    if srf_hz is not None:
+        mask &= freqs < srf_hz
+    return float(np.max(curve[mask])) if mask.any() else None
 
 
 def _drive_srf(q: measure.Quantities, curve: str) -> float | None:

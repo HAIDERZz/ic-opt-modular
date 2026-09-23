@@ -112,3 +112,13 @@ def test_suggest_returns_built_transformers_that_meet_the_targets(xfm_library):
         assert c["build"]["built"] and c["predicted"]["k_lf"]["lo"] >= 0.6
         assert 0.475e-9 <= c["predicted"]["Lp_lf"]["lo"] and c["predicted"]["Lp_lf"]["hi"] <= 0.525e-9
         assert xfm_physics(*(c["params"][d] for d in XFM_DIMS))["k"] >= 0.6 * 0.97
+
+
+def test_a_q_peak_is_searched_below_the_system_resonance():
+    """Above the lowest resonance a coupled pair's Q can climb again to the band edge; that is not its quality factor."""
+    f = np.arange(0.0, 151e9, 1e9)
+    q = np.where(f < 60e9, 20 * np.sin(np.pi * f / 120e9), -5 + 0.2 * (f - 60e9) / 1e9)        # peak 20 at 60 GHz, then 13 at 150 GHz
+    assert dataset._peak(f, q, 150e9, 60e9) == pytest.approx(20 * np.sin(np.pi * 59 / 120))
+    assert dataset._peak(f, q, 150e9, None) == pytest.approx(20 * np.sin(np.pi * 59 / 120))  # no resonance known: the band alone
+    assert dataset._peak(f, q, 40e9, 60e9) == pytest.approx(20 * np.sin(np.pi * 40 / 120))
+

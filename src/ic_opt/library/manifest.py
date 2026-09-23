@@ -34,7 +34,7 @@ class Part(Model):
 
 
 class Quantity(Model):
-    band_ghz: float | None = Field(default=None, gt=0)    # peaks only: search 0 < f <= band, the same for every part
+    band_ghz: float | None = Field(default=None, gt=0)    # peaks only: search 0 < f <= band (and below the system SRF), the same for every part
     anchors_ghz: list[float] = Field(default_factory=list)   # curves only: sample at these frequencies
     srf_margin: float = Field(default=1.25, ge=1.0)       # an anchored row is usable at f0 only if its resonance lies above margin x f0
     feature_map: str | None = None                        # the model's input features (FEATURE_MAP_DIMS; default: the dims themselves)
