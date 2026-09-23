@@ -73,3 +73,39 @@ def test_g1_guard_accepts_the_library_and_rejects_what_it_must(stratum):
             with pytest.raises(domain.OutOfDomainError):
                 guard.check({od: o, w: x, s: 3.0, nt: turns})
     assert np.isfinite(guard.nearest(ds.rows[0].coords)[0][1])
+
+
+@pytest.mark.parametrize("stratum", sorted(STRATA))
+def test_g2_inverse_holdout_reproduces_the_verification(stratum):
+    """Train on 80%, rank the held-out 20% (true values known) for L_lf = L0 +-5 %, max Q_peak: the verification's protocol."""
+    from ic_opt.library import query, suggest
+
+    ref = json.loads(VERIFY.read_text())[f"inverse_{STRATA[stratum]}"]["conservative"]
+    ds = dataset.build(LIB, stratum)
+    x, lp, qp = ds.matrix(), ds.values("Lp_lf"), ds.values("Qp_peak")
+    settings = {"dims": ds.dims, "ranges": ranges(ds), "log_target": True, "nt_mode": "per_nt", "kernel": "matern52", "nt_dim": ds.nt_dim}
+    queries = answered = first_hits = 0
+    precisions = []
+    for seed in gp.SEEDS:
+        test, train = gp.split(len(ds.rows), seed)
+        gl = gp.StratumGP(**settings).fit(x[train], lp[train])
+        gq = gp.StratumGP(**settings).fit(x[train], qp[train])
+        test = test[gl.available(x[test]) & gq.available(x[test])]
+        models = {"Lp_lf": query.Model(stratum, "Lp_lf", [], gl, None, {}), "Qp_peak": query.Model(stratum, "Qp_peak", [], gq, None, {})}
+        for l0 in np.geomspace(0.15e-9, 8e-9, 25):
+            truly = (lp[test] >= l0 * 0.95) & (lp[test] <= l0 * 1.05)
+            if not truly.any():
+                continue
+            queries += 1
+            r = suggest.score(x[test], models, [suggest.Target("Lp_lf", "target", l0, 0.05)], ("max", "Qp_peak"),
+                              rel_sigma_max=np.inf, check_domain=False)
+            if not r["ranked"]:
+                continue
+            answered += 1
+            top = r["ranked"][:3]
+            first_hits += bool(truly[top[0]])
+            precisions.append(float(truly[top].mean()))
+    print(f"{stratum}: {answered}/{queries} answered (ref {ref['answered']}/{ref['queries']}), first hit {first_hits / answered:.3f} "
+          f"(ref {ref['first_hit_rate']:.3f}), top-3 {np.mean(precisions):.4f} (ref {ref['top3_precision']:.4f})")
+    assert (answered, queries) == (ref["answered"], ref["queries"])
+    assert first_hits / answered == pytest.approx(ref["first_hit_rate"]) and np.mean(precisions) == pytest.approx(ref["top3_precision"])

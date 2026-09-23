@@ -50,11 +50,15 @@ class Stratum(Model):
     nt_dim: str | None = None                             # the integer turns dimension, if the family has one
     parts: list[Part] = Field(min_length=1)
     quantities: dict[str, Quantity] = Field(min_length=1)
+    steps: dict[str, float] = Field(default_factory=dict)  # candidate resolution per dim for inverse queries (e.g. outer_diameter_um: 1)
 
     @model_validator(mode="after")
     def _consistent(self) -> Stratum:
         if self.nt_dim is not None and self.nt_dim not in self.dims:
             raise ValueError(f"nt_dim {self.nt_dim!r} is not one of the dims {self.dims}")
+        stray = [d for d in self.steps if d not in self.dims]
+        if stray or any(v <= 0 for v in self.steps.values()):
+            raise ValueError(f"steps must be positive and name dims {self.dims}; got {self.steps}")
         if len({p.store for p in self.parts}) != len(self.parts):
             raise ValueError("a store appears twice in parts")
         for name, q in self.quantities.items():

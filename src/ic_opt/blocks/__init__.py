@@ -68,11 +68,12 @@ report = block("analyze.report", "report.md + report.html with six sections and 
 lib_load = block("lib.load", "Build or read each stratum's dataset; integrity evidence")(_library.load)
 lib_coverage = block("lib.coverage", "What a stratum covers: rows, ranges, levels, quantities")(_library.coverage)
 lib_query = block("lib.query", "Measured values, or predictions with calibrated bounds and domain verdicts")(_library.query)
+lib_suggest = block("lib.suggest", "Designs meeting targets with margin: measured first, then built predictions")(_library.suggest)
 score_model = _analyze.score_model
 store = RunStore
 
 __all__ = [
-    "REGISTRY", "Block", "best", "block", "describe", "doctor", "evaluate", "import_netlists", "lib_coverage", "lib_load", "lib_query",
+    "REGISTRY", "Block", "best", "block", "describe", "doctor", "evaluate", "import_netlists", "lib_coverage", "lib_load", "lib_query", "lib_suggest",
     "load_spec", "optimize",
     "points_fixed", "points_from", "points_grid", "points_one_at_a_time", "points_sobol", "report", "score_model",
     "spectre_pipeline", "store", "suggest",

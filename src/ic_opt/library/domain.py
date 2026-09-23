@@ -122,6 +122,39 @@ class DomainGuard:
                 raise self._reject(3, f"outside the convex hull at {where}", q)
         return Verdict(True, self.nearest(params))
 
+    def inside(self, x) -> np.ndarray:
+        """``check``'s criteria 1-3 for many points at once, without the evidence: a boolean per row of ``x``."""
+        x = np.asarray(x, dtype=float)
+        ok = ((x >= self._min - 1e-9) & (x <= self._max + 1e-9)).all(axis=1)
+        if self._nt_idx is None:
+            groups = {_GLOBAL: np.ones(len(x), dtype=bool)}
+        else:
+            v = x[:, self._nt_idx]
+            ok &= np.abs(v - np.round(v)) <= 1e-9
+            groups = {}
+            for level in sorted(set(np.round(v[ok]).astype(int).tolist())):
+                mask = ok & (np.round(v).astype(int) == level)
+                if int((self._levels == level).sum()) < self.min_per_level:
+                    ok &= ~mask
+                else:
+                    groups[level] = mask
+        for level, mask in groups.items():
+            if not mask.any():
+                continue
+            varying, fixed, hull = self._hull(level)
+            sel = mask & ok
+            for i, value in fixed.items():
+                sel &= np.abs(x[:, i] - value) <= 1e-9
+            if varying:
+                if hull is None:
+                    sel[:] = False
+                else:
+                    idx = np.nonzero(sel)[0]
+                    scaled = (x[np.ix_(idx, varying)] - self._lo[varying]) / (self._hi[varying] - self._lo[varying])
+                    sel[idx[hull.find_simplex(scaled) < 0]] = False
+            ok &= ~mask | sel
+        return ok
+
     def _vector(self, params: dict) -> np.ndarray:
         try:
             return np.array([float(params[d]) for d in self.dims], dtype=float)

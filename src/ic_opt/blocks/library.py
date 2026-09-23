@@ -33,3 +33,17 @@ def query(library: _query.Library | str | Path, stratum: str, params: dict, quan
     ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns).
     """
     return _query.query(_lib(library), stratum, params, _names(quantities), k=float(k))
+
+
+def suggest(library: _query.Library | str | Path, stratum: str, targets: dict, objective: str | None = None, n: int = 5,
+            pool_size: int = 8192, seed: int = 0, k: float = 2.0, verify_build: bool = True) -> dict:
+    """Designs that meet ``targets`` with margin: measured ones first (exact), then predicted candidates built and audited.
+
+    ``targets`` maps quantities to ``{"min": v}``, ``{"max": v}`` or ``{"target": v, "tol": rel}`` (JSON on the command
+    line); ``objective`` is ``max:<quantity>`` or ``min:<quantity>``. Anchored targets add SRF >= 1.25 x f0 unless SRF is
+    already constrained.
+    """
+    from ic_opt.library import suggest as _suggest
+
+    return _suggest.suggest(_lib(library), stratum, targets, objective, n=int(n), pool_size=int(pool_size), seed=int(seed),
+                            k=float(k), verify_build=bool(verify_build))
