@@ -1,7 +1,9 @@
 """The xfm_bs / xfm_ms library proposal page: parameter ranges, grid coverage, EMX settings, pilot and decisions.
 
-Usage: xfm_proposal.py GRID_JSON IND_ROWS_JSON OUT_HTML
-GRID_JSON comes from xfm_grid.py; IND_ROWS_JSON is the N28 inductor library's library_rows.json (cost model).
+Usage: xfm_proposal.py GRID_JSON IND_ROWS_JSON OUT_HTML [PILOT_DIR]
+GRID_JSON comes from xfm_grid.py (+ xfm_memory.py once the pilot ran); IND_ROWS_JSON is the N28 inductor library's
+library_rows.json (pre-pilot cost model); PILOT_DIR (xfm_pilot.py + xfm_pilot_report.py output) adds the pilot results
+and the production plan.
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ import matplotlib.pyplot as plt
 
 HERE = Path(__file__).parent
 grid_path, ind_path, out = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+pilot_dir = Path(sys.argv[4]) if len(sys.argv) > 4 else None
 grid = json.loads(grid_path.read_text())["families"]
 ind = [r for r in json.loads(ind_path.read_text()) if r["wall_s"]]
 OK = {f: [p for p in grid[f]["points"] if p["status"] == "ok"] for f in ("bs", "ms")}
@@ -143,6 +146,95 @@ off_bs = sum(p["offset"] > 0 for p in OK["bs"])
 off_ms = sum(p["offset"] > 0 for p in OK["ms"])
 hours = lambda s, jobs: s / jobs / 3600
 
+decisions = [
+    ("X1 参数网格", f"按第 1 节，共 {n_bs + n_ms} 点（bs {n_bs}，ms {n_ms}）。可选缩减：bs 线宽改 4/7/10（约 −44%），或 ms 去掉 S_S=3（约 −33%）。建议按原方案。"),
+    ("X2 扫频", f"bs 0–{BS_STOP} GHz（比 150 GHz 贵约 33%，SRF 覆盖率从约 71% 升到约 93%），ms 0–{MS_STOP} GHz。建议如此。"),
+    ("X3 横向错位点", f"bs {off_bs} 点、ms {off_ms} 点，只放在同外径同线宽的对角上，给 k 提供 0.15–0.5 的另一条路径。真实设计里错位用得少，如觉得不必要可整体删掉。建议保留。"),
+    ("X4 并发", f"正式批 {JOBS} × 8 线程 = 128 线程，每任务内存上限按先导批峰值定、总和 ≤ 256 GB。建议如此。"),
+    ("X5 先导批", "按第 5 节跑 8 次 EMX（约 1 小时内）。"),
+]
+if pilot_dir:
+    decisions_html = ("<h2>7 已批准的决策</h2><p class='note'>用户 2026-09-23 回复“执行”：X1–X5 均按建议。</p>"
+                      + "".join(f"<div class='decision done'><b>{t}</b>：{d}</div>" for t, d in decisions))
+else:
+    decisions_html = "<h2>7 待拍板</h2>" + "".join(f"<div class='decision'><b>{t}</b>：{d}</div>" for t, d in decisions)
+
+
+def pilot_section() -> str:
+    if not pilot_dir:
+        return ""
+    pj = json.loads((pilot_dir / "pilot.json").read_text())
+    mm = json.loads(grid_path.read_text())["memory_model"]
+    rows = []
+    for r in pj["table"]:
+        s_, d, c = r["scalars"], r["d_scalar_%"], r["d_curve_max_%"]
+        rows.append(f"<tr><td>{r['geom']}</td><td class='num'>{s_['Lp_lf'] * 1e9:.3f} / {s_['Ls_lf'] * 1e9:.3f}</td><td class='num'>{s_['k_lf']:.3f}</td>"
+                    f"<td class='num'>{s_['Qp_peak']:.1f} / {s_['Qs_peak']:.1f}</td><td class='num'>{(s_['SRF_p'] or 0) / 1e9:.1f} / {(s_['SRF_s'] or 0) / 1e9:.1f}</td>"
+                    f"<td class='num'>{max(abs(d['Lp_lf']), abs(d['Ls_lf']), c['Lp'], c['Ls']):.2f}</td><td class='num'>{max(abs(d['k_lf']), c['k']):.2f}</td>"
+                    f"<td class='num'>{max(abs(d['Qp_peak']), abs(d['Qs_peak'])):.2f} ({max(c['Qp'], c['Qs']):.2f})</td>"
+                    f"<td class='num'>{max(abs(d['SRF_p']), abs(d['SRF_s'])):.2f}</td>"
+                    f"<td class='num'>{r['fine']['wall_s']:.0f} s / {r['fine']['peak_gb']:.1f} GB</td><td class='num'>{r['xfine']['wall_s']:.0f} s / {r['xfine']['peak_gb']:.1f} GB</td></tr>")
+    figs = "".join(f"<figure><img src='data:image/png;base64,{base64.b64encode((pilot_dir / f'fig_{g}.png').read_bytes()).decode()}' alt='{g}'>"
+                   f"<figcaption>{g}：细档（实线）与极细档（虚线）的 L、Q、k 曲线，画到 0.9 × SRF。</figcaption></figure>"
+                   for g in ("bs_small", "ms_large"))
+    fig, ax = plt.subplots(figsize=(5.6, 3.8))
+    for f, color in (("bs", "#2e6f95"), ("ms", "#8a3d7f")):
+        v = [p for p in OK[f] if p["pair"] == "ap"]
+        ax.scatter([p["perimeter_um"] for p in v], [p["mem_pred_gb"] for p in v], s=5, alpha=0.3, color=color, label=f"xfm_{f} grid (predicted)", edgecolors="none")
+    ax.scatter([q[1] for q in mm["pilot_points"]], [q[2] for q in mm["pilot_points"]], s=40, color="#b33", marker="x", label="pilot (measured)")
+    for c, v in mm["classes"].items():
+        ax.axhline(v["cap_gb"], color="#999", lw=0.7, ls=":")
+        ax.text(0.01, v["cap_gb"] + 0.3, f"{c}: cap {v['cap_gb']:g} GB x {v['jobs']}", fontsize=7, color="#666", transform=ax.get_yaxis_transform())
+    ax.set_xlabel("winding perimeter (um)")
+    ax.set_ylabel("EMX peak memory (GB)")
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=7, loc="lower right")
+    fig.tight_layout()
+    mem_fig = png(fig)
+    A, B = 0.0006973, 0.846      # wall per frequency point at 16 threads = A * perimeter^B, fitted on the pilot's fine runs
+    tot, cnt = collections.defaultdict(float), collections.Counter()
+    for f, stop in (("bs", BS_STOP), ("ms", MS_STOP)):
+        for p in OK[f]:
+            tot[(f, p["mem_class"])] += A * p["perimeter_um"] ** B * (stop + 1)
+            cnt[(f, p["mem_class"])] += 1
+    plan_rows, lo = [], 0.0
+    for k in sorted(tot):
+        v = mm["classes"][k[1]]
+        h = tot[k] / v["jobs"] / 3600
+        lo += h
+        plan_rows.append(f"<tr><td>xfm_{k[0]}</td><td>{k[1]}</td><td class='num'>≤ {v['max_pred_gb']:g}</td><td class='num'>{cnt[k]}</td>"
+                         f"<td class='num'>{v['cap_gb']:g} GB × {v['jobs']}</td><td class='num'>{v['jobs'] * 8}</td><td class='num'>{v['jobs'] * v['cap_gb']:.0f}</td>"
+                         f"<td class='num'>{h:.1f}–{1.6 * h:.1f}</td></tr>")
+    global PLAN_HOURS
+    PLAN_HOURS = f"{lo:.0f}–{1.6 * lo:.0f}"
+    return f"""<h2>8 先导批结果（2026-09-23，8 次 EMX 全部成功）</h2>
+<p>AP/M10，四个几何 × 两档网格（细 0.25/0.2/5、极细 0.15/0.1/6），每次 16 线程串行，11:23–11:53。四端口 em_only 流程首次走通；报告脚本重算的 Lp/k/SRF 与流水线入库值逐位一致。</p>
+<div class="table-wrap"><table><thead><tr><th>几何</th><th class="num">Lp / Ls nH</th><th class="num">k_lf</th><th class="num">Qp / Qs 峰</th><th class="num">SRF p / s GHz</th>
+<th class="num">ΔL %</th><th class="num">Δk %</th><th class="num">ΔQ 峰 %（曲线最大）</th><th class="num">ΔSRF %</th><th class="num">细：墙钟 / 峰值</th><th class="num">极细：墙钟 / 峰值</th></tr></thead>
+<tbody>{"".join(rows)}</tbody></table></div>
+<p><b>结论：细档已收敛</b>。细对极细：L ≤ 0.15%、k ≤ 0.16%、Q 峰 ≤ 1.1%、SRF ≤ 0.06%（Δ 取标量与 0.8 × SRF 以下各频点曲线差的较大者）。唯一擦线的是 bs 小几何 Q 曲线上单个频点差 2.03%（Q 峰本身 1.06%），与电感先导批的 Q 收敛水平相同，不换网格。</p>
+<p><b>SRF 的物理含义</b>：变压器的 SRF_p 是初级开路阻抗 Z11 的第一个谐振，会反映次级绕组（含层间电容）的谐振。所以多匝 ms 的 SRF 很低（ms 大几何 6.6 GHz，Ls ≈ 5 nH），bs 大几何 25.6 GHz，bs 小几何 164.5 GHz（200 GHz 扫频接得住）。</p>
+<div class="grid2">{figs}</div>
+
+<h2>9 正式批计划（待批准）</h2>
+<p><b>内存是这一族的约束</b>：细档峰值 5.6–30.6 GB，而 EMX 的 <code>--max-memory</code> 只是软限制（EMX 认为需要时会超用），所以每个任务的内存上限必须高于它的真实峰值，才能保证总占用 ≤ 256 GB。做法：</p>
+<ul>
+<li>用先导批 4 个点拟合峰值内存对“绕组金属周长”的幂律：峰值 GB = {mm['a']:.4g} × 周长<sup>{mm['b']:.3f}</sup>，四点误差 ≤ ±7%（先导批 16 线程，正式批 8 线程，EMX 按线程数定内存，所以这是上界）。</li>
+<li>对 5952 个点逐一生成版图、算周长、预测峰值：bs 5.1–15.8 GB，ms 7.1–33.3 GB。</li>
+<li>按预测峰值分 5 档。每档内存上限 = 该档预测上界 × 1.1（盖住拟合误差），并发数取“并发 × 上限 ≤ 256 GB、并发 × 8 线程 ≤ 128”的最大值。小器件用满 128 线程，大器件少开几个。</li>
+</ul>
+<figure style="max-width:640px"><img src="{mem_fig}" alt="memory model"><figcaption>预测峰值（点）与先导批实测（红叉）；虚线是各档内存上限。</figcaption></figure>
+<div class="table-wrap"><table><thead><tr><th>族</th><th>档</th><th class="num">预测峰值 GB</th><th class="num">点数</th><th class="num">上限 × 并发</th><th class="num">线程</th><th class="num">内存上限合计 GB</th><th class="num">墙钟 h</th></tr></thead>
+<tbody>{"".join(plan_rows)}</tbody></table></div>
+<p>合计约 <b class="num">{lo:.0f}–{1.6 * lo:.0f} h</b>。墙钟模型用先导批 16 线程实测拟合（单频点耗时 ∝ 周长<sup>{B}</sup>），正式批每任务 8 线程，单点会慢 1.0–1.6 倍，所以给区间；跑起来后按实测更新。</p>
+<p>执行：<code>xfm_library.py</code> 逐工程（xfm_bs_ap → xfm_bs_m10 → xfm_ms_ap → xfm_ms_m10）、工程内逐档（A→E）运行，同一工程的各档共用一个运行存储（线程与内存不进 EMX 缓存键）。库根 <code>/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-library/n28/</code>，与电感库并列。每完成 500 点汇报一次进度与失败数。</p>
+<div class="decision"><b>D6 正式批</b>：按上表跑 5952 点，约 {lo:.0f}–{1.6 * lo:.0f} 小时，线程峰值 128、内存上限合计 ≤ 256 GB。</div>
+"""
+
+
+PLAN_HOURS = ""
+pilot_html = pilot_section()
+
 page = f"""<title>N28 变压器建库提案</title>
 <style>
 :root {{ --ground:#f2f3f1; --surface:#fff; --surface-2:#e6e9e6; --ink:#17201c; --muted:#56615b; --line:#cfd6d1; --accent:#2e6f95; --warn:#9a5b12; --code-bg:#e9ece9;
@@ -172,6 +264,8 @@ figcaption {{ font-size:12.5px; color:var(--muted); margin-top:6px; }}
 .grid3 {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }}
 .decision {{ border:1px solid var(--line); border-left:4px solid var(--warn); background:var(--surface); border-radius:6px; padding:10px 14px; margin:0 0 10px; }}
 .decision b {{ color:var(--warn); }}
+.decision.done {{ border-left-color:var(--accent); }}
+.decision.done b {{ color:var(--accent); }}
 .note {{ font-size:13px; color:var(--muted); }}
 </style>
 <div class="wrap">
@@ -182,7 +276,7 @@ figcaption {{ font-size:12.5px; color:var(--muted); margin-top:6px; }}
 </header>
 
 <h2>一句话</h2>
-<p>两族共 <b class="num">{n_bs + n_ms}</b> 点（xfm_bs {n_bs}、xfm_ms {n_ms}），两种金属对（AP/M10、M10/M9）各一半。粗估 EMX 墙钟约 <b class="num">{hours(cost['bs'] + cost['ms'], 8):.0f} h</b>（8 并发）或 <b class="num">{hours(cost['bs'] + cost['ms'], JOBS):.0f} h</b>（{JOBS} 并发 × 8 线程 = 128 线程上限）；先导批会给出实测值后再定。</p>
+<p>两族共 <b class="num">{n_bs + n_ms}</b> 点（xfm_bs {n_bs}、xfm_ms {n_ms}），两种金属对（AP/M10、M10/M9）各一半。粗估 EMX 墙钟约 <b class="num">{hours(cost['bs'] + cost['ms'], 8):.0f} h</b>（8 并发）或 <b class="num">{hours(cost['bs'] + cost['ms'], JOBS):.0f} h</b>（{JOBS} 并发 × 8 线程 = 128 线程上限）；{'先导批已完成，按实测更新为约 ' + PLAN_HOURS + ' h，见第 9 节。' if pilot_dir else '先导批会给出实测值后再定。'}</p>
 
 <h2>1 参数化建模：各参数范围</h2>
 <h3>1.1 两族共同</h3>
@@ -270,13 +364,8 @@ figcaption {{ font-size:12.5px; color:var(--muted); margin-top:6px; }}
 </tbody></table></div>
 <p class="note">模型：把两个绕组当成两个同尺寸电感，按电感库实测单频点耗时相加，再乘频点数。四端口与层间耦合会让实际更慢，所以这是下限；先导批后给出实测值。</p>
 
-<h2>7 待拍板</h2>
-<div class="decision"><b>X1 参数网格</b>：按第 1 节，共 {n_bs + n_ms} 点（bs {n_bs}，ms {n_ms}）。可选缩减：bs 线宽改 4/7/10（约 −44%），或 ms 去掉 S_S=3（约 −33%）。建议按原方案。</div>
-<div class="decision"><b>X2 扫频</b>：bs 0–{BS_STOP} GHz（比 150 GHz 贵约 33%，SRF 覆盖率从约 71% 升到约 93%），ms 0–{MS_STOP} GHz。建议如此。</div>
-<div class="decision"><b>X3 横向错位点</b>：bs {off_bs} 点、ms {off_ms} 点，只放在同外径同线宽的对角上，给 k 提供 0.15–0.5 的另一条路径。真实设计里错位用得少，如觉得不必要可整体删掉。建议保留。</div>
-<div class="decision"><b>X4 并发</b>：正式批 {JOBS} × 8 线程 = 128 线程，每任务内存上限按先导批峰值定、总和 ≤ 256 GB。建议如此。</div>
-<div class="decision"><b>X5 先导批</b>：按第 5 节跑 8 次 EMX（约 1 小时内）。</div>
-
+{decisions_html}
+{pilot_html}
 <h2>位置</h2>
 <p class="note">网格：<code>{html.escape(str(grid_path.resolve()))}</code>（每点含状态、拒绝原因、估算 Lp/Ls/k）；脚本 <code>xfm_grid.py</code>、<code>xfm_proposal.py</code>；代表几何 <code>xfm/*.png</code>。库将建在 <code>/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-library/n28/</code> 下，与电感库并列。</p>
 </div>
