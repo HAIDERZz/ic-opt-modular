@@ -16,6 +16,8 @@ from pathlib import Path
 PROJECTS = ("xfm_bs_ap", "xfm_bs_m10", "xfm_ms_ap", "xfm_ms_m10")
 WALL_A, WALL_B = 0.0006973, 0.846      # pilot: wall per frequency point at 16 threads, one job = A * perimeter^B
 STOP_GHZ = {"bs": 200, "ms": 150}
+MS_THREADS = {"A": 8, "B": 10, "C": 12, "D": 16, "E": 16}     # xfm_library.py: threads per job of the ms classes (bs: 8)
+PARALLEL_EFFICIENCY = 0.9                                      # assumed when a job runs more than 8 threads
 
 
 def wall_model(family: str, perimeter_um: float) -> float:
@@ -43,12 +45,14 @@ def eta_hours(root: Path, rs: list[dict]) -> tuple[float, float, dict]:
     ratios = sorted(r["wall_s"] / wall_model(r["family"], r["perimeter_um"]) for r in rs if r["wall_s"] and r.get("perimeter_um"))
     if not ratios:
         return 0.0, 0.0, {}
-    ratio = ratios[len(ratios) // 2]
+    ratio = ratios[len(ratios) // 2]          # measured at 8 threads per job
     done = {r["grid_key"] for r in rs if r["status"] == "ok"}
     left, count = collections.defaultdict(float), collections.Counter()
     for k, p in grid_index(root).items():
         if k not in done:
-            left[p["mem_class"]] += ratio * wall_model(p["family"], p["perimeter_um"])
+            threads = MS_THREADS[p["mem_class"]] if p["family"] == "ms" else 8
+            speedup = threads / 8 * (PARALLEL_EFFICIENCY if threads > 8 else 1.0)
+            left[p["mem_class"]] += ratio * wall_model(p["family"], p["perimeter_um"]) / speedup
             count[p["mem_class"]] += 1
     jobs = {c: v["jobs"] for c, v in grid["memory_model"]["classes"].items()}
     return ratio, sum(t / jobs[c] for c, t in left.items()) / 3600, dict(sorted(count.items()))

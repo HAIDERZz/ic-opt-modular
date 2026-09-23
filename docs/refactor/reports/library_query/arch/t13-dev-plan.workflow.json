@@ -1,0 +1,312 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "T13 查询库嵌入开发方案",
+    "locale": "zh-CN",
+    "output": "t13-dev-plan.workflow.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "core-path",
+        "label": "主线任务",
+        "focus": [
+          "v0",
+          "t1",
+          "t2",
+          "t3",
+          "t4",
+          "t6"
+        ],
+        "note": "先数据后模型，再接查询接口，最后用真实 EMX 复核并回流进库。"
+      },
+      {
+        "id": "gates",
+        "label": "验收门",
+        "focus": [
+          "t2",
+          "g1",
+          "t4",
+          "g2",
+          "t6"
+        ],
+        "note": "两道离线金标准门加一道批准门：数字不复现不往下走，真实 EMX 先 --plan 并经批准。"
+      },
+      {
+        "id": "extensions",
+        "label": "扩展与收尾",
+        "focus": [
+          "t4",
+          "t5",
+          "t2",
+          "t7",
+          "t6",
+          "t8"
+        ],
+        "note": "代理流水线接优化器；变压器库建成后复用同一内核接入；文档收尾。"
+      }
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "frontend": {
+          "label": "已完成"
+        },
+        "database": {
+          "label": "数据层任务"
+        },
+        "backend": {
+          "label": "开发任务"
+        },
+        "security": {
+          "label": "验收门"
+        },
+        "cloud": {
+          "label": "真实 EMX"
+        },
+        "external": {
+          "label": "交付"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "base",
+      "label": "基础与扩展"
+    },
+    {
+      "id": "api",
+      "label": "查询接口"
+    },
+    {
+      "id": "gate",
+      "label": "验收与复核"
+    }
+  ],
+  "phases": [
+    {
+      "id": "foundation",
+      "label": "基础",
+      "fromCol": 0,
+      "toCol": 2,
+      "variant": "emphasis"
+    },
+    {
+      "id": "interfaces",
+      "label": "接口",
+      "fromCol": 3,
+      "toCol": 4
+    },
+    {
+      "id": "delivery",
+      "label": "复核与交付",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "v0",
+    "t1",
+    "t2",
+    "t3",
+    "t4",
+    "t6"
+  ],
+  "nodes": [
+    {
+      "id": "v0",
+      "lane": "base",
+      "col": 0,
+      "type": "frontend",
+      "label": "电感库验证",
+      "sublabel": "T13.0 · 已完成",
+      "width": 140
+    },
+    {
+      "id": "t1",
+      "lane": "base",
+      "col": 1,
+      "type": "database",
+      "label": "清单 + 数据集",
+      "sublabel": "T13.1 · library.yaml",
+      "width": 140
+    },
+    {
+      "id": "t2",
+      "lane": "base",
+      "col": 2,
+      "type": "backend",
+      "label": "模型内核",
+      "sublabel": "T13.2 · GP · 域守卫",
+      "width": 140
+    },
+    {
+      "id": "t3",
+      "lane": "api",
+      "col": 3,
+      "type": "backend",
+      "label": "查询 + 覆盖",
+      "sublabel": "T13.3 · lib.query",
+      "width": 140
+    },
+    {
+      "id": "t4",
+      "lane": "api",
+      "col": 4,
+      "type": "backend",
+      "label": "逆向推荐",
+      "sublabel": "T13.4 · lib.suggest",
+      "width": 140
+    },
+    {
+      "id": "t5",
+      "lane": "api",
+      "col": 5,
+      "type": "backend",
+      "label": "代理流水线",
+      "sublabel": "T13.5 · Predict",
+      "width": 140
+    },
+    {
+      "id": "g1",
+      "lane": "gate",
+      "col": 2,
+      "type": "security",
+      "label": "金标准复现",
+      "sublabel": "本次 CV 与域守卫",
+      "width": 140
+    },
+    {
+      "id": "g2",
+      "lane": "gate",
+      "col": 4,
+      "type": "security",
+      "label": "留出命中率",
+      "sublabel": "首选命中窗口",
+      "width": 140
+    },
+    {
+      "id": "t6",
+      "lane": "gate",
+      "col": 5,
+      "type": "cloud",
+      "label": "EMX 复核 + 回流",
+      "sublabel": "T13.6 · lib_signoff",
+      "width": 140
+    },
+    {
+      "id": "t7",
+      "lane": "base",
+      "col": 3,
+      "type": "backend",
+      "label": "变压器接入",
+      "sublabel": "T13.7 · k 映射",
+      "width": 140
+    },
+    {
+      "id": "t8",
+      "lane": "base",
+      "col": 5,
+      "type": "external",
+      "label": "文档与交付",
+      "sublabel": "T13.8 · guide",
+      "width": 140
+    }
+  ],
+  "edges": [
+    {
+      "from": "v0",
+      "to": "t1",
+      "label": "方案批准",
+      "variant": "emphasis"
+    },
+    {
+      "from": "t1",
+      "to": "t2",
+      "variant": "emphasis"
+    },
+    {
+      "from": "t2",
+      "to": "t3",
+      "variant": "emphasis"
+    },
+    {
+      "from": "t3",
+      "to": "t4",
+      "variant": "emphasis"
+    },
+    {
+      "from": "t4",
+      "to": "t6",
+      "label": "--plan 批准后",
+      "variant": "security"
+    },
+    {
+      "from": "t2",
+      "to": "g1",
+      "label": "CV 复现",
+      "role": "branch"
+    },
+    {
+      "from": "t4",
+      "to": "g2",
+      "label": "离线验收",
+      "role": "branch"
+    },
+    {
+      "from": "t4",
+      "to": "t5",
+      "label": "接优化器",
+      "role": "branch"
+    },
+    {
+      "from": "t2",
+      "to": "t7",
+      "label": "库建成后",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "from": "t7",
+      "to": "t8",
+      "role": "branch"
+    },
+    {
+      "from": "t6",
+      "to": "t8",
+      "label": "收尾",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "顺序",
+      "items": [
+        "先数据后模型：以本次验证数字为金标准",
+        "接口层只加 block 与 recipe，不加 CLI 子命令",
+        "变压器库建成后复用同一内核接入"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "验收门",
+      "items": [
+        "G1 CV 中位误差与 2σ 覆盖复现本次结果",
+        "G2 逆向留出：首选设计全部命中目标窗口",
+        "G3 真实 EMX 复核先 --plan，经批准再跑"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "边界",
+      "items": [
+        "库数据留在仓库外，测试用 demo_6m 合成库",
+        "em-opt 工作区只读，不改不删",
+        "≤128 线程 / ≤256 GB；GP 的 BLAS 线程受限"
+      ]
+    }
+  ]
+}

@@ -4,9 +4,11 @@ Usage: xfm_library.py GRID_JSON LIBRARY_ROOT [--plan] [--only PROJECT ...]
 
 One run store per project under LIBRARY_ROOT: xfm_bs_ap, xfm_bs_m10 (0 -> 200 GHz), xfm_ms_ap, xfm_ms_m10 (0 -> 150 GHz).
 EMX: --full-wave, thickness 0.25 / edge 0.2 / splits 5, --3d = both windings (+ the ms crossunder metal),
-8 threads per job, simultaneous frequencies 0. Each project runs its memory classes in turn (xfm_memory.py writes
-mem_class into the grid): the class sets the per-job EMX memory cap and how many jobs run at once, always within
-128 threads / 256 GB (user ceiling). Threads and memory are outside the EMX cache key, so the classes share one store.
+simultaneous frequencies 0. Each project runs its memory classes in turn (xfm_memory.py writes mem_class into the
+grid): the class sets the per-job EMX memory cap and how many jobs run at once, always within 128 threads / 256 GB
+(user ceiling). Threads and memory are outside the EMX cache key, so the classes share one store.
+Threads per job are 8, except the memory-limited ms classes B-E, which take more threads per job so the run keeps
+using ~128 threads (user approval 2026-09-23); 16 at most, the thread count the memory model was fitted at.
 """
 from __future__ import annotations
 
@@ -32,7 +34,12 @@ from xfm_memory import CLASSES
 from xfm_pilot import CSHRC, MESHES, point, spec_for
 
 THREADS, TIMEOUT_S = 8, 7200
+MS_THREADS = {"A": 8, "B": 10, "C": 12, "D": 16, "E": 16}
 MAX_THREADS, MAX_MEMORY_GB = 128, 256.0
+
+
+def threads_for(family: str, cls: str) -> int:
+    return MS_THREADS[cls] if family == "ms" else THREADS
 
 
 def values(family: str, p: dict) -> dict:
@@ -54,7 +61,7 @@ def projects(grid: dict):
             for cls, (_, cap, jobs) in CLASSES.items():
                 sub = [p for p in pts if p["mem_class"] == cls]
                 if sub:
-                    spec = spec_for(name, family, pm, sm, three_d, MESHES["fine"], THREADS, cap, jobs, TIMEOUT_S)
+                    spec = spec_for(name, family, pm, sm, three_d, MESHES["fine"], threads_for(family, cls), cap, jobs, TIMEOUT_S)
                     runs.append((cls, spec, [Point(point(values(family, p)), "grid") for p in sub]))
             out.append((name, runs))
     return out
@@ -72,12 +79,12 @@ def main() -> None:
     print(f"geometry generation {GEOMETRY_VERSION}; {sum(len(pts) for _, runs in todo for _, _, pts in runs)} points in {len(todo)} projects under {args.root}")
     for name, runs in todo:
         for cls, spec, pts in runs:
-            cap, jobs = spec.em.memory_gb, spec.simulator.parallel_jobs
-            if jobs * THREADS > MAX_THREADS or jobs * cap > MAX_MEMORY_GB:
-                raise SystemExit(f"{name}/{cls}: {jobs} jobs x {THREADS} threads / {cap:g} GB exceeds the ceiling")
-            w = workers_for(spec, em_only_pipeline(spec), jobs, Site(max_threads=jobs * THREADS, max_memory_gb=jobs * cap))
+            cap, jobs, threads = spec.em.memory_gb, spec.simulator.parallel_jobs, spec.em.threads
+            if jobs * threads > MAX_THREADS or jobs * cap > MAX_MEMORY_GB:
+                raise SystemExit(f"{name}/{cls}: {jobs} jobs x {threads} threads / {cap:g} GB exceeds the ceiling")
+            w = workers_for(spec, em_only_pipeline(spec), jobs, Site(max_threads=jobs * threads, max_memory_gb=jobs * cap))
             print(f"  {name:<11} class {cls} {len(pts):5d} points  full-wave 0-{spec.em.frequencies.stop_hz / 1e9:.0f} GHz  3d={spec.em.three_d_metals}  "
-                  f"{w} jobs x {THREADS} threads = {w * THREADS} threads, EMX memory caps {w} x {cap:g} = {w * cap:.0f} GB")
+                  f"{w} jobs x {threads} threads = {w * threads} threads, EMX memory caps {w} x {cap:g} = {w * cap:.0f} GB")
     if args.plan:
         return
     args.root.mkdir(parents=True, exist_ok=True)
@@ -86,10 +93,10 @@ def main() -> None:
         store = RunStore(args.root / name)
         (store.root / "spec.json").write_text(runs[0][1].model_dump_json(indent=1))
         for cls, spec, pts in runs:
-            cap, jobs = spec.em.memory_gb, spec.simulator.parallel_jobs
-            site = Site(max_threads=jobs * THREADS, max_memory_gb=jobs * cap)
+            cap, jobs, threads = spec.em.memory_gb, spec.simulator.parallel_jobs, spec.em.threads
+            site = Site(max_threads=jobs * threads, max_memory_gb=jobs * cap)
             t0 = time.time()
-            print(f"[{time.strftime('%m-%d %H:%M:%S')}] {name} class {cls}: {len(pts)} points, {jobs} jobs x {cap:g} GB", flush=True)
+            print(f"[{time.strftime('%m-%d %H:%M:%S')}] {name} class {cls}: {len(pts)} points, {jobs} jobs x {threads} threads x {cap:g} GB", flush=True)
             obs = evaluate(spec, pts, LocalExecutor(store.root / "sims"), store, pipeline=em_only_pipeline(spec),
                            cshrc=CSHRC, parallel_jobs=jobs, site=site)
             bad = [o for o in obs if o.status != "ok"]

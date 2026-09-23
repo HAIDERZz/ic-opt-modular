@@ -1,0 +1,4 @@
+# archify visual-check evidence kept locally: only the light 1440x900 screenshots feed the plan page
+*.dark.png
+*.2048x1320.*.png
+*.visual-check.html

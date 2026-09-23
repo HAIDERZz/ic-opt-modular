@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "T13 器件查询库模块",
+    "locale": "zh-CN",
+    "output": "t13-library-module.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1360,
+      640
+    ],
+    "views": [
+      {
+        "id": "query-path",
+        "label": "正向查询",
+        "focus": [
+          "user",
+          "cli",
+          "blocks",
+          "models",
+          "dataset",
+          "library"
+        ],
+        "note": "从设计需求到库里的实测观测：查询先命中实测点，未测点由代理模型给出 μ ± 2σ。"
+      },
+      {
+        "id": "inverse-signoff",
+        "label": "逆向推荐与复核",
+        "focus": [
+          "blocks",
+          "pcell",
+          "signoff",
+          "library"
+        ],
+        "note": "候选先用真实生成器实造并审计，再经 EMX 复核，结果回流进库。"
+      },
+      {
+        "id": "data-contract",
+        "label": "数据口径",
+        "focus": [
+          "manifest",
+          "dataset",
+          "measure",
+          "library"
+        ],
+        "note": "库清单声明分层与口径，数据集从 sNp 统一重算，口径变了只需重算不必重跑 EMX。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "用户 / Agent",
+      "sublabel": "设计需求",
+      "pos": [
+        30,
+        300
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "ic-opt CLI",
+      "sublabel": "run · call · --plan",
+      "pos": [
+        255,
+        300
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "blocks",
+      "type": "backend",
+      "label": "lib 查询块",
+      "sublabel": "query · suggest · coverage",
+      "pos": [
+        480,
+        300
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "新增"
+    },
+    {
+      "id": "models",
+      "type": "backend",
+      "label": "代理模型",
+      "sublabel": "StratumGP + 域守卫",
+      "pos": [
+        725,
+        300
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "tag": "移植自 em-opt"
+    },
+    {
+      "id": "dataset",
+      "type": "backend",
+      "label": "库数据集",
+      "sublabel": "统一口径 + 缓存",
+      "pos": [
+        960,
+        300
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "library",
+      "type": "database",
+      "label": "器件库 n28",
+      "sublabel": "观测表 + sNp",
+      "pos": [
+        1190,
+        300
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "manifest",
+      "type": "database",
+      "label": "library.yaml",
+      "sublabel": "分层 · 部件 · 口径",
+      "pos": [
+        1190,
+        120
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "measure",
+      "type": "backend",
+      "label": "em.measure",
+      "sublabel": "sNp → L/Q/SRF/k",
+      "pos": [
+        960,
+        120
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "predict",
+      "type": "backend",
+      "label": "Predict stage",
+      "sublabel": "代理流水线",
+      "pos": [
+        725,
+        120
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "pcell",
+      "type": "backend",
+      "label": "Pcell 生成器",
+      "sublabel": "实造 + DRC 审计",
+      "pos": [
+        490,
+        120
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "signoff",
+      "type": "backend",
+      "label": "lib_signoff",
+      "sublabel": "em_only · EMX 复核",
+      "pos": [
+        725,
+        480
+      ],
+      "size": [
+        140,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "ic-opt-modular · src/ic_opt",
+      "wraps": [
+        "cli",
+        "blocks",
+        "models",
+        "dataset",
+        "measure",
+        "predict",
+        "pcell",
+        "signoff"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "仓库外 · IC_OPT_LIBRARY",
+      "wraps": [
+        "manifest",
+        "library"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "--plan 批准 · ≤128 线程 / ≤256 GB",
+      "wraps": [
+        "signoff"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-cli",
+      "from": "user",
+      "to": "cli",
+      "label": "目标 L/Q/SRF/k",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cli-blocks",
+      "from": "cli",
+      "to": "blocks",
+      "label": "lib.*",
+      "variant": "emphasis"
+    },
+    {
+      "id": "blocks-models",
+      "from": "blocks",
+      "to": "models",
+      "label": "μ ± 2σ",
+      "variant": "emphasis"
+    },
+    {
+      "id": "models-dataset",
+      "from": "models",
+      "to": "dataset",
+      "label": "按分层拟合",
+      "variant": "emphasis"
+    },
+    {
+      "id": "dataset-library",
+      "from": "dataset",
+      "to": "library",
+      "label": "读观测 + sNp",
+      "variant": "emphasis"
+    },
+    {
+      "id": "blocks-pcell",
+      "from": "blocks",
+      "to": "pcell",
+      "label": "候选实造",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "predict-models",
+      "from": "predict",
+      "to": "models",
+      "label": "opt.optimize",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "dataset-measure",
+      "from": "dataset",
+      "to": "measure",
+      "label": "统一重算",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "manifest-library",
+      "from": "manifest",
+      "to": "library",
+      "label": "描述分层与口径",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "blocks-signoff",
+      "from": "blocks",
+      "to": "signoff",
+      "label": "候选复核"
+    },
+    {
+      "id": "signoff-library",
+      "from": "signoff",
+      "to": "library",
+      "label": "adopt 回流",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "数据",
+      "items": [
+        "库在仓库外（IC_OPT_LIBRARY），数值不进公开仓库",
+        "library.yaml 声明分层、部件与查询口径",
+        "建议不导入旧 em-opt 库：各族按第 7 代几何重建"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "模型",
+      "items": [
+        "StratumGP 与域守卫从 em-opt 移植",
+        "修正单圈层退化维度与未拟合层的处理",
+        "SRF 改用 GP 预测（验证中位误差 0.3%，旧 5 近邻法 8%）"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "接口",
+      "items": [
+        "lib.query / suggest / coverage 经 ic-opt call 调用",
+        "--format json 供 Agent 解析",
+        "EMX 复核走 lib_signoff，先 --plan 批准"
+      ]
+    }
+  ]
+}
