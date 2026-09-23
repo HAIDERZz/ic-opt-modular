@@ -62,6 +62,7 @@ class Dataset:
     generations: dict[str, str]                       # part -> pipeline fingerprint used
     excluded: dict[str, int] = field(default_factory=dict)
     cache: str = "off"                                # hit | miss | off
+    key: str = ""                                     # content key of the observations + definitions + measure code
 
     def matrix(self, rows: list[Row] | None = None) -> np.ndarray:
         return np.array([[r.coords[d] for d in self.dims] for r in (self.rows if rows is None else rows)], dtype=float)
@@ -95,7 +96,7 @@ def build(root: str | Path, name: str, *, library: manifest.Library | None = Non
     key = _cache_key(stratum, obs_files)
     cached = root / ".cache" / f"dataset-{name}-{key}.json"
     if cache and cached.is_file():
-        return _load(cached, stratum, name, "hit")
+        return _load(cached, stratum, name, "hit", key)
 
     columns = stratum.columns()
     rows: list[Row] = []
@@ -127,7 +128,7 @@ def build(root: str | Path, name: str, *, library: manifest.Library | None = Non
                 rows.append(_row(root, project, part.store, device, o, stratum))
             except (measure.MeasureError, touchstone.TouchstoneError, OSError) as exc:
                 excluded[f"measure: {type(exc).__name__}"] += 1
-    ds = Dataset(name, list(stratum.dims), stratum.nt_dim, columns, rows, generations, dict(excluded), "miss" if cache else "off")
+    ds = Dataset(name, list(stratum.dims), stratum.nt_dim, columns, rows, generations, dict(excluded), "miss" if cache else "off", key)
     if cache:
         cached.parent.mkdir(parents=True, exist_ok=True)
         tmp = cached.with_suffix(".tmp")
@@ -246,7 +247,7 @@ def _cache_key(stratum: manifest.Stratum, obs_files: list[Path]) -> str:
     return h.hexdigest()[:20]
 
 
-def _load(path: Path, stratum: manifest.Stratum, name: str, how: str) -> Dataset:
+def _load(path: Path, stratum: manifest.Stratum, name: str, how: str, key: str) -> Dataset:
     data = json.loads(path.read_text(encoding="utf-8"))
     rows = [Row(**r) for r in data["rows"]]
-    return Dataset(name, list(stratum.dims), stratum.nt_dim, stratum.columns(), rows, data["generations"], data["excluded"], how)
+    return Dataset(name, list(stratum.dims), stratum.nt_dim, stratum.columns(), rows, data["generations"], data["excluded"], how, key)

@@ -22,6 +22,8 @@ from ic_opt import __version__, blocks
 from ic_opt import migrate as migrate_module
 from ic_opt import recipe as recipe_module
 from ic_opt.blocks.doctor import plan_line
+from ic_opt.library import manifest as library_manifest
+from ic_opt.library import query as library_query
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__)
 
@@ -130,22 +132,31 @@ def call(
     ssh_profile: Annotated[str | None, typer.Option("--ssh-profile")] = None,
     cshrc: Annotated[str | None, typer.Option("--cshrc")] = None,
 ) -> None:
-    """Call one block; spec / executor / store / observations are filled in from the project."""
+    """Call one block; spec / executor / store / observations are filled in from the project (a library root fills in the library)."""
     if name not in blocks.REGISTRY:
         typer.echo(f"unknown block {name!r}; run `ic-opt blocks`", err=True)
         raise typer.Exit(code=2)
-    ctx = _run(project, ssh_profile, cshrc)
     fn = blocks.REGISTRY[name].fn
     kwargs = _params(params or [])
-    provided = {"spec": ctx.spec, "executor": ctx.executor, "store": ctx.store, "observations": ctx.store.observations(), "cshrc": ctx.cshrc}
+    if library_manifest.is_library(project):                        # a library root: library blocks get the library, not a run
+        provided: dict[str, object] = {"library": library_query.Library(project)}
+    else:
+        ctx = _run(project, ssh_profile, cshrc)
+        provided = {"spec": ctx.spec, "executor": ctx.executor, "store": ctx.store, "observations": ctx.store.observations(), "cshrc": ctx.cshrc}
     args = {p: provided[p] for p in inspect.signature(fn).parameters if p in provided and p not in kwargs}
-    result = fn(**args, **kwargs)
+    try:
+        result = fn(**args, **kwargs)
+    except (ValueError, FileNotFoundError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
     typer.echo(_render(result))
 
 
 def _render(result: object) -> str:
     if hasattr(result, "model_dump_json"):
         return result.model_dump_json(indent=2)
+    if isinstance(result, dict):
+        return json.dumps(result, indent=2, ensure_ascii=False, default=str)
     if isinstance(result, list):
         return json.dumps([_row(item) for item in result], indent=2, default=str)
     return str(result)
