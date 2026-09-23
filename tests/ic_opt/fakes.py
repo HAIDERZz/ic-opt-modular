@@ -158,3 +158,35 @@ def synthetic_snp(argv: list[str], n_ports: int, z0: float, *, freqs=(1e9, 5e9, 
         lines.append(f"{f:.0f} " + " ".join(f"{v.real:.9e} {v.imag:.9e}" for v in s.reshape(-1)))
     return "\n".join(lines) + "\n"
 
+
+
+def rlc_snp(argv: list[str], n_ports: int, z0: float, cwd: str) -> str:
+    """A geometry-dependent 2-port for library tests: R + jωL between the ports, C/2 to ground at each.
+
+    L, R and C follow the outer diameter, width and turns in the pcell's geometry manifest (next to the
+    GDS in ``cwd``), so a small demo_6m sweep gives distinct points, resonances inside and above the sweep,
+    and passive S-parameters on EMX's own frequency grid (0 .. stop in ``--sweep-stepsize`` steps).
+    """
+    import json
+
+    import numpy as np
+
+    if n_ports != 2:
+        return synthetic_snp(argv, n_ports, z0)
+    cfg = json.loads((Path(cwd) / "geometry_manifest.json").read_text())["geometry"]["config"]
+    od, width, turns = float(cfg["outer_diameter_um"]), float(cfg["width_um"]), int(cfg.get("turns", 1))
+    ind = 0.4e-9 * turns**2 * (od / 100) ** 1.3 * (5 / width) ** 0.15
+    res = 0.3 + 0.02 * turns * od / width
+    cap = 30e-15 * turns * (od / 100) ** 2
+    step = float(next(a for a in argv if a.startswith("--sweep-stepsize=")).split("=", 1)[1])
+    stop = float(argv[-1])
+    lines = ["! Touchstone simulation data from EMX version 2024.1.0 (fake rlc)", "! EMX was run on fake as:", "! " + " ".join(argv[:3]), f"# Hz S RI R {z0:g}"]
+    eye = np.eye(2)
+    for f in np.arange(0.0, stop + step / 2, step):
+        w = 2 * np.pi * f
+        ys = 1 / (res + 1j * w * ind)
+        yc = 1j * w * cap / 2
+        y = np.array([[ys + yc, -ys], [-ys, ys + yc]])
+        s = (eye - z0 * y) @ np.linalg.inv(eye + z0 * y)
+        lines.append(f"{f:.0f} " + " ".join(f"{v.real:.12e} {v.imag:.12e}" for v in s.T.reshape(-1)))
+    return "\n".join(lines) + "\n"
