@@ -44,6 +44,7 @@ from ic_opt.em.pcell.fixture import (
     GroundFixtureConfig,
     add_ground_fixture,
 )
+from ic_opt.em.pcell.stack import builds_on_profile_stack
 
 # ---------------------------------------------------------------------------
 # xfm_tw (ticket 01: path planner + geometry kernel) -- Type 3 same-layer
@@ -925,6 +926,7 @@ def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
                       lead_zone_um=_tw_stub_zone(end_base, end_port_tip, W))
 
 
+@builds_on_profile_stack
 def xfm_tw(
     OD: float,
     W: float,

@@ -33,6 +33,7 @@ from ic_opt.em.pcell.fixture import (
     _drawing_bbox_um,
     add_ground_fixture,
 )
+from ic_opt.em.pcell.stack import builds_on_profile_stack
 
 # ---------------------------------------------------------------------------
 # xfm_bs: broadside single-turn two-layer transformer (M7R / M7R2)
@@ -139,6 +140,7 @@ def check_stacked_overlap(where: str, center_spacing: float, od_a: float,
             "makes this a transformer")
 
 
+@builds_on_profile_stack
 def xfm_bs(
     OD_P: float = 90.0,
     OD_S: float = 90.0,

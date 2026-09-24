@@ -53,6 +53,7 @@ from ic_opt.em.pcell.fixture import (
     GroundFixtureConfig,
     add_ground_fixture,
 )
+from ic_opt.em.pcell.stack import builds_on_profile_stack
 
 # ---------------------------------------------------------------------------
 # ind_sym (gdsgen_ref/pcell/inductor/ind_sym.il)
@@ -393,6 +394,7 @@ def _needs_full_width_lead_landing(
     return False
 
 
+@builds_on_profile_stack
 def ind_sym(
     OD: float = 50.0,
     W: float = 2.0,

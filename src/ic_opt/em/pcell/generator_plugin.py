@@ -161,6 +161,9 @@ class CleanPortGroundFixtureConfig(BaseModel):
         return value
 
 
+METAL_FIELDS = ("metal", "ct_metal", "primary_metal", "secondary_metal", "ct_primary_metal", "ct_secondary_metal")
+
+
 class _CleanPortDeviceConfigBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -184,6 +187,28 @@ class _CleanPortDeviceConfigBase(BaseModel):
                 raise ValueError("retired field name(s): " + "; ".join(
                     f"{k} is now {cls.renamed[k]}" if cls.renamed[k] else f"{k} was removed (it never affected the geometry)" for k in stale))
         return data
+
+    @model_validator(mode="after")
+    def _metals_are_profile_conductors(self):
+        """Every metal the config names is a metal of its profile's stack, by name: "AP", "M9", or "9" for M9. The
+        pcell reads digits as stack positions internally (T13.11), so a "10" on a stack without M10 has to be
+        refused here rather than land on whatever the tenth metal is."""
+        if not _profile_known(self.process_profile):
+            return self
+        from ic_opt.em.pcell.process_rules import get_process_rule_profile
+
+        stack = get_process_rule_profile(self.process_profile).metal_stack
+        names = {name.upper() for name in stack}
+        for field_name in METAL_FIELDS:
+            value = getattr(self, field_name, None)
+            if value is None:
+                continue
+            token = str(value).strip().upper()
+            digits = token[1:] if token[:1] == "M" else token
+            if token not in names and not (digits.isdigit() and f"M{int(digits)}" in names):
+                raise ValueError(f"{field_name} {value!r} is not a metal of profile {self.process_profile} "
+                                 f"(its metals, bottom first: {', '.join(stack)})")
+        return self
 
     @model_serializer(mode="wrap")
     def _serialize_config(self, handler):
@@ -961,7 +986,20 @@ def _write_geometry_outputs(
     p, cell, config: _CleanPortDeviceConfigBase, *, generator_id: str,
     outdir: Path, gds_name: str, requires_vias: bool,
 ) -> GeometryGenerationResult:
-    """Shared output seam for all clean-port generators; `p` is the loaded clean-port module handle."""
+    """Shared output seam for all clean-port generators; `p` is the loaded clean-port module handle. Runs inside the
+    profile's metal stack, like the build: anything here that turns a stack position back into a conductor (the
+    shield, the audits) must read the same stack the positions came from."""
+    from ic_opt.em.pcell.stack import use_stack
+
+    with use_stack(config.process_profile):
+        return _write_geometry_outputs_in_stack(p, cell, config, generator_id=generator_id, outdir=outdir,
+                                                gds_name=gds_name, requires_vias=requires_vias)
+
+
+def _write_geometry_outputs_in_stack(
+    p, cell, config: _CleanPortDeviceConfigBase, *, generator_id: str,
+    outdir: Path, gds_name: str, requires_vias: bool,
+) -> GeometryGenerationResult:
     gds_name = validate_output_file_name(gds_name, "gds_name")
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)

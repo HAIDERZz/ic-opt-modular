@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import klayout.db as kdb
 
+from ic_opt.em.pcell import stack as _stack
+
 if TYPE_CHECKING:
     from ic_opt.em.pcell.rule_adapter import GeometryRuleAdapter
 
@@ -144,37 +146,21 @@ def _nm(x_um: float) -> int:
 
 
 def _metal_index(me) -> int:
-    """Metal spelling -> stack index; 'AP' is the top metal (index 11).
+    """Metal spelling -> stack position (``ic_opt.em.pcell.stack``): the active profile's metal stack when a build
+    opened one (1 = the bottom, the ground-fixture layer; any names, any number of metals), else the fixed
+    1P10M+AP convention ("10" / "M10" / "m10" -> 10, "AP" -> 11).
 
-    Accepts every spelling the plugin config layer accepts ("10" / "M10" /
-    "m10" / 10): the config validators (generator_plugin's
-    ``_metal_stack_index_or_none``) advertise those as equivalent, so the
-    construction layer must honor the same set -- before the authoring-kit
-    fix an "M10" that had passed config validation crashed here with a
-    naked ``int("M10")`` ValueError.
-
-    A spelling that is not even digit-shaped (e.g. a typo'd metal name) hits
-    the same ``int()`` conversion; that case now fails closed as
-    ``PortError`` naming the offending value (gdsfactory review 2026-09-21,
-    api-2) instead of leaking python's own generic "invalid literal for
-    int()" ``ValueError`` -- ``PortError`` subclasses ``ValueError``, so
-    every existing ``except ValueError`` caller is unaffected."""
-    if isinstance(me, str):
-        token = me.strip()
-        if token.upper() == "AP":
-            return 11
-        if token[:1] in ("m", "M"):
-            token = token[1:]
-        try:
-            return int(token)
-        except ValueError:
-            raise PortError(f"metal {me!r} is not a recognized conductor spelling") from None
-    return int(me)
+    Every spelling the config layer accepts works; a token that names no conductor fails closed as
+    ``PortError`` (a ``ValueError``, so existing ``except ValueError`` callers are unaffected)."""
+    try:
+        return _stack.index(me)
+    except ValueError as exc:
+        raise PortError(str(exc)) from None
 
 
 def _metal_name(idx: int) -> str:
-    """Rule-profile conductor name for a stack index (11 == AP)."""
-    return "AP" if int(idx) == 11 else f"M{int(idx)}"
+    """Stack position -> rule-profile conductor name (the active stack's, else the fixed convention's: 11 == AP)."""
+    return _stack.name(idx)
 
 
 def metal_layer(met: int) -> tuple[int, int]:
@@ -1015,7 +1001,7 @@ def chamfer_staircase_delta(ring_ods, W: float, top_met, process) -> int:
         raise PortError(
             f"chamfer staircase cannot recover a "
             f"{floor - worst:.4f} um 45-degree-edge shortfall within 4 "
-            f"grid steps on M{top_met} (W={W}, floor={floor}); this is "
+            f"grid steps on {_metal_name(top_met)} (W={W}, floor={floor}); this is "
             "not a quantization artifact -- increase S"
         )
     return delta
@@ -1095,11 +1081,11 @@ _SEAM_HEAL_MAX_PASSES = 8
 
 
 def _conductor_for_drawing(process: ProcessRuleContext, layer: tuple[int, int]):
-    """Rule-profile conductor name whose drawing layer is ``layer`` (1P10M+AP
-    stack), or None if the layer is not a conductor the profile models (e.g.
+    """Rule-profile conductor name whose drawing layer is ``layer`` (the active
+    metal stack), or None if the layer is not a conductor the profile models (e.g.
     a via/pin layer). No hardcoded layer numbers -- every candidate comes from
     the adapter."""
-    for idx in range(1, 12):
+    for idx in range(1, _stack.size() + 1):
         name = _metal_name(idx)
         try:
             if tuple(process.adapter.layer(name).drawing) == layer:

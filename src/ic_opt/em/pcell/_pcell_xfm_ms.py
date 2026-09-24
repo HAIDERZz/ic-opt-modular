@@ -33,8 +33,10 @@ from ic_opt.em.pcell.fixture import (
     _drawing_bbox_um,
     add_ground_fixture,
 )
+from ic_opt.em.pcell.stack import builds_on_profile_stack
 
 
+@builds_on_profile_stack
 def xfm_ms(
     OD_S: float = 100.0,
     OD_M: float = 76.0,

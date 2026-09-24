@@ -27,6 +27,7 @@ from ic_opt.em.pcell._pcell_core import (
     max_opening,
     transform_point,
 )
+from ic_opt.em.pcell.stack import size as stack_size
 
 
 def _check_opening(OD: float, W: float, OPENING: float, where: str) -> None:
@@ -351,7 +352,7 @@ def _xfm_nets_are_drc_separate(a, b, process) -> bool:
     )
 
     ra, rb = _xfm_net_regions(a), _xfm_net_regions(b)
-    for met in range(1, 12):
+    for met in range(1, stack_size() + 1):
         try:
             layer = _metal(met, process)
         except PortError:

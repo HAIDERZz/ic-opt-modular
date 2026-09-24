@@ -48,6 +48,7 @@ from ic_opt.em.pcell.fixture import (
     _drawing_bbox_um,
     add_ground_fixture,
 )
+from ic_opt.em.pcell.stack import builds_on_profile_stack
 
 # ---------------------------------------------------------------------------
 # xfm_balun (classic same-layer coplanar balun; clean-room composition)
@@ -260,7 +261,7 @@ def _add_balun_ct(cell, center_x, OD, W, LEAD, balun_me, CT_ME, side, txt,
     cm = _metal_index(CT_ME)
     if cm >= me:
         raise PortError(
-            f"xfm_balun: CT metal M{cm} must be below BALUN_ME M{me}")
+            f"xfm_balun: CT metal {_metal_name(cm)} must be below BALUN_ME {_metal_name(me)}")
     if NT >= 2:
         raise PortError(
             f"xfm_balun: {txt} center tap requires a single-turn winding "
@@ -271,6 +272,7 @@ def _add_balun_ct(cell, center_x, OD, W, LEAD, balun_me, CT_ME, side, txt,
                    tap_side, txt, process)
 
 
+@builds_on_profile_stack
 def xfm_balun(
     OD_P: float = 200.0, OD_S: float = 186.0,
     W_P: float = 5.0, W_S: float = 5.0, S: float = 2.0,

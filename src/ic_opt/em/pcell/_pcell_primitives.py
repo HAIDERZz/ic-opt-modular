@@ -495,7 +495,7 @@ def base_xfm_half(
     its P/C feed only dead or unported branches and are dropped."""
     top, btm = _metal_index(TOP_ME), _metal_index(BTM_ME)
     if top < btm:
-        raise PortError(f"base_xfm_half: TOP_ME M{top} below BTM_ME M{btm}")
+        raise PortError(f"base_xfm_half: TOP_ME {_metal_name(top)} below BTM_ME {_metal_name(btm)}")
     if via_diag:
         raise PortError(
             "base_xfm_half: via_diag needs the sourceless 'vias_diagonal' "

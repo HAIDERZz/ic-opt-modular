@@ -41,7 +41,8 @@ def add_pgs(cell, config: CleanPortPgsConfig, process_profile: str,
     from .fixture import _body_bbox_um
 
     context = process_rule_context(process_profile)
-    rule = context.adapter.metal_rule("M1")
+    fixture_metal = context.adapter.profile.fixture_conductor          # the ground ring's conductor, the stack bottom
+    rule = context.adapter.metal_rule(fixture_metal)
     layer = tuple(rule.drawing)
     grid = round(GRID_UM / DBU_UM)
     # Even grid multiples keep both edges of a centred strip on the mask grid.
@@ -102,17 +103,17 @@ def add_pgs(cell, config: CleanPortPgsConfig, process_profile: str,
     combined = (ground + shield).merged()
     minimum_width = math.ceil(rule.min_width_um / DBU_UM)
     wide = wide_parallel_spacing_violations(
-        combined, metal_name="M1", adapter=context.adapter, dbu=DBU_UM)
+        combined, metal_name=fixture_metal, adapter=context.adapter, dbu=DBU_UM)
     if (not combined.width_check(minimum_width).is_empty()
             or not combined.space_check(clearance).is_empty() or wide.count):
-        raise PortError("PGS and ground fixture violate the process M1 width/spacing rules")
+        raise PortError(f"PGS and ground fixture violate the process {fixture_metal} width/spacing rules")
     if (rule.max_width_um is not None
             and not shield.sized(-round(rule.max_width_um / (2 * DBU_UM))).is_empty()):
-        raise PortError("PGS junction exceeds the process M1 maximum width")
+        raise PortError(f"PGS junction exceeds the process {fixture_metal} maximum width")
     for polygon in shield.each():
         cell.add_shape(Shape(layer, [(p.x, p.y) for p in polygon.each_point_hull()]))
     return {
-        "kind": "fishbone", "metal": "M1", "drawing": list(layer),
+        "kind": "fishbone", "metal": fixture_metal, "drawing": list(layer),
         "connection": "single upper ground-ring connection",
         "strip_width_um": width * DBU_UM,
         "strip_spacing_um": spacing * DBU_UM,

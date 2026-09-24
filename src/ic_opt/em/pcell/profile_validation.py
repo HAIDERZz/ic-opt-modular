@@ -45,7 +45,6 @@ from ic_opt.em.pcell.process_rules import (
 )
 
 _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-_METAL_NAME_RE = re.compile(r"^[Mm]?(\d+)$")
 
 #: Generation-smoke families, in report order. Values: the minimum metal
 #: stack index the family's canonical device needs for its top metal --
@@ -118,6 +117,29 @@ def _render_validation_error(exc: ValidationError) -> list[str]:
     return details
 
 
+def _shared_layer_errors(catalog) -> list[str]:
+    """A GDS layer claimed twice is a transcription slip, except a conductor's pin on its own drawing layer and vias
+    that share a cut layer while landing on a common conductor (one contact layer from diffusion and poly to M1)."""
+    claims: dict[tuple[int, int], list[tuple[str, str, object]]] = {}
+    for name, rule in catalog.conductors.items():
+        claims.setdefault(tuple(rule.drawing), []).append(("conductors", name, rule))
+        if rule.pin is not None and tuple(rule.pin) != tuple(rule.drawing):
+            claims.setdefault(tuple(rule.pin), []).append(("conductors", f"{name} (pin)", rule))
+    for name, rule in catalog.vias.items():
+        claims.setdefault(tuple(rule.drawing), []).append(("vias", name, rule))
+    for name, rule in catalog.markers.items():
+        claims.setdefault(tuple(rule.drawing), []).append(("markers", name, rule))
+    out = []
+    for layer, users in sorted(claims.items()):
+        if len(users) < 2:
+            continue
+        vias = [rule for kind, _, rule in users if kind == "vias"]
+        if len(vias) == len(users) and all(set(a.connects) & set(b.connects) for a in vias for b in vias):
+            continue
+        out.append(f"GDS layer {layer[0]}/{layer[1]} is claimed by " + ", ".join(f"layer_catalog.{k}.{n}" for k, n, _ in users))
+    return out
+
+
 def _consistency_stage(
     profile: ProcessRuleProfile, profile_id: str
 ) -> StageResult:
@@ -133,6 +155,7 @@ def _consistency_stage(
             "emx_stack.conductors not in layer_catalog.conductors: "
             f"{sorted(stray)}"
         )
+    errors += _shared_layer_errors(catalog)
     for name, via in catalog.vias.items():
         unknown = set(via.connects) - conductors
         if unknown:
@@ -311,15 +334,12 @@ def _gds_layers_stage(profile: ProcessRuleProfile, proc_path: Path | None) -> St
 
 
 def _smoke_top_metal_index(profile: ProcessRuleProfile) -> int:
-    """Highest plain-metal stack index in the catalog (M<n> spellings; AP
-    and non-metal conductors like OD/PO are excluded -- the smoke exercises
-    the main metal stack, the proven sweep territory)."""
-    best = 0
-    for name in profile.layer_catalog.conductors:
-        match = _METAL_NAME_RE.match(name)
-        if match:
-            best = max(best, int(match.group(1)))
-    return best
+    """Stack position of the highest plain metal: the top of the metal stack below any aluminium-pad /
+    redistribution layer (class ``aluminum_pad``) -- the smoke exercises the main metal stack, the proven
+    sweep territory. 0 when the stack has no plain metal."""
+    catalog = profile.layer_catalog.conductors
+    plain = [i for i, name in enumerate(profile.metal_stack, 1) if catalog[name].layer_class != "aluminum_pad"]
+    return plain[-1] if plain else 0
 
 
 def _derived_opening(od: float, w: float, max_um: float, max_opening) -> float:
@@ -336,7 +356,7 @@ def _smoke_winding_spacing(
     profile: ProcessRuleProfile, metal_index: int, base_um: float,
     factor: float,
 ) -> float:
-    """Canonical winding spacing on M<metal_index>: the reference-sweep
+    """Canonical winding spacing on the metal at stack position ``metal_index``: the reference-sweep
     mid-range ``base_um``, grown to ``factor`` x the metal's own min_space
     when the process is coarser than that territory (plain parallel-run
     clearance; 1.5 leaves margin over the rule itself). Values are
@@ -346,7 +366,9 @@ def _smoke_winding_spacing(
     by the pcell itself (_tw_slot_half_width bound (b) pad-corner
     correction, tw-bridge-corner-clearance 2026-07-28), so every family
     uses the plain factor again."""
-    rule = profile.layout_rules.metal_width_space.get(f"M{metal_index}")
+    stack = profile.metal_stack
+    name = stack[metal_index - 1] if 1 <= metal_index <= len(stack) else None
+    rule = profile.layout_rules.metal_width_space.get(name)
     min_space = getattr(rule, "min_space_um", None) or 0.0
     return max(base_um, round(factor * min_space, 2))
 
@@ -357,7 +379,7 @@ def _canonical_config(
 ) -> dict:
     """Canonical smoke device for one family: mid-range of the reference
     sweep campaigns (od 60-240, w 4-10, s 2-4, lead 20), expressed with
-    digit metal spellings and no center taps. Winding spacings adapt to
+    the profile's conductor names and no center taps. Winding spacings adapt to
     the profile's own min_space (see _smoke_winding_spacing)."""
 
     def dop(od: float, w: float, max_um: float = 8.0) -> float:
@@ -366,6 +388,8 @@ def _canonical_config(
     def spacing(metal_index: int, base_um: float, factor: float = 1.5) -> float:
         return _smoke_winding_spacing(profile, metal_index, base_um, factor)
 
+    stack = profile.metal_stack
+    top_name, below_name = stack[top - 1], stack[top - 2]
     xfm_ports = ["P1", "N1", "P2", "N2"]
     fixture = dict(_SMOKE_FIXTURE, stub_width_um=6.0)
     base = {
@@ -382,7 +406,7 @@ def _canonical_config(
             "opening_um": dop(120.0, 6.0),
             "lead_length_um": 20.0,
             "turns": 2,
-            "metal": str(top),
+            "metal": top_name,
         }
     if family == "clean_port_xfm_bs":
         return base | {
@@ -396,8 +420,8 @@ def _canonical_config(
             "primary_lead_length_um": 20.0,
             "secondary_lead_length_um": 20.0,
             "center_spacing_um": 0.0,
-            "primary_metal": str(top),
-            "secondary_metal": str(top - 1),
+            "primary_metal": top_name,
+            "secondary_metal": below_name,
         }
     if family == "clean_port_xfm_ms":
         return base | {
@@ -413,8 +437,8 @@ def _canonical_config(
             "secondary_turns": 2,
             "secondary_spacing_um": spacing(top - 1, 3.0),
             "center_spacing_um": 0.0,
-            "primary_metal": str(top),
-            "secondary_metal": str(top - 1),
+            "primary_metal": top_name,
+            "secondary_metal": below_name,
         }
     if family == "clean_port_xfm_balun":
         od_p, w, s = 120.0, 6.0, spacing(top, 3.0)
@@ -433,7 +457,7 @@ def _canonical_config(
             "primary_turns": 1,
             "secondary_turns": 1,
             "center_spacing_um": 0.0,
-            "metal": str(top),
+            "metal": top_name,
         }
     if family == "clean_port_xfm_tw":
         return base | {
@@ -445,7 +469,7 @@ def _canonical_config(
             "port_gap_p_um": dop(160.0, 6.0),
             "port_gap_n_um": dop(160.0, 6.0),
             "lead_length_um": 20.0,
-            "metal": str(top),
+            "metal": top_name,
         }
     if family == "clean_port_xfm_il":
         od, w, s = 150.0, 6.0, spacing(top, 3.0)
@@ -459,7 +483,7 @@ def _canonical_config(
             "secondary_opening_um": dop(od - 2 * (w + s), w, 18.0),
             "primary_lead_length_um": 20.0,
             "secondary_lead_length_um": 20.0,
-            "metal": str(top),
+            "metal": top_name,
         }
     raise ValueError(f"unknown generation family: {family}")
 

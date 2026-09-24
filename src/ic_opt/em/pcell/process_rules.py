@@ -82,6 +82,7 @@ class LayerCatalog(BaseModel):
     conductors: dict[str, ConductorRule]
     vias: dict[str, ViaRule]
     markers: dict[str, MarkerRule]
+    ground_fixture_conductor: str | None = None  # the bottom metal, which carries the ground ring and stubs; default: the metal named M1
 
 
 class EmxConductorStackRule(BaseModel):
@@ -242,6 +243,20 @@ class ProcessRuleProfile(BaseModel):
             raise ValueError("unsupported process rule profile schema_version")
         return value
 
+    @property
+    def metal_stack(self) -> tuple[str, ...]:
+        """The metals the generators draw on, bottom first (T13.11). Metals are the catalog conductors with a width /
+        space rule (diffusion, poly and the like are conductors too, but no device is drawn on them); their order is
+        the via chain -- every via between two metals joins neighbours -- walked up from the ground-fixture conductor
+        (``layer_catalog.ground_fixture_conductor``, default the metal named M1). Key order in the file does not
+        matter. Generators address a metal by its position here (1 = the fixture layer), so any number of metals
+        with any names works. Raises ValueError when the vias do not chain every metal into one column."""
+        return _metal_chain(self)
+
+    @property
+    def fixture_conductor(self) -> str:
+        return self.metal_stack[0]
+
     @model_validator(mode="after")
     def _coverage_matches_declared_rules(self) -> ProcessRuleProfile:
         if set(self.coverage.metal_width_space) != set(
@@ -290,6 +305,55 @@ class ProcessRuleProfile(BaseModel):
                         "marker catalog"
                     )
         return self
+
+    @model_validator(mode="after")
+    def _metal_stack_is_a_via_chain(self) -> ProcessRuleProfile:
+        _metal_chain(self)
+        return self
+
+
+def _metal_chain(profile: ProcessRuleProfile) -> tuple[str, ...]:
+    for name, via in profile.layer_catalog.vias.items():
+        unknown = [c for c in via.connects if c not in profile.layer_catalog.conductors]
+        if unknown:
+            raise ValueError(f"layer_catalog.vias.{name}.connects references unknown conductor(s) {unknown}")
+    metals = [name for name in profile.layer_catalog.conductors if name in profile.layout_rules.metal_width_space]
+    if not metals:
+        raise ValueError("no layer_catalog conductor has a layout_rules.metal_width_space rule: the metal stack is empty")
+    declared = profile.layer_catalog.ground_fixture_conductor
+    if declared is not None:
+        if declared not in metals:
+            raise ValueError(f"layer_catalog.ground_fixture_conductor {declared!r} is not a metal (a conductor with a width rule)")
+        bottom = declared
+    else:
+        named = [m for m in metals if m.upper() == "M1"]
+        if not named:
+            raise ValueError("no metal is named M1: declare layer_catalog.ground_fixture_conductor, the bottom metal the "
+                             "ground fixture is drawn on")
+        bottom = named[0]
+    neighbours: dict[str, list[str]] = {m: [] for m in metals}
+    for via in profile.layer_catalog.vias.values():
+        a, b = via.connects
+        if a in neighbours and b in neighbours:
+            neighbours[a].append(b)
+            neighbours[b].append(a)
+    chain, previous = [bottom], None
+    while True:
+        onward = [m for m in neighbours[chain[-1]] if m != previous]
+        if len(onward) > 1 or (len(chain) == 1 and len(neighbours[bottom]) > 1):
+            raise ValueError(f"the vias join {chain[-1]} to {sorted(set(neighbours[chain[-1]]))}: metals must form one column, "
+                             f"each via joining a metal to the next (from the fixture metal {bottom})")
+        if not onward:
+            break
+        previous = chain[-1]
+        if onward[0] in chain:
+            raise ValueError(f"the vias close a loop at {onward[0]}: metals must form one column")
+        chain.append(onward[0])
+    missing = [m for m in metals if m not in chain]
+    if missing:
+        raise ValueError(f"metals {missing} are not joined to the via chain from {bottom} ({' - '.join(chain)}): "
+                         "every metal needs the via to its neighbour below")
+    return tuple(chain)
 
 
 PROFILE_DIRS_ENV_VAR = "IC_OPT_PROFILE_DIRS"

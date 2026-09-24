@@ -128,18 +128,29 @@ Naming rules with teeth:
 - `emx_name` must match the proc **token-for-token**, and the proc's
   `define` of that name must list the entry's `drawing` and `pin` pairs;
   `em.validate_profile ... proc=` fails on any mismatch.
-- Conductor keys are `M1`..`M<n>` plus `AP` for an aluminium
-  redistribution top metal: the pcell layer helpers index metals by that
-  spelling (`AP` is stack index 11), so today a stack must fit `M1`..`M10`
-  + `AP`.
+- Metals are the conductors with a `metal_width_space` rule; their order
+  (the metal stack) is the via chain, read from `connects`: every via
+  between two metals joins neighbours, from the ground-fixture metal
+  upward. Any number of metals and any names work (`RDL`, `UTM`, ...) --
+  but a via that skips a level, or a metal no via reaches, fails the
+  profile. Key order in the file does not matter.
+- The ground-fixture metal (the reference ring and stubs) is the bottom of
+  the stack: the metal named `M1`, or whatever
+  `layer_catalog.ground_fixture_conductor` names. Device configs reject
+  `M1` as a winding metal.
 - If the process has an AP/RDL redistribution via, name it `RV` in the
   catalog: the DRC audit's direct enclosure check looks for that exact
   name (`_AUDITED_VIAS`).
-- `M1` belongs to the ground fixture (the reference ring); device configs
-  reject it as a winding metal.
+- Mark an aluminium-pad / redistribution top metal `class:
+  aluminum_pad`: the generation smoke builds its canonical devices on the
+  highest metal below it (the proven sweep territory).
+- Two vias may share a drawing layer only when they land on a common
+  conductor (one contact layer from diffusion and poly to M1); any other
+  GDS layer claimed twice fails the consistency stage.
 
-In device configs both `"M6"` and `"6"` spellings work for metals
-(`"AP"` for AP).
+In device configs a metal is named as in the profile (`"AP"`, `"RDL"`),
+and `"M6"` / `"6"` both name the metal called M6; a spelling that names no
+metal of the profile is refused.
 
 ## Discipline
 

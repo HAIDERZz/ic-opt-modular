@@ -75,7 +75,8 @@ def _body_bbox_um(
     keeps its whole polygon (nothing to subtract)."""
     port_zones_by_layer: dict[tuple[int, int], list[tuple[int, int, int, int]]] = {}
     for port in cell.emx_ports:
-        layer = _metal(port["metal_index"], process)
+        # by the port's conductor NAME: a stack position is only meaningful inside the build's metal stack
+        layer = tuple(process.adapter.layer(port["metal"]).drawing) if process is not None else _metal(port["metal_index"], None)
         port_zones_by_layer.setdefault(layer, []).append(tuple(port["lead_zone_nm"]))
 
     xs: list[int] = []

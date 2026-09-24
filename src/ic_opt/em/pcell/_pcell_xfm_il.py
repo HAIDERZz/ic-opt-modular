@@ -61,6 +61,7 @@ from ic_opt.em.pcell.fixture import (
     GroundFixtureConfig,
     add_ground_fixture,
 )
+from ic_opt.em.pcell.stack import builds_on_profile_stack
 
 # ---------------------------------------------------------------------------
 # xfm_il (M14 pre-contract, xfm-il-interleaved ticket 02 + 02b + 02c + 02d
@@ -653,7 +654,7 @@ def _il_shifted_hud_cross(
             if far_pad_len < _pad_trim_floor(sl, process):
                 raise PortError(
                     f"xfm_il: OD={OD}, W={W}, PITCH={PITCH}, "
-                    f"q-shift={leg1_dy} um on M{sl}: the bridge endpoint "
+                    f"q-shift={leg1_dy} um on {_metal_name(sl)}: the bridge endpoint "
                     f"pad would need trimming to {far_pad_len} um to clear "
                     f"the intermediate ring OD={cor_od}'s inner chamfer by "
                     f"{floor_sp} um -- the turn is too small to host the "
@@ -678,7 +679,7 @@ def _il_shifted_hud_cross(
             if length is not None and length < _pad_trim_floor(sl, process):
                 raise PortError(
                     f"xfm_il: OD={OD}, W={W}, PITCH={PITCH}, q-shift={leg1_dy} um on "
-                    f"M{sl}: the bridge's {which} pad (starting {start} um from the "
+                    f"{_metal_name(sl)}: the bridge's {which} pad (starting {start} um from the "
                     f"axis) does not fit the ring's flat -- the pad would hang off "
                     f"the ring; increase OD or reduce W/NT/S"
                 )
@@ -1011,6 +1012,7 @@ def _il_bridge_spacing_guard(
                 )
 
 
+@builds_on_profile_stack
 def xfm_il(
     OD: float,
     W: float,

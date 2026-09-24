@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 import klayout.db as kdb
 
+from ic_opt.em.pcell import stack as _stack
 from ic_opt.em.pcell.rule_adapter import (
     GeometryRuleAdapter,
     get_geometry_rule_adapter,
@@ -346,21 +347,14 @@ def audit_gds(gds_path, profile_id: str) -> Report:
 
 
 def _metal_index(metal: str) -> int:
-    """Conductor token -> stack index, same semantics as the pcell's own
-    ``_metal_index`` ("AP" is the top of the stack at index 11, case-
-    insensitive; "10"/"M10"/"m10" -> 10). Raises ValueError for
-    non-conductor tokens (e.g. via names like "RV")."""
-    token = metal.strip()
-    if token.upper() == "AP":
-        return 11
-    digits = token[1:] if token[:1] in ("m", "M") else token
-    return int(digits)
+    """Conductor token -> stack position, the pcell's own mapping (``ic_opt.em.pcell.stack``: the active profile's
+    stack, else the fixed 1P10M+AP convention). Raises ValueError for non-conductor tokens (e.g. via names like "RV")."""
+    return _stack.index(metal)
 
 
 def _metal_name(index: int) -> str:
-    """Stack index -> profile conductor name, same semantics as the
-    pcell's ``_metal_name`` (index 11 is "AP", not "M11")."""
-    return "AP" if index == 11 else f"M{index}"
+    """Stack position -> profile conductor name, the pcell's own mapping."""
+    return _stack.name(index)
 
 
 def canonical_conductor(name: str) -> str:
@@ -575,10 +569,11 @@ def require_layers_from_config(generator_id: str, config: dict) -> list[str]:
             f"(known: {sorted(_EXPECTED_RECIPES)}); supply the expected "
             "conductors explicitly")
     out: list[str] = []
-    for metal in recipe(config):
-        name = canonical_conductor(metal)
-        if name not in out:
-            out.append(name)
+    with _stack.use_stack(config.get("process_profile")):
+        for metal in recipe(config):
+            name = canonical_conductor(metal)
+            if name not in out:
+                out.append(name)
     return out
 
 
