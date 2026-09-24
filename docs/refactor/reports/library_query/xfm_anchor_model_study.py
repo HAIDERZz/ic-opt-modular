@@ -1282,7 +1282,7 @@ def page(json_path: Path, html_path: Path) -> None:
                   + _ls_table(t, [(k.format(**fill), v.format(**fill)) for k, v in ls_rows_map]))
     page_html = f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>预列频率结果列的建模对照</title>
+<title>单圈变压器锚定量建模对照</title>
 <style>{CSS}</style></head><body>
 <div class="wrap">
 <header>
