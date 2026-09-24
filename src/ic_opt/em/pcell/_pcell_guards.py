@@ -252,8 +252,7 @@ def _heal_seam_notches(cell: Cell, process: ProcessRuleContext | None) -> None:
     wedge at the crossover-to-ring seam. At crowded inner-turn junctions of
     a small-OD multi-turn coil (D3) that wedge narrows below the rule
     ``min_space`` and flags on *every* metal (the thinner signal metals as
-    well as AP
-    at 2.0 um), not just AP. The former D2 single-turn case no longer reaches
+    well as AP), not just AP. The former D2 single-turn case no longer reaches
     this crossover construction: NT=1 is now one direct ring.
 
     This heal is **process-mode only** (reference mode is never called, so the

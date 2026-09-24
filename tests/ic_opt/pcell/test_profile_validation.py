@@ -217,14 +217,14 @@ def test_proc_without_defines_skips_the_layer_check(tmp_path: Path) -> None:
 
 def test_proc_layer_map_resolves_defines_that_name_other_defines() -> None:
     text = """define fillsize = 0
-define ctm = l77t0
-define via7raw = merge(count(l57t0), 0.68)   # a comment l99t0
+define ctm = l97t0
+define via7raw = merge(count(l87t0), 0.68)   # a comment l99t0
 define via7 = via7raw-ctm
-define metal1 = l31t0+l131t0
+define metal1 = l61t0+l61t2
 """
     layers = proc_layer_map(text)
-    assert layers["metal1"] == {(31, 0), (131, 0)} and layers["via7raw"] == {(57, 0)}
-    assert layers["via7"] == {(57, 0), (77, 0)} and layers["fillsize"] == set()
+    assert layers["metal1"] == {(61, 0), (61, 2)} and layers["via7raw"] == {(87, 0)}
+    assert layers["via7"] == {(87, 0), (97, 0)} and layers["fillsize"] == set()
 
 
 def test_define_without_a_layer_term_warns_but_passes(tmp_path: Path) -> None:

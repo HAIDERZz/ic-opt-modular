@@ -800,11 +800,11 @@ def base_ind_under(
     instances (a long M[BTM..TOP-1] bridge plus two short M[TOP-1..TOP] end
     vias). The ``if(dummy)`` RFVLSI/drawing + RFVLSI_LVS_Vec rectangles are
     the same unmappable density-fill / LVS layers dropped in M7P and are not
-    ported (dummy/INDDMY/INDDMYP params omitted). Reference mode draws metals
-    M5..M9 + cut arrays VIA5..VIA8; N28 builds the same stack (VIA5..VIA8 all
-    have complete via_primitives geometry; geometric-only enforcement,
-    n28-rules-slim, user directive 2026-07-19 -- previously this fell closed
-    on the retired VIA5 via_restrictions/IND.R.1 policy gate).
+    ported (the dummy / marker-layer params are omitted). Reference mode
+    draws metals M5..M9 + cut arrays VIA5..VIA8; process mode builds the same
+    stack from each via's own via_primitives geometry (geometric-only
+    enforcement, n28-rules-slim, user directive 2026-07-19 -- previously this
+    fell closed on a retired via_restrictions policy gate).
 
     The transit layer between the caller's own BTM_ME and TOP_ME is the
     REAL conductor immediately below TOP_ME (``_metal_below``), not a bare

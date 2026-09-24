@@ -476,19 +476,17 @@ def _tw_slot_half_width(W: float, S: float, sl: int,
     tangentially-aligned portion of the conductor it overlaps, never
     spilling into the 45-degree portion where the conductor's own local
     direction no longer matches the pad's axis-aligned footprint. This
-    bound CAN DOMINATE (a) and (b): e.g. the AP body's own W=6/S=6
-    (min_space=2.0, pitch=12.0) gives corrected (b) = sqrt(2)*2 +
-    6*1.7071 - 6 = 7.071 um and 02b's own (c) = pitch/2 = 6.0 um, both
-    LESS than 02c's (c) = pitch/2 + W/2 = 9.0 um, so G is pinned at 9.0
-    -- a strictly LOOSER (larger) G than either prior ticket's formula
-    gave for this exact case (02b: 6.0 um after grid-snap; 02: 5.370 um);
-    see ``test_tw_slot_half_width_pad_containment_bound_dominates_ap_case``.
-    For the M9/M10 reference case (W=4/S=2, min_space=1.0, pitch=6) the
-    corner-corrected (b) = sqrt(2) + 4*1.7071 - 3 = 5.243 um now sits
-    just ABOVE 02c's (c) = 3 + 2 = 5.0 um -- (b) dominates there since
-    the tw-bridge-corner-clearance fix (it was 4.071 um under the old
-    W/2 pad model, below (c); exactly the tight-S/wide-W slice whose
-    built devices measured sub-min_space corner gaps).
+    bound CAN DOMINATE (a) and (b): at W=6/S=6 (pitch=12.0), 02c's
+    (c) = pitch/2 + W/2 = 9.0 um exceeds 02b's own (c) = pitch/2 = 6.0 um
+    and exceeds the corrected (b) = sqrt(2)*min_space + 6*1.7071 - 6
+    whenever min_space < ~3.36 um, so G is pinned at 9.0 -- a strictly
+    LOOSER (larger) G than either prior ticket's formula gave for such a
+    body; see ``test_tw_slot_half_width_pad_containment_bound_dominates_ap_case``.
+    For a tight-S/wide-W body on a finer-rule metal (e.g. W=4/S=2, pitch=6)
+    the corner-corrected (b) can sit just ABOVE 02c's (c) = 3 + 2 = 5.0 um
+    -- (b) dominates there since the tw-bridge-corner-clearance fix (it
+    was below (c) under the old W/2 pad model; exactly the tight-S/wide-W
+    slice whose built devices measured sub-min_space corner gaps).
 
     Bound (b)'s own derivation still needs pitch > K strictly (the
     ``pitch - W >= min_space`` floor from candidate (i) above); checked
@@ -847,7 +845,7 @@ def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
         # per-vertex mask-grid snap can take off the two drawn outlines
         # (half a grid each): the DRC engine measures the outlines, and at
         # S == the floor they came out 2-3 nm short of it (random campaign
-        # 2026-09-22, an AP body at S=2.0).
+        # 2026-09-22, a body at S == its min_space).
         worst = min(
             ((H[i] - H[i + 1]) + chamfer[i][1] - chamfer[i + 1][1])
             / math.sqrt(2.0) - W

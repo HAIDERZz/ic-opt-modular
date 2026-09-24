@@ -18,10 +18,11 @@ from the failed M7 generators or earlier port prototypes.
 - **Reference mode** (`process=None`, the default): reproduces the
   PCell/`ind_ref.gds` shapes with the reconstructed reference via rule
   (cut/spacing/enclosure constants defined in this module) on datatype-0
-  layers. This mode is for
-  PCell/ind_ref **shape study only** — it is explicitly **not N28 DRC
-  proof** (the N28 rule profile mandates its own VIA8/VIA9 cut, spacing and
-  datatype geometry, read from the profile).
+  layers of a fixed built-in layer map (`metal_layer`, `metal_pin_layer`,
+  `via_layer`). This mode is for PCell/ind_ref **shape study only** — it is
+  explicitly **not DRC proof** for any process (a real process's rule
+  profile sets its own via cut, spacing and layer/datatype geometry, read
+  from the profile).
 - **Process-backed mode**
   (`process=process_rule_context(profile_id)`, e.g. the packaged
   `"demo_6m"`): every conductor and via layer/datatype, cut size, spacing,
@@ -31,15 +32,16 @@ from the failed M7 generators or earlier port prototypes.
   through the existing `GeometryRuleAdapter.plan_passive_via_array`. The
   crossover endpoints come out on the profile's own via layer with the
   profile's cut geometry. The reference via constants are never consulted
-  in this mode. The N28 notes below are history: the process this port was
-  first built against.
-- **N28 center tap**: an `ind_sym(CT_ME=...)` M9->M8->M7 stack requires
-  VIA7. Generator enforcement is **geometric-only** (user directive
-  2026-07-19, `.scratch/n28-rules-slim/`): the deck's cited IND.R.1
-  restriction is retained in `rule.yaml` as documentation but no longer
-  gates construction, so the stack builds with VIA7's own profile
-  geometry read from the rule profile; demos
-  `ind_sym_ct_3t_m7_n28` and `ind_sym_ct_3t_m10m9_ct_m8_n28`.
+  in this mode. Notes below that name metals above M6 are history from the
+  private process this port was first built against; the shipped
+  demonstrations (`generate_all`) use `demo_6m`.
+- **Center-tap stacks**: an `ind_sym(CT_ME=...)` tap stack crosses every via
+  level between the coil and the CT metal. Generator enforcement is
+  **geometric-only** (user directive 2026-07-19): a deck restriction a
+  profile cites under `via_restrictions` is documentation only and never
+  gates construction, so every level builds with its own via geometry read
+  from the rule profile; demos `ind_sym_ct_3t_m5_ct_m3_demo6m` and
+  `ind_sym_ct_3t_m6m5_ct_m4_demo6m`.
 
 ## Generic metals
 
@@ -50,11 +52,10 @@ direct ring and has no crossunder/vias. `ind_sym`'s optional
 selects the CT metal (at least two levels below `TOP_ME` per the N1
 adjacency guard; the tap stack spans every level in between). Examples:
 
-- `TOP_ME="10", CT_ME="8"` — M10/M9 coil, M8 CT: **N28
-  process-constructible today** (VIA9/VIA8 are the modeled passive
-  arrays); demo `ind_sym_ct_3t_m10m9_ct_m8_n28`.
+- `TOP_ME="6", CT_ME="4"` — M6/M5 coil, M4 CT on `demo_6m`: the VIA5 +
+  VIA4 tap stack; demo `ind_sym_ct_3t_m6m5_ct_m4_demo6m`.
 - `TOP_ME="9", CT_ME="5"` — M9/M8 coil, M5 CT: builds the via5..via8 tap
-  stack in both modes; N28 process mode draws each via class at its own
+  stack in both modes; process mode draws each via class at its own
   profile geometry (geometric-only enforcement, 2026-07-19).
 
 Process-backed dimensions come from the selected rule adapter, but loading a
@@ -71,10 +72,10 @@ performance. BS AP tap-via traversal was fixed separately.
 
 EMX does **not** infer ports from metal shapes; it reads labels/pins from
 the GDS (`gdsgen_ref/emx_pin_port_gds_rules.md`). Each terminal therefore
-carries a text label on the metal's **pin** layer (the proc
-`drawing + pin` split: M8 = `l38t20` + `l138t0`, etc.), so every
-drawing-layer polygon stays byte-identical and the BASE↔HEAD drawing XOR
-is empty.
+carries a text label on the metal's **pin** layer (the EMX process
+file's `drawing + pin` split: each conductor's `define` names its drawing
+layer and its pin layer), so every drawing-layer polygon stays
+byte-identical and the BASE↔HEAD drawing XOR is empty.
 
 - `ind_sym`: **P1/N1** on the `M(TOP_ME)` pin layer at the right lead-tip
   midpoints `(OD/2+LEAD, ±(OPENING+W/2))` — since M13 the default port
@@ -84,9 +85,9 @@ is empty.
   lead tip — `(OD/2+LEAD, 0)` for even NT (lead side), `(-OD/2-LEAD, 0)`
   for odd NT (crossover side) — on top of P1/N1 (`port_order` default
   `["P1","N1","CT"]`).
-- Pin layers: reference mode `(130+m, 0)`; N28 process mode the rule
-  profile `pin` (M8 `138/0`, M9 `139/0`, M10 `140/0`). A metal whose
-  profile leaves `pin` unset fails closed with a `PortError`.
+- Pin layers: reference mode `metal_pin_layer(m)`; process mode the rule
+  profile's `pin` (on `demo_6m`: M4 `64/2`, M5 `65/2`, M6 `66/2`). A metal
+  whose profile leaves `pin` unset fails closed with a `PortError`.
 - `<basename>.emx_ports` holds one `-p name=signal[:reference]` line per
   port (sorted by name). Without a ground fixture every line is
   `-p name=signal`; with a fixture it becomes `-p name=signal:G0n`. Both forms are
@@ -101,11 +102,12 @@ is empty.
 `ind_sym` (with or without `CT_ME`) gains an optional `ground_fixture:
 GroundFixtureConfig | None = None`. When set, `add_ground_fixture` draws
 an **M1 ground reference layer** around the device — a four-rectangle M1
-ring (drawing `(31,0)`; process mode the rule-profile M1 drawing) plus one
-**chamfered stub** per port rooted on the ring side nearest the port
-(left ring for ports at `x <= center`, right ring otherwise) — and places a
-**`G{index:02d}` local-ref pin label** on the M1 pin layer (`(131,0)`;
-process mode the rule-profile M1 pin) directly under each signal port
+ring (reference mode `metal_layer(1)`; process mode the rule-profile M1
+drawing) plus one **chamfered stub** per port rooted on the ring side nearest
+the port (left ring for ports at `x <= center`, right ring otherwise) — and
+places a **`G{index:02d}` local-ref pin label** on the M1 pin layer
+(reference mode `metal_pin_layer(1)`; process mode the rule-profile M1 pin)
+directly under each signal port
 `(x, y)`. Each port's `reference` is then wired to its G-pin name, so the
 EMX lines become `name=signal:G0n` local-ref ports instead of edge ports
 referenced to the infinite ground plane. This mirrors the product
@@ -138,18 +140,19 @@ GroundFixtureConfig(inner_margin_um, ring_width_um,
 - Without a fixture the drawing-layer geometry is byte-identical to M7L:
   the port rename touches only pin-layer label text, never a drawing
   polygon. The fixture and G labels are pure M1 additions.
-- Demo `ind_sym_ct_3t_m10m9_ct_m8_n28_gnd` exercises the fixture in N28
-  process mode on the M10/M9 coil + M8 CT device (M1 `(31,0)` ring +
-  `(131,0)` G labels).
+- Demo `ind_sym_ct_4t_m6m5_ct_m4_demo6m_gnd` exercises the fixture in
+  process mode on `demo_6m` (M6/M5 coil + M4 CT; M1 `61/0` ring + `61/2`
+  G labels).
 
-This is a reference/experiment port and is still **not N28 DRC proof**.
+This is a reference/experiment port and is still **not DRC proof** for any
+process.
 
 ## Balun secondary primitive (base_balun_sec, M7P)
 
 `base_balun_sec` is a single `base_oct(OD, W=WI, OPENING=LOP)` ring on MET=9,
 ported in M7P as the transformer/balun secondary primitive and still used by
-`xfm_balun`. Demos: `base_balun_sec` (reference) and `base_balun_sec_n28`
-(process).
+`xfm_balun`. Demo: `base_balun_sec` (reference mode; the primitive is fixed
+to MET=9, so it has no `demo_6m` demonstration).
 
 The rest of the high-k transformer family (M7N primary body, M7O diagonal
 crossover, M7P full primary, M7Q top assembly `xfm_highk`) was removed in M13
@@ -164,7 +167,7 @@ transcription: no cell in `gdsgen_ref/pcell/` models a broadside two-layer
 single-turn transformer (the reference transformers are all same-plane
 octagon-nested high-k/balun). It **replaces the gdsfactory product
 placeholder `src/.../single_turn_transformer.py`** with the clean-port
-inductor modelling methodology (klayout.db + ported primitives + N28
+inductor modelling methodology (klayout.db + ported primitives +
 `process_rule_context` + fail-closed + EMX/ground).
 
 It builds two single-turn open-octagon windings on **two different,
@@ -200,9 +203,9 @@ coupling — with **opposite, outward** openings (primary at
   winding on a shared metal, and two same-metal CT leads crossing each
   other). The gate is strictly stronger — it fails closed only
   on a real short.
-- **N28 default `PRI=M10 / SEC=M9 / CT=M8` is fully constructible**: the coil
-  has no vias (same-metal leads); the CT stacks use only VIA8/VIA9 (IND.R.4
-  legal passive arrays), unlike the high-k under-pass (M5, IND.R.1).
+- **The coil itself has no vias** (same-metal leads); a CT stack uses the
+  via levels between its winding and the tap metal, each at the profile's
+  own via geometry.
 - `ground_fixture` (M7M) wires every port to its `G0n` local-ref pin
   (`-p P1=P1:G01 …`); without it, plain `-p P1=P1 …`.
 - The opening-side straight octagon edge must provide at least one complete
@@ -210,9 +213,10 @@ coupling — with **opposite, outward** openings (primary at
   OD / wide-trace combinations that remain electrically connected but show
   a visibly truncated pin-to-coil joint; the bound is derived from
   `OD`/`W`/`OPENING`, not from a process-specific constant.
-- Demos: `xfm_bs`/`xfm_bs_n28` (independent OD_P=100/OD_S=76 +
-  CENTER_SPACING=8), `xfm_bs_ct`/`xfm_bs_ct_n28` (concentric OD_P=OD_S=90,
-  dual CT on M8 — the M7R backward-compat build).
+- Demos: `xfm_bs`/`xfm_bs_demo6m` (independent OD_P=100/OD_S=76 +
+  CENTER_SPACING=8), `xfm_bs_ct` (concentric OD_P=OD_S=90, dual CT on M8 —
+  the M7R backward-compat build) and `xfm_bs_ct_demo6m` (the same shape on
+  `demo_6m`: M6/M5 windings, CTs on M4/M3).
 
 Transformer-type roadmap (agreed 2026-07-03): M7R → M7R2 (independent OD +
 center spacing) → **M7S (this)** — one winding multi-turn + the other
@@ -221,9 +225,11 @@ balun, same metal (ports the `base_xfm_half` family).
 
 ## AP layer support (M7S Part A)
 
-The top metal **AP** is now metal index **11** (reference drawing `(41,0)`,
-pin `(141,0)`, via M10↔AP `(60,0)`; N28 drawing `(74,0)`, pin `(126,0)`,
-RV `(85,0)`). Two helpers — `_metal_index("AP")==11` and `_metal_name(11)=="AP"` —
+The top metal **AP** is metal index **11** in the fixed reference
+convention (reference-mode layers from `metal_layer(11)`,
+`metal_pin_layer(11)` and `via_layer(10)`; process mode takes the profile's
+own AP entry and its M10↔AP via). Two helpers — `_metal_index("AP")==11` and
+`_metal_name(11)=="AP"` —
 let every metal-aware function (`metal_layer`, `process_metal_layer`, the
 winding helpers, `xfm_bs`, etc.) accept `"AP"` alongside numeric metals.
 The refactor is **output-preserving** for numeric metals (XOR-verified on
@@ -250,8 +256,10 @@ the crossunder occupies the immediately lower conductor). Each winding (plus its
 sub-cell and the layer-complete `_xfm_net_short` gate fails closed on any
 overlap; taps append after the fixed base as `[P1,N1,P2,N2,CTP,CTS]`.
 
-- N28 SINGLE=AP / MULTI=M10 / crossover=M9 is the historical constructive
-  example; specific dimensions still need current build/geometry checks.
+- SINGLE=AP / MULTI=M10 / crossover=M9 is the historical constructive
+  example (`xfm_ms`); `xfm_ms_demo6m` builds SINGLE=M6 / MULTI=M5 /
+  crossover=M4 on `demo_6m`. Specific dimensions still need current
+  build/geometry checks.
 - Fail-closed: `SINGLE_ME <= MULTI_ME`, `NT_M < 2`, `MULTI_ME < 3`,
   unavailable geometric via rules → `PortError`. The multi-turn body metal must also
   contain exactly `NT_M` disconnected winding segments before the lower-metal
@@ -261,7 +269,7 @@ overlap; taps append after the fixed base as `[P1,N1,P2,N2,CTP,CTS]`.
   crossunder); M1/M2 bodies remain forbidden. Compact two-turn leg2 stays on
   the body plane, and its metadata records that actual plane.
 - Demos: `xfm_ms` (AP+M10 concentric), `xfm_ms_spaced` (+CENTER_SPACING=12),
-  `xfm_ms_n28` (N28), `xfm_bs_m10ap` (xfm_bs M10/AP single+single).
+  `xfm_ms_demo6m` (`demo_6m`), `xfm_bs_m10ap` (xfm_bs M10/AP single+single).
 
 ## Classic same-layer (coplanar) balun (M7T / M7T2)
 
@@ -299,13 +307,13 @@ coplanarly. This is the only balun-family milestone with real `.il` porting:
   `_coplanar_ring_short` which missed the concentric lead short.
 - **NT per winding**: NT=1 uses `base_xfm_half` R0+MX; NT≥2 uses `ind_sym`
   (crossover on `BALUN_ME-1`). Nested + NT_S≥2 → `PortError` (ind_sym bakes
-  its own leads). Multi-turn legal only at `BALUN_ME=9` (VIA8).
+  its own leads).
 - **M7T recall**: M7T's initial concentric mode shorted (inner leads crossed
   the outer ring on the shared metal — 50 µm² on the default instance); the
   ring-only gate and the M7T acceptance both missed it. M7T2 fixes it with the
   crossunder + layer-complete gate. Side-by-side output is byte-identical.
-- Demos: `xfm_balun`/`xfm_balun_n28` (concentric OD200/186, now with
-  crossunder), `xfm_balun_2t1t_n28` (2t+1t, `OPENING_S=16`). The former
+- Demos: `xfm_balun`/`xfm_balun_demo6m` (concentric OD200/186, now with
+  crossunder), `xfm_balun_2t1t_demo6m` (2t+1t, `OPENING_S=16`). The former
   `xfm_balun_sidebyside` demo is gone: coplanar rings that do not overlap
   are two inductors, not a balun (user directive 2026-09-22), and
   `xfm_balun` now refuses them.
@@ -365,9 +373,9 @@ PYCODE
 defaults the local crossover is an **M9 same-layer mirrored diagonal over an
 M8 underpass diagonal**, with via8 arrays only at the underpass endpoints
 and never at the central crossing. The independent reference layout
-`ind_ref.gds` (not shipped) shows the same relationship (M9=39 diagonals,
-M8=38, via8=58 arrays; zero via area on the projected diagonal overlap) and
-contains no M10.
+`ind_ref.gds` (not shipped) shows the same relationship (M9 diagonals over
+M8 underpass diagonals, via8 arrays only at the underpass endpoints; zero via
+area on the projected diagonal overlap) and contains no M10.
 
 ## User-directed corrections vs the .il sources (referenced on ind_ref.gds)
 

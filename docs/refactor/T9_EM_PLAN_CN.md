@@ -88,7 +88,7 @@ devices:                                   # 每项 = 一个 pcell 生成器实�
       grounded: []                         #   多出的 CT/CTP/CTS 端口缺省接地
 em:                                        # EMX 设置：一份 spec 一套
   binary: emx
-  process_file: /site/path/tsmcN28_1p10m.proc    # executor 主机上的绝对路径；doctor 用 exists 检查并取 sha256
+  process_file: /site/path/<工艺>.proc    # executor 主机上的绝对路径；doctor 用 exists 检查并取 sha256
   mode: quasistatic                        # quasistatic | full_wave
   frequencies: {start_hz: 0, stop_hz: 200e9, step_hz: 1e9}    # 或 [4.0e10]
   accuracy: standard                       # standard|high|higher|highest，或 {edge_width_um, max_splits, thickness_um}

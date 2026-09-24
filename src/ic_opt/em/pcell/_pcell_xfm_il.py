@@ -1175,12 +1175,13 @@ def xfm_il(
     ``_check_bridge_escape_clearance`` each half-axis (see above); and
     ``_xfm_net_short`` unconditionally (every drawn layer -- now SL_ME,
     SL_ME-1, SL_ME-2 and, when enabled, the CT_ME(s) in either direction
-    too -- shared with xfm_bs/xfm_ms/xfm_balun). On N28, every body builds
-    under geometric-only enforcement (n28-rules-slim, user directive
-    2026-07-19: N28 no longer separately restricts any VIA1..VIA7 level,
-    so no via-crossing CT metal is N28-specific-rejected any more -- only
-    this function's own direction/adjacency guards and the exact-midpoint
-    blocked-window check ever reject a CT metal now): SL_ME="9" can tap
+    too -- shared with xfm_bs/xfm_ms/xfm_balun). In process mode every body
+    builds under geometric-only enforcement (n28-rules-slim, user directive
+    2026-07-19: a profile's cited via restrictions no longer gate any via
+    level, so no via-crossing CT metal is rejected for its process any more
+    -- only this function's own direction/adjacency guards and the
+    exact-midpoint blocked-window check ever reject a CT metal now). For
+    example, SL_ME="9" can tap
     downward to its SL_ME-3 floor (CT_ME="6") or upward to "10"/"AP";
     SL_ME="10" downward to "7" or upward to "AP"; SL_ME="AP" has no metal
     above it, so only downward (to its own SL_ME-3 floor "8") is possible.

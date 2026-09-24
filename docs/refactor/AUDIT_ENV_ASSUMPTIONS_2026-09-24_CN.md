@@ -56,9 +56,9 @@ D = 物理或统计上的合理选择。
 | 28 | `README.md:136-137`；`skills/ic-opt/SKILL.md:24` | 把"默认 128 线程 / 128 GB"当普遍默认写出 | C | 原文 | 与行 1 一起改 |
 | 29 | `docs/em/library.md:176-178,232-234` | 过时："workers … 最多 6"（代码已是核数一半）；推荐的 OMP 上限实际不起作用（行 5） | C | 原文 | 与行 5 一起改 |
 | 30 | `skills/ic-opt/SKILL.md:57` | 说提高 budget 后"旧观测按点复用"，在当前指纹下不成立（行 7） | C | 原文 | 与行 7 一起改 |
-| 31 | `README.md:94-107` | 唯一的 EM 示例是 N28（`n28_1p10m`、`/site/tsmcN28.proc`、`[M10, AP]`、`4e10`），而随包只有 demo_6m | C | 原文 | 示例改基于 demo_6m |
+| 31 | `README.md:94-107` | 唯一的 EM 示例是 N28（`n28_1p10m`、以真实工艺文件名命名的 `.proc` 路径、`[M10, AP]`、`4e10`），而随包只有 demo_6m | C | 原文 | 示例改基于 demo_6m |
 | 32 | `blocks/library.py:66,84`；`docs/em/library.md:142`；`docs/em/devices.md:5`（由 `reference.py:180` 生成） | "SRF >= 1.25 x f0"（其实是 manifest 的 `srf_margin`）；"M1 保留"（其实是 profile 的夹具金属） | C | 原文 | 改措辞 |
-| 33 | `em/pcell/README.md:368,394`；`pcell_inductor_port_clean.py:16`；`_pcell_demo.py:917-920`；`_pcell_core.py:144` | 个人路径与 TSMC 文件名随包发布；pcell README 是包数据，demo 还把路径写进 JSON 报告 | C | `"/home/zzchen/Prj/Prj_For_N65/ind_ref.gds"`、`tsmcN28_1p10m.proc` | 公开发布前删除 |
+| 33 | `em/pcell/README.md:368,394`；`pcell_inductor_port_clean.py:16`；`_pcell_demo.py:917-920`；`_pcell_core.py:144` | 个人路径与 TSMC 文件名随包发布；pcell README 是包数据，demo 还把路径写进 JSON 报告 | C | `"/home/zzchen/Prj/Prj_For_N65/ind_ref.gds"`、（N28 的 EMX 工艺文件名，已脱敏） | 公开发布前删除 |
 | 34 | `tests/ic_opt/pcell/test_compact_planner.py:76`；`tests/ic_opt/test_em_engine.py:173` | 按本机校准的墙钟断言（笔记本/CI 会抖）；一个测试钉死了行 2 的行为 | C | `< 0.15`；`== 1  # never below one worker` | 标 slow 或用相对界；随行 2 更新 |
 | 35 | `recipes/lib_signoff.py:85`；`library/query.py:11-12` | 本机测得的耗时被当作普遍说法展示给用户（"~2-5 min per round"） | C | 原文 | 写"在参考主机上" |
 | 36 | `library/gp.py:42,81,232-237`；`library/query.py:42`；`library/domain.py:30,61` | 统计选择：5 折 × 20% 留出、校准到 95%、SRF"高于扫频"= 5 近邻中 3 个、每匝数层 ≥ 25 行、凸包分块约 160 MB。25 行可做成 manifest 字段 | D | — | 无 |

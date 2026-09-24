@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import time
 from pathlib import Path
@@ -27,7 +28,8 @@ from ic_opt.spec import Spec
 from ic_opt.stages.em_chain import em_only_pipeline
 from ic_opt.store import RunStore
 
-PROC = "/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/EM-opt-workflow/gdsgen_ref/n28_proc/tsmcN28_1p10m.proc"
+# The site EMX process file is never committed: point IC_OPT_EMX_PROC at it.
+PROC = os.environ.get("IC_OPT_EMX_PROC", "")
 CSHRC = "/home/zzchen/Agent_virtuoso/cadence_ic231_env.csh"
 THREADS, MEMORY_GB, JOBS, TIMEOUT_S = 8, 32.0, 8, 7200
 MESH = {"thickness_um": 0.25, "edge_width_um": 0.2, "max_splits": 5}
@@ -83,6 +85,8 @@ def main() -> None:
     ap.add_argument("--plan", action="store_true")
     ap.add_argument("--only", nargs="*", default=None)
     args = ap.parse_args()
+    if not PROC:
+        ap.error("set IC_OPT_EMX_PROC to the site EMX process file (it is never committed)")
     grid = json.loads(args.grid.read_text())
     limits = site.load().host("local")
     todo = [p for p in projects(grid) if not args.only or p[0] in args.only]

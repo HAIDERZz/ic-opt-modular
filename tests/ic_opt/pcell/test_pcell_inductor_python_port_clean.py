@@ -40,6 +40,34 @@ GRID_NM = 5  # 0.005 um mask grid in dbu (dbu = 0.001 um)
 _nm = port._nm  # um -> dbu (nm) grid snap, reused by xfm_bs placement tests
 
 
+# Process-mode expectations are read from the loaded rule profile, never
+# written here as numbers: private process rules stay out of the repository.
+def _um_nm(value_um):
+    return int(round(value_um * 1000))
+
+
+def _cut_nm(via):
+    """A via rule's cut size in dbu (nm), as the rule profile states it."""
+    return tuple(_um_nm(v) for v in via.cut_size_um)
+
+
+def _pitch_nm(via):
+    """A via rule's centre pitch (cut + minimum cut spacing) in dbu."""
+    return _um_nm(via.cut_size_um[0] + via.min_cut_space_um)
+
+
+def _enclosure_nm(via):
+    return _um_nm(max(via.min_enclosure_um.values()))
+
+
+def _via_layer(ctx, via):
+    return tuple(ctx.adapter.via(via).drawing)
+
+
+def _pin_layer(ctx, conductor):
+    return tuple(ctx.adapter.layer(conductor).pin)
+
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -869,98 +897,107 @@ def test_reference_mode_still_uses_reference_via_cut_size(tmp_path):
 
 
 def test_n28_process_mode_uses_via8_rule_cut_size(tmp_path):
-    """N28 mode draws VIA8 cuts at the rule.yaml 0.46 um size, on (58, 80)."""
+    """Process mode draws VIA8 cuts at the rule.yaml cut size, on the
+    profile's own VIA8 layer/datatype."""
     ctx = port.process_rule_context("n28_1p10m")
     cell = port.base_xfm_cross(
         WI=2.0, WO=2.0, S=0.0, TOP_ME=9, BTM_ME=8, process=ctx
     )
     layers = write_and_parse(cell, tmp_path, "n28_xfm_cross")
-    via8_layer = (58, 80)
-    cuts = [rect_bbox(p) for p in layers[via8_layer]]
+    via8 = ctx.adapter.via("VIA8")
+    cuts = [rect_bbox(p) for p in layers[tuple(via8.drawing)]]
     assert cuts
-    assert all((x2 - x1, y2 - y1) == (460, 460) for x1, y1, x2, y2 in cuts)
-    assert (58, 0) not in layers, "reference via layer must not leak into N28 mode"
+    assert all((x2 - x1, y2 - y1) == _cut_nm(via8) for x1, y1, x2, y2 in cuts)
+    assert port.via_layer(8) not in layers, "reference via layer must not leak into N28 mode"
 
 
 def test_n28_process_mode_uses_via7_rule_cut_size(tmp_path):
-    """N28 mode draws VIA7 cuts at the rule.yaml 0.1 um size / 0.1 um
-    spacing / 0.04 um enclosure, on (57, 20) -- geometric-only enforcement
+    """Process mode draws VIA7 cuts at the rule.yaml cut size and spacing,
+    on the profile's own VIA7 layer/datatype -- geometric-only enforcement
     (n28-rules-slim, user directive 2026-07-19): VIA7 is a lower via with
     complete via_primitives geometry, no longer gated by the retired
-    via_restrictions (IND.R.1) or passive_via_array_coverage policy gates.
+    via_restrictions or passive_via_array_coverage policy gates.
     Mirrors test_n28_process_mode_uses_via8_rule_cut_size above."""
     ctx = port.process_rule_context("n28_1p10m")
     cell = port.base_xfm_cross(
         WI=2.0, WO=2.0, S=0.0, TOP_ME=8, BTM_ME=7, process=ctx
     )
     layers = write_and_parse(cell, tmp_path, "n28_xfm_cross_via7")
-    via7_layer = (57, 20)
-    cuts = [rect_bbox(p) for p in layers[via7_layer]]
+    via7 = ctx.adapter.via("VIA7")
+    cuts = [rect_bbox(p) for p in layers[tuple(via7.drawing)]]
     assert cuts
-    assert all((x2 - x1, y2 - y1) == (100, 100) for x1, y1, x2, y2 in cuts)
+    assert all((x2 - x1, y2 - y1) == _cut_nm(via7) for x1, y1, x2, y2 in cuts)
     xs = sorted({b[0] for b in cuts})
     if len(xs) > 1:
-        assert xs[1] - xs[0] == 200  # rule pitch 0.1+0.1 = 0.2 um
-    assert (57, 0) not in layers, "reference via layer must not leak into N28 mode"
+        assert xs[1] - xs[0] == _pitch_nm(via7)  # rule pitch = cut + spacing
+    assert port.via_layer(7) not in layers, "reference via layer must not leak into N28 mode"
 
 
 def test_n28_process_mode_via7_array_follows_adapter_plan(tmp_path):
     """VIA7 array placement (spacing/enclosure/centring), mirroring
     test_n28_process_mode_via_array_follows_adapter_plan's VIA9 coverage:
-    for a 2x2 um window VIA7 gives a centred array at rule pitch 0.2 um
-    with >=0.04 um enclosure -- geometric-only enforcement (n28-rules-slim)
-    plans this straight from via_primitives, no via_array_rules entry
-    needed (VIA7 has none)."""
+    for a 2x2 um window VIA7 gives a centred array at the rule pitch with
+    at least the rule enclosure -- geometric-only enforcement
+    (n28-rules-slim) plans this straight from via_primitives, no
+    via_array_rules entry needed."""
     ctx = port.process_rule_context("n28_1p10m")
+    via7 = ctx.adapter.via("VIA7")
     cell = port.vias(Length=2.0, Width=2.0, TOP_ME=8, BTM_ME=7, process=ctx)
     layers = write_and_parse(cell, tmp_path, "n28_vias_via7_block")
-    cuts = sorted(rect_bbox(p) for p in layers[(57, 20)])
+    cuts = sorted(rect_bbox(p) for p in layers[tuple(via7.drawing)])
     assert len(cuts) >= 4
     xs = sorted({b[0] for b in cuts})
     ys = sorted({b[1] for b in cuts})
-    assert xs[1] - xs[0] == 200 and ys[1] - ys[0] == 200  # rule pitch 0.2 um
+    assert xs[1] - xs[0] == _pitch_nm(via7) and ys[1] - ys[0] == _pitch_nm(via7)  # rule pitch
     x1, y1 = cuts[0][0], cuts[0][1]
     x2, y2 = cuts[-1][2], cuts[-1][3]
     assert (x1 + x2) == 2000 and (y1 + y2) == 2000  # centred in the block
-    assert x1 >= 40 and y1 >= 40  # rule enclosure 0.04 um
+    assert x1 >= _enclosure_nm(via7) and y1 >= _enclosure_nm(via7)  # rule enclosure
 
 
 def test_n28_process_mode_uses_rule_profile_layer_datatypes(tmp_path):
-    """N28 mode draws M8 on (38,20), M9 on (39,80), VIA8 on (58,80)."""
+    """Process mode draws M8, M9 and VIA8 on the rule profile's own
+    layer/datatype pairs, not on the reference-mode map."""
     ctx = port.process_rule_context("n28_1p10m")
+    m8, m9 = _drawing_layer(ctx, "M8"), _drawing_layer(ctx, "M9")
+    assert m9 != port.metal_layer(9)
     cell = port.base_xfm_cross(
         WI=2.0, WO=2.0, S=0.0, TOP_ME=9, BTM_ME=8, process=ctx
     )
     layers = write_and_parse(cell, tmp_path, "n28_xfm_cross_layers")
-    assert set(layers) == {(38, 20), (39, 80), (58, 80)}
-    # diagonal on M8 (38,20), endpoint pads on both metals
-    assert any(len(p) == 8 for p in layers[(38, 20)])
-    assert len(layers[(39, 80)]) == 2
+    assert set(layers) == {m8, m9, _via_layer(ctx, "VIA8")}
+    # diagonal on M8, endpoint pads on both metals
+    assert any(len(p) == 8 for p in layers[m8])
+    assert len(layers[m9]) == 2
 
 
 def test_n28_process_mode_via_array_follows_adapter_plan(tmp_path):
     """Cut spacing/enclosure come from plan_passive_via_array: for a 2x2 um
-    window VIA8 gives a 2x2 array, 0.9 um pitch, centred with >=0.08 um
-    enclosure."""
+    window VIA8 gives the planned rows x columns array at the rule pitch,
+    centred with at least the rule enclosure."""
     ctx = port.process_rule_context("n28_1p10m")
+    via8 = ctx.adapter.via("VIA8")
+    plan = ctx.adapter.plan_passive_via_array(
+        lower_metal="M8", upper_metal="M9", available_width_um=2.0, available_height_um=2.0)
+    assert plan.rows >= 2 and plan.columns >= 2
     cell = port.vias(Length=2.0, Width=2.0, TOP_ME=9, BTM_ME=8, process=ctx)
     layers = write_and_parse(cell, tmp_path, "n28_vias_block")
-    cuts = sorted(rect_bbox(p) for p in layers[(58, 80)])
-    assert len(cuts) == 4
+    cuts = sorted(rect_bbox(p) for p in layers[tuple(via8.drawing)])
+    assert len(cuts) == plan.rows * plan.columns
     xs = sorted({b[0] for b in cuts})
     ys = sorted({b[1] for b in cuts})
-    assert xs[1] - xs[0] == 900 and ys[1] - ys[0] == 900  # rule pitch 0.9 um
+    assert xs[1] - xs[0] == _pitch_nm(via8) and ys[1] - ys[0] == _pitch_nm(via8)  # rule pitch
     x1, y1 = cuts[0][0], cuts[0][1]
     x2, y2 = cuts[-1][2], cuts[-1][3]
     assert (x1 + x2) == 2000 and (y1 + y2) == 2000  # centred in the block
-    assert x1 >= 80 and y1 >= 80  # rule enclosure 0.08 um
-    metal_boxes = [rect_bbox(p) for p in layers[(38, 20)] + layers[(39, 80)]]
+    assert x1 >= _enclosure_nm(via8) and y1 >= _enclosure_nm(via8)  # rule enclosure
+    metal_boxes = [rect_bbox(p) for p in layers[_drawing_layer(ctx, "M8")] + layers[_drawing_layer(ctx, "M9")]]
     assert all(b == (0, 0, 2000, 2000) for b in metal_boxes)
 
 
 def test_n28_process_mode_rejects_window_below_min_cut_count():
-    """A 1x1 um window fits only one VIA8 cut, below the passive min_count
-    of 4: the adapter refusal is surfaced as a PortError (fail closed)."""
+    """A 1x1 um window fits fewer VIA8 cuts than the profile's passive
+    min_count: the adapter refusal is surfaced as a PortError (fail closed)."""
     ctx = port.process_rule_context("n28_1p10m")
     with pytest.raises(port.PortError, match="cannot fit VIA8 passive via array"):
         port.vias(Length=1.0, Width=1.0, TOP_ME=9, BTM_ME=8, process=ctx)
@@ -968,11 +1005,10 @@ def test_n28_process_mode_rejects_window_below_min_cut_count():
 
 def test_n28_process_mode_m9_coil_with_m7_ct_builds():
     """n28-rules-slim (user directive 2026-07-19): the M9->M8->M7 CT stack
-    needs VIA7, which has complete via_primitives geometry (cut 0.1um,
-    spacing 0.1um, enclosure 0.04um) -- generator enforcement is
-    geometric-only, so this now builds (previously fell closed on the
-    retired via_restrictions/IND.R.1 policy gate, VIAy class, no LOWMEDN
-    exception). OPENING must stay <= max_opening(80,4)=14.9 (M7U guard);
+    needs VIA7, which has complete via_primitives geometry -- generator
+    enforcement is geometric-only, so this now builds (previously fell
+    closed on a retired via_restrictions policy gate). OPENING must stay
+    <= max_opening(80,4)=14.9 (M7U guard);
     10.0 keeps the rest of the geometry valid."""
     ctx = port.process_rule_context("n28_1p10m")
     cell = port.ind_sym(
@@ -990,47 +1026,49 @@ def test_n28_process_mode_m9_coil_with_m7_ct_builds():
 
 
 def test_n28_process_mode_ind_sym_3t(tmp_path):
-    """The three-turn inductor is constructible in N28 mode: M8/M9 rule
-    layers only, VIA8 0.46 um cuts at the crossover endpoints."""
+    """The three-turn inductor is constructible in process mode: M8/M9 rule
+    layers only, VIA8 cuts at the rule size at the crossover endpoints."""
     ctx = port.process_rule_context("n28_1p10m")
+    via8 = ctx.adapter.via("VIA8")
     cell = port.ind_sym(
         OD=60.0, W=2.0, OPENING=5.0, LEAD=10.0, S=2.0, NT=3, process=ctx
     )
     layers = write_and_parse(cell, tmp_path, "n28_ind_sym_3t")
-    assert set(layers) == {(38, 20), (39, 80), (58, 80)}
-    cuts = [rect_bbox(p) for p in layers[(58, 80)]]
-    assert all((x2 - x1, y2 - y1) == (460, 460) for x1, y1, x2, y2 in cuts)
+    assert set(layers) == {_drawing_layer(ctx, "M8"), _drawing_layer(ctx, "M9"), tuple(via8.drawing)}
+    cuts = [rect_bbox(p) for p in layers[tuple(via8.drawing)]]
+    assert all((x2 - x1, y2 - y1) == _cut_nm(via8) for x1, y1, x2, y2 in cuts)
     assert len(cluster_boxes(cuts)) == 4  # two endpoint arrays per crossover
 
 
 def test_n28_process_mode_m10_coil_with_m8_ct(tmp_path):
-    """N28: M10/M9 coil with an M8 CT uses only modeled rules -- M10
-    (40,80) ring, M9 (39,80) underpass, VIA9 (59,80) endpoint arrays and a
-    VIA9+VIA8 tap stack; via8 cuts exist only at the tap."""
+    """M10/M9 coil with an M8 CT: M10 ring, M9 underpass, VIA9 endpoint
+    arrays and a VIA9+VIA8 tap stack, all on the rule profile's own
+    layers; via8 cuts exist only at the tap."""
     ctx = port.process_rule_context("n28_1p10m")
+    via9, via8 = ctx.adapter.via("VIA9"), ctx.adapter.via("VIA8")
+    v9, v8 = tuple(via9.drawing), tuple(via8.drawing)
     cell = port.ind_sym(
         OD=60.0, W=2.0, OPENING=5.0, LEAD=10.0, S=2.0, NT=3,
         TOP_ME="10", CT_ME="8", process=ctx,
     )
     layers = write_and_parse(cell, tmp_path, "n28_ct_m10")
-    assert set(layers) == {(40, 80), (39, 80), (38, 20), (59, 80), (58, 80)}
-    for via_layer_key in ((59, 80), (58, 80)):
-        for x1, y1, x2, y2 in (rect_bbox(p) for p in layers[via_layer_key]):
-            assert (x2 - x1, y2 - y1) == (460, 460)
+    assert set(layers) == {_drawing_layer(ctx, m) for m in ("M10", "M9", "M8")} | {v9, v8}
+    for via, key in ((via9, v9), (via8, v8)):
+        for x1, y1, x2, y2 in (rect_bbox(p) for p in layers[key]):
+            assert (x2 - x1, y2 - y1) == _cut_nm(via)
     tap_box = (-22000, -1000, -20000, 1000)
-    for x1, y1, x2, y2 in (rect_bbox(p) for p in layers[(58, 80)]):
+    for x1, y1, x2, y2 in (rect_bbox(p) for p in layers[v8]):
         assert x1 >= tap_box[0] and y1 >= tap_box[1]
         assert x2 <= tap_box[2] and y2 <= tap_box[3]
-    clusters = cluster_boxes([rect_bbox(p) for p in layers[(59, 80)]])
+    clusters = cluster_boxes([rect_bbox(p) for p in layers[v9]])
     assert len(clusters) == 5  # 4 crossover endpoint arrays + 1 tap level
 
 
 def test_n28_process_mode_m9_coil_m4_ct_builds():
     """n28-rules-slim (user directive 2026-07-19): the M9->..->M4 CT stack
     crosses VIA8/VIA7/VIA6/VIA5/VIA4, all with complete via_primitives
-    geometry -- this now builds (previously fell closed citing "VIA4 is
-    restricted by IND.R.1 ... not implemented by this generator", the
-    VIAx class's unimplemented LOWMEDN exception)."""
+    geometry -- this now builds (previously fell closed citing a retired
+    via_restrictions entry and its unimplemented band exception)."""
     ctx = port.process_rule_context("n28_1p10m")
     cell = port.ind_sym(
         OD=60.0, W=2.0, OPENING=5.0, LEAD=10.0, S=2.0, NT=3,
@@ -1074,7 +1112,7 @@ def _min_space_findings(cell, tmp_path, name, layer_dt, min_space_um):
 def test_d1_ind_sym_ap_body_junction_clean_after_phase05(tmp_path):
     """D1: an AP-body ind_sym coil clears AP's own min_space at the crossover
     junctions. This is the representative point (OD=120/W=5/S=2.5/NT=3) that
-    flagged 4 edge pairs at 1.9905 um BEFORE Phase 0.5 (pinned in
+    flagged 4 edge pairs just under AP's min_space BEFORE Phase 0.5 (pinned in
     tests/device_db/test_ap_drc_audit.py); the rule-driven junction clearance
     widens the AP-body junction so it now audits clean."""
     ctx = port.process_rule_context("n28_1p10m")
@@ -1105,25 +1143,26 @@ def test_xfm_balun_ap_body_builds_and_audits_clean_after_phase05(tmp_path):
                                _min_space_um(ctx, "M10")) == 0
 
 
-def test_d1_ind_sym_ap_s2p0_turn_gap_cleared_by_chamfer_staircase(tmp_path):
+def test_d1_ind_sym_ap_min_space_turn_gap_cleared_by_chamfer_staircase(tmp_path):
     """D1's documented residual, RESOLVED (six-family tight-spacing
-    clearance, 2026-07-28): at S == AP min_space (2.0 um) each ring's
-    independent A/BA/C quantization used to snap-erode the turn-to-turn
-    45-degree gap ~6 nm below the rule -- this test originally PINNED
-    that shortfall as a known limitation (practical floor >= ~2.05 um).
-    ``chamfer_staircase_delta`` now biases the inner rings' chamfer
-    baseline so the diagonal separation clears the floor at S == rule
-    exactly; both at-floor and just-above builds audit clean, and the
-    practical floor IS the rule value."""
+    clearance, 2026-07-28): at S == AP min_space (read from the profile)
+    each ring's independent A/BA/C quantization used to snap-erode the
+    turn-to-turn 45-degree gap ~6 nm below the rule -- this test originally
+    PINNED that shortfall as a known limitation (practical floor a few tens
+    of nm above the rule). ``chamfer_staircase_delta`` now biases the inner
+    rings' chamfer baseline so the diagonal separation clears the floor at
+    S == rule exactly; both at-floor and just-above builds audit clean, and
+    the practical floor IS the rule value."""
     ctx = port.process_rule_context("n28_1p10m")
-    at_floor = port.ind_sym(OD=120.0, W=5.0, OPENING=8.0, LEAD=20.0, S=2.0,
+    floor = _min_space_um(ctx, "AP")
+    at_floor = port.ind_sym(OD=120.0, W=5.0, OPENING=8.0, LEAD=20.0, S=floor,
                             NT=3, TOP_ME="AP", BTM_ME="10", process=ctx)
-    assert _min_space_findings(at_floor, tmp_path, "d1_ap_s20",
+    assert _min_space_findings(at_floor, tmp_path, "d1_ap_at_floor",
                                _drawing_layer(ctx, "AP"),
                                _min_space_um(ctx, "AP")) == 0
-    above = port.ind_sym(OD=120.0, W=5.0, OPENING=8.0, LEAD=20.0, S=2.1,
+    above = port.ind_sym(OD=120.0, W=5.0, OPENING=8.0, LEAD=20.0, S=floor + 0.1,
                          NT=3, TOP_ME="AP", BTM_ME="10", process=ctx)
-    assert _min_space_findings(above, tmp_path, "d1_ap_s21",
+    assert _min_space_findings(above, tmp_path, "d1_ap_above_floor",
                                _drawing_layer(ctx, "AP"),
                                _min_space_um(ctx, "AP")) == 0
 
@@ -1179,8 +1218,8 @@ def test_cross_endpoint_offset_default_met_under_process_is_reference():
     reference literal' -- instead of crashing (pre-fix: met=None was forwarded
     into _junction_clearance_const -> _metal_name(None) TypeError). The
     default-met process-mode value therefore equals the pure reference value;
-    an explicit met on a min_space<=2.0 conductor (M9) also equals it (the
-    literal dominates); only an explicit AP met widens."""
+    an explicit met whose min_space sits under the reference literal (M9)
+    also equals it (the literal dominates); only an explicit AP met widens."""
     ctx = port.process_rule_context("n28_1p10m")
     ref = port.cross_endpoint_offset(5.0, 2.5)
     assert port.cross_endpoint_offset(5.0, 2.5, process=ctx) == ref
@@ -1199,7 +1238,7 @@ def test_seam_heal_is_a_no_op_in_reference_mode(tmp_path):
     # would (the heal adds nothing); the coil still builds and has its ports.
     assert [p["logical_name"] for p in ref.emx_ports] == ["P1", "N1"]
     layers = write_and_parse(ref, tmp_path, "ref_nt1")
-    assert (31, 0) not in layers  # M1 never drawn without a ground fixture
+    assert port.metal_layer(1) not in layers  # M1 never drawn without a ground fixture
 
 
 # --- byte-invariance: numeric-metal multi-turn coils (NT>=2, OD>=100) --------
@@ -1208,9 +1247,10 @@ def test_seam_heal_is_a_no_op_in_reference_mode(tmp_path):
 # flattened polygons of a process-mode build (NOT GDS file bytes, which carry
 # nondeterministic timestamps). The baseline constants below were captured
 # from the pre-Phase-0.5 pcell (git HEAD d574ab4) BEFORE the D1 clearance and
-# D2/D3 seam heal landed. Every config here is a numeric-metal coil at
-# min_space 1.0 (M9/M10) with NT>=2 and OD>=100, where the rule does NOT
-# require any change: D1's clearance evaluates back to the 2.01 literal and
+# D2/D3 seam heal landed. Every config here is a numeric-metal coil (M9/M10,
+# whose min_space sits under the reference literal) with NT>=2 and OD>=100,
+# where the rule does NOT require any change: D1's clearance evaluates back
+# to the 2.01 literal and
 # the seam heal qualifies no pair -> geometry must be byte-identical.  The
 # sole NT=2 entry intentionally pins the newer rule-derived three-layer
 # compact bridge with its maximum DRC-clean via landing; NT>=3 entries retain
@@ -1291,23 +1331,24 @@ REQUIRED_BASENAMES = [
     "base_lead_pair",
     "ind_sym_3t",
     "ind_sym_ct_3t",
-    "ind_sym_3t_n28",
-    "ind_sym_ct_3t_m10m9_ct_m8_n28",
-    "ind_sym_ct_3t_m10m9_ct_m8_n28_gnd",
+    "ind_sym_3t_demo6m",
+    "ind_sym_ct_3t_m6m5_ct_m4_demo6m",
+    "ind_sym_ct_4t_m6m5_ct_m4_demo6m_gnd",
     "base_balun_sec",
-    "base_balun_sec_n28",
     "xfm_bs",
-    "xfm_bs_n28",
+    "xfm_bs_demo6m",
     "xfm_bs_ct",
-    "xfm_bs_ct_n28",
+    "xfm_bs_ct_demo6m",
     "xfm_ms",
     "xfm_ms_spaced",
-    "xfm_ms_n28",
+    "xfm_ms_demo6m",
     "xfm_bs_m10ap",
     "xfm_balun",
-    "xfm_balun_n28",
-    "xfm_balun_2t1t_n28",
-    "ind_sym_ct_3t_m7_n28",
+    "xfm_balun_demo6m",
+    "xfm_balun_2t1t_demo6m",
+    "ind_sym_ct_3t_m5_ct_m3_demo6m",
+    "xfm_tw_demo6m",
+    "xfm_il_demo6m_m5_ctp_m6",
 ]
 
 
@@ -1346,46 +1387,49 @@ def test_coordinates_json_matches_gds(generated):
 
 
 def test_output_json_marks_reference_and_process_modes(generated):
-    """Reference JSON: reference_mode true, no N28 DRC claim. N28 JSON:
-    process profile + rule source recorded. No n28_center_tap_status field
-    any more (n28-rules-slim, user directive 2026-07-19): that field
-    recorded a standing "expected failure" for a lower-via CT probe that no
-    longer fails, since generation is geometric-only now."""
+    """Reference JSON: reference_mode true, no DRC claim. Process JSON (the
+    demo_6m demos): process profile + rule source recorded. No
+    n28_center_tap_status field any more (n28-rules-slim, user directive
+    2026-07-19): that field recorded a standing "expected failure" for a
+    lower-via CT probe that no longer fails, since generation is
+    geometric-only now."""
     ref = json.loads((generated / "ind_sym_3t.coordinates.json").read_text())
     assert ref["reference_mode"] is True
     assert ref["process_profile"] is None
     assert ref["via_rule_source"] == "ind_ref_reconstructed"
     assert ref["n28_drc_proof"] is False
 
-    n28 = json.loads((generated / "ind_sym_3t_n28.coordinates.json").read_text())
-    assert n28["reference_mode"] is False
-    assert n28["process_profile"] == "n28_1p10m"
-    assert n28["via_rule_source"] == "process_rule_profile"
-    assert "n28_center_tap_status" not in n28
-    layer_pairs = {(p["gds_layer"], p["gds_datatype"]) for p in n28["polygons"]}
-    assert layer_pairs == {(38, 20), (39, 80), (58, 80)}
+    demo = json.loads((generated / "ind_sym_3t_demo6m.coordinates.json").read_text())
+    assert demo["reference_mode"] is False
+    assert demo["process_profile"] == "demo_6m"
+    assert demo["via_rule_source"] == "process_rule_profile"
+    assert "n28_center_tap_status" not in demo
+    ctx = port.process_rule_context("demo_6m")
+    layer_pairs = {(p["gds_layer"], p["gds_datatype"]) for p in demo["polygons"]}
+    assert layer_pairs == {_drawing_layer(ctx, "M5"), _drawing_layer(ctx, "M6"), _via_layer(ctx, "VIA5")}
 
 
-def test_n28_m7_ct_demo_builds_with_via7_and_via8(generated):
-    """n28-rules-slim (user directive 2026-07-19): the M9-body M7-CT ind_sym
-    demo (formerly recorded as an "expected failure" citing the retired
-    via_restrictions/IND.R.1 policy gate) now builds as a normal DEMOS
-    output, VIA7 (M7<->M8) and VIA8 (M8<->M9) cuts both present in its tap
-    stack. No more .expected_failure.json artifact is produced."""
+def test_demo6m_ct_demo_builds_with_its_tap_vias(generated):
+    """n28-rules-slim (user directive 2026-07-19): the M5-body M3-CT ind_sym
+    demo builds as a normal DEMOS output on demo_6m, its tap stack drawing
+    VIA4 (M4<->M5) and VIA3 (M3<->M4) cuts at their own via_primitives
+    geometry. No .expected_failure.json artifact is produced (the retired
+    policy gate used to record one)."""
     doc = json.loads(
-        (generated / "ind_sym_ct_3t_m7_n28.coordinates.json").read_text()
+        (generated / "ind_sym_ct_3t_m5_ct_m3_demo6m.coordinates.json").read_text()
     )
+    ctx = port.process_rule_context("demo_6m")
     layer_pairs = {(p["gds_layer"], p["gds_datatype"]) for p in doc["polygons"]}
-    assert (37, 20) in layer_pairs  # M7 CT lead + tap metal
-    assert (57, 20) in layer_pairs  # VIA7 tap cuts
-    assert (58, 80) in layer_pairs  # VIA8 tap cuts
+    assert _drawing_layer(ctx, "M3") in layer_pairs  # M3 CT lead + tap metal
+    assert _via_layer(ctx, "VIA3") in layer_pairs  # VIA3 tap cuts
+    assert _via_layer(ctx, "VIA4") in layer_pairs  # VIA4 tap cuts
     assert not (generated / "ind_sym_ct_3t_n28.expected_failure.json").exists()
 
 
-def test_readme_states_reference_mode_is_not_n28_drc_proof():
+def test_readme_states_reference_mode_is_not_drc_proof():
     readme = " ".join((MOD_PATH.parent / "README.md").read_text().split())
-    assert "not N28 DRC proof" in readme, (
-        "README must state that reference mode is not N28 DRC proof"
+    assert "not DRC proof" in readme, (
+        "README must state that reference mode is not DRC proof"
     )
 
 
@@ -1496,7 +1540,7 @@ def test_cell_label_round_trips_on_layer_and_grid(tmp_path):
     ly = kdb.Layout()
     ly.read(str(gds))
     top = ly.top_cell()
-    li = ly.layer(139, 0)
+    li = ly.layer(*port.metal_pin_layer(9))
     texts = [t.text_string for t in top.shapes(li).each() if t.is_text()]
     assert texts == ["P1"]
     for t in top.shapes(li).each():
@@ -1506,16 +1550,15 @@ def test_cell_label_round_trips_on_layer_and_grid(tmp_path):
 
 def test_process_pin_layer_from_rule_profile():
     ctx = port.process_rule_context("n28_1p10m")
-    assert port.process_pin_layer(ctx, 8) == (138, 0)
-    assert port.process_pin_layer(ctx, 9) == (139, 0)
-    assert port.process_pin_layer(ctx, 10) == (140, 0)
+    for met in (8, 9, 10):
+        assert port.process_pin_layer(ctx, met) == _pin_layer(ctx, f"M{met}")
 
 
 def test_pin_layer_dispatch_reference_vs_process():
     ctx = port.process_rule_context("n28_1p10m")
-    assert port._pin(9, None) == (139, 0)
-    assert port._pin(9, ctx) == (139, 0)
-    assert port._pin(8, None) == (138, 0)
+    assert port._pin(9, None) == port.metal_pin_layer(9)
+    assert port._pin(9, ctx) == _pin_layer(ctx, "M9")
+    assert port._pin(8, None) == port.metal_pin_layer(8)
 
 
 def test_process_pin_layer_fails_closed_when_pin_missing():
@@ -1562,18 +1605,18 @@ def test_ind_sym_emits_p1_n1_port_labels(tmp_path):
     cell = port.ind_sym(OD=60.0, W=2.0, OPENING=5.0, LEAD=10.0, S=2.0, NT=3)
     assert [p["logical_name"] for p in cell.emx_ports] == ["P1", "N1"]
     layers = write_and_parse_labels(cell, tmp_path, "ind_sym_ports")
-    assert layers[(139, 0)] == {"P1": (40000, 6000), "N1": (40000, -6000)}
+    assert layers[port.metal_pin_layer(9)] == {"P1": (40000, 6000), "N1": (40000, -6000)}
 
 
 def test_ind_sym_n28_uses_rule_pin_layer(tmp_path):
-    """Process mode resolves the pin layer from the rule profile (M10 -> 140,0)."""
+    """Process mode resolves the pin layer from the rule profile (M10's own pin entry)."""
     ctx = port.process_rule_context("n28_1p10m")
     cell = port.ind_sym(
         OD=60.0, W=2.0, OPENING=5.0, LEAD=10.0, S=2.0, NT=3,
         TOP_ME="10", BTM_ME="9", process=ctx,
     )
     layers = write_and_parse_labels(cell, tmp_path, "ind_sym_ports_n28")
-    assert set(layers[(140, 0)]) == {"P1", "N1"}
+    assert set(layers[_pin_layer(ctx, "M10")]) == {"P1", "N1"}
 
 
 def test_ind_sym_ct_odd_nt_ct_label_left_tip(tmp_path):
@@ -1585,8 +1628,8 @@ def test_ind_sym_ct_odd_nt_ct_label_left_tip(tmp_path):
     )
     assert [p["logical_name"] for p in cell.emx_ports] == ["P1", "N1", "CT"]
     layers = write_and_parse_labels(cell, tmp_path, "ct_odd_ports")
-    assert layers[(137, 0)] == {"CT": (-40000, 0)}
-    assert set(layers[(139, 0)]) == {"P1", "N1"}
+    assert layers[port.metal_pin_layer(7)] == {"CT": (-40000, 0)}
+    assert set(layers[port.metal_pin_layer(9)]) == {"P1", "N1"}
 
 
 def test_ind_sym_ct_even_nt_ct_label_right_tip(tmp_path):
@@ -1599,7 +1642,7 @@ def test_ind_sym_ct_even_nt_ct_label_right_tip(tmp_path):
         NT=2, TOP_ME="9", CT_ME="7",
     )
     layers = write_and_parse_labels(cell, tmp_path, "ct_even_ports")
-    assert layers[(137, 0)] == {"CT": (40000, 0)}
+    assert layers[port.metal_pin_layer(7)] == {"CT": (40000, 0)}
 
 
 def test_ind_sym_ct_m10m9_m8ct_n28_ports(tmp_path):
@@ -1611,8 +1654,8 @@ def test_ind_sym_ct_m10m9_m8ct_n28_ports(tmp_path):
         NT=4, TOP_ME="10", CT_ME="8", process=ctx,
     )
     layers = write_and_parse_labels(cell, tmp_path, "ct_m10_ports")
-    assert set(layers[(140, 0)]) == {"P1", "N1"}
-    assert layers[(138, 0)] == {"CT": (40000, 0)}
+    assert set(layers[_pin_layer(ctx, "M10")]) == {"P1", "N1"}
+    assert layers[_pin_layer(ctx, "M8")] == {"CT": (40000, 0)}
 
 
 def test_emx_port_lines_parse_with_product_parser():
@@ -1632,7 +1675,7 @@ def test_emx_port_lines_parse_with_product_parser():
 
 
 def test_generate_all_writes_emx_ports_and_signals_in_labels(generated):
-    for base in ("ind_sym_3t", "ind_sym_ct_3t", "ind_sym_3t_n28"):
+    for base in ("ind_sym_3t", "ind_sym_ct_3t", "ind_sym_3t_demo6m"):
         lines = (generated / f"{base}.emx_ports").read_text().splitlines()
         assert lines and all(ln.startswith("-p ") for ln in lines)
         doc = json.loads((generated / f"{base}.coordinates.json").read_text())
@@ -1649,11 +1692,9 @@ def test_drawing_layers_unchanged_by_port_labels(tmp_path):
         NT=3, TOP_ME="9", CT_ME="7",
     )
     layers = write_and_parse(cell, tmp_path, "ct_drawing")
-    drawing = {
-        k for k in layers
-        if k[0] in (37, 38, 39, 40) and k[1] in (0, 20, 80)
-    }
-    pin = {k for k in layers if k[0] in (137, 138, 139, 140)}
+    metals = (7, 8, 9, 10)
+    drawing = {k for k in layers if k in {port.metal_layer(m) for m in metals}}
+    pin = {k for k in layers if k in {port.metal_pin_layer(m) for m in metals}}
     assert drawing and not pin
 
 
@@ -1705,7 +1746,7 @@ def test_ind_sym_no_ct_stays_two_port_no_low_metal(tmp_path):
     cell = port.ind_sym(OD=60.0, W=2.0, OPENING=5.0, LEAD=10.0, S=2.0, NT=2)
     assert [p["name"] for p in cell.emx_ports] == ["P1", "N1"]
     layers = write_and_parse(cell, tmp_path, "no_ct")
-    assert (37, 0) not in layers
+    assert port.metal_layer(7) not in layers
 
 
 def test_ind_sym_ct_me_ground_fixture_reference_chain():
@@ -1730,7 +1771,7 @@ def test_ind_sym_default_port_names_are_semantic(tmp_path):
     assert [(p["name"], p["logical_name"]) for p in cell.emx_ports] == [
         ("P1", "P1"), ("N1", "N1")]
     layers = write_and_parse_labels(cell, tmp_path, "sym_names")
-    assert set(layers[(139, 0)]) == {"P1", "N1"}
+    assert set(layers[port.metal_pin_layer(9)]) == {"P1", "N1"}
 
 
 def test_ind_sym_ct_port_order_override():
@@ -1772,12 +1813,12 @@ def test_ground_fixture_ring_and_stubs_and_g_pins(tmp_path):
     refs = {p["logical_name"]: p["reference"] for p in cell.emx_ports}
     assert refs == {"P1": "G01", "N1": "G02", "CT": "G03"}
     labels = write_and_parse_labels(cell, tmp_path, "gnd_even")
-    g = labels[(131, 0)]
+    g = labels[port.metal_pin_layer(1)]
     assert g["G01"] == (40000, 6000)
     assert g["G02"] == (40000, -6000)
     assert g["G03"] == (40000, 0)
     polys = write_and_parse(cell, tmp_path, "gnd_even")
-    m1 = polys[(31, 0)]
+    m1 = polys[port.metal_layer(1)]
     assert len(m1) >= 4  # four ring rectangles + one chamfered stub per port
     assert_on_grid(polys)
 
@@ -1789,7 +1830,7 @@ def test_ground_fixture_odd_nt_ct_stub_on_left(tmp_path):
                            NT=3, TOP_ME="9", CT_ME="7",
                            ground_fixture=_fixture())
     labels = write_and_parse_labels(cell, tmp_path, "gnd_odd")
-    assert labels[(131, 0)]["G03"] == (-40000, 0)
+    assert labels[port.metal_pin_layer(1)]["G03"] == (-40000, 0)
 
 
 def test_ground_fixture_port_side_uses_stub_length_not_body_margin(tmp_path):
@@ -1803,7 +1844,7 @@ def test_ground_fixture_port_side_uses_stub_length_not_body_margin(tmp_path):
                            ground_fixture=_fixture())
     port_x = 30.0 + 10.0  # OD/2 + LEAD, matches the P1/N1 lead tip (x=40)
     polys = write_and_parse(cell, tmp_path, "gnd_stub_length")
-    m1 = polys[(31, 0)]
+    m1 = polys[port.metal_layer(1)]
     # the right-side ring segment: a thin vertical sliver at large +x,
     # width == ring_width_um (3.0um = 3000nm), unlike the stub (4000nm wide).
     ring_width_nm = 3000
@@ -1894,7 +1935,7 @@ def test_ground_fixture_per_port_stub_width(tmp_path):
     cell = _ms(ground_fixture=gfc)
     tips = {p["name"]: p["label_xy_um"] for p in cell.emx_ports}
     polys = write_and_parse(cell, tmp_path, "gnd_perport")
-    m1 = polys[(31, 0)]
+    m1 = polys[port.metal_layer(1)]
     expected_w_nm = {"P1": 6000, "N1": 6000, "P2": 3000, "N2": 3000}
     for name, w_nm in expected_w_nm.items():
         x_um, y_um = tips[name]
@@ -1961,7 +2002,7 @@ def test_ground_fixture_fails_closed_without_ports():
 def test_ground_fixture_fails_closed_when_m1_has_no_pin():
     """A process profile whose M1 carries no pin layer cannot host a G label."""
     class _PinlessM1Layer:
-        drawing = (31, 0)
+        drawing = (61, 0)
         pin = None
 
     class _StubAdapter:
@@ -1977,16 +2018,16 @@ def test_ground_fixture_fails_closed_when_m1_has_no_pin():
 
 
 def test_ground_fixture_n28_uses_rule_m1_layers(tmp_path):
-    """N28 process + fixture: G labels on the rule-profile M1 pin (131,0)
-    and the ring on the M1 drawing (31,0)."""
+    """Process mode + fixture: G labels on the rule-profile M1 pin and the
+    ring on the rule-profile M1 drawing."""
     ctx = port.process_rule_context("n28_1p10m")
     cell = port.ind_sym(OD=60.0, W=2.0, OPENING=5.0, LEAD=10.0, S=2.0,
                            NT=4, TOP_ME="10", CT_ME="8", process=ctx,
                            ground_fixture=_fixture())
     labels = write_and_parse_labels(cell, tmp_path, "gnd_n28")
-    assert set(labels[(131, 0)]) == {"G01", "G02", "G03"}
+    assert set(labels[_pin_layer(ctx, "M1")]) == {"G01", "G02", "G03"}
     polys = write_and_parse(cell, tmp_path, "gnd_n28")
-    assert (31, 0) in polys
+    assert _drawing_layer(ctx, "M1") in polys
 
 
 # ---------------------------------------------------------------------------
@@ -2000,13 +2041,13 @@ def test_no_fixture_drawing_layers_unchanged(tmp_path):
     cell = port.ind_sym(OD=60.0, W=2.0, OPENING=5.0, LEAD=10.0, S=2.0,
                            NT=3, TOP_ME="9", CT_ME="7")
     polys = write_and_parse(cell, tmp_path, "nofix")
-    assert (31, 0) not in polys
+    assert port.metal_layer(1) not in polys
 
 
 def test_generated_gnd_demo_has_grounded_ports(generated):
-    """The N28 grounded demo emits p0n=p0n:G0n lines, wires references onto
-    the emx_ports block, and carries G01/G02/G03 labels."""
-    base = "ind_sym_ct_3t_m10m9_ct_m8_n28_gnd"
+    """The demo_6m grounded demo emits p0n=p0n:G0n lines, wires references
+    onto the emx_ports block, and carries G01/G02/G03 labels."""
+    base = "ind_sym_ct_4t_m6m5_ct_m4_demo6m_gnd"
     lines = (generated / f"{base}.emx_ports").read_text().splitlines()
     assert any(":" in ln for ln in lines)
     doc = json.loads((generated / f"{base}.coordinates.json").read_text())
@@ -2032,13 +2073,15 @@ def test_vias_nomet_reference_cuts_only_no_metal(tmp_path):
 
 
 def test_vias_nomet_n28_via8_cuts_only(tmp_path):
-    """N28 process mode: VIA8 0.46 um cuts on (58,80), no metal."""
+    """Process mode: VIA8 cuts at the rule size on the profile's own VIA8
+    layer, no metal."""
     ctx = port.process_rule_context("n28_1p10m")
+    via8 = ctx.adapter.via("VIA8")
     cell = port.vias_nomet(Length=4.0, Width=4.0, TOP_ME=9, BTM_ME=8, process=ctx)
     layers = write_and_parse(cell, tmp_path, "vnm_n28")
-    assert set(layers) == {(58, 80)}
-    assert all((x2 - x1, y2 - y1) == (460, 460)
-               for x1, y1, x2, y2 in (rect_bbox(p) for p in layers[(58, 80)]))
+    assert set(layers) == {tuple(via8.drawing)}
+    assert all((x2 - x1, y2 - y1) == _cut_nm(via8)
+               for x1, y1, x2, y2 in (rect_bbox(p) for p in layers[tuple(via8.drawing)]))
 
 
 def test_vias_nomet_matches_vias_cuts_minus_metal(tmp_path):
@@ -2111,8 +2154,8 @@ def test_base_balun_sec_n28_layers(tmp_path):
 
 
 def test_generated_xfm_demos(generated):
-    """Both balun-secondary demos generate GDS + coordinates JSON with polygons."""
-    for base in ("base_balun_sec", "base_balun_sec_n28"):
+    """The balun-secondary demo generates GDS + coordinates JSON with polygons."""
+    for base in ("base_balun_sec",):
         assert (generated / f"{base}.gds").is_file()
         doc = json.loads((generated / f"{base}.coordinates.json").read_text())
         assert doc["polygons"]
@@ -2137,8 +2180,8 @@ def test_base_ind_under_reference_bridge_layers(tmp_path):
 def test_base_ind_under_n28_builds(tmp_path):
     """n28-rules-slim (user directive 2026-07-19): VIA5..VIA8 all have
     complete via_primitives geometry, so this now builds the same M5-M9
-    bridge as the reference-mode test above (previously fell closed on the
-    retired VIA5 via_restrictions/IND.R.1 policy gate). W=4 rather than
+    bridge as the reference-mode test above (previously fell closed on a
+    retired via_restrictions policy gate). W=4 rather than
     the reference test's 10: every level of the stack must respect its own
     max-width rule, and the thin M5/M6 admit far less than M9 (gdsfactory
     review 2026-09-21)."""
@@ -2318,9 +2361,9 @@ def test_ap_metal_index_and_layers():
     assert port.metal_pin_layer(11) == (141, 0)
     assert port.via_layer(10) == (60, 0)
     ctx = port.process_rule_context("n28_1p10m")
-    assert port.process_metal_layer(ctx, 11) == (74, 0)
-    assert port.process_pin_layer(ctx, 11) == (126, 0)
-    assert port.process_via_layer(ctx, 10) == (85, 0)   # RV
+    assert port.process_metal_layer(ctx, 11) == _drawing_layer(ctx, "AP")
+    assert port.process_pin_layer(ctx, 11) == _pin_layer(ctx, "AP")
+    assert port.process_via_layer(ctx, 10) == tuple(ctx.adapter.via_between("M10", "AP").drawing)
 
 
 def test_ap_single_turn_via_xfm_bs(tmp_path):
@@ -2368,7 +2411,7 @@ def test_xfm_ms_n28_builds(tmp_path):
     ctx = port.process_rule_context("n28_1p10m")
     cell = _ms(process=ctx)
     layers = write_and_parse(cell, tmp_path, "xfm_ms_n28")
-    assert port.process_metal_layer(ctx, 11) in layers   # AP (74,0)
+    assert port.process_metal_layer(ctx, 11) in layers   # AP
     assert port.process_metal_layer(ctx, 10) in layers
     assert port.process_metal_layer(ctx, 9) in layers    # leg1 (multi-1)
     # reference bridge scheme (design-region issue 03): the multi coil's
@@ -2404,7 +2447,7 @@ def _xfmhalf_layers(tmp_path, **kw):
 
 def test_base_xfm_half_single_metal(tmp_path):
     layers = _xfmhalf_layers(tmp_path, TOP_ME=9, BTM_ME=9)
-    assert set(layers) == {port.metal_layer(9)}          # (39,0) only, no via
+    assert set(layers) == {port.metal_layer(9)}          # the M9 layer only, no via
     assert_on_grid(layers)
 
 
@@ -2489,8 +2532,8 @@ def test_xfm_balun_2t1t_n28(tmp_path):
 def test_xfm_balun_multiturn_balun_me8_n28_builds(tmp_path):
     """n28-rules-slim (user directive 2026-07-19): a 2T+1T balun's
     crossunder needs BALUN_ME-1=M7 (VIA7), which now has complete
-    via_primitives geometry -- this builds (previously fell closed on the
-    retired VIA7 via_restrictions/IND.R.1 policy gate). OPENING_S=16.0
+    via_primitives geometry -- this builds (previously fell closed on a
+    retired via_restrictions policy gate). OPENING_S=16.0
     (the same widened opening test_xfm_balun_2t1t_n28 uses for its own
     2T+1T build) clears the unrelated net-short guard a 2T+1T crossunder
     needs regardless of via legality."""
@@ -2738,27 +2781,27 @@ def test_xfm_balun_opening_guard_ap_metal():
 
 
 def test_xfm_balun_ap_builds_in_n28(tmp_path):
-    # M7V: concentric AP balun in N28 escapes AP->M10 via RV (single 3um cut).
-    # Must build on real layers (AP 74/0, M10 40/80, RV 85/0) -> importable.
+    # M7V: a concentric AP balun escapes AP->M10 through the profile's
+    # single-cut M10<->AP via. Must build on the profile's own layers.
     ctx = port.process_rule_context("n28_1p10m")
     cell = port.xfm_balun(OD_P=200.0, OD_S=186.0, CENTER_SPACING=0.0,
                           BALUN_ME="AP", process=ctx)
     layers = write_and_parse(cell, tmp_path, "ap_n28")
-    assert (74, 0) in layers      # AP rings/leads
-    assert (40, 80) in layers     # M10 crossunder bridge
-    assert (85, 0) in layers      # RV single cut (M10<->AP)
+    assert _drawing_layer(ctx, "AP") in layers      # AP rings/leads
+    assert _drawing_layer(ctx, "M10") in layers     # M10 crossunder bridge
+    assert tuple(ctx.adapter.via_between("M10", "AP").drawing) in layers  # single cut (M10<->AP)
     assert_on_grid(layers)
 
 
 def test_ind_sym_ap_builds_in_n28(tmp_path):
-    # M12: AP coil + M10 crossunder escapes via RV (single 3um cut).
+    # M12: AP coil + M10 crossunder escapes through the M10<->AP via.
     ctx = port.process_rule_context("n28_1p10m")
     cell = port.ind_sym(OD=120.0, W=5.0, OPENING=8.0, LEAD=20.0, S=2.5,
                         NT=3, TOP_ME="AP", BTM_ME="10", process=ctx)
     layers = write_and_parse(cell, tmp_path, "ind_ap_n28")
-    assert (74, 0) in layers      # AP coil
-    assert (40, 80) in layers     # M10 crossunder
-    assert (85, 0) in layers      # RV cuts
+    assert _drawing_layer(ctx, "AP") in layers      # AP coil
+    assert _drawing_layer(ctx, "M10") in layers     # M10 crossunder
+    assert tuple(ctx.adapter.via_between("M10", "AP").drawing) in layers  # M10<->AP cuts
     assert_on_grid(layers)
 
 
@@ -2770,36 +2813,44 @@ def test_xfm_bs_ap_m10_builds_in_n28(tmp_path):
                        CENTER_SPACING=0.0, PRI_ME="AP", SEC_ME="10",
                        process=ctx)
     layers = write_and_parse(cell, tmp_path, "bs_ap_n28")
-    assert (74, 0) in layers and (40, 80) in layers
-    assert (85, 0) not in layers  # no RV anywhere in a via-free bs pair
+    assert _drawing_layer(ctx, "AP") in layers and _drawing_layer(ctx, "M10") in layers
+    assert tuple(ctx.adapter.via_between("M10", "AP").drawing) not in layers  # a via-free bs pair
     assert_on_grid(layers)
 
 
+def _rv_landing_floor_um(ctx):
+    """cut + 2 x enclosure of the profile's single-cut M10<->AP via: the
+    narrowest W that still lands it on both metals (read from rule.yaml)."""
+    rv = ctx.adapter.via_between("M10", "AP")
+    return rv.cut_size_um[0] + 2 * max(rv.min_enclosure_um.values())
+
+
 def test_ind_sym_ap_rv_landing_pins_w_floor(tmp_path):
-    # M12: RV needs 3.0 cut + 2x0.5 enclosure -> 4.0 um landing on both
-    # AP and M10 at the crossunder junction. W at the floor builds; below
-    # it fails closed. Measured floor = 4.0 (probed W in {4.0, 3.9, 3.5,
-    # 3.0, 2.5, 2.0}: only 4.0 builds), matching the rule math exactly.
+    # M12: the single-cut M10<->AP via needs a cut + 2 x enclosure landing on
+    # both AP and M10 at the crossunder junction. W at that floor builds;
+    # just below it fails closed -- the measured floor matches the rule math
+    # exactly.
     ctx = port.process_rule_context("n28_1p10m")
-    cell = port.ind_sym(OD=120.0, W=4.0, OPENING=8.0, LEAD=20.0, S=2.5,
+    floor = _rv_landing_floor_um(ctx)
+    cell = port.ind_sym(OD=120.0, W=floor, OPENING=8.0, LEAD=20.0, S=2.5,
                         NT=3, TOP_ME="AP", BTM_ME="10", process=ctx)
     assert cell is not None
     with pytest.raises(port.PortError):
-        port.ind_sym(OD=120.0, W=3.9, OPENING=8.0, LEAD=20.0, S=2.5,
+        port.ind_sym(OD=120.0, W=floor - 0.1, OPENING=8.0, LEAD=20.0, S=2.5,
                      NT=3, TOP_ME="AP", BTM_ME="10", process=ctx)
 
 
 def test_xfm_balun_ap_rv_landing_pins_w_floor(tmp_path):
-    # M12: same 4.0 um RV landing floor on the balun's AP->M10 crossunder
-    # escape. Measured floor = 4.0 (probed W_P=W_S in {5.0, 4.5, 4.0, 3.9,
-    # 3.5, 3.0, 2.5, 2.0}: 4.0 builds, 3.9 fails closed), matching the
-    # rule math (3.0 cut + 2x0.5 enclosure) exactly.
+    # M12: the same M10<->AP landing floor on the balun's AP->M10 crossunder
+    # escape: W_P=W_S at the floor builds, just below it fails closed,
+    # matching the rule math (cut + 2 x enclosure) exactly.
     ctx = port.process_rule_context("n28_1p10m")
-    cell = port.xfm_balun(OD_P=200.0, OD_S=186.0, W_P=4.0, W_S=4.0,
+    floor = _rv_landing_floor_um(ctx)
+    cell = port.xfm_balun(OD_P=200.0, OD_S=186.0, W_P=floor, W_S=floor,
                           CENTER_SPACING=0.0, BALUN_ME="AP", process=ctx)
     assert cell is not None
     with pytest.raises(port.PortError):
-        port.xfm_balun(OD_P=200.0, OD_S=186.0, W_P=3.9, W_S=3.9,
+        port.xfm_balun(OD_P=200.0, OD_S=186.0, W_P=floor - 0.1, W_S=floor - 0.1,
                        CENTER_SPACING=0.0, BALUN_ME="AP", process=ctx)
 
 
@@ -2875,7 +2926,7 @@ def test_xfm_ms_dual_ct_ports_and_positions(tmp_path):
     # peripheral (2026-09-22), not the interior -76/2-15 = -53 it used to be.
     assert p["CTS"] == ((-70.0, 0.0), "M8")
     layers = write_and_parse(cell, tmp_path, "ms_dual_ct")
-    assert (39, 0) in layers and (38, 0) in layers
+    assert port.metal_layer(9) in layers and port.metal_layer(8) in layers
 
 
 def test_xfm_ms_single_side_ct_only():
@@ -3394,7 +3445,7 @@ def test_xfm_il_n28_sl_m9_process_mode_builds_and_on_grid(tmp_path):
     """n28-rules-slim (user directive 2026-07-19): SL_ME="9" needs leg2 on
     M7, so leg2's own via stack crosses VIA7 (M7<->M8) -- VIA7 has complete
     via_primitives geometry, so this now builds (previously fell closed
-    citing the retired via_restrictions/IND.R.1 policy gate; ``vias()`` no
+    citing a retired via_restrictions policy gate; ``vias()`` no
     longer fails closed on it, see its own docstring)."""
     ctx = port.process_rule_context("n28_1p10m")
     cell = _il(OD=200.0, W=5.0, S=2.5, NT_P=3, NT_S=3, OPENING_P=18.0,
@@ -4880,15 +4931,15 @@ def test_tw_leg_waypoints_are_straight_diagonal_straight():
 def test_tw_slot_half_width_pitch_half_bound_dominates_ap_case():
     """02b: new G >= pitch/2 lower bound (the diagonal must reach the full
     ring-to-ring pitch tangentially too). At the AP body's own W=6/S=6
-    (K=W+min_space=8.0, AP min_space=2.0, pitch=12.0), the diagonal-
-    clearance bound alone (sqrt(2)*K - pitch/2 = 5.3137...) undershoots
-    pitch/2 = 6.0 -- without the new bound G would come out too small for
+    (pitch=12.0; K = W + AP's min_space), the diagonal-clearance bound
+    alone (sqrt(2)*K - pitch/2) undershoots pitch/2 = 6.0 -- without the
+    new bound G would come out too small for
     a 45-degree diagonal to span the full pitch, which is geometrically
     impossible (the straight-run length (2*G-pitch)/2 would be negative).
     G must be pinned at (the grid-snapped) pitch/2, not the smaller
     diagonal-only bound; this is a strictly LOOSER (larger) G than ticket
-    01/02's own formula gave for this exact case (5.370 um), a documented
-    consequence of the new bound, not a regression."""
+    01/02's own formula gave for this exact case, a documented consequence
+    of the new bound, not a regression."""
     ctx = port.process_rule_context("n28_1p10m")
     G = port._tw_slot_half_width(6.0, 6.0, port._metal_index("AP"), ctx)
     assert G >= 6.0 - 1e-9
@@ -4921,8 +4972,8 @@ def test_tw_slot_half_width_pad_containment_bound_dominates_ap_case():
     zero, landing the diagonal's start at the pad's own centre (only a
     partial pad/conductor overlap -- the tw_ap_nr3 defect). At the AP
     body's own W=6/S=6 (pitch=12.0), the new bound is pitch/2 + W/2 = 9.0,
-    strictly above 02b's own pitch/2 = 6.0 and its diagonal-clearance bound
-    5.3137."""
+    strictly above 02b's own pitch/2 = 6.0 and its diagonal-clearance
+    bound."""
     ctx = port.process_rule_context("n28_1p10m")
     W = 6.0
     G = port._tw_slot_half_width(W, 6.0, port._metal_index("AP"), ctx)
@@ -5280,9 +5331,9 @@ def test_tw_function_mapping_entry_present():
 # needs ONE dive layer per crossing (SL_ME-1) -- unlike xfm_il, whose leg2
 # needs a SECOND dive layer (SL_ME-2) and, at SL_ME="9", therefore crosses
 # VIA7 (M7<->M8) as well as VIA8 (M8<->M9). Both xfm_il's M9 body and
-# xfm_tw's M9 body build under N28 process mode (VIA7, like every via down
-# through ODCONT/POLYCONT, has complete via_primitives geometry in
-# n28_1p10m; generator enforcement is geometric-only, so a lower via class
+# xfm_tw's M9 body build under N28 process mode (VIA7, like every lower via
+# of the private profile, has complete via_primitives geometry there;
+# generator enforcement is geometric-only, so a lower via class
 # no longer fails closed on its own -- see
 # test_xfm_il_n28_sl_m9_process_mode_builds_and_on_grid above). The two
 # devices' N28 domains are therefore no longer differentiated by DRC
@@ -5294,35 +5345,36 @@ def test_tw_function_mapping_entry_present():
 # xfm_tw-specific special case.
 #
 # Body dimensions (validator's own N28 pre-scan, reproduced here and by
-# .scratch/xfm-tw-twisted/samples/gen_samples.py): AP's rule min_space is
-# 2.0 um (process_data/profiles/n28_1p10m/rule.yaml), far above M9/M10's
-# 1.0 um, so the AP body needs looser W=6/S=6 dimensions to clear
-# _tw_slot_half_width's ring-pitch guard (pitch=W+S=12.0 > K=W+min_space=8.0)
-# where the tight W=4/S=2 the M10/M9 bodies use (pitch=6.0 > K=5.0 there,
-# but pitch=6.0 <= K=6.0 for AP -- exactly the boundary the rejection test
-# below pins down) would fail closed.
+# .scratch/xfm-tw-twisted/samples/gen_samples.py): AP's rule min_space
+# (read from the private rule profile) is well above M9/M10's, so the AP
+# body needs looser W=6/S=6 dimensions to clear _tw_slot_half_width's
+# ring-pitch guard (pitch = W + S must reach K = W + min_space), which the
+# tight W=4/S=2 the M10/M9 bodies use does not clear with margin on AP;
+# the equality/shortfall test below pins that boundary down with values
+# computed from the profile.
 # ---------------------------------------------------------------------------
 
 
 def test_tw_n28_ap_body_ring_pitch_guard_equality_and_shortfall():
     """AP body (SL_ME="AP", dives to M10) around the ring-pitch guard's
-    boundary. S == min_space (W=4/S=2: pitch=6.0 == K=W+AP min_space=6.0)
-    is a passing DRC equality -- spacing exactly at the rule is legal --
-    so since the six-family tight-spacing-clearance equality fix the
-    build must PROCEED (the guard used to reject it too). A STRICT
-    shortfall (S=1.5: pitch=5.5 < 6.0) still fails closed, naming the
-    pitch value and the clearance it fails to clear."""
+    boundary, S taken from the profile. S == min_space (pitch == K = W +
+    AP min_space) is a passing DRC equality -- spacing exactly at the rule
+    is legal -- so since the six-family tight-spacing-clearance equality
+    fix the build must PROCEED (the guard used to reject it too). A STRICT
+    shortfall (S = min_space - 0.5) still fails closed, naming the pitch
+    value and the clearance it fails to clear."""
     ctx = port.process_rule_context("n28_1p10m")
-    cell = port.xfm_tw(OD=260.0, W=4.0, S=2.0, NR=3, OPENING_P=10.0,
+    W, min_space = 4.0, _min_space_um(ctx, "AP")
+    cell = port.xfm_tw(OD=260.0, W=W, S=min_space, NR=3, OPENING_P=10.0,
                        OPENING_N=10.0, LEAD=20.0, SL_ME="AP", process=ctx)
     assert cell is not None
     with pytest.raises(port.PortError) as excinfo:
-        port.xfm_tw(OD=260.0, W=4.0, S=1.5, NR=3, OPENING_P=10.0,
+        port.xfm_tw(OD=260.0, W=W, S=min_space - 0.5, NR=3, OPENING_P=10.0,
                     OPENING_N=10.0, LEAD=20.0, SL_ME="AP", process=ctx)
     msg = str(excinfo.value)
-    assert "ring pitch 5.500" in msg
+    assert f"ring pitch {W + min_space - 0.5:.3f}" in msg
     assert "does not clear" in msg
-    assert "min_space=6.000" in msg
+    assert f"min_space={W + min_space:.3f}" in msg
 
 
 # (body label, SL_ME, NR, OD, W, S, expected total flattened shape count).

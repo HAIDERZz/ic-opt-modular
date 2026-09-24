@@ -17,61 +17,23 @@ from ic_opt.em.pcell.process_rules import (
     resolve_via_primitive_rule,
     resolve_via_stack,
 )
+from tests.ic_opt.pcell.conftest import PACKAGE_DIR, profile_path, requires_profile
 
-EXPECTED_N28_CONDUCTORS = {
-    "OD",
-    "PO",
-    "M1",
-    "M2",
-    "M3",
-    "M4",
-    "M5",
-    "M6",
-    "M7",
-    "M8",
-    "M9",
-    "M10",
-    "AP",
-}
-
-EXPECTED_N28_METAL_WIDTH_SPACE_RULES = {
-    "M1",
-    "M2",
-    "M3",
-    "M4",
-    "M5",
-    "M6",
-    "M7",
-    "M8",
-    "M9",
-    "M10",
-    "AP",
-}
-
-EXPECTED_N28_VIAS = {
-    "ODCONT",
-    "POLYCONT",
-    "VIA1",
-    "VIA2",
-    "VIA3",
-    "VIA4",
-    "VIA5",
-    "VIA6",
-    "VIA7",
-    "VIA8",
-    "VIA9",
-    "RV",
-}
-
-
-from tests.ic_opt.pcell.conftest import profile_path, requires_profile
-
+# The private n28_1p10m profile is read from IC_OPT_PROFILE_DIRS; its
+# inventory and rule values are compared against its own rule.yaml, never
+# written here (private process rules stay out of the repository). The
+# search-order tests copy the packaged public demo_6m profile instead.
 pytestmark = requires_profile("n28_1p10m")
 _N28_PROFILE_PATH = profile_path("n28_1p10m") or Path("n28_1p10m/rule.yaml")
+_DEMO_PROFILE_PATH = PACKAGE_DIR / "profiles" / "demo_6m" / "rule.yaml"
 
 
 def _load_n28_rule_data() -> dict:
     return yaml.safe_load(_N28_PROFILE_PATH.read_text(encoding="utf-8"))
+
+
+def _load_demo_rule_data() -> dict:
+    return yaml.safe_load(_DEMO_PROFILE_PATH.read_text(encoding="utf-8"))
 
 
 def test_get_process_rule_profile_loads_n28_profile() -> None:
@@ -90,20 +52,20 @@ def test_unknown_process_rule_profile_fails_closed() -> None:
 def _write_profile(directory: Path, profile_id: str, *, process_id: str) -> None:
     profile_dir = directory / profile_id
     profile_dir.mkdir(parents=True, exist_ok=True)
-    data = _load_n28_rule_data()
+    data = _load_demo_rule_data()
     data["process_id"] = process_id
     (profile_dir / "rule.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
 
 
 def test_profile_dir_env_var_hit_wins_over_packaged(tmp_path, monkeypatch) -> None:
-    # An IC_OPT_PROFILE_DIRS hit must be preferred over anything with the
-    # same id under packaged resources (n28_1p10m itself is repo-only now --
-    # see test_process_rule_loader_is_generic for the packaged-fallback
-    # side of this search order, using a synthetic packaged id).
-    _write_profile(tmp_path, "n28_1p10m", process_id="env_dir_wins")
+    # An IC_OPT_PROFILE_DIRS hit must be preferred over the packaged profile
+    # with the same id (demo_6m ships in the package; see
+    # test_process_rule_loader_is_generic for the packaged-fallback side of
+    # this search order, using a synthetic packaged id).
+    _write_profile(tmp_path, "demo_6m", process_id="env_dir_wins")
     monkeypatch.setenv(PROFILE_DIRS_ENV_VAR, str(tmp_path))
 
-    profile = get_process_rule_profile("n28_1p10m")
+    profile = get_process_rule_profile("demo_6m")
 
     assert profile.process_id == "env_dir_wins"
 
@@ -139,9 +101,9 @@ def test_profile_packaged_fallback_used_when_env_dirs_miss(
     tmp_path, monkeypatch
 ) -> None:
     # An env dir that exists but doesn't have the profile must fall through
-    # to the packaged resources dir, not short-circuit the search. n28 is
-    # repo-only (process_data/), never packaged, so this uses a synthetic
-    # profile planted under the packaged resources dir instead.
+    # to the packaged resources dir, not short-circuit the search. This
+    # plants a synthetic profile (a copy of the public demo_6m) under the
+    # packaged resources dir.
     import shutil
     from importlib import resources
 
@@ -151,19 +113,19 @@ def test_profile_packaged_fallback_used_when_env_dirs_miss(
     dst_dir = base / new_id
     dst_dir.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.copyfile(_N28_PROFILE_PATH, dst_dir / "rule.yaml")
-        assert get_process_rule_profile(new_id).process_id == "n28_1p10m"
+        shutil.copyfile(_DEMO_PROFILE_PATH, dst_dir / "rule.yaml")
+        assert get_process_rule_profile(new_id).process_id == "demo_6m"
     finally:
         shutil.rmtree(dst_dir, ignore_errors=True)
 
 
 def test_process_rule_loader_is_generic(monkeypatch) -> None:
-    # The loader must resolve ANY <id>/rule.yaml, not special-case n28. Copy
-    # the real n28 profile (now repo-only under process_data/, never
-    # packaged) into a fresh id under the PACKAGED profiles dir (editable
-    # install -> resources.files is a real writable path) with no
-    # IC_OPT_PROFILE_DIRS hit for that id, so this doubles as the
-    # "packaged fallback still works for a synthetic packaged profile" case.
+    # The loader must resolve ANY <id>/rule.yaml, not special-case a profile
+    # id. Copy the public demo_6m profile into a fresh id under the PACKAGED
+    # profiles dir (editable install -> resources.files is a real writable
+    # path) with no IC_OPT_PROFILE_DIRS hit for that id, so this doubles as
+    # the "packaged fallback still works for a synthetic packaged profile"
+    # case.
     import shutil
     from importlib import resources
 
@@ -173,30 +135,34 @@ def test_process_rule_loader_is_generic(monkeypatch) -> None:
     dst_dir = base / new_id
     dst_dir.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.copyfile(_N28_PROFILE_PATH, dst_dir / "rule.yaml")
+        shutil.copyfile(_DEMO_PROFILE_PATH, dst_dir / "rule.yaml")
         # process_id comes from the yaml body, proving the FILE was loaded via
         # the generic id path rather than a hardcoded branch.
-        assert get_process_rule_profile(new_id).process_id == "n28_1p10m"
+        assert get_process_rule_profile(new_id).process_id == "demo_6m"
     finally:
         shutil.rmtree(dst_dir, ignore_errors=True)
 
 
 def test_process_rule_profile_defines_full_known_n28_inventory() -> None:
     profile = get_process_rule_profile("n28_1p10m")
+    catalog = _load_n28_rule_data()["layer_catalog"]
 
-    assert set(profile.layer_catalog.conductors) == EXPECTED_N28_CONDUCTORS
-    assert set(profile.layer_catalog.vias) == EXPECTED_N28_VIAS
-    assert set(profile.layer_catalog.markers) == {"INDDMY", "LOWMEDN"}
+    assert set(profile.layer_catalog.conductors) == set(catalog["conductors"])
+    assert set(profile.layer_catalog.vias) == set(catalog["vias"])
+    assert set(profile.layer_catalog.markers) == set(catalog["markers"])
+    assert {"M1", "M9", "M10", "AP"} <= set(profile.layer_catalog.conductors)
 
 
 def test_process_rule_profile_declares_core_layout_rule_coverage() -> None:
     profile = get_process_rule_profile("n28_1p10m")
+    coverage = _load_n28_rule_data()["coverage"]
 
     assert profile.coverage.layer_inventory == "full_known_inventory"
     assert profile.coverage.layout_rules == "passive_generator_core_rules"
-    assert set(profile.coverage.metal_width_space) == EXPECTED_N28_METAL_WIDTH_SPACE_RULES
-    assert set(profile.coverage.via_primitives) == EXPECTED_N28_VIAS
-    assert set(profile.coverage.passive_via_arrays) == {"VIA8", "VIA9", "RV"}
+    assert set(profile.coverage.metal_width_space) == set(coverage["metal_width_space"])
+    assert set(profile.coverage.via_primitives) == set(coverage["via_primitives"])
+    assert set(profile.coverage.passive_via_arrays) == set(coverage["passive_via_arrays"])
+    assert set(profile.coverage.via_primitives) == set(profile.layer_catalog.vias)
 
 
 def test_process_rule_profile_requires_core_sections() -> None:
@@ -217,11 +183,13 @@ def test_process_rule_profile_requires_core_sections() -> None:
 
 def test_process_rule_profile_resolves_conductors_vias_and_markers() -> None:
     profile = get_process_rule_profile("n28_1p10m")
+    catalog = _load_n28_rule_data()["layer_catalog"]
 
-    assert resolve_conductor(profile, "M10").drawing == (40, 80)
-    assert resolve_conductor(profile, "AP").pin == (126, 0)
+    assert resolve_conductor(profile, "M10").drawing == tuple(catalog["conductors"]["M10"]["drawing"])
+    assert resolve_conductor(profile, "AP").pin == tuple(catalog["conductors"]["AP"]["pin"])
     assert resolve_via(profile, "VIA9").connects == ("M9", "M10")
-    assert resolve_marker(profile, "INDDMY").purpose == "passive_region"
+    for name, marker in catalog["markers"].items():
+        assert resolve_marker(profile, name).purpose == marker["purpose"]
 
 
 def test_process_rule_profile_resolves_via_stack_by_connected_metals() -> None:
@@ -229,34 +197,38 @@ def test_process_rule_profile_resolves_via_stack_by_connected_metals() -> None:
 
     assert resolve_via_stack(profile, "M9", "M10").name == "VIA9"
     assert resolve_via_stack(profile, "M10", "M9").name == "VIA9"
-    assert resolve_via_stack(profile, "M10", "AP").name == "RV"
+    assert resolve_via_stack(profile, "M10", "AP").connects == ("M10", "AP")
 
 
 def test_process_rule_profile_exposes_passive_region_rules() -> None:
     profile = get_process_rule_profile("n28_1p10m")
     passive_region = profile.layout_rules.passive_region
+    raw = _load_n28_rule_data()
+    raw_passive = raw["layout_rules"]["passive_region"]
 
-    assert passive_region.marker == "INDDMY"
-    assert set(profile.layout_rules.metal_width_space) == (
-        EXPECTED_N28_METAL_WIDTH_SPACE_RULES
-    )
-    assert set(profile.layout_rules.via_primitives) == EXPECTED_N28_VIAS
-    assert set(passive_region.via_array_rules) == {"VIA8", "VIA9", "RV"}
+    assert passive_region.marker == raw_passive["marker"]
+    assert passive_region.marker in profile.layer_catalog.markers
+    assert set(profile.layout_rules.metal_width_space) == set(raw["coverage"]["metal_width_space"])
+    assert set(profile.layout_rules.via_primitives) == set(raw["coverage"]["via_primitives"])
+    assert set(passive_region.via_array_rules) == set(raw_passive["via_array_rules"])
     coverage = passive_region.passive_via_array_coverage
-    assert set(coverage.modeled) == {"VIA8", "VIA9", "RV"}
+    raw_coverage = raw_passive["passive_via_array_coverage"]
+    assert set(coverage.modeled) == set(raw_coverage["modeled"])
+    assert set(coverage.not_yet_modeled) == set(raw_coverage["not_yet_modeled"])
     assert set(coverage.modeled) == set(passive_region.via_array_rules)
     assert set(coverage.modeled) | set(coverage.not_yet_modeled) == set(
         profile.layer_catalog.vias
     )
     assert not set(coverage.modeled) & set(coverage.not_yet_modeled)
-    assert "VIA7" in coverage.not_yet_modeled
+    assert coverage.not_yet_modeled
 
 
 def test_profile_rejects_unclassified_via() -> None:
     data = _load_n28_rule_data()
     coverage = data["layout_rules"]["passive_region"]["passive_via_array_coverage"]
+    dropped = coverage["not_yet_modeled"][-1]
     coverage["not_yet_modeled"] = [
-        via for via in coverage["not_yet_modeled"] if via != "VIA7"
+        via for via in coverage["not_yet_modeled"] if via != dropped
     ]
     with pytest.raises(ValueError, match="classified"):
         ProcessRuleProfile.model_validate(data)
@@ -273,26 +245,34 @@ def test_profile_rejects_stale_lower_via_restrictions_block() -> None:
 
 def test_layout_rule_lookups_fail_closed_for_uncovered_rules() -> None:
     profile = get_process_rule_profile("n28_1p10m")
+    raw = _load_n28_rule_data()
+    rules = raw["layout_rules"]
 
-    assert resolve_metal_width_space_rule(profile, "M1").min_width_um == 0.28
-    assert resolve_metal_width_space_rule(profile, "M7").min_width_um == 0.4
-    assert resolve_metal_width_space_rule(profile, "M10").min_width_um == 1.0
-    assert resolve_metal_width_space_rule(profile, "AP").min_space_um == 2.0
-    assert resolve_via_primitive_rule(profile, "VIA1").cut_size_um == (0.05, 0.05)
-    assert resolve_via_primitive_rule(profile, "VIA8").cut_size_um == (0.46, 0.46)
-    assert resolve_via_primitive_rule(profile, "VIA9").cut_size_um == (0.46, 0.46)
-    assert resolve_via_primitive_rule(profile, "RV").cut_size_um == (3.0, 3.0)
-    assert resolve_passive_via_array_rule(profile, "VIA8").min_count == 4
-    # RV (M10<->AP) is modeled as a single large via, geometry from its
-    # primitive rule (min_count 1, not the >=4 VIA8/VIA9 redundancy array).
-    assert resolve_passive_via_array_rule(profile, "RV").min_count == 1
-    assert resolve_passive_via_array_rule(profile, "RV").max_space_um == 2.0
+    for metal in ("M1", "M7", "M10"):
+        assert (resolve_metal_width_space_rule(profile, metal).min_width_um
+                == rules["metal_width_space"][metal]["min_width_um"])
+    assert (resolve_metal_width_space_rule(profile, "AP").min_space_um
+            == rules["metal_width_space"]["AP"]["min_space_um"])
+    for via in ("VIA1", "VIA8", "VIA9"):
+        assert (resolve_via_primitive_rule(profile, via).cut_size_um
+                == tuple(rules["via_primitives"][via]["cut_size_um"]))
+    arrays = rules["passive_region"]["via_array_rules"]
+    assert resolve_passive_via_array_rule(profile, "VIA8").min_count == arrays["VIA8"]["min_count"]
+    # The single-cut M10<->AP via is modeled with its own (single-cut) array
+    # entry; its geometry comes from its primitive rule.
+    top_via = resolve_via_stack(profile, "M10", "AP").name
+    assert (resolve_via_primitive_rule(profile, top_via).cut_size_um
+            == tuple(rules["via_primitives"][top_via]["cut_size_um"]))
+    assert resolve_passive_via_array_rule(profile, top_via).min_count == arrays[top_via]["min_count"]
+    assert resolve_passive_via_array_rule(profile, top_via).max_space_um == arrays[top_via]["max_space_um"]
 
-    with pytest.raises(ValueError, match="no metal width/space rule for PO"):
-        resolve_metal_width_space_rule(profile, "PO")
-    # the coverage-gap path still applies to a still-unmodeled via (VIA7).
-    with pytest.raises(ValueError, match="no passive via array coverage for VIA7"):
-        resolve_passive_via_array_rule(profile, "VIA7")
+    no_width_rule = next(c for c in raw["layer_catalog"]["conductors"] if c not in rules["metal_width_space"])
+    with pytest.raises(ValueError, match=f"no metal width/space rule for {no_width_rule}"):
+        resolve_metal_width_space_rule(profile, no_width_rule)
+    # the coverage-gap path still applies to a still-unmodeled via.
+    unmodeled = rules["passive_region"]["passive_via_array_coverage"]["not_yet_modeled"][-1]
+    with pytest.raises(ValueError, match=f"no passive via array coverage for {unmodeled}"):
+        resolve_passive_via_array_rule(profile, unmodeled)
 
 
 def test_process_rule_lookup_failures_are_clear() -> None:
@@ -320,59 +300,72 @@ def test_process_rule_profile_has_no_runtime_source_paths_or_pcell_refs() -> Non
 
 def test_profile_exposes_cited_passive_via_restrictions() -> None:
     profile = get_process_rule_profile("n28_1p10m")
+    raw = _load_n28_rule_data()
+    raw_passive = raw["layout_rules"]["passive_region"]
     restrictions = profile.layout_rules.passive_region.via_restrictions
-    assert set(restrictions) == {"IND.R.1"}
-    r = restrictions["IND.R.1"]
-    assert set(r.applies_to) == {
-        "VIA1", "VIA2", "VIA3", "VIA4", "VIA5", "VIA6", "VIA7"
-    }
-    assert r.scope == "INDDMY SIZING 16 um"
-    assert set(r.exception.vias) == {"VIA1", "VIA2", "VIA3", "VIA4", "VIA5"}
-    assert r.exception.marker == "LOWMEDN"
-    assert r.exception.band_um == 4.0
-    assert r.exception.implemented_by_generator is False
-    assert "VIAx, and VIAy are not allowed" in r.source_text
-    assert "5X2Y2R" in r.class_mapping_note
+    assert set(restrictions) == set(raw_passive["via_restrictions"])
+    assert restrictions
+    for name, data in raw_passive["via_restrictions"].items():
+        r = restrictions[name]
+        assert r.name == name
+        assert set(r.applies_to) == set(data["applies_to"])
+        assert r.scope == data["scope"]
+        assert r.source_text == data["source_text"]
+        assert r.class_mapping_note == data.get("class_mapping_note", "")
+        if "exception" in data:
+            assert set(r.exception.vias) == set(data["exception"]["vias"])
+            assert r.exception.marker == data["exception"]["marker"]
+            assert r.exception.band_um == data["exception"]["band_um"]
+            assert r.exception.implemented_by_generator is data["exception"]["implemented_by_generator"]
 
     metals = profile.layout_rules.passive_region.metal_restrictions
-    assert set(metals) == {"IND.R.5"}
-    assert "one layer only" in metals["IND.R.5"].source_text
-    assert "M7K" in metals["IND.R.5"].note
+    assert set(metals) == set(raw_passive["metal_restrictions"])
+    for name, data in raw_passive["metal_restrictions"].items():
+        assert metals[name].source_text == data["source_text"]
+        assert metals[name].note == data["note"]
 
-    lowmedn = profile.layer_catalog.markers["LOWMEDN"]
-    assert lowmedn.drawing == (4495, 0)
-    assert lowmedn.purpose == "low_metal_density_region"
+    for name, data in raw["layer_catalog"]["markers"].items():
+        marker = profile.layer_catalog.markers[name]
+        assert marker.drawing == tuple(data["drawing"])
+        assert marker.purpose == data["purpose"]
+
+
+def _restriction_with_exception(data: dict) -> str:
+    restrictions = data["layout_rules"]["passive_region"]["via_restrictions"]
+    return next(name for name, r in restrictions.items() if "exception" in r)
+
 
 def test_profile_rejects_restriction_on_unknown_via() -> None:
     data = _load_n28_rule_data()
-    data["layout_rules"]["passive_region"]["via_restrictions"]["IND.R.1"][
-        "applies_to"
-    ].append("VIA99")
+    restrictions = data["layout_rules"]["passive_region"]["via_restrictions"]
+    restrictions[next(iter(restrictions))]["applies_to"].append("VIA99")
     with pytest.raises(ValueError, match="unknown via"):
         ProcessRuleProfile.model_validate(data)
 
 def test_profile_rejects_exception_via_outside_applies_to() -> None:
     data = _load_n28_rule_data()
-    data["layout_rules"]["passive_region"]["via_restrictions"]["IND.R.1"][
-        "exception"
-    ]["vias"].append("VIA8")
+    restriction = data["layout_rules"]["passive_region"]["via_restrictions"][
+        _restriction_with_exception(data)
+    ]
+    outside = next(v for v in data["layer_catalog"]["vias"] if v not in restriction["applies_to"])
+    restriction["exception"]["vias"].append(outside)
     with pytest.raises(ValueError, match="exception"):
         ProcessRuleProfile.model_validate(data)
 
 def test_profile_rejects_exception_marker_missing_from_catalog() -> None:
     data = _load_n28_rule_data()
-    data["layout_rules"]["passive_region"]["via_restrictions"]["IND.R.1"][
-        "exception"
-    ]["marker"] = "NOSUCHMARK"
+    data["layout_rules"]["passive_region"]["via_restrictions"][
+        _restriction_with_exception(data)
+    ]["exception"]["marker"] = "NOSUCHMARK"
     with pytest.raises(ValueError, match="marker"):
         ProcessRuleProfile.model_validate(data)
 
 
 def test_n28_profile_lookup_fails_without_env_var(monkeypatch) -> None:
-    # n28_1p10m is NDA-derived, repo-only data under process_data/profiles/
-    # (never packaged); without IC_OPT_PROFILE_DIRS pointing there, the
-    # lookup must fail closed with a message naming the env var. This is the
-    # regression test proving the profile really did move out of the wheel's
+    # n28_1p10m is NDA-derived private data (never in this repository or the
+    # package); without IC_OPT_PROFILE_DIRS pointing at it, the lookup must
+    # fail closed with a message naming the env var. This is the regression
+    # test proving the profile really did stay out of the wheel's
     # package-data.
     monkeypatch.delenv(PROFILE_DIRS_ENV_VAR, raising=False)
 

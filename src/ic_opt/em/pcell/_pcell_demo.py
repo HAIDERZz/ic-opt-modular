@@ -360,12 +360,13 @@ KNOWN_DEVIATIONS = [
     "multi=M3 with its single M2 crossunder; M1 stays reserved for ground. "
     "Reference-mode and existing valid N28 conductor geometry are preserved.",
     "vias is a PDK library PCell without SKILL source in gdsgen_ref; its "
-    "geometry (metal stack in [0,Width]x[0,Length], centred 0.36 um cuts, "
-    "0.34 um spacing, 0.22 um enclosure) is reconstructed from call sites "
-    "and from the via cells inside ind_ref.gds. bPP is accepted but ignored. "
-    "ind_ref.gds additionally shows a layer-pair-dependent pitch (via7 "
-    "0.7 um, via8 0.9 um); lacking the vias source, this port applies the "
-    "single 0.7 um rule to every pair instead of guessing per-pair tables.",
+    "geometry (metal stack in [0,Width]x[0,Length], centred cuts at "
+    "VIA_CUT_UM / VIA_SPACE_UM / VIA_ENC_UM) is reconstructed from call "
+    "sites and from the via cells inside ind_ref.gds. bPP is accepted but "
+    "ignored. ind_ref.gds additionally shows a layer-pair-dependent pitch; "
+    "lacking the vias source, this port applies the single reference pitch "
+    "(VIA_CUT_UM + VIA_SPACE_UM) to every pair instead of guessing per-pair "
+    "tables.",
     "Reference-mode GDS datatypes are always 0; the reference process's EMX "
     "process file gives some layers EMX-oriented datatypes that are irrelevant "
     "for the structural comparison reference mode serves. Process mode is "
@@ -425,21 +426,20 @@ KNOWN_DEVIATIONS = [
     "instantiation_log of each coordinates JSON instead.",
     "pcRound-based helpers of base_ind_turn.il (not part of the required "
     "coverage) are not ported; no substitute geometry was invented.",
-    "Cited passive-region restrictions (M7K): IND.R.1 restricts "
-    "VIA1..VIA7 inside the profile's passive-region marker sizing with a "
-    "LOWMEDN band exception for the VIAx class (VIA1..VIA5) that this "
-    "generator does not implement; IND.R.5 (single intermediate metal) "
-    "is transcribed as data only. These supersede the earlier blanket "
-    "statements that no "
-    "lower via is restricted in the passive region.",
+    "Cited passive-region restrictions (M7K): a profile may cite deck "
+    "restrictions on lower vias inside its passive-region marker (with band "
+    "exceptions this generator does not implement) and on intermediate "
+    "metals; they are transcribed as data only. These supersede the earlier "
+    "blanket statements that no lower via is restricted in the passive "
+    "region.",
     "Geometric-only generator enforcement (n28-rules-slim, user directive "
     "2026-07-19): supersedes the M7K restriction gate above. "
     "plan_passive_via_array no longer fails closed on via_restrictions "
-    "(IND.R.1) or on passive_via_array_coverage's not_yet_modeled "
+    "or on passive_via_array_coverage's not_yet_modeled "
     "classification -- only on missing via geometry (a via with no "
     "via_primitives entry, or an incomplete min_enclosure_um map) does it "
-    "still fail closed. IND.R.1/IND.R.5 remain transcribed as cited deck "
-    "data in rule.yaml for documentation; the N28 domain of every "
+    "still fail closed. Cited restrictions remain in rule.yaml as "
+    "documentation; the process domain of every "
     "CT-bearing device in this module (ind_sym, xfm_il, xfm_bs, xfm_ms, "
     "xfm_balun) widened accordingly (e.g. the M9-body ind_sym M7 CT tap "
     "and xfm_il's SL_ME=\"9\" body now build; see the device tests for the "
@@ -588,11 +588,11 @@ DEMOS = [
             "CT_ME": "7",
         },
     ),
-    # N28 process-backed three-turn demo: every layer/datatype and via rule
-    # comes from the rule profile ("process_profile" is expanded to a
-    # ProcessRuleContext by generate_all).
+    # Process-backed three-turn demo on the packaged public demo_6m profile:
+    # every layer/datatype and via rule comes from the rule profile
+    # ("process_profile" is expanded to a ProcessRuleContext by generate_all).
     (
-        "ind_sym_3t_n28",
+        "ind_sym_3t_demo6m",
         ind_sym,
         {
             "OD": 60.0,
@@ -601,13 +601,14 @@ DEMOS = [
             "LEAD": 10.0,
             "S": 2.0,
             "NT": 3,
-            "process_profile": "n28_1p10m",
+            "TOP_ME": "6",
+            "process_profile": "demo_6m",
         },
     ),
-    # N28 process-backed center-tapped variant that needs only modeled
-    # rules: M10/M9 coil, VIA9 crossover arrays, VIA9+VIA8 tap, M8 CT lead.
+    # Process-backed center-tapped variant: M6/M5 coil, VIA5 crossover
+    # arrays, VIA5+VIA4 tap, M4 CT lead.
     (
-        "ind_sym_ct_3t_m10m9_ct_m8_n28",
+        "ind_sym_ct_3t_m6m5_ct_m4_demo6m",
         ind_sym,
         {
             "OD": 60.0,
@@ -616,16 +617,16 @@ DEMOS = [
             "LEAD": 10.0,
             "S": 2.0,
             "NT": 3,
-            "TOP_ME": "10",
-            "CT_ME": "8",
-            "process_profile": "n28_1p10m",
+            "TOP_ME": "6",
+            "CT_ME": "4",
+            "process_profile": "demo_6m",
         },
     ),
-    # N28 process-backed center-tapped inductor with an M1 ground reference
+    # Process-backed center-tapped inductor with an M1 ground reference
     # fixture: ring + per-port chamfered stub + G0n local-ref pin on the
     # rule-profile M1 layers (ports become EMX p0n=p0n:G0n local-ref ports).
     (
-        "ind_sym_ct_3t_m10m9_ct_m8_n28_gnd",
+        "ind_sym_ct_4t_m6m5_ct_m4_demo6m_gnd",
         ind_sym,
         {
             "OD": 60.0,
@@ -634,23 +635,20 @@ DEMOS = [
             "LEAD": 10.0,
             "S": 2.0,
             "NT": 4,
-            "TOP_ME": "10",
-            "CT_ME": "8",
-            "process_profile": "n28_1p10m",
+            "TOP_ME": "6",
+            "CT_ME": "4",
+            "process_profile": "demo_6m",
             "ground_fixture": GroundFixtureConfig(
                 inner_margin_um=5.0, ring_width_um=3.0, stub_width_um=4.0,
                 stub_length_um=3.0, stub_chamfer_um=1.0),
         },
     ),
-    # N28 process-backed M9-body coil with an M7 CT (n28-rules-slim, user
-    # directive 2026-07-19): the M9->M8->M7 tap stack crosses VIA7, a lower
-    # via with complete via_primitives geometry (cut/space/enclosure read
-    # from the profile) but no via_array_rules entry. Under geometric-only
-    # enforcement this now builds -- it used to be recorded as an
-    # "expected failure" citing the retired IND.R.1 policy gate
-    # (ind_sym_ct_3t_n28.expected_failure.json, removed with this ticket).
+    # Process-backed M5-body coil with an M3 CT: the M5->M4->M3 tap stack
+    # crosses VIA4 and VIA3, each drawn at its own via_primitives geometry
+    # (geometric-only enforcement, n28-rules-slim, user directive
+    # 2026-07-19).
     (
-        "ind_sym_ct_3t_m7_n28",
+        "ind_sym_ct_3t_m5_ct_m3_demo6m",
         ind_sym,
         {
             "OD": 80.0,
@@ -659,26 +657,21 @@ DEMOS = [
             "LEAD": 20.0,
             "S": 2.0,
             "NT": 3,
-            "TOP_ME": "9",
-            "CT_ME": "7",
-            "process_profile": "n28_1p10m",
+            "TOP_ME": "5",
+            "CT_ME": "3",
+            "process_profile": "demo_6m",
         },
     ),
     # Balun secondary primitive (M7P, shared with xfm_balun): single MET=9
-    # octagon ring.
+    # octagon ring (reference mode only: the primitive is fixed to MET=9,
+    # which demo_6m does not have).
     (
         "base_balun_sec",
         base_balun_sec,
         {"OD": 60.0, "WI": 4.0, "LOP": 10.0},
     ),
-    (
-        "base_balun_sec_n28",
-        base_balun_sec,
-        {"OD": 60.0, "WI": 4.0, "LOP": 10.0, "process_profile": "n28_1p10m"},
-    ),
     # Broadside single-turn two-layer transformer (M7R/M7R2): independent
-    # OD_P/OD_S + CENTER_SPACING. Clean-room composition (no single .il);
-    # N28 builds on VIA8/VIA9 only.
+    # OD_P/OD_S + CENTER_SPACING. Clean-room composition (no single .il).
     (
         "xfm_bs",
         xfm_bs,
@@ -687,12 +680,12 @@ DEMOS = [
          "CENTER_SPACING": 8.0, "PRI_ME": "10", "SEC_ME": "9"},
     ),
     (
-        "xfm_bs_n28",
+        "xfm_bs_demo6m",
         xfm_bs,
         {"OD_P": 100.0, "OD_S": 76.0, "W_P": 6.0, "W_S": 6.0,
          "OPENING_P": 8.0, "OPENING_S": 8.0, "LEAD_P": 20.0, "LEAD_S": 20.0,
-         "CENTER_SPACING": 8.0, "PRI_ME": "10", "SEC_ME": "9",
-         "process_profile": "n28_1p10m"},
+         "CENTER_SPACING": 8.0, "PRI_ME": "6", "SEC_ME": "5",
+         "process_profile": "demo_6m"},
     ),
     (
         "xfm_bs_ct",
@@ -703,12 +696,12 @@ DEMOS = [
          "CT_P_ME": "8", "CT_S_ME": "8"},
     ),
     (
-        "xfm_bs_ct_n28",
+        "xfm_bs_ct_demo6m",
         xfm_bs,
         {"OD_P": 90.0, "OD_S": 90.0, "W_P": 6.0, "W_S": 6.0,
          "OPENING_P": 8.0, "OPENING_S": 8.0, "LEAD_P": 20.0, "LEAD_S": 20.0,
-         "CENTER_SPACING": 0.0, "PRI_ME": "10", "SEC_ME": "9",
-         "CT_P_ME": "8", "CT_S_ME": "8", "process_profile": "n28_1p10m"},
+         "CENTER_SPACING": 0.0, "PRI_ME": "6", "SEC_ME": "5",
+         "CT_P_ME": "4", "CT_S_ME": "3", "process_profile": "demo_6m"},
     ),
     # Multi+single transformer with AP (M7S): single-turn AP winding +
     # NT_M=3 multi-turn M10 winding (crossover M9). Clean-room composition.
@@ -729,12 +722,12 @@ DEMOS = [
          "SINGLE_ME": "AP", "MULTI_ME": "10"},
     ),
     (
-        "xfm_ms_n28",
+        "xfm_ms_demo6m",
         xfm_ms,
         {"OD_S": 100.0, "OD_M": 76.0, "W_S": 6.0, "W_M": 3.0,
          "OPENING_S": 8.0, "OPENING_M": 6.0, "LEAD_S": 20.0, "LEAD_M": 15.0,
          "NT_M": 3, "S_M": 2.0, "CENTER_SPACING": 0.0,
-         "SINGLE_ME": "AP", "MULTI_ME": "10", "process_profile": "n28_1p10m"},
+         "SINGLE_ME": "6", "MULTI_ME": "5", "process_profile": "demo_6m"},
     ),
     (
         "xfm_bs_m10ap",
@@ -753,20 +746,20 @@ DEMOS = [
          "NT_P": 1, "NT_S": 1, "CENTER_SPACING": 0.0, "BALUN_ME": "9"},
     ),
     (
-        "xfm_balun_n28",
+        "xfm_balun_demo6m",
         xfm_balun,
         {"OD_P": 200.0, "OD_S": 186.0, "W_P": 5.0, "W_S": 5.0, "S": 2.0,
          "OPENING_P": 8.0, "OPENING_S": 8.0, "LEAD_P": 20.0, "LEAD_S": 20.0,
-         "NT_P": 1, "NT_S": 1, "CENTER_SPACING": 0.0, "BALUN_ME": "9",
-         "process_profile": "n28_1p10m"},
+         "NT_P": 1, "NT_S": 1, "CENTER_SPACING": 0.0, "BALUN_ME": "6",
+         "process_profile": "demo_6m"},
     ),
     (
-        "xfm_balun_2t1t_n28",
+        "xfm_balun_2t1t_demo6m",
         xfm_balun,
         {"OD_P": 200.0, "OD_S": 172.0, "W_P": 5.0, "W_S": 5.0, "S": 2.0,
          "OPENING_P": 8.0, "OPENING_S": 16.0, "LEAD_P": 20.0, "LEAD_S": 20.0,
-         "NT_P": 2, "NT_S": 1, "CENTER_SPACING": 0.0, "BALUN_ME": "9",
-         "process_profile": "n28_1p10m"},
+         "NT_P": 2, "NT_S": 1, "CENTER_SPACING": 0.0, "BALUN_ME": "6",
+         "process_profile": "demo_6m"},
     ),
     # Type 3 same-layer overlapping-inductor ("twisted") transformer
     # (ticket 03 recipe/argv passthrough -- .scratch/xfm-tw-twisted/):
@@ -778,17 +771,14 @@ DEMOS = [
         {"OD": 200.0, "W": 4.0, "S": 2.0, "NR": 3, "OPENING_P": 10.0,
          "OPENING_N": 10.0, "LEAD": 20.0, "SL_ME": "9"},
     ),
-    # N28 AP body (dives to M10): the pre-scanned good-build dims from
-    # test_pcell_inductor_python_port_clean.py's _TW_N28_BODY_MATRIX
-    # ("ap", "AP", 3, 260.0, 6.0, 6.0, ...) -- AP's own rule min_space
-    # needs the looser W=6/S=6 to clear _tw_slot_half_width's ring-pitch
-    # guard (see that matrix's own comment).
+    # demo_6m M6 body (dives to M5), the same W=6/S=6 dimensions the
+    # xfm_tw_nr3 golden (tests/ic_opt/pcell/test_golden.py) builds.
     (
-        "xfm_tw_n28",
+        "xfm_tw_demo6m",
         xfm_tw,
         {"OD": 260.0, "W": 6.0, "S": 6.0, "NR": 3, "OPENING_P": 10.0,
-         "OPENING_N": 10.0, "LEAD": 20.0, "SL_ME": "AP",
-         "process_profile": "n28_1p10m"},
+         "OPENING_N": 10.0, "LEAD": 20.0, "SL_ME": "6",
+         "process_profile": "demo_6m"},
     ),
     # Type 3 same-layer interleaved ("Rabjohn/Frlan") transformer (ticket
     # 04, .scratch/xfm-il-interleaved/): P and S alternate radial bands on
@@ -802,17 +792,16 @@ DEMOS = [
          "OPENING_P": 14.0, "OPENING_S": 14.0, "LEAD_P": 20.0,
          "LEAD_S": 20.0, "SL_ME": "9"},
     ),
-    # N28 M9 body with an UPWARD CTP tap to M10 (ticket 03c: a downward CTP
-    # is structurally blocked in every legal configuration, so the upward
-    # direction is the representative CT sample here) -- the SAME dims
-    # test_pcell_inductor_python_port_clean.py's `_il_n28()` helper uses.
+    # demo_6m M5 body with an UPWARD CTP tap to M6 (ticket 03c: a downward
+    # CTP is structurally blocked in every legal configuration, so the
+    # upward direction is the representative CT sample here).
     (
-        "xfm_il_n28_m9_ctp_m10",
+        "xfm_il_demo6m_m5_ctp_m6",
         xfm_il,
         {"OD": 200.0, "W": 5.0, "S": 2.5, "NT_P": 3, "NT_S": 3,
          "OPENING_P": 18.0, "OPENING_S": 18.0, "LEAD_P": 20.0,
-         "LEAD_S": 20.0, "SL_ME": "9", "CT_P_ME": "10",
-         "process_profile": "n28_1p10m"},
+         "LEAD_S": 20.0, "SL_ME": "5", "CT_P_ME": "6",
+         "process_profile": "demo_6m"},
     ),
 ]
 
@@ -866,9 +855,9 @@ def _render_png(gds_path, png_path, title, process: ProcessRuleContext | None = 
     that predates this parameter -- generate_all's reference-mode demos,
     experiments/m13_ct_validation/visual_review.py, gen_samples.py's
     original call): when supplied, its process rule profile's own layer
-    catalog additionally names layers the generic M1-M10/via1-9 patterns
-    can't reach (N28's AP/RV). With no ``process``, rendering is
-    byte-identical to before this parameter existed."""
+    catalog additionally names layers the generic reference-map patterns
+    can't reach (e.g. an AP conductor and its via). With no ``process``,
+    rendering is byte-identical to before this parameter existed."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -917,15 +906,14 @@ def _write_report(out_dir, manifest):
             "independent_gds_reference": "ind_ref.gds, an independent reference layout (not shipped)",
         },
         "layer_mapping": {
-            "metal_m": "GDS layer 30+m, datatype 0 (the reference process's mapping: M1=31..M10=40; "
-                       "process mode takes every layer from the profile)",
-            "via_m_to_m_plus_1": "GDS layer 50+m, datatype 0 (via1=51..via9=59)",
+            "reference_mode": "the fixed built-in map (metal_layer / metal_pin_layer / via_layer), datatype 0",
+            "process_mode": "every layer/datatype from the process rule profile",
         },
         "modes": {
             "reference": (
-                "process=None: reconstructed ind_ref via rule (0.36/0.34/0.22 "
-                "um) on datatype-0 layers; PCell/ind_ref shape study only, "
-                "NOT N28 DRC proof"
+                "process=None: reconstructed ind_ref via rule (VIA_CUT_UM / "
+                "VIA_SPACE_UM / VIA_ENC_UM) on datatype-0 layers; PCell/ind_ref "
+                "shape study only, NOT DRC proof for any process"
             ),
             "process": (
                 "process=process_rule_context(profile): every layer/datatype "
@@ -935,7 +923,7 @@ def _write_report(out_dir, manifest):
                 "fails closed only on missing via geometry (no "
                 "via_primitives entry, or an incomplete enclosure map) for "
                 "the requested via, not on the retired via_restrictions "
-                "(IND.R.1) or passive_via_array_coverage policy gates"
+                "or passive_via_array_coverage policy gates"
             ),
         },
         "function_mapping": FUNCTION_MAPPING,
@@ -973,8 +961,8 @@ def _write_report(out_dir, manifest):
         "diagonal over an M8 underpass diagonal with via8 arrays only at the",
         "underpass endpoints. When TOP_ME is overridden, the coil follows",
         "TOP_ME and the underpass follows TOP_ME-1. The independent reference",
-        "ind_ref.gds shows the default relationship (M9=39 diagonals, M8=38,",
-        "via8=58 arrays) and no M10 at all.",
+        "ind_ref.gds shows the default relationship (M9 diagonals over M8",
+        "underpasses, via8 arrays at the underpass endpoints) and no M10 at all.",
         "",
         "## Known deviations (fail closed)",
         "",

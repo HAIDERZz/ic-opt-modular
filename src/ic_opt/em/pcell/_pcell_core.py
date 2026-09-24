@@ -725,9 +725,9 @@ def vias(
     (n28-rules-slim, user directive 2026-07-19): line width, via cut size,
     line spacing, via-to-metal-edge enclosure and via-to-via spacing are the
     only categories that fail generation closed. A via with a modeled
-    via_array_rules entry (currently VIA8/VIA9/RV) additionally enforces its
-    own min-count/max-spacing legality unchanged. Neither a cited
-    passive-region restriction (e.g. IND.R.1, which named VIA1..VIA7) nor an
+    via_array_rules entry additionally enforces its own min-count/max-spacing
+    legality unchanged. Neither a cited passive-region restriction (a deck
+    rule a profile quotes under via_restrictions) nor an
     unmodeled passive_via_array_coverage classification fails generation
     closed any more; both remain in the rule profile as cited/declared
     data. Only missing via geometry itself -- no via_primitives entry, or an
@@ -975,7 +975,7 @@ def chamfer_staircase_delta(ring_ods, W: float, top_met, process) -> int:
     Each ring's chamfer parameters quantize independently (A rounds, BA
     floors, C ceils), so the 45-degree edges of an ADJACENT ring pair can
     sit single-digit nanometres closer than the flats' spacing --
-    measured 6-9 nm short of a 2.0 um floor at S == min_space, invisible
+    measured 6-9 nm short of the floor at S == min_space, invisible
     whenever the process leaves >= ~15 nm of margin. Biasing ring k's BA
     inward by ``k * delta`` grid steps grows EVERY adjacent pair's
     diagonal separation by exactly ``delta * GRID_UM / sqrt(2)`` (the
@@ -1181,12 +1181,11 @@ def _process_layer_names(process: ProcessRuleContext) -> dict[tuple[int, int], s
 
     This is a pure runtime lookup -- no process-specific gds layer number is
     ever written into this module (M11 IP-strip audit). It exists to name
-    layers a numeric-metal-body render never needs: N28's AP conductor and
-    its AP<->M10 via ("RV") sit outside the 31-40/51-59 gds-layer ranges
-    ``_layer_display_name``'s generic fallback already covers for every
-    M1-M10/VIA1-VIA9 layer (reference or process mode alike), so without
-    this they render as the generic "?" placeholder (ticket 02's deferred
-    gap, .scratch/xfm-tw-twisted/issues/02-n28-domain-sample-gallery.md)."""
+    layers a numeric-metal-body render never needs: a profile's AP conductor
+    and its AP<->M10 via sit outside the reference-map ranges
+    ``_layer_display_name``'s generic fallback covers, so without this they
+    render as the generic "?" placeholder (ticket 02's deferred gap,
+    .scratch/xfm-tw-twisted/issues/02-n28-domain-sample-gallery.md)."""
     catalog = process.adapter.profile.layer_catalog
     names: dict[tuple[int, int], str] = {}
     for rule in catalog.conductors.values():
@@ -1203,11 +1202,11 @@ def _layer_display_name(
 
     ``name_map`` (built by ``_process_layer_names`` for a given process
     context) is consulted only as a last-resort fallback, after the generic
-    31-40/51-59 patterns -- so the pre-existing M1-M10/via1-9 resolution
+    reference-map patterns -- so the pre-existing M1-M10/via1-9 resolution
     (reference or process mode) is unchanged whether or not a name_map is
     supplied; name_map only reaches layers those generic patterns can't,
-    such as N28's AP/RV. With no name_map (the default), behavior is
-    byte-identical to before this parameter existed."""
+    such as a profile's AP conductor and its via. With no name_map (the
+    default), behavior is byte-identical to before this parameter existed."""
     name = _LAYER_NAMES.get(layer)
     if name is not None:
         return name
@@ -1286,7 +1285,7 @@ _LAYER_COLORS = {
     "via7": "#17becf",
     "via8": "#2ca02c",
     "via9": "#bcbd22",
-    # N28 AP-body names (process mode only; see _process_layer_names). Names,
+    # AP-body names (process mode only; see _process_layer_names). Names,
     # not layer numbers -- "AP"/"RV" are already ordinary strings elsewhere
     # in this module (_metal_name), so listing them here does not touch the
     # M11 IP-strip line the way a gds layer number would.

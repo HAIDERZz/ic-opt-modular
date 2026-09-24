@@ -391,7 +391,7 @@ def suggest(conn, plan: dict, stratum_name: str, spec: dict, *, n: int = 5,
 ```yaml
 db_path: outputs/device_db.sqlite
 process_profile: n28_1p10m
-proc_file: ../../gdsgen_ref/n28_proc/tsmcN28_1p10m.proc
+proc_file: <站点 EMX 工艺文件的相对路径>      # 真实文件名与路径不入仓库
 plugin_module: builtin:clean_port
 sampler_module: sampler.py
 ranges: {outer_diameter_um: [...], width_um: [...], spacing_um: [...], turns: [...]}

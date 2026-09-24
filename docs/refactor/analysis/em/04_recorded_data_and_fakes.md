@@ -11,7 +11,7 @@ manifest、jsonl、sqlite 做精读；未逐文件列出（按目录聚合），
 
 **红线**：本报告不包含任何 N28 工艺的数值型 DRC/物理规则（间距、宽度下限、金属层电学参数等）；
 出现的都是路径、文件名、器件自身的设计几何参数（outer_diameter_um 等，是优化器的设计变量，不是
-工艺规则）、以及协议/字段名。工艺文件只以文件名 `tsmcN28_1p10m.proc` / profile 名 `n28_1p10m` 出现，
+工艺规则）、以及协议/字段名。工艺文件只以 profile 名 `n28_1p10m` 出现（EMX 工艺文件的真实文件名与路径已脱敏，不入仓库），
 从未读取其数值内容。
 
 ---
@@ -55,7 +55,7 @@ constraint_penalty/metrics`）与 `ic-opt-modular` 的 `optimizer_evaluations.js
 
 | 数据集 | mode | accuracy / 网格控制 | 频率 sweep | process 文件名 |
 |---|---|---|---|---|
-| `ind_ct_turbo_smoke` | `quasistatic` | `accuracy=standard`，`--3d=M9,M8`，`--via-separation=0.5` | 0–200 GHz，步长 1 GHz（自适应插值，只在约 20 个频点上真正求解） | `tsmcN28_1p10m.proc`（路径见 §1.3，仅文件名） |
+| `ind_ct_turbo_smoke` | `quasistatic` | `accuracy=standard`，`--3d=M9,M8`，`--via-separation=0.5` | 0–200 GHz，步长 1 GHz（自适应插值，只在约 20 个频点上真正求解） | 站点 EMX 工艺文件（文件名与路径不入仓库） |
 | `em-library-workflow-acceptance`（xfmr_in/out） | `quasistatic` | `accuracy=standard`，`--3d=M10,AP` | 同上，0–200 GHz / 1 GHz | 同上 |
 | `device_db_sweep_n28/outputs/sweep/xfm_bs_m10m9` | `quasistatic` | `accuracy` 字段为 `null`，改用显式网格控制：`--edge-width=0.5 --max-splits=3 --thickness=0.5`（比"standard"更细的网格，是该库的生产级 sweep 配方） | 同上 | 同上 |
 | `test_emx_execution.py` 单测里出现的 `accuracy="high"`/`"highest"`、`mode="full_wave"` | 仅存在于**单元测试的构造参数**（`build_emx_argv` 契约测试），磁盘上没有找到对应的真实 full_wave 录制运行 | — | — | — |

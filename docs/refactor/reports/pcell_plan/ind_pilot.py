@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 
@@ -21,7 +22,8 @@ from ic_opt.spec import Spec
 from ic_opt.stages.em_chain import em_only_pipeline
 from ic_opt.store import RunStore
 
-PROC = "/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/EM-opt-workflow/gdsgen_ref/n28_proc/tsmcN28_1p10m.proc"
+# The site EMX process file is never committed: point IC_OPT_EMX_PROC at it.
+PROC = os.environ.get("IC_OPT_EMX_PROC", "")
 CSHRC = "/home/zzchen/Agent_virtuoso/cadence_ic231_env.csh"
 THREADS, MEMORY_GB, TIMEOUT_S = 8, 48.0, 7200
 
@@ -75,6 +77,8 @@ def main() -> None:
     ap.add_argument("out", type=Path)
     ap.add_argument("--only", nargs="*", default=None)
     args = ap.parse_args()
+    if not PROC:
+        ap.error("set IC_OPT_EMX_PROC to the site EMX process file (it is never committed)")
     limits = site.load().host("local")                             # parallel_jobs=1 below keeps it strictly serial
     for arm, mode, mesh, three_d, geoms in ARMS:
         if args.only and arm not in args.only:

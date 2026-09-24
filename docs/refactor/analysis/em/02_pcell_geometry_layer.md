@@ -640,7 +640,7 @@ process-rule-profile-v1"。）
   声明的导体集合必须和 `layout_rules.metal_width_space` 的 key 集合完全相等）。
 
 真实 profile（`n28_1p10m`/`n65_1p9m`）结构完全相同，只是数值和规则条目更多；本报告
-只引用规则 ID（如 `IND.R.1`、`VIA7`/`VIA8`/`VIA9`、导体名 `M1`-`M10`/`AP`），不引用
+只引用层与规则的名称（如 `VIA7`/`VIA8`/`VIA9`、导体名 `M1`-`M10`/`AP`），不引用规则条目编号和
 任何门槛数值。
 
 ### 4.2 加载/解析：搜索路径与 `validate-profile`

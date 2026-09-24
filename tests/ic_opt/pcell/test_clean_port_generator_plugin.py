@@ -634,33 +634,45 @@ def _make_layout_with(shapes):
     return ly
 
 
+# The synthetic via-landing layouts below are drawn on the public demo_6m
+# profile's own layers: VIA5 joins M5 and M6.
+def _demo_layers():
+    from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
+
+    adapter = get_geometry_rule_adapter("demo_6m")
+    return (tuple(adapter.layer("M6").drawing), tuple(adapter.layer("M5").drawing),
+            tuple(adapter.via("VIA5").drawing))
+
+
 def test_via_audit_rejects_floating_cut(tmp_path):
     gp = _load_plugin()
-    # VIA9 (59,80) must land on M9 (39,80) AND M10 (40,80). One cut lacks M9 under it.
+    m6, m5, via5 = _demo_layers()
+    # VIA5 must land on M5 AND M6. One cut lacks M5 under it.
     ly = _make_layout_with({
-        (40, 80): [(0, 0, 10000, 10000)],          # M10 plate
-        (39, 80): [(0, 0, 5000, 10000)],           # M9 covers left half only
-        (59, 80): [(1000, 1000, 2000, 2000),        # good cut (inside both)
-                   (7000, 1000, 8000, 2000)],       # floating cut (no M9 under it)
+        m6: [(0, 0, 10000, 10000)],          # M6 plate
+        m5: [(0, 0, 5000, 10000)],           # M5 covers left half only
+        via5: [(1000, 1000, 2000, 2000),     # good cut (inside both)
+               (7000, 1000, 8000, 2000)],    # floating cut (no M5 under it)
     })
     gds = tmp_path / "bad.gds"
     ly.write(str(gds))
     with pytest.raises(ValueError) as err:
-        gp.audit_via_landing(gds, "n28_1p10m")
+        gp.audit_via_landing(gds, "demo_6m")
     msg = str(err.value)
-    assert "VIA9" in msg and "landing" in msg
+    assert "VIA5" in msg and "landing" in msg
 
 
 def test_via_audit_passes_contained_cuts(tmp_path):
     gp = _load_plugin()
+    m6, m5, via5 = _demo_layers()
     ly = _make_layout_with({
-        (40, 80): [(0, 0, 10000, 10000)],
-        (39, 80): [(0, 0, 10000, 10000)],
-        (59, 80): [(1000, 1000, 2000, 2000)],
+        m6: [(0, 0, 10000, 10000)],
+        m5: [(0, 0, 10000, 10000)],
+        via5: [(1000, 1000, 2000, 2000)],
     })
     gds = tmp_path / "good.gds"
     ly.write(str(gds))
-    audit = gp.audit_via_landing(gds, "n28_1p10m")
+    audit = gp.audit_via_landing(gds, "demo_6m")
     assert audit["status"] == "pass"
     assert audit["vias_checked"] >= 1
 
@@ -668,6 +680,7 @@ def test_via_audit_passes_contained_cuts(tmp_path):
 def test_via_audit_rejects_multiple_top_cells(tmp_path):
     import klayout.db as kdb
     gp = _load_plugin()
+    m6, m5, via5 = _demo_layers()
     ly = kdb.Layout()
     ly.dbu = 0.001
     # CLEAN top first in stream order: a stream-order-dependent audit would
@@ -675,18 +688,18 @@ def test_via_audit_rejects_multiple_top_cells(tmp_path):
     clean = ly.create_cell("CLEAN")
     bad = ly.create_cell("BAD")
     for cell, boxes in (
-        (clean, {(40, 80): (0, 0, 10000, 10000),
-                 (39, 80): (0, 0, 10000, 10000),
-                 (59, 80): (1000, 1000, 2000, 2000)}),
-        (bad, {(40, 80): (0, 0, 10000, 10000),
-               (59, 80): (7000, 1000, 8000, 2000)}),  # no M9 anywhere
+        (clean, {m6: (0, 0, 10000, 10000),
+                 m5: (0, 0, 10000, 10000),
+                 via5: (1000, 1000, 2000, 2000)}),
+        (bad, {m6: (0, 0, 10000, 10000),
+               via5: (7000, 1000, 8000, 2000)}),  # no M5 anywhere
     ):
         for ld, (left, bottom, right, t) in boxes.items():
             cell.shapes(ly.layer(*ld)).insert(kdb.Box(left, bottom, right, t))
     gds = tmp_path / "two_tops.gds"
     ly.write(str(gds))
     with pytest.raises(ValueError, match="exactly one top cell"):
-        gp.audit_via_landing(gds, "n28_1p10m")
+        gp.audit_via_landing(gds, "demo_6m")
 
 
 def test_via_audit_rejects_empty_gds(tmp_path):
@@ -1854,21 +1867,26 @@ def test_xfm_tw_port_positions_bottom_bottom_top_top(tmp_path):
 
 
 def test_xfm_tw_generator_rejects_ap_strict_pitch_shortfall(tmp_path):
-    """AP body strictly below the ring-pitch clearance (W=4/S=1.5:
-    pitch=5.5 < K=W+AP min_space=6.0): _tw_slot_half_width fails closed,
-    and the rejection propagates through the plugin config/generator path
-    unmodified -- the SAME guard pinned directly against the pcell in
+    """AP body strictly below the ring-pitch clearance (W=4, S = AP
+    min_space - 0.5, read from the profile: pitch < K = W + AP min_space):
+    _tw_slot_half_width fails closed, and the rejection propagates through
+    the plugin config/generator path unmodified -- the SAME guard pinned
+    directly against the pcell in
     test_tw_n28_ap_body_ring_pitch_guard_equality_and_shortfall. (The
-    W=4/S=2 EQUALITY case this test used to pin as a rejection is a
+    S == min_space EQUALITY case this test used to pin as a rejection is a
     passing DRC equality and builds since the six-family
     tight-spacing-clearance fix.)"""
+    from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
+
     gp = _load_plugin()
+    width = 4.0
+    min_space = get_geometry_rule_adapter("n28_1p10m").metal_rule("AP").min_space_um
     cfg = gp.CleanPortXfmTwConfig.model_validate(
-        {**_xfm_tw_config_dict(), "width_um": 4.0, "spacing_um": 1.5})
-    with pytest.raises(ValueError, match="ring pitch 5.500") as excinfo:
+        {**_xfm_tw_config_dict(), "width_um": width, "spacing_um": min_space - 0.5})
+    with pytest.raises(ValueError, match=f"ring pitch {width + min_space - 0.5:.3f}") as excinfo:
         gp.CleanPortXfmTwGenerator().generate(
             cfg, outdir=tmp_path, gds_name="tw_tight.gds")
-    assert "min_space=6.000" in str(excinfo.value)
+    assert f"min_space={width + min_space:.3f}" in str(excinfo.value)
 
 
 def test_xfm_tw_generator_requires_vias_true(tmp_path, monkeypatch):

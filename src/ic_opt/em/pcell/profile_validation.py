@@ -14,8 +14,9 @@ authoring-side counterpart:
   file, token-wise -- the proc is the naming authority EMX itself reads, so
   a name absent there would only fail much later, at simulation time -- and
   every conductor's and via's drawing layer, and every conductor's pin layer,
-  against the proc's ``define`` statements (``define M1 = fill(l31t0+...,
-  ...)``): a GDS layer the proc does not map is geometry EMX silently ignores,
+  against the proc's ``define`` statements (``define M1 = fill(l61t0+...,
+  ...)`` on demo_6m): a GDS layer the proc does not map is geometry EMX
+  silently ignores,
   and EMX looks for a conductor's port labels only on the layers its define
   names (EMX User Manual, Ports), which is where the pcell writes them.
 

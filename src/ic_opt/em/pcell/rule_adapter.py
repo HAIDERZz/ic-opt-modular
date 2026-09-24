@@ -122,7 +122,7 @@ class GeometryRuleAdapter:
         return self.via(via.name)
 
     def passive_via_restriction(self, via_name: str):
-        """Cited passive-region restriction (e.g. IND.R.1) for a via, if any.
+        """Cited passive-region restriction (a quoted deck rule) for a via, if any.
 
         Documentation/citation lookup only -- ``plan_passive_via_array`` no
         longer consults this (n28-rules-slim, user directive 2026-07-19:
@@ -149,12 +149,12 @@ class GeometryRuleAdapter:
         2026-07-19): the five categories that gate generation are line
         width, via cut size, line spacing, via-to-metal-edge enclosure and
         via-to-via spacing -- all sourced from ``via_primitives`` below.
-        Neither ``passive_region.via_restrictions`` (e.g. the cited IND.R.1
-        deck text) nor ``passive_via_array_coverage``'s ``not_yet_modeled``
+        Neither ``passive_region.via_restrictions`` (cited deck text) nor
+        ``passive_via_array_coverage``'s ``not_yet_modeled``
         classification fails generation closed any more; both remain in the
         rule profile purely as cited/declared data. When a via *does* carry
-        a modeled ``via_array_rules`` entry (currently VIA8/VIA9/RV), its
-        min-count/max-spacing legality still applies unchanged. Missing
+        a modeled ``via_array_rules`` entry, its min-count/max-spacing
+        legality still applies unchanged. Missing
         geometric data -- an incomplete ``min_enclosure_um`` map, or a via
         with no ``via_primitives`` entry at all -- still fails closed: that
         is a data-availability gap, not a policy restriction.
