@@ -111,6 +111,60 @@ peak (`Qp_peak`, `Qs_peak`) is searched only below it: a multi-turn
 secondary resonates inside the sweep, and above that the primary's Q curve
 can climb again to the band edge.
 
+Each quantity may also say how its model is built, with two optional fields.
+
+`feature_map` (transformers: `xfm_bs_dimensionless`, `xfm_ms_dimensionless`)
+gives the model other inputs than the raw dims: the mean outer diameter, the
+ratio of the two outer diameters, each width over its diameter, the centre
+offset over the mean radius (and, for `xfm_ms`, the secondary's spacing over
+its diameter and its turns). Two stacked windings couple, and load each
+other with capacitance, according to how far their outlines are apart, so
+the coupling, the system SRF and every column near that resonance change
+fast across the diameter ratio and slowly with the overall size. On the raw
+dims that fast change runs diagonally between the primary's and the
+secondary's diameter; with the ratio as an input of its own, what the model
+learns at one sampled primary diameter carries over to the next, and its
+answers between the sampled diameters hold up.
+
+`model` (curves only; default `direct`) says what the curve's model fits.
+A column such as `Lp@40` holds two things at once: the winding's
+low-frequency inductance, which changes smoothly with the geometry, and the
+rise of the apparent inductance towards the self-resonance, which is steep
+where the resonance comes close to the anchor. `direct` fits one model to
+the column and has to learn both. The other two build the column from the
+stratum's own models and fit only what is left, with the curve's
+`feature_map`:
+
+- `ratio`: the low-frequency scalar (`Lp_lf` for `Lp`, `Ls_lf` for `Ls`,
+  `k_lf` for `k`) times a model of the measured ratio, say
+  `Lp@40 / Lp_lf`;
+- `resonance` (`Lp` and `Ls` only): the low-frequency value, times the rise
+  of an ideal parallel resonance `1 / (1 - (f0 / SRF)^2)` at the SRF that the
+  stratum's `SRF` model predicts, times a model of what is left.
+
+```text
+# a stacked-transformer stratum's quantities, the setup that holds up between sampled diameters
+      Lp_lf: {}
+      Ls_lf: {}
+      SRF: {feature_map: xfm_bs_dimensionless}
+      Lp: {anchors_ghz: [40], model: resonance, feature_map: xfm_bs_dimensionless}
+      Ls: {anchors_ghz: [40], model: resonance, feature_map: xfm_bs_dimensionless}
+```
+
+The parts must be among the stratum's quantities (the manifest refuses the
+option otherwise), and they are the very models that answer those columns,
+fitted once however many curves share them. A `resonance` curve is only as
+good as its SRF model: where the table has no rows like the design asked
+about, the SRF is off and the curve follows it. The interval adds the parts'
+uncertainties as independent ones, the SRF's scaled by how steeply the rise
+depends on it, and is calibrated like any other (below) -- except that each
+held-out fold refits every part, so it takes about two (`ratio`) or three
+(`resonance`) times the fits of a direct column; the folds run as parallel
+jobs. Changing `model` or `feature_map` of any quantity is a new definition
+of the stratum -- unlike `rel_sigma_max`, it changes what is fitted: its
+dataset and every model of that stratum are rebuilt once. A library that
+never names `model` keeps its caches.
+
 ## 3. Check it
 
 ```bash
@@ -161,6 +215,11 @@ about 95% of held-out measurements fall inside; sigma is never reported below
 the quantity's held-out median relative error, because the GP is overconfident
 at the edge of the sampled box, where designs recommended for a maximum tend
 to sit.
+
+A curve built with `model: ratio` or `model: resonance` also answers where its
+value came from, in `composition`: the low-frequency value (`Lp_lf`), and the
+`ratio`, or the `SRF` (in Hz), the `resonance_factor` 1 / (1 - (f0/SRF)^2) and
+the `residual`. Their product is `value`.
 
 ## 5. Inverse questions: `lib.suggest`
 

@@ -123,7 +123,11 @@ def xfm_touchstone(op: float, os_: float, wp: float, ws: float, cs: float, stop_
                    secondary_reversed: bool = False) -> str:
     """Ports P1 N1 P2 N2: the primary branch P1 -> N1, the secondary N2 -> P2 (drives (P1, N1), (N2, P2) couple positively), C/2 per port.
     ``secondary_reversed``: the secondary wound the other way, P2 -> N2 (as a generator of your own might): those drives couple negatively."""
-    ph = xfm_physics(op, os_, wp, ws, cs)
+    return coupled_touchstone(xfm_physics(op, os_, wp, ws, cs), stop_ghz, start_ghz, secondary_reversed=secondary_reversed)
+
+
+def coupled_touchstone(ph: dict, stop_ghz: float, start_ghz: float = 0.0, *, secondary_reversed: bool = False) -> str:
+    """``xfm_touchstone`` for given element values (Lp, Ls, k, Rp, Rs, Cp, Cs)."""
     m = ph["k"] * np.sqrt(ph["Lp"] * ph["Ls"])
     inc = np.array([[1, 0], [-1, 0], [0, 1], [0, -1]] if secondary_reversed else [[1, 0], [-1, 0], [0, -1], [0, 1]], dtype=float)
     lines = ["! Touchstone from a synthetic coupled-inductor library", "# Hz S RI R 50"]
@@ -207,3 +211,61 @@ def xfm_truth(geometry) -> dict:
         ts = touchstone.read(path)
     topo = measure.Topology.from_labels([("P1", "N1"), ("N2", "P2")], [], ["P1", "N1", "P2", "N2"])
     return measure.quantities(ts.freqs, ts.s, topo, z0=ts.z0).scalars
+
+
+# -- a synthetic transformer table whose anchored inductance rises towards a resonance (T16.2b composed models) ------
+
+RES_STRATUM, RES_F0_GHZ, RES_STOP_GHZ = "xfm_res", 20, 150
+RES_OPS = (80, 100, 120, 140, 160)                  # the primary's outer-diameter levels (leave one out: the gap between levels)
+MAPPED = "xfm_bs_dimensionless"
+
+
+def res_physics(op: float, os_: float, wp: float, ws: float, cs: float) -> dict:
+    """Smooth inductances and coupling; a port capacitance that peaks where the two windings overlap (OD_S close to OD_P), so
+    the system SRF -- and with it the rise of Lp and Ls at 20 GHz -- is steep across OD_S / OD_P and smooth along the size."""
+    r = np.log(op / os_)
+    overlap = 1 + 1.5 * np.exp(-((r / 0.08) ** 2))
+    return {"Lp": 0.35e-9 * (op / 100) ** 1.25 * (5 / wp) ** 0.12, "Ls": 0.35e-9 * (os_ / 100) ** 1.25 * (5 / ws) ** 0.12,
+            "k": 0.6 * np.exp(-1.5 * r * r), "Rp": 0.4 + 0.02 * op / wp, "Rs": 0.4 + 0.02 * os_ / ws,
+            "Cp": 18e-15 * (op / 100) ** 2 * overlap, "Cs": 18e-15 * (os_ / 100) ** 2 * overlap}
+
+
+def res_points(ops=RES_OPS) -> list[tuple[float, float, float, float, float]]:
+    """Five OD_S / OD_P ratios around 1 per primary level, two widths per winding, concentric: 100 rows over RES_OPS."""
+    return [(float(op), float(round(op * ratio)), wp, ws, 0.0) for op in ops for ratio in (0.8, 0.9, 1.0, 1.1, 1.2)
+            for wp in (5.0, 8.0) for ws in (5.0, 8.0)]
+
+
+def res_manifest(root: Path, *, lp: dict | None = None, ls: dict | None = None, k: dict | None = None, srf: dict | None = None,
+                 scalars: tuple[str, ...] = ("Lp_lf", "Ls_lf", "k_lf", "SRF")) -> Path:
+    """(Re)write the library.yaml of a resonance table: ``lp`` / ``ls`` / ``k`` / ``srf`` are extra fields of those quantities
+    (``model``, ``feature_map``); ``scalars`` the scalar columns it declares."""
+    rules = {"Lp_lf": {}, "Ls_lf": {}, "k_lf": {"feature_map": MAPPED}, "SRF": dict(srf or {})}
+    quantities = {name: rules[name] for name in scalars}
+    quantities.update({"Lp": {"anchors_ghz": [RES_F0_GHZ], **(lp or {})}, "Ls": {"anchors_ghz": [RES_F0_GHZ], **(ls or {})},
+                       "k": {"anchors_ghz": [RES_F0_GHZ], "feature_map": MAPPED, **(k or {})}})
+    doc = {"schema_version": "ic-opt-library-v1", "process_profile": "demo_6m",
+           "strata": {RES_STRATUM: {"generator": "clean_port_xfm_bs", "dims": XFM_DIMS, "parts": [{"store": "xfm"}],
+                                    "steps": {"primary_outer_diameter_um": 1, "secondary_outer_diameter_um": 1, "primary_width_um": 0.1,
+                                              "secondary_width_um": 0.1, "center_spacing_um": 0.5},
+                                    "quantities": quantities}}}
+    (root / "library.yaml").write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+    return root
+
+
+def build_resonance_library(root: Path, *, ops=RES_OPS, **manifest) -> Path:
+    """Stratum xfm_res: the rows of ``res_points(ops)`` swept to 150 GHz, and ``res_manifest(**manifest)``."""
+    project = root / "xfm"
+    (project / ".icopt").mkdir(parents=True)
+    (project / "spec.yaml").write_text(yaml.safe_dump(xfm_part_spec("xfm", RES_STOP_GHZ).model_dump(mode="json")), encoding="utf-8")
+    lines = []
+    for i, geometry in enumerate(res_points(ops), 1):
+        obs = f"obs_{i:04d}"
+        em = project / ".icopt" / "sims" / obs / "em" / "xfm"
+        em.mkdir(parents=True)
+        (em / "xfm.s4p").write_text(coupled_touchstone(res_physics(*geometry), RES_STOP_GHZ), encoding="utf-8")
+        o = Observation(obs_id=obs, params={d: f"{v:g}" for d, v in zip(XFM_DIMS, geometry)}, origin="grid", status="ok",
+                        spec_fingerprint="spec", pipeline_fingerprint="gen1", started_at="", finished_at="")
+        lines.append(o.model_dump_json())
+    (project / ".icopt" / "observations.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return res_manifest(root, **manifest)

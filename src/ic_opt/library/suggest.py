@@ -185,9 +185,9 @@ def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0
     ok = in_domain(x, models, srf_floor=srf_floor, exact=exact) if check_domain else np.ones(n, dtype=bool)
     pred: dict[str, dict[str, np.ndarray]] = {}
     for q, m in models.items():
-        mu, sigma = _gp_predict(m.gp, x, None if chunk_bytes is None else rows_per_call(chunk_bytes, len(m.rows)))
+        mu, sigma = _gp_predict(m.gp, x, None if chunk_bytes is None else rows_per_call(chunk_bytes, query.fit_rows(m)))
         lo, hi = gp.prediction_bounds(mu, sigma, log_target=m.gp.log_target, k=k * m.gp.k_scale)
-        scale = 1e9 if q.startswith("SRF") else 1.0            # the library fits SRF in GHz (Library.model)
+        scale = query.fit_unit(q)                               # the library fits SRF in GHz (query.fit_unit)
         mu, sigma, lo, hi = mu * scale, sigma * scale, lo * scale, hi * scale
         floor, measured = (srf_floor or {}).get(q), (exact or {}).get(q)
         above, known = _settled(n, floor, measured)

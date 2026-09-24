@@ -19,6 +19,16 @@ when that is not the library's own ``.cache``, and every answer below carries it
 time calibrates and fits a model into a cache directory: the fit holds a lock file next to the calibration file, and
 another process that needs the same model waits for it, then loads what it wrote (``Library._fit``).
 
+A curve whose manifest entry says ``model: ratio`` or ``model: resonance`` is composed from the stratum's own
+low-frequency (and SRF) models (``ic_opt.library.composed``): ``models`` loads or fits those first, each once
+however many curves are built on it, then the composed curves -- their calibration folds as jobs of their own,
+since every fold refits every part. A composed model's cache files live in the same cache and hold the same lock
+discipline: its calibration file is keyed by the option and the parts' settings, its model file by the parts' model
+keys as well; the file holds only its own part, and the shared models are attached when it loads. ``query`` adds to
+a composed curve's answer where the value came from.
+
+SRF is fitted in GHz (the log-GP is tamer there) and answered in Hz: ``fit_unit`` is the one place that says so.
+
 The library computes on the machine running ic-opt, within that machine's limits and nothing else: the
 ``limits`` a library is given, else site.yaml's ``hosts.local``, read the first time a model has to be fitted
 or a batch predicted (``Library.limits``; a missing file or entry raises ``SiteError``). Reading needs no
@@ -59,7 +69,7 @@ import sklearn
 from threadpoolctl import threadpool_limits
 
 from ic_opt import _lock, site
-from ic_opt.library import cache, dataset, domain, gp, manifest
+from ic_opt.library import cache, composed, dataset, domain, gp, manifest
 
 UNITS = {"L": "H", "Q": "1", "SRF": "Hz", "k": "1"}
 ABOVE_SWEEP_VOTES = 3                                # of the 5 nearest measured rows
@@ -76,15 +86,27 @@ def unit(quantity: str) -> str:
     return UNITS["SRF"] if base.startswith("SRF") else UNITS[base[0]] if base[0] in "LQ" else UNITS["k"]
 
 
+def fit_unit(quantity: str) -> float:
+    """How many of the column's units one unit of its model is: an SRF column is fitted in GHz (1e9 Hz), everything else in
+    the column's own unit. Every conversion between a model and its column goes through here."""
+    return 1e9 if quantity.startswith("SRF") else 1.0
+
+
 @dataclass
 class Model:
     stratum: str
     quantity: str
     rows: list[dataset.Row]
-    gp: gp.StratumGP
+    gp: gp.StratumGP | composed.ComposedGP
     guard: domain.DomainGuard
     calibration: dict                                # k_scale, held-out median_rel and coverage behind it
     rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX   # its confidence ceiling when a call gives none (Library.rel_sigma_max)
+
+
+def fit_rows(model: Model) -> int:
+    """The most rows any GP behind the model was fitted on (a prediction call's memory grows with them): the quantity's usable
+    rows, or for a composed curve the largest of its parts."""
+    return max(len(model.rows), getattr(model.gp, "n_train", 0))
 
 
 class Library:
@@ -160,32 +182,89 @@ class Library:
         process but ``_fit_in_worker``'s arguments; starting one re-imports ic_opt, numpy, scipy and scikit-learn, about
         0.5 s on the reference host (Linux, Python 3.11: 0.43 s for one worker, 0.46 s for four started together), against
         minutes per fit. Every worker also imports the main module of the program, so a script that gets here (directly or
-        through ``lib.region`` / ``lib_signoff``) keeps its top-level work under ``if __name__ == "__main__":``."""
-        missing = [q for q in dict.fromkeys(quantities) if not self._load(stratum, q)]
-        if missing:
-            ds = self.dataset(stratum)
-            n, per_worker = fit_plan(self.limits, len(missing), max(len(ds.usable(q)) for q in missing), len(ds.dims),
-                                     workers=workers, threads=threads)
-            if n > 1:
-                with ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("spawn")) as pool:
-                    jobs = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, per_worker, self.cache.directory)
-                            for q in missing]
-                    for job in jobs:
-                        job.result()                     # a failed fit raises here, with the worker's exception
-                unread = [q for q in missing if not self._load(stratum, q)]
-                if unread:
-                    raise RuntimeError(f"{stratum}: the workers fitted {unread} but their cache files under {self.cache.directory} do not load")
-            else:
-                with threadpool_limits(limits=per_worker):
-                    for q in missing:
-                        self._fit(stratum, q)
+        through ``lib.region`` / ``lib_signoff``) keeps its top-level work under ``if __name__ == "__main__":``.
+
+        A composed curve (``model: ratio`` / ``resonance``) needs its parts' models: they are loaded or fitted first, with the
+        other direct quantities, each once however many curves share it. Then the composed curves: with several workers, the
+        five folds of each uncached calibration are jobs of their own (``_calibrate_fold_in_worker``: every fold refits every
+        part) while this process holds the curve's lock, and once a curve is calibrated its own part is fitted on the shared
+        models (``_fit_in_worker``)."""
+        order = self._with_parts(stratum, list(dict.fromkeys(quantities)))
+        missing = [q for q in order if not self._load(stratum, q)]
+        direct = [q for q in missing if self._plan(stratum, q) is None]
+        if direct:
+            self._fit_direct(stratum, direct, workers, threads)
+        built = [q for q in missing if q not in direct]
+        if built:
+            self._fit_composed(stratum, built, workers, threads)
         return {q: self._models[(stratum, q)] for q in quantities}
+
+    def _fit_direct(self, stratum: str, names: list[str], workers: int | None, threads: int | None) -> None:
+        """Fit the direct models ``names`` (not cached): in spawned workers, or here with one worker."""
+        ds = self.dataset(stratum)
+        n, per_worker = fit_plan(self.limits, len(names), max(len(ds.usable(q)) for q in names), len(ds.dims), workers=workers, threads=threads)
+        if n > 1:
+            with ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("spawn")) as pool:
+                jobs = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, per_worker, self.cache.directory) for q in names]
+                for job in jobs:
+                    job.result()                         # a failed fit raises here, with the worker's exception
+            self._reload(stratum, names)
+        else:
+            with threadpool_limits(limits=per_worker):
+                for q in names:
+                    self._fit(stratum, q)
+
+    def _fit_composed(self, stratum: str, names: list[str], workers: int | None, threads: int | None) -> None:
+        """Fit the composed curves ``names`` (not cached; their parts are loaded). With several workers: the folds of every
+        uncached calibration, one job each, while this process holds each such curve's lock -- taken in the order of the
+        lock files' names, so two processes never wait on each other -- then every curve's own part; with one worker, here,
+        one after another (``_fit``)."""
+        ds = self.dataset(stratum)
+        uncalibrated = [q for q in names if self._composed_calibration(stratum, q, compute=False) is None]
+        largest = max(len(ds.usable(c)) for q in names for c in self._parts(stratum, q) + [q])    # a fold refits every part
+        n, per_worker = fit_plan(self.limits, max(len(uncalibrated) * len(gp.SEEDS), len(names)), largest, len(ds.dims),
+                                 workers=workers, threads=threads)
+        if n <= 1:
+            with threadpool_limits(limits=per_worker):
+                for q in names:
+                    self._fit(stratum, q)
+            return
+        with ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("spawn")) as pool:
+            with ExitStack() as held:
+                for name in sorted(self._composed_calibration_name(stratum, q) for q in uncalibrated):
+                    self._hold(held, name)
+                uncalibrated = [q for q in uncalibrated if self._composed_calibration(stratum, q, compute=False) is None]  # or written meanwhile
+                jobs = {(q, seed): pool.submit(_calibrate_fold_in_worker, self.root, self.calibrate, stratum, q, seed, per_worker,
+                                               self.cache.directory) for q in uncalibrated for seed in gp.SEEDS}
+                done = {job: future.result() for job, future in jobs.items()}
+                for q in uncalibrated:                   # written here, from the folds in seed order
+                    self._composed_calibration(stratum, q, folds=[done[(q, seed)] for seed in gp.SEEDS])
+            finals = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, per_worker, self.cache.directory) for q in names]
+            for job in finals:
+                job.result()
+        self._reload(stratum, names)
+
+    def _reload(self, stratum: str, names: list[str]) -> None:
+        unread = [q for q in names if not self._load(stratum, q)]
+        if unread:
+            raise RuntimeError(f"{stratum}: the workers fitted {unread} but their cache files under {self.cache.directory} do not load")
+
+    def _hold(self, held: ExitStack, name: str) -> None:
+        """Wait for the lock file ``<name>.lock`` in the cache directory, then hold it until ``held`` closes; unguarded where
+        the file system takes no locks (or no lock file can be made)."""
+        try:
+            held.enter_context(_lock.waiting_lock(self.cache.target(f"{name}.lock")))
+        except OSError:                                  # no locks here (or no lock file): unguarded
+            pass
 
     def _load(self, stratum: str, quantity: str) -> bool:
         """Whether the quantity's model is in memory, after putting it there from its cache files when they hold a usable
-        one (no calibration file, no model file, or one that does not unpickle: False, fit it)."""
+        one (no calibration file, no model file, or one that does not unpickle: False, fit it). A composed curve loads only
+        once its parts do."""
         if (stratum, quantity) in self._models:
             return True
+        if self._plan(stratum, quantity) is not None:
+            return self._load_composed(stratum, quantity)
         ds, rows, x, y, settings = self._fit_inputs(stratum, quantity)
         calibration = self._calibration(ds, quantity, x, y, settings, compute=False)
         path = None if calibration is None else self.cache.find(self._model_name(ds, quantity, settings, calibration))
@@ -201,13 +280,13 @@ class Library:
         process that needs the same model, on this machine or on another sharing the cache directory, waits for the lock
         and then loads what this one wrote instead of computing it again; on a file system that takes no locks both
         compute, as they did without it, and the last write wins. BLAS is capped by the caller: ``models`` in this
-        process, ``_fit_in_worker`` in a worker's."""
+        process, ``_fit_in_worker`` in a worker's. A composed curve: ``_fit_composed_here``, under the same discipline."""
+        if self._plan(stratum, quantity) is not None:
+            self._fit_composed_here(stratum, quantity)
+            return
         ds, rows, x, y, settings = self._fit_inputs(stratum, quantity)
         with ExitStack() as held:
-            try:
-                held.enter_context(_lock.waiting_lock(self.cache.target(f"{_calibration_name(ds, quantity)}.lock")))
-            except OSError:                              # no locks here (or no lock file): unguarded
-                pass
+            self._hold(held, _calibration_name(ds, quantity))
             if self._load(stratum, quantity):            # fitted by another process while this one waited
                 return
             calibration = self._calibration(ds, quantity, x, y, settings)
@@ -216,19 +295,170 @@ class Library:
             self._keep(stratum, quantity, ds, rows, x, settings, model, calibration)
 
     def _keep(self, stratum: str, quantity: str, ds: dataset.Dataset, rows: list[dataset.Row], x: np.ndarray, settings: dict,
-              model: gp.StratumGP, calibration: dict) -> None:
+              model: gp.StratumGP | composed.ComposedGP, calibration: dict) -> None:
         guard = domain.DomainGuard(x, ds.dims, settings["ranges"], nt_dim=ds.nt_dim, ids=list(range(len(rows))))
         self._models[(stratum, quantity)] = Model(stratum, quantity, rows, model, guard, calibration, self.rel_sigma_max(stratum, quantity))
 
+    # -- composed curves (ic_opt.library.composed) ---------------------------------------------------------------------
+
+    def _plan(self, stratum: str, quantity: str) -> dict | None:
+        """How a composed curve column is built -- ``{"model", "f0" (in the SRF model's unit), "lf", "srf"}`` -- or None for a
+        column modelled directly."""
+        base, at, f = quantity.partition("@")
+        rule = self.manifest.strata[stratum].quantities.get(base)
+        if not at or rule is None or rule.model == "direct":
+            return None
+        return {"model": rule.model, "f0": float(f) * 1e9 / fit_unit("SRF"), "lf": manifest.LOW_FREQUENCY[base],
+                "srf": "SRF" if rule.model == "resonance" else None}
+
+    def _parts(self, stratum: str, quantity: str) -> list[str]:
+        """The columns a composed curve is built on (none for a direct one)."""
+        plan = self._plan(stratum, quantity)
+        return [] if plan is None else [plan["lf"]] + ([plan["srf"]] if plan["srf"] else [])
+
+    def _with_parts(self, stratum: str, quantities: list[str]) -> list[str]:
+        """``quantities`` with every composed curve's parts before it, each column once."""
+        out: dict[str, None] = {}
+        for q in quantities:
+            out.update(dict.fromkeys(self._parts(stratum, q)))
+            out[q] = None
+        return list(out)
+
+    def _composed_settings(self, stratum: str, quantity: str) -> dict:
+        """What ``composed.holdout_fold`` and ``ComposedGP`` take besides the data: the plan and the three models' settings."""
+        plan = self._plan(stratum, quantity)
+        ds = self.dataset(stratum)
+        part = {**self._fit_inputs(stratum, quantity)[4], "log_target": True}          # the curve's own settings
+        return {"kind": plan["model"], "f0": plan["f0"], "dims": list(ds.dims), "ranges": part["ranges"], "nt_dim": ds.nt_dim,
+                "part": part, "lf": self._fit_inputs(stratum, plan["lf"])[4],
+                "srf": self._fit_inputs(stratum, plan["srf"])[4] if plan["srf"] else None,
+                "names": {"lf": plan["lf"], "srf": plan["srf"]}}
+
+    def _composed_data(self, stratum: str, quantity: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
+        """Every row of the stratum and, per row, the curve, its low-frequency scalar and the SRF (in the SRF model's unit):
+        NaN where a row has no usable value."""
+        plan = self._plan(stratum, quantity)
+        ds = self.dataset(stratum)
+        srf = ds.values(plan["srf"]) / fit_unit(plan["srf"]) if plan["srf"] else None
+        return ds.matrix(), ds.values(quantity), ds.values(plan["lf"]), srf
+
+    def _composed_fold(self, stratum: str, quantity: str, seed: int) -> dict:
+        """One calibration fold of a composed curve (``composed.holdout_fold``)."""
+        return composed.holdout_fold(*self._composed_data(stratum, quantity), seed, **self._composed_settings(stratum, quantity))
+
+    def _composed_calibration_name(self, stratum: str, quantity: str) -> str:
+        """The cache file name of a composed curve's calibration: keyed by the data, the option and the three models' settings
+        (its lock file adds ``.lock``)."""
+        settings = self._composed_settings(stratum, quantity)
+        h = hashlib.sha256(b"composed")
+        h.update(self.dataset(stratum).key.encode())
+        h.update(json.dumps(settings, sort_keys=True).encode())
+        return f"calibration-{stratum}-{_file_part(quantity)}-{settings['kind']}-{h.hexdigest()[:20]}.json"
+
+    def _composed_calibration(self, stratum: str, quantity: str, *, compute: bool = True, folds: list[dict] | None = None) -> dict | None:
+        """The composed curve's calibration: cached, else from ``folds`` (the parallel path), else computed here (all five
+        folds) unless ``compute`` is False."""
+        if not self.calibrate:
+            return {"k_scale": 1.0, "source": "off"}
+        name = self._composed_calibration_name(stratum, quantity)
+        found = self.cache.find(name)
+        if found is not None:
+            return json.loads(found.read_text(encoding="utf-8"))
+        if folds is None and not compute:
+            return None
+        settings = self._composed_settings(stratum, quantity)
+        report = composed.merge(folds) if folds is not None else composed.holdout(*self._composed_data(stratum, quantity), **settings)
+        out = {"k_scale": gp.calibration_scale(report), "median_rel": report["median_rel"],
+               "coverage_2sigma_before": report["coverage_2sigma"], "n_scored": report["n_scored"],
+               "source": "holdout 5x20%, every part refitted on each fold", "sigma_floor": "median held-out relative error",
+               "model": settings["kind"]}
+        _write_json(self.cache.target(name), out)
+        return out
+
+    def _part_keys(self, stratum: str, quantity: str) -> list[str] | None:
+        """The cache-file names of a composed curve's parts' models (None while a part is not calibrated: its name needs it)."""
+        ds = self.dataset(stratum)
+        keys = []
+        for part in self._parts(stratum, quantity):
+            _ds, _rows, x, y, settings = self._fit_inputs(stratum, part)
+            calibration = self._calibration(ds, part, x, y, settings, compute=False)
+            if calibration is None:
+                return None
+            keys.append(self._model_name(ds, part, settings, calibration))
+        return keys
+
+    def _composed_model_name(self, stratum: str, quantity: str, calibration: dict) -> str | None:
+        """The cache file name of a composed curve's model: keyed like a direct one, and by the option, the three settings
+        and the parts' own model keys (a refitted part makes it a new file). None while a part is not calibrated."""
+        keys = self._part_keys(stratum, quantity)
+        if keys is None:
+            return None
+        h = hashlib.sha256()
+        h.update(f"v{MODEL_CACHE_VERSION} composed".encode())
+        h.update(self.dataset(stratum).key.encode())
+        h.update(json.dumps(self._composed_settings(stratum, quantity), sort_keys=True).encode())
+        h.update(json.dumps(calibration, sort_keys=True).encode())
+        h.update(json.dumps(keys).encode())
+        h.update(hashlib.sha256(inspect.getsource(gp).encode()).digest())
+        h.update(hashlib.sha256(inspect.getsource(composed).encode()).digest())
+        h.update(sklearn.__version__.encode())
+        return f"model-{stratum}-{_file_part(quantity)}-{h.hexdigest()[:20]}.pkl"
+
+    def _load_composed(self, stratum: str, quantity: str) -> bool:
+        if not all(self._load(stratum, part) for part in self._parts(stratum, quantity)):
+            return False
+        calibration = self._composed_calibration(stratum, quantity, compute=False)
+        name = None if calibration is None else self._composed_model_name(stratum, quantity, calibration)
+        path = None if name is None else self.cache.find(name)
+        model = None if path is None else _load_composed_model(path, self.dataset(stratum).dims)
+        if model is None:
+            return False
+        self._keep_composed(stratum, quantity, model, calibration)
+        return True
+
+    def _fit_composed_here(self, stratum: str, quantity: str) -> None:
+        """The parts (loaded, else fitted here, each under its own lock), then -- holding the lock next to the curve's
+        calibration file, as a direct fit does -- the calibration (cached, else its five folds here) and the curve's own part
+        on the shared models; the model file is written and the model kept. A process that waited for the lock loads what
+        the holder wrote."""
+        for part in self._parts(stratum, quantity):
+            if not self._load(stratum, part):
+                self._fit(stratum, part)
+        with ExitStack() as held:
+            self._hold(held, self._composed_calibration_name(stratum, quantity))
+            if self._load(stratum, quantity):            # fitted by another process while this one waited
+                return
+            calibration = self._composed_calibration(stratum, quantity)
+            ds, rows, x, y, _settings = self._fit_inputs(stratum, quantity)
+            s = self._composed_settings(stratum, quantity)
+            model = composed.ComposedGP(kind=s["kind"], f0=s["f0"], dims=s["dims"], ranges=s["ranges"], nt_dim=s["nt_dim"], part=s["part"],
+                                        names=s["names"], k_scale=calibration["k_scale"], sigma_floor_rel=calibration.get("median_rel", 0.0))
+            self._attach(stratum, quantity, model)
+            model.fit(x, y, lf_y=ds.values(s["names"]["lf"], rows))
+            _save_model(self.cache.target(self._composed_model_name(stratum, quantity, calibration)), model)
+            self._keep_composed(stratum, quantity, model, calibration)
+
+    def _attach(self, stratum: str, quantity: str, model: composed.ComposedGP) -> None:
+        parts = [self._models[(stratum, p)] for p in self._parts(stratum, quantity)]
+        model.attach(parts[0].gp, parts[1].gp if len(parts) > 1 else None, n_train=max(len(p.rows) for p in parts))
+
+    def _keep_composed(self, stratum: str, quantity: str, model: composed.ComposedGP, calibration: dict) -> None:
+        self._attach(stratum, quantity, model)
+        ds, rows, x, _y, settings = self._fit_inputs(stratum, quantity)
+        self._keep(stratum, quantity, ds, rows, x, settings, model, calibration)
+
+    # -- direct models --------------------------------------------------------------------------------------------------
+
     def _fit_inputs(self, stratum: str, quantity: str) -> tuple[dataset.Dataset, list[dataset.Row], np.ndarray, np.ndarray, dict]:
-        """What a fit of ``quantity`` needs: the dataset, the usable rows, x, y and the StratumGP settings."""
+        """What a fit of ``quantity`` needs: the dataset, the usable rows, x, y (in the model's unit: ``fit_unit``) and the
+        StratumGP settings."""
         ds = self.dataset(stratum)
         if quantity not in ds.columns:
             raise ValueError(f"{stratum} has no quantity {quantity!r}; columns {ds.columns}")
         rows = ds.usable(quantity)
         x, y = ds.matrix(rows), ds.values(quantity, rows)
-        if quantity.startswith("SRF"):
-            y = y / 1e9                                  # GHz keeps the log-GP numerically tame; mapped back on output
+        if fit_unit(quantity) != 1.0:
+            y = y / fit_unit(quantity)                   # SRF in GHz keeps the log-GP numerically tame; mapped back on output
         feature_map = self.manifest.strata[stratum].quantities[quantity.split("@")[0]].feature_map
         settings = {"dims": ds.dims, "ranges": self.ranges(stratum), "log_target": bool((y > 0).all()),
                     "nt_mode": "per_nt" if ds.nt_dim and not feature_map else "joint", "kernel": "matern52", "nt_dim": ds.nt_dim,
@@ -250,7 +480,11 @@ class Library:
     def _model_file(self, stratum: str, quantity: str) -> Path | None:
         """The model's cache file if it exists (``Cache.find``: the cache directory, then the library's own ``.cache``). Never
         while the calibration is not cached: the key needs it, and computing it takes the five hold-out fits that are the
-        work ``models`` hands to its workers."""
+        work ``models`` hands to its workers (a composed curve: nor while one of its parts is not)."""
+        if self._plan(stratum, quantity) is not None:
+            calibration = self._composed_calibration(stratum, quantity, compute=False)
+            name = None if calibration is None else self._composed_model_name(stratum, quantity, calibration)
+            return None if name is None else self.cache.find(name)
         ds, _rows, x, y, settings = self._fit_inputs(stratum, quantity)
         calibration = self._calibration(ds, quantity, x, y, settings, compute=False)
         if calibration is None:
@@ -287,18 +521,35 @@ def _calibration_name(ds: dataset.Dataset, quantity: str) -> str:
     return f"calibration-{ds.stratum}-{_file_part(quantity)}-{ds.key}.json"
 
 
+def _write_json(path: Path, data: dict) -> None:
+    """Write to a sibling temporary file, then rename it over ``path``: a reader sees the old file or the whole new one."""
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp", delete=False, encoding="utf-8") as f:
+        f.write(json.dumps(data))
+    os.replace(f.name, path)
+
+
+def _unpickle(path: Path):
+    try:
+        with path.open("rb") as f:
+            return pickle.load(f)
+    except Exception:  # noqa: BLE001 -- missing, truncated, garbage, pickled by other code: unpickling can raise almost anything
+        return None
+
+
 def _load_model(path: Path, dims: list[str]) -> gp.StratumGP | None:
     """The cached model, or None: a missing file, one that does not unpickle, or anything but a StratumGP over these dims
     means refit and overwrite -- a bad cache file costs a fit, never an error."""
-    try:
-        with path.open("rb") as f:
-            model = pickle.load(f)
-    except Exception:  # noqa: BLE001 -- missing, truncated, garbage, pickled by other code: unpickling can raise almost anything
-        return None
+    model = _unpickle(path)
     return model if isinstance(model, gp.StratumGP) and model.dims == list(dims) else None
 
 
-def _save_model(path: Path, model: gp.StratumGP) -> None:
+def _load_composed_model(path: Path, dims: list[str]) -> composed.ComposedGP | None:
+    """A cached composed model (its own part only; the library attaches the shared ones), or None as ``_load_model``."""
+    model = _unpickle(path)
+    return model if isinstance(model, composed.ComposedGP) and model.dims == list(dims) and model.part is not None else None
+
+
+def _save_model(path: Path, model: gp.StratumGP | composed.ComposedGP) -> None:
     """Pickle to a sibling temporary file, then rename it over ``path``: a reader sees the old file or the whole new one, and
     writers of the same model at once (the engine's threads, other processes) each have their own temporary file."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -318,6 +569,16 @@ def _fit_in_worker(root: Path, calibrate: bool, stratum: str, quantity: str, thr
         if not lib._load(stratum, quantity):             # another process may have written it meanwhile
             lib._fit(stratum, quantity)
     return quantity
+
+
+def _calibrate_fold_in_worker(root: Path, calibrate: bool, stratum: str, quantity: str, seed: int, threads: int,
+                              cache_dir: Path | None = None) -> dict:
+    """One ``Library.models`` worker job: one calibration fold of a composed curve (every part refitted on the fold's
+    training rows), with BLAS capped at ``threads``, reading the dataset from ``cache_dir`` (the parent's cache directory);
+    the held-out errors go back (a few kB), and the parent, which holds the curve's lock meanwhile, writes the calibration
+    from all five."""
+    with threadpool_limits(limits=threads):
+        return Library(root, calibrate=calibrate, cache_dir=cache_dir)._composed_fold(stratum, quantity, seed)
 
 
 # -- compute within the machine's limits ---------------------------------------------------------------------------------
@@ -438,7 +699,7 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
                     "reason": f"{len(above)} of the 5 nearest measured rows have no resonance inside their sweep",
                     "nearest": [_evidence(r, q, ds.dims) for r in near[:3]]}
     m = library.model(stratum, q)
-    scale = 1e9 if q.startswith("SRF") else 1.0
+    scale = fit_unit(q)
     try:
         verdict = m.guard.check(coords)
     except domain.OutOfDomainError as exc:
@@ -451,10 +712,13 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
     lo, hi = m.gp.predict_bounds(x, k)
     rel = float(sigma[0] / abs(mu[0])) if mu[0] else float("inf")
     ceiling = m.rel_sigma_max if rel_sigma_max is None else float(rel_sigma_max)
-    return {"status": "predicted" if domain.sigma_ok(mu, sigma, ceiling)[0] else "uncertain",
-            "value": float(mu[0]) * scale, "lo": float(lo[0]) * scale, "hi": float(hi[0]) * scale, "k": k,
-            "k_scale": m.calibration["k_scale"], "rel_sigma": rel, "rel_sigma_max": ceiling, "unit": unit(q),
-            "nearest": [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in verdict.nearest]}
+    out = {"status": "predicted" if domain.sigma_ok(mu, sigma, ceiling)[0] else "uncertain",
+           "value": float(mu[0]) * scale, "lo": float(lo[0]) * scale, "hi": float(hi[0]) * scale, "k": k,
+           "k_scale": m.calibration["k_scale"], "rel_sigma": rel, "rel_sigma_max": ceiling, "unit": unit(q)}
+    if isinstance(m.gp, composed.ComposedGP):          # where the value came from: the parts, the rise, what is left
+        out["composition"] = m.gp.explain(x, srf_unit=fit_unit("SRF"))[0]
+    out["nearest"] = [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in verdict.nearest]
+    return out
 
 
 def _nearest_rows(library: Library, stratum: str, coords: dict, n: int) -> list[dataset.Row]:

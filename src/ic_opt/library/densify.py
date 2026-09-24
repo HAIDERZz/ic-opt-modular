@@ -241,7 +241,7 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
         norm = norms(score, median_rel, ceilings)
         marks.append(time.perf_counter())
         sel = select(x, {q: models[q].gp for q in names}, n, norm=norm, informs=informs, top=top, budget=budget,
-                     n_train=max(len(m.rows) for m in models.values()))
+                     n_train=max(query.fit_rows(m) for m in models.values()))
         mark = time.perf_counter()
         candidates = _candidates(library, stratum, models, names, x, sel, floors, k, rel_sigma_max, budget)
         marks.append(time.perf_counter())
