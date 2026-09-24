@@ -14,7 +14,8 @@ the real devices inside those windows form a region of the geometry space, and i
 3. a grid inside the bracket on multiples of the manifest steps (automatically about ``levels_per_dim`` values per
    dim; every step multiplied by the smallest integer that keeps the grid under ``max_points``); turns go by
    integer level, and a dim fixed within a level stays at its value there (``suggest.pool``'s rule);
-4. the grid points inside every model's domain are predicted and gated for confidence;
+4. the grid points inside every model's domain are predicted and gated for confidence (each quantity against its
+   ceiling: the call's ``rel_sigma_max``, else the quantity's in library.yaml, else the default);
 5. two levels of feasibility: **robust** -- the calibrated k-sigma interval lies inside every window, ``suggest``'s
    own test and where a sweep should centre; **mean** -- the predicted value does, the optimistic envelope;
 6. summaries: counts and per-dim ranges per level, the count meeting each target alone (the smallest binds),
@@ -41,7 +42,7 @@ import time
 import numpy as np
 from threadpoolctl import threadpool_limits
 
-from ic_opt.library import dataset, domain, query, suggest
+from ic_opt.library import dataset, query, suggest
 
 RELAX = 0.10                                         # the coarse pass widens every stated window by this fraction
 STAGES = ("models", "coarse", "grid", "predict", "summarize")
@@ -49,14 +50,15 @@ STAGES = ("models", "coarse", "grid", "predict", "summarize")
 
 def region(library: query.Library, stratum: str, targets: dict, objective: str | None = None, *,
            steps: dict[str, float] | None = None, levels_per_dim: int = 20, max_points: int = 2_000_000,
-           pool_size: int = 32768, seed: int = 0, k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX,
+           pool_size: int = 32768, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None,
            group_by: list[str] | None = None, trend: tuple[str, str] | None = None, n: int = 8, min_spacing: float = 0.05,
            verify_build: bool = False, sample_size: int = 5000, threads: int | None = None,
            workers: int | None = None) -> dict:
     """The region of ``stratum`` whose predictions meet ``targets`` (see the module docstring), as plain JSON data.
 
     ``steps`` gives grid steps for some or all continuous dims (multiples of the manifest steps); ``group_by`` names
-    dims to tabulate the mean set by; ``trend`` is ``(quantity, dim)``. ``threads`` (the BLAS threads of fitting and
+    dims to tabulate the mean set by; ``trend`` is ``(quantity, dim)``; ``rel_sigma_max`` is every quantity's confidence
+    ceiling (None: each quantity's own, ``Library.rel_sigma_max``). ``threads`` (the BLAS threads of fitting and
     prediction) and ``workers`` (the fitting processes) are explicit caps within the library's limits, refused above
     them; by default both follow from the limits (``Library.models``, ``query.blas_threads``), and an explicit
     OMP_NUM_THREADS, OPENBLAS_NUM_THREADS or MKL_NUM_THREADS lowers the threads (``query.omp_cap``)."""
@@ -168,7 +170,7 @@ def _relaxed(t: suggest.Target) -> suggest.Target:
 
 
 def _coarse(library: query.Library, stratum: str, models: dict, stated: list[suggest.Target], goals: list[suggest.Target],
-            pool_size: int, seed: int, k: float, rel_sigma_max: float, budget: int) -> tuple[np.ndarray, int, int, dict[str, int]]:
+            pool_size: int, seed: int, k: float, rel_sigma_max: float | None, budget: int) -> tuple[np.ndarray, int, int, dict[str, int]]:
     """The coarse candidates meeting every target at the mean level with the stated windows RELAX wider (the implied
     SRF as it is); the candidate count, the confident count, and the count meeting each relaxed target alone.
 
@@ -388,7 +390,7 @@ def _measured(ds: dataset.Dataset, goals: list[suggest.Target], names: list[str]
              "values": {q: r.values.get(q) for q in names}} for r, h in zip(ds.rows, hit) if h]
 
 
-def _unanswered(library: query.Library, stratum: str, measured: list[dict], models: dict, k: float, rel_sigma_max: float,
+def _unanswered(library: query.Library, stratum: str, measured: list[dict], models: dict, k: float, rel_sigma_max: float | None,
                 budget: int) -> list[str]:
     """``part/obs_id`` of the measured designs where ``predict_all``'s gate fails (a model's domain, its confidence): no
     grid point there can be feasible, whatever the design measured."""

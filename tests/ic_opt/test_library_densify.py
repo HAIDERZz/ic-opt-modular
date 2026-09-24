@@ -394,14 +394,15 @@ def test_the_block_answers_strict_json_and_its_file_is_lib_signoffs_candidates(x
                                     workers="1", out=str(out))
     assert (seen["quantities"], seen["n"], seen["pool_size"], seen["top"], seen["seed"], seen["workers"], seen["threads"]) == \
         (["Lp_lf", "k_lf"], 4, 1024, 500, 2, 1, None)
-    assert seen["rel_sigma_max"] == domain.DEFAULT_SIGMA_REL_MAX and seen["k"] == 2.0
+    assert seen["rel_sigma_max"] is None and seen["k"] == 2.0                          # None: each quantity's own ceiling
     assert (seen["score"], seen["bounds"]) == ("ceiling", None) and answer["bounds"] == {}
     text = out.read_text(encoding="utf-8")
     assert json.loads(text) == answer and "NaN" not in text and "Infinity" not in text
     json.dumps(answer, allow_nan=False)
     wanted = lib_signoff._candidates(out, XFM_DIMS, 10)
     assert wanted == [c["params"] for c in answer["candidates"]] and len(wanted) == 4
-    assert inspect.signature(library_blocks.densify).parameters["rel_sigma_max"].default == domain.DEFAULT_SIGMA_REL_MAX
+    assert inspect.signature(library_blocks.densify).parameters["rel_sigma_max"].default is None
+    assert answer["method"]["rel_sigma_max"] == dict.fromkeys(["Lp_lf", "k_lf"], domain.DEFAULT_SIGMA_REL_MAX)
     with pytest.raises(ValueError, match="bounds: expected a JSON object"):
         library_blocks.densify(xfm, "xfm_demo", 1, bounds=f"{CS}=0")                       # the shell ate the quotes
     monkeypatch.setattr(densify, "densify", lambda *a, **k: {"before": {"SRF": {"rel_sigma": {"max": float("nan")}}},

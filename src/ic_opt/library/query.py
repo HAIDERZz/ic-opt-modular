@@ -31,6 +31,10 @@ rows as evidence), out of domain (the guard's criterion, reason, nearest rows an
 flagged uncertain (criterion 4: sigma/mu above the ceiling -- reported with its numbers, never silently
 used). SRF has one more answer: when most of the nearest measured rows had no resonance inside their
 sweep, the point's resonance is reported as above the sweep instead of extrapolated.
+
+The ceiling is per column: a call's explicit ``rel_sigma_max``, else the quantity's ``rel_sigma_max`` in
+library.yaml, else ``domain.DEFAULT_SIGMA_REL_MAX`` (``Library.rel_sigma_max``). Each ``Model`` carries its own,
+so ``suggest.predict_all`` -- the gate of lib.suggest, lib.region and lib.densify -- applies the same one.
 """
 
 from __future__ import annotations
@@ -77,6 +81,7 @@ class Model:
     gp: gp.StratumGP
     guard: domain.DomainGuard
     calibration: dict                                # k_scale, held-out median_rel and coverage behind it
+    rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX   # its confidence ceiling when a call gives none (Library.rel_sigma_max)
 
 
 class Library:
@@ -107,6 +112,14 @@ class Library:
 
     def strata(self) -> list[str]:
         return sorted(self.manifest.strata)
+
+    def rel_sigma_max(self, stratum: str, column: str, given: float | None = None) -> float:
+        """The confidence ceiling on sigma / mu for one column: ``given`` (a call's explicit value), else the manifest's
+        ``rel_sigma_max`` for the column's quantity (a curve's for every anchor), else domain.DEFAULT_SIGMA_REL_MAX."""
+        if given is not None:
+            return float(given)
+        rule = self.manifest.strata[stratum].quantities.get(column.split("@")[0])
+        return domain.DEFAULT_SIGMA_REL_MAX if rule is None or rule.rel_sigma_max is None else rule.rel_sigma_max
 
     def dataset(self, stratum: str) -> dataset.Dataset:
         if stratum not in self._datasets:
@@ -191,7 +204,7 @@ class Library:
     def _keep(self, stratum: str, quantity: str, ds: dataset.Dataset, rows: list[dataset.Row], x: np.ndarray, settings: dict,
               model: gp.StratumGP, calibration: dict) -> None:
         guard = domain.DomainGuard(x, ds.dims, settings["ranges"], nt_dim=ds.nt_dim, ids=list(range(len(rows))))
-        self._models[(stratum, quantity)] = Model(stratum, quantity, rows, model, guard, calibration)
+        self._models[(stratum, quantity)] = Model(stratum, quantity, rows, model, guard, calibration, self.rel_sigma_max(stratum, quantity))
 
     def _fit_inputs(self, stratum: str, quantity: str) -> tuple[dataset.Dataset, list[dataset.Row], np.ndarray, np.ndarray, dict]:
         """What a fit of ``quantity`` needs: the dataset, the usable rows, x, y and the StratumGP settings."""
@@ -370,9 +383,10 @@ def _thread_budget(limits: site.HostLimits, threads: int) -> int:
 
 
 def query(library: Library, stratum: str, params: dict, quantities: list[str] | None = None, *, k: float = 2.0,
-          rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX) -> dict:
+          rel_sigma_max: float | None = None) -> dict:
     """Measured values at an exact library point, else per-quantity predictions with calibrated k-sigma bounds and domain verdicts;
-    ``notes`` carries the library's (``Library.notes``)."""
+    ``notes`` carries the library's (``Library.notes``). ``rel_sigma_max`` is the confidence ceiling for every quantity; None:
+    each quantity's own (``Library.rel_sigma_max``), which a prediction reports with its ``rel_sigma``."""
     ds = library.dataset(stratum)
     missing = [d for d in ds.dims if d not in params]
     if missing:
@@ -395,7 +409,7 @@ def query(library: Library, stratum: str, params: dict, quantities: list[str] | 
     return out
 
 
-def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float) -> dict:
+def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None) -> dict:
     ds = library.dataset(stratum)
     if q.startswith("SRF"):
         near = _nearest_rows(library, stratum, coords, 5)
@@ -417,9 +431,10 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
     mu, sigma = m.gp.predict(x)
     lo, hi = m.gp.predict_bounds(x, k)
     rel = float(sigma[0] / abs(mu[0])) if mu[0] else float("inf")
-    return {"status": "predicted" if domain.sigma_ok(mu, sigma, rel_sigma_max)[0] else "uncertain",
+    ceiling = m.rel_sigma_max if rel_sigma_max is None else float(rel_sigma_max)
+    return {"status": "predicted" if domain.sigma_ok(mu, sigma, ceiling)[0] else "uncertain",
             "value": float(mu[0]) * scale, "lo": float(lo[0]) * scale, "hi": float(hi[0]) * scale, "k": k,
-            "k_scale": m.calibration["k_scale"], "rel_sigma": rel, "unit": unit(q),
+            "k_scale": m.calibration["k_scale"], "rel_sigma": rel, "rel_sigma_max": ceiling, "unit": unit(q),
             "nearest": [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in verdict.nearest]}
 
 

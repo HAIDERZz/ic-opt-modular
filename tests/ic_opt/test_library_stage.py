@@ -134,8 +134,9 @@ def test_predict_fits_every_model_once_for_all_evaluation_threads(library, tmp_p
 
 
 def test_predict_honours_rel_sigma_max(library, tmp_path):
-    """The confidence ceiling is the stage's (and lib_design's) parameter, domain.DEFAULT_SIGMA_REL_MAX by default: at 1e-12
-    every prediction is uncertain and fails the point, a measured library point still answers."""
+    """The confidence ceiling is the stage's (and lib_design's) parameter; left out (None), each column keeps its own --
+    library.yaml's rel_sigma_max for its quantity, else domain.DEFAULT_SIGMA_REL_MAX. At 1e-12 every prediction is
+    uncertain and fails the point, a measured library point still answers."""
     lib = query.Library(library, limits=LOCAL)
     spec = design_spec("strict")
     strict = stage.surrogate_pipeline(spec, lib, rel_sigma_max=1e-12)
@@ -145,9 +146,10 @@ def test_predict_honours_rel_sigma_max(library, tmp_path):
                                    FakeSpectreExecutor(store.root / "sims"), store, pipeline=strict, limits=FAKE_HOST)
     assert measured.status == "ok" and predicted.status == "failed:predict"
     assert predicted.issues == [f"ind/nominal: metric {m}: uncertain" for m in ("L", "Q", "L10")]
-    assert stage.Predict(lib, {"ind": "ind_demo"}).rel_sigma_max == domain.DEFAULT_SIGMA_REL_MAX
+    assert stage.Predict(lib, {"ind": "ind_demo"}).rel_sigma_max is None
+    assert json.loads(stage.Predict(lib, {"ind": "ind_demo"}).identity)["rel_sigma_max"] == domain.DEFAULT_SIGMA_REL_MAX
     assert pipeline_fingerprint(strict) != pipeline_fingerprint(stage.surrogate_pipeline(spec, lib))
-    assert inspect.signature(lib_design.main).parameters["rel_sigma_max"].default == domain.DEFAULT_SIGMA_REL_MAX
+    assert inspect.signature(lib_design.main).parameters["rel_sigma_max"].default is None
 
 
 def test_lib_design_recipe_optimizes_on_predictions_and_reports_leaders(library, tmp_path, monkeypatch):
@@ -179,7 +181,7 @@ def test_lib_design_recipe_optimizes_on_predictions_and_reports_leaders(library,
     assert run.store.observations() == [] and fits == []                              # plan mode starts nothing and fits nothing
     assert passed == {"k": 2.0, "rel_sigma_max": 0.3}
     main(run, library=str(root), budget=24, batch=12, strategy="random", top=3, seed=3)
-    assert passed["rel_sigma_max"] == domain.DEFAULT_SIGMA_REL_MAX
+    assert passed["rel_sigma_max"] is None                                          # each column's own ceiling
     assert len(fits) == 3 * FITS_PER_MODEL and set(fits) == {threading.current_thread().name}
     obs = run.store.observations()
     assert len(obs) == 24 and all(o.step == "lib_design" for o in obs)

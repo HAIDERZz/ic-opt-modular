@@ -64,7 +64,7 @@ strata:
       - {store: ind_sym_top_nt1}                 # pipeline_fingerprint: pins a generation (default: the part's most common one)
     steps: {outer_diameter_um: 1, width_um: 0.1, spacing_um: 0.1, turns: 1}   # candidate resolution for lib.suggest
     quantities:                                  # names of the measure kernel
-      Lp_lf: {}                                  # low-frequency inductance
+      Lp_lf: {rel_sigma_max: 0.05}               # low-frequency inductance; confident only within 5% (default 0.15)
       Lp_res: {}
       Qp_peak: {band_ghz: 60}                    # peak searched in 0 < f <= band, the same band for every part
       SRF_p: {}                                  # modeled by the GP; no resonance in the sweep -> "above_sweep"
@@ -77,6 +77,13 @@ Qs_peak SRF_s k_lf`, plus `SRF`, the system SRF (the lowest resonance over
 all drives; `SRF_p` for an inductor). Curves sampled at anchors: `Lp Qp Ls
 Qs k`. Every value is recomputed from the sNp with these definitions, so
 parts swept to different stop frequencies still answer on one basis.
+
+`rel_sigma_max` is a quantity's confidence ceiling on sigma / mu, for every
+anchor of a curve: a prediction less sure than that is `uncertain` (section
+4), and no block uses it as an answer. A call's `rel_sigma_max=` overrides
+it for every quantity; a quantity without one has 0.15. The ceiling only
+decides which predictions are trusted, so setting or changing it refits
+nothing.
 
 The low-frequency scalars (`Lp_lf`, `Ls_lf`, `k_lf`) average the samples
 up to 3 GHz; a stratum's `low_freq_max_hz` sets another top, in Hz or
@@ -120,16 +127,18 @@ Each quantity comes back with a `status`:
 | --- | --- |
 | `measured` | the point is a library row: the measured value |
 | `predicted` | GP mean `value` with calibrated bounds `lo` / `hi`, plus the three nearest measured rows as evidence |
-| `uncertain` | predicted, but sigma / mu exceeds `rel_sigma_max` (0.15 unless given): reported with its numbers, never used silently |
+| `uncertain` | predicted, but sigma / mu exceeds the quantity's ceiling (criterion 4 below; the answer gives it as `rel_sigma_max`): reported with its numbers, never used silently |
 | `out_of_domain` | the domain guard refused: `criterion`, `reason`, the nearest measured rows |
 | `above_sweep` | SRF only: most nearest rows did not resonate inside their sweep; `lower_bound` is that sweep's stop |
 
 The domain guard's criteria: (1) inside the achieved box, and a dim that is
 fixed within a turns level must match it; (2) a model exists for this turns
 level (at least 25 usable rows); (3) inside the level's convex hull over the
-dims that vary there; (4) sigma / mu at most `rel_sigma_max` (a parameter of
-`lib.query`, `lib.suggest`, `lib.region` and `lib_design`; 0.15 unless
-given). The model is a Matern 5/2 GP per turns level on log targets. Bounds
+dims that vary there; (4) sigma / mu at most the quantity's ceiling: the
+call's `rel_sigma_max` (a parameter of `lib.query`, `lib.suggest`,
+`lib.region`, `lib.densify` and `lib_design`) when given, else the
+quantity's `rel_sigma_max` in `library.yaml`, else 0.15. The model is a
+Matern 5/2 GP per turns level on log targets. Bounds
 are mu +- k sigma (`k=2`) widened by
 a calibration factor from held-out residuals (`max(1, q95(|z|) / 2)`), so
 about 95% of held-out measurements fall inside; sigma is never reported below
@@ -227,9 +236,9 @@ The candidates are `pool_size` Sobol points (65 536) inside the bounds,
 snapped to the manifest `steps`, off the measured rows and inside every
 model's domain. Each is scored by the largest, over the quantities, of the
 model's own posterior sigma divided by a norm. With `score=ceiling` (the
-default) the norm is `rel_sigma_max` (0.15 unless given): how far the model
-is above the sigma the library calls usable, one yardstick for every
-quantity, so the picks go where the library cannot answer yet. With
+default) the norm is the quantity's confidence ceiling (`rel_sigma_max`,
+section 4): how far the model is above the sigma the library calls usable
+for that quantity, so the picks go where the library cannot answer yet. With
 `score=typical` it is the quantity's held-out median relative error: how
 many typical errors the model may be off, which lets a quantity with a tiny
 typical error lead the ranking even where its sigma is already below the
@@ -247,8 +256,8 @@ hyperparameters the update is exact. Turns levels are separate models and
 never share an update.
 
 `before` and `after` give, per quantity, the median, p90 and maximum
-relative sigma over the pool and the share above `rel_sigma_max`, without
-and with the picks measured. The library refits after adoption and
+relative sigma over the pool and the share above its ceiling, without
+and with the picks measured (`method` names each quantity's ceiling). The library refits after adoption and
 optimizes the hyperparameters again, so read `after` as the order of the
 gain, not a promise. Each candidate carries its score, its sigma before any
 pick and when it was picked, the current prediction with its calibrated

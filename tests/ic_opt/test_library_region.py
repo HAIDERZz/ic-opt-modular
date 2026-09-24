@@ -248,7 +248,7 @@ def test_the_block_answers_strict_json_and_parses_the_command_line_spellings(lib
                    "candidates": [{"predicted": {"SRF": {"value": 5e10, "lo": 5e10, "hi": None}}}], "trend": {"rows": [[None, None, 0.5]]}}
     json.dumps(out, allow_nan=False)
     assert (seen["group_by"], seen["trend"], seen["max_points"], seen["workers"], seen["threads"]) == ([W_P, W_S], ("k@10", CS), 30000, 2, None)
-    assert seen["rel_sigma_max"] == domain.DEFAULT_SIGMA_REL_MAX
+    assert seen["rel_sigma_max"] is None                                             # each quantity's own ceiling (R-21)
     library_blocks.region(lib, "xfm_demo", PLAIN, rel_sigma_max="0.3")
     assert seen["rel_sigma_max"] == 0.3
     for bad in ("k_lf", "k_lf:", f":{CS}", ["k_lf", CS]):
@@ -342,6 +342,7 @@ def test_the_command_line_sizes_the_library_from_the_site_files_local_entry(lib,
     assert measured.exit_code == 0 and json.loads(measured.output)["measured"]["obs_id"] == row.obs_id, measured.output
 
 
-@pytest.mark.parametrize("block", [library_blocks.query, library_blocks.suggest, library_blocks.region])
+@pytest.mark.parametrize("block", [library_blocks.query, library_blocks.suggest, library_blocks.region, library_blocks.densify])
 def test_the_confidence_ceiling_is_a_block_parameter(block):
-    assert inspect.signature(block).parameters["rel_sigma_max"].default == domain.DEFAULT_SIGMA_REL_MAX
+    """Left out, each quantity keeps its own ceiling (library.yaml's rel_sigma_max, else the default); given, it holds for all."""
+    assert inspect.signature(block).parameters["rel_sigma_max"].default is None

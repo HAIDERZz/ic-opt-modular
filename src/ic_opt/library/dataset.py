@@ -15,7 +15,8 @@ Built datasets are cached in the library's cache (``cache.locate``: ``<library>/
 directory is given or that one cannot be written) keyed by what they are made of -- the rows each part keeps and
 leaves out, the parts' devices, the quantity definitions and the measure code -- so a query does not re-read
 thousands of sNp files. The key ignores how the rows are stamped: restamping their fingerprints
-(``ic-opt migrate-store``) keeps it, and with it the calibration and model caches built on it.
+(``ic-opt migrate-store``) keeps it, and with it the calibration and model caches built on it. It ignores a
+quantity's confidence ceiling (``rel_sigma_max``) too: that decides what an answer trusts, not what a row holds.
 """
 
 from __future__ import annotations
@@ -270,12 +271,14 @@ def _drive_srf(q: measure.Quantities, curve: str) -> float | None:
 
 def _cache_key(stratum: manifest.Stratum, parts: list[_Part]) -> str:
     """What the dataset is made of, not how its rows are stamped: the stratum's definition (a pinned generation counts
-    through the rows it keeps), the measure code, and per part its device (id, ports, topology: where the sNp is and how
-    it is measured), the rows it keeps (obs id, params, status) and what it leaves out. A restamp that keeps the same
-    rows in the same generation (``ic-opt migrate-store``) keeps the key, and with it the calibration and model caches."""
+    through the rows it keeps; the quantities' confidence ceilings do not count), the measure code, and per part its
+    device (id, ports, topology: where the sNp is and how it is measured), the rows it keeps (obs id, params, status)
+    and what it leaves out. A restamp that keeps the same rows in the same generation (``ic-opt migrate-store``) keeps
+    the key, and with it the calibration and model caches."""
     h = hashlib.sha256()
     h.update(f"v{DATASET_VERSION}".encode())
-    h.update(stratum.model_dump_json(exclude={"parts": {"__all__": {"pipeline_fingerprint"}}}).encode())
+    h.update(stratum.model_dump_json(exclude={"parts": {"__all__": {"pipeline_fingerprint"}},
+                                              "quantities": {"__all__": {"rel_sigma_max"}}}).encode())
     h.update(hashlib.sha256(inspect.getsource(measure).encode()).digest())
     for p in parts:
         content = {"store": p.store, "device": p.device.model_dump(mode="json", include={"id", "ports", "topology"}),

@@ -10,7 +10,8 @@ formerly em-opt's ``inverse.suggest``):
    within a level kept at their value. Measured designs that meet the targets are reported on their own list
    (certain, already simulated); the predicted candidates are the interpolated alternatives to sign off;
 2. domain: every model involved must accept the candidate (guard criteria 1-3) and have a model there;
-3. predict every quantity; criterion 4 (sigma / mu) drops candidates the model is unsure about;
+3. predict every quantity; criterion 4 (sigma / mu) drops candidates the model is unsure about, against each
+   quantity's ceiling (the call's ``rel_sigma_max``, else the quantity's in library.yaml, else the default);
 4. conservative constraints on the calibrated k-sigma bounds: ``min`` needs the lower bound above,
    ``max`` the upper bound below, ``target`` and a window the whole interval inside. An anchored quantity
    (``Lp@28``) adds ``SRF >= srf_margin x f0`` unless the targets already constrain SRF. SRF whose nearest
@@ -168,11 +169,12 @@ def _gp_predict(model: gp.StratumGP, x: np.ndarray, chunk_rows: int | None) -> t
     return np.concatenate([p[0] for p in parts]), np.concatenate([p[1] for p in parts])
 
 
-def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX,
+def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0, rel_sigma_max: float | None = None,
                 srf_floor: dict[str, np.ndarray] | None = None, exact: dict[str, np.ndarray] | None = None,
                 check_domain: bool = True, chunk_bytes: int | None = None) -> tuple[np.ndarray, dict]:
     """``(ok, pred)`` for candidate rows ``x`` and every quantity in ``models``: ``ok`` is the domain (``in_domain``) and
-    confidence gate (a finite value, sigma / mu within ``rel_sigma_max``); ``pred[q]`` holds value, lo, hi (calibrated
+    confidence gate (a finite value, sigma / mu within ``rel_sigma_max`` for every quantity, or when it is None within
+    each model's own ``Model.rel_sigma_max``); ``pred[q]`` holds value, lo, hi (calibrated
     k-sigma), rel_sigma and sigma in SI units. One GP prediction per quantity: the bounds come from that (mu, sigma)
     as ``StratumGP.predict_bounds`` derives them, and SRF, fitted in GHz, is mapped back to Hz here and nowhere else.
     ``srf_floor[q]`` gives a per-candidate lower bound for an SRF known to lie above the sweep (NaN elsewhere);
@@ -195,7 +197,8 @@ def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0
             mu[known] = lo[known] = hi[known] = measured[known]
             sigma[known] = 0.0
         settled = above | known
-        ok &= (np.isfinite(mu) | above) & (settled | domain.sigma_ok(mu, sigma, rel_sigma_max))
+        ceiling = m.rel_sigma_max if rel_sigma_max is None else rel_sigma_max
+        ok &= (np.isfinite(mu) | above) & (settled | domain.sigma_ok(mu, sigma, ceiling))
         pred[q] = {"value": mu, "lo": lo, "hi": hi, "rel_sigma": np.where(settled, 0.0, sigma / np.maximum(np.abs(mu), 1e-300)),
                    "sigma": sigma}
     return ok, pred
@@ -231,11 +234,11 @@ def rank(pred: dict, targets: list[Target], objective: tuple[str, str] | None, o
 
 
 def score(x: np.ndarray, models: dict[str, query.Model], targets: list[Target], objective: tuple[str, str] | None, *,
-          k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX, srf_floor: dict[str, np.ndarray] | None = None,
+          k: float = 2.0, rel_sigma_max: float | None = None, srf_floor: dict[str, np.ndarray] | None = None,
           check_domain: bool = True, exact: dict[str, np.ndarray] | None = None, chunk_bytes: int | None = None) -> dict:
     """Predict, gate and rank candidate rows ``x``: ``predict_all`` over the targets' and the objective's quantities,
-    the robust ``satisfy``, ``rank``. ``models`` must cover every target and the objective; ``srf_floor``, ``exact`` and
-    ``chunk_bytes`` as in ``predict_all``."""
+    the robust ``satisfy``, ``rank``. ``models`` must cover every target and the objective; ``rel_sigma_max``,
+    ``srf_floor``, ``exact`` and ``chunk_bytes`` as in ``predict_all``."""
     names = sorted({t.quantity for t in targets} | ({objective[1]} if objective else set()))
     ok, pred = predict_all(x, {q: models[q] for q in names}, k=k, rel_sigma_max=rel_sigma_max, srf_floor=srf_floor, exact=exact,
                            check_domain=check_domain, chunk_bytes=chunk_bytes)
@@ -324,7 +327,7 @@ def build_check(library: query.Library, stratum: str, params: dict) -> dict:
 
 
 def suggest(library: query.Library, stratum: str, targets: dict, objective: str | None = None, *, n: int = 5, pool_size: int = 8192,
-            seed: int = 0, k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX, verify_build: bool = True,
+            seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, verify_build: bool = True,
             min_spacing: float = 0.05) -> dict:
     ds = library.dataset(stratum)
     goals = parse_targets(targets)

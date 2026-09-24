@@ -6,6 +6,11 @@ several stores ("parts") that were swept with different EMX settings, e.g. singl
 further in frequency. Quantities are named after the measure kernel: scalars (``Lp_lf``, ``Qp_peak``,
 ``SRF_p``, ``k_lf`` ...) or curves sampled at anchor frequencies (``Lp`` with ``anchors_ghz: [28]`` gives the
 column ``Lp@28``).
+
+A quantity may set ``rel_sigma_max``, the confidence ceiling on sigma / mu for its columns (every anchor of a
+curve): a prediction less sure than that is ``uncertain``. It takes effect where a call gives none -- the
+precedence is a call's explicit ``rel_sigma_max``, then the quantity's, then ``domain.DEFAULT_SIGMA_REL_MAX``
+(``Library.rel_sigma_max``) -- and it is no part of any cache key: setting it refits nothing.
 """
 
 from __future__ import annotations
@@ -38,6 +43,7 @@ class Quantity(Model):
     anchors_ghz: list[float] = Field(default_factory=list)   # curves only: sample at these frequencies
     srf_margin: float = Field(default=1.25, ge=1.0)       # an anchored row is usable at f0 only if its resonance lies above margin x f0
     feature_map: str | None = None                        # the model's input features (FEATURE_MAP_DIMS; default: the dims themselves)
+    rel_sigma_max: float | None = Field(default=None, gt=0, allow_inf_nan=False)   # confidence ceiling on sigma / mu; None: the default
 
     @field_validator("anchors_ghz")
     @classmethod

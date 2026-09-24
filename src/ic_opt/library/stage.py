@@ -10,7 +10,9 @@ written to the child's ``predictions.json``.
 
 The stage's identity names each device's stratum and dataset content key, so surrogate observations get
 their own pipeline fingerprint: they never pass for EMX measurements, and a library that grows is a new
-generation of predictions.
+generation of predictions. Each column is asked with its confidence ceiling: the stage's ``rel_sigma_max`` when
+given, else the quantity's in library.yaml, else ``domain.DEFAULT_SIGMA_REL_MAX``; the identity names the
+manifest's ceilings when they apply, so changing one is a new generation too.
 
 A device only maps onto a stratum built with the same generator and the same fixed fields (metal, fixture,
 leads ...): ``match_stratum`` finds it, and ``Predict`` refuses a device whose fixed fields differ.
@@ -60,11 +62,16 @@ class Predict:
     simulates = False                                  # a prediction is not a simulation: it spends none of the spec's budget
     resources = Resources()
 
-    def __init__(self, library: query.Library, strata: dict[str, str], *, k: float = 2.0,
-                 rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX):
+    def __init__(self, library: query.Library, strata: dict[str, str], *, k: float = 2.0, rel_sigma_max: float | None = None):
         self.library, self.strata, self.k, self.rel_sigma_max = library, dict(strata), k, rel_sigma_max
-        self.identity = json.dumps({"k": k, "rel_sigma_max": rel_sigma_max, "calibrate": library.calibrate,
-                                    "strata": {d: [s, library.dataset(s).key] for d, s in sorted(self.strata.items())}}, separators=(",", ":"))
+        identity = {"k": k, "rel_sigma_max": domain.DEFAULT_SIGMA_REL_MAX if rel_sigma_max is None else rel_sigma_max,
+                    "calibrate": library.calibrate, "strata": {d: [s, library.dataset(s).key] for d, s in sorted(self.strata.items())}}
+        if rel_sigma_max is None:                      # the manifest's ceilings apply: part of what the predictions are
+            ceilings = {s: {q: rule.rel_sigma_max for q, rule in library.manifest.strata[s].quantities.items() if rule.rel_sigma_max is not None}
+                        for s in sorted(set(self.strata.values()))}
+            if any(ceilings.values()):                 # none set: the identity (and the fingerprint) of a library without them
+                identity["rel_sigma_max_by_quantity"] = {s: c for s, c in ceilings.items() if c}
+        self.identity = json.dumps(identity, separators=(",", ":"))
         self._lock = threading.Lock()
         self._ready: dict[str, list[str]] | None = None
 
@@ -132,6 +139,6 @@ def _columns(spec: Spec, device: str, ds: dataset.Dataset) -> tuple[dict[str, st
 
 def surrogate_pipeline(spec: Spec, library: query.Library, strata: dict[str, str] | None = None, **predict) -> list:
     """pcell -> library prediction per device (the em_only pipeline with EMX + measure replaced by the library); ``predict``
-    goes to ``Predict`` (``k``, ``rel_sigma_max``)."""
+    goes to ``Predict`` (``k``, ``rel_sigma_max``: every column's ceiling, None for each quantity's own)."""
     strata = strata or {d.id: match_stratum(library, d) for d in spec.devices}
     return [Pcell(spec), Predict(library, strata, **predict)]

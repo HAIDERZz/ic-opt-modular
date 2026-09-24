@@ -19,8 +19,9 @@ adopted, the rows make the next dataset build, and the models refitted on it are
    error everywhere, flat, and says nothing about where the model is unsure. Relative: for a log target (every
    positive quantity) the log-space sigma, else sigma / |mu|;
 4. score, the largest over the quantities of sigma_rel_q divided by the quantity's norm: ``ceiling`` (the default)
-   divides by the confidence ceiling ``rel_sigma_max`` -- how far above the sigma the library calls usable, the same
-   yardstick for every quantity, so the picks go where the library cannot answer yet; ``typical`` divides by the
+   divides by the quantity's confidence ceiling (the call's ``rel_sigma_max``, else the quantity's in library.yaml,
+   else the default) -- how far above the sigma the library calls usable for it, so the picks go where the library
+   cannot answer yet; ``typical`` divides by the
    quantity's held-out median relative error from its calibration (sigma_rel itself without one) -- how many typical
    errors the model may be off, which lets a quantity with a tiny typical error lead the ranking even where its sigma
    is already well below the ceiling;
@@ -59,7 +60,7 @@ from scipy.linalg import solve_triangular
 from scipy.spatial import cKDTree
 from threadpoolctl import threadpool_limits
 
-from ic_opt.library import dataset, domain, gp, query, suggest
+from ic_opt.library import dataset, gp, query, suggest
 from ic_opt.site import EnvelopeError
 
 SCORES = {"ceiling": "max_q sigma_rel_q / rel_sigma_max_q", "typical": "max_q sigma_rel_q / median_rel_q"}
@@ -191,25 +192,28 @@ def select(x: np.ndarray, models: dict[str, gp.StratumGP], n: int, *, norm: dict
                      dict(zip(("predict", "select", "after"), (round(b - a, 3) for a, b in itertools.pairwise(marks)))))
 
 
-def norms(score: str, median_rel: dict[str, float | None], rel_sigma_max: float) -> dict[str, float]:
-    """What divides each quantity's relative sigma in the score: ``ceiling`` -- the confidence ceiling, the same for every
-    quantity; ``typical`` -- the quantity's held-out median relative error (1 without one: its sigma_rel itself)."""
+def norms(score: str, median_rel: dict[str, float | None], rel_sigma_max: float | dict[str, float]) -> dict[str, float]:
+    """What divides each quantity's relative sigma in the score: ``ceiling`` -- its confidence ceiling (``rel_sigma_max``,
+    one for every quantity or a dict per quantity); ``typical`` -- its held-out median relative error (1 without one: its
+    sigma_rel itself)."""
     if score not in SCORES:
         raise ValueError(f"score {score!r}: expected one of {sorted(SCORES)}")
-    return {q: float(rel_sigma_max) if score == "ceiling" else float(value or 1.0) for q, value in median_rel.items()}
+    ceiling = rel_sigma_max if isinstance(rel_sigma_max, dict) else dict.fromkeys(median_rel, rel_sigma_max)
+    return {q: float(ceiling[q]) if score == "ceiling" else float(value or 1.0) for q, value in median_rel.items()}
 
 
 def densify(library: query.Library, stratum: str, quantities: list[str] | None = None, *, n: int, pool_size: int = 65536,
-            top: int = 4000, seed: int = 0, k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX,
+            top: int = 4000, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None,
             score: str = DEFAULT_SCORE, bounds: dict | None = None, threads: int | None = None, workers: int | None = None) -> dict:
     """``n`` new geometries of ``stratum`` whose simulation lowers the uncertainty of ``quantities`` (default: every
     column) the most over the sampled domain, with the pool's sigma before and after (see the module docstring), as
-    plain JSON data. ``score`` is ``ceiling`` (sigma_rel over ``rel_sigma_max``, the default) or ``typical`` (over the
-    held-out median relative error); ``bounds`` keeps part of the box: per dim a window ``{"min": a, "max": b}`` or a
-    fixed value. ``k`` sets each candidate's predicted interval (calibrated, as ``lib.query`` reports it);
-    ``rel_sigma_max`` is also the confidence ceiling the statistics count against. ``threads`` (BLAS threads of fitting
-    and prediction) and ``workers`` (fitting processes) are explicit caps within the library's limits, as in
-    ``lib.region``."""
+    plain JSON data. ``score`` is ``ceiling`` (sigma_rel over the quantity's confidence ceiling, the default) or
+    ``typical`` (over the held-out median relative error); ``bounds`` keeps part of the box: per dim a window
+    ``{"min": a, "max": b}`` or a fixed value. ``k`` sets each candidate's predicted interval (calibrated, as
+    ``lib.query`` reports it). ``rel_sigma_max`` is every quantity's confidence ceiling (None: each quantity's own,
+    ``Library.rel_sigma_max``), the one the statistics count against too; ``method`` echoes them. ``threads`` (BLAS
+    threads of fitting and prediction) and ``workers`` (fitting processes) are explicit caps within the library's limits,
+    as in ``lib.region``."""
     marks = [time.perf_counter()]
     ds = library.dataset(stratum)
     names = list(dict.fromkeys(quantities or ds.columns))
@@ -223,7 +227,7 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
         raise ValueError(f"top={top} is below n={n}: the picks are made among the top candidates")
     if score not in SCORES:
         raise ValueError(f"score {score!r}: expected one of {sorted(SCORES)}")
-    if not (math.isfinite(rel_sigma_max) and rel_sigma_max > 0):
+    if rel_sigma_max is not None and not (math.isfinite(rel_sigma_max) and rel_sigma_max > 0):
         raise ValueError(f"rel_sigma_max must be a positive number, got {rel_sigma_max!r}")
     effective, box = _bounds(library, stratum, bounds)
     blas, budget = query.blas_threads(library.limits, threads), suggest.predict_budget(library.limits)
@@ -233,7 +237,8 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
         x, info, floors = _pool(library, stratum, models, pool_size, seed, box)
         informs = {q: ~np.isfinite(floors[q]) if q in floors else np.ones(len(x), dtype=bool) for q in names}
         median_rel = {q: _median_rel(models[q]) for q in names}
-        norm = norms(score, median_rel, rel_sigma_max)
+        ceilings = {q: models[q].rel_sigma_max if rel_sigma_max is None else float(rel_sigma_max) for q in names}
+        norm = norms(score, median_rel, ceilings)
         marks.append(time.perf_counter())
         sel = select(x, {q: models[q].gp for q in names}, n, norm=norm, informs=informs, top=top, budget=budget,
                      n_train=max(len(m.rows) for m in models.values()))
@@ -244,12 +249,12 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
     seconds = {"models": marks[1] - marks[0], "pool": marks[2] - marks[1], **sel.seconds, "report": marks[3] - mark,
                "total": marks[3] - marks[0]}
     return {"stratum": stratum, "quantities": names, "n": n, "bounds": effective, "pool": info,
-            "before": {q: _stats(sel.before[q], rel_sigma_max) for q in names},
-            "after": {q: _stats(sel.after[q], rel_sigma_max) for q in names},
+            "before": {q: _stats(sel.before[q], ceilings[q]) for q in names},
+            "after": {q: _stats(sel.after[q], ceilings[q]) for q in names},
             "candidates": candidates,
             "method": {"score": score, "formula": SCORES[score], "norm": norm, "selection": SELECTION, "after": AFTER,
                        "top": sel.top, "top_requested": top, "median_rel": {q: median_rel[q] for q in names},
-                       "rel_sigma_max": rel_sigma_max, "k": k},
+                       "rel_sigma_max": ceilings, "k": k},
             "seconds": {key: round(float(v), 3) for key, v in seconds.items()}, "notes": notes}
 
 
@@ -370,7 +375,7 @@ def _number(value: float | None) -> float | None:
 
 
 def _candidates(library: query.Library, stratum: str, models: dict[str, query.Model], names: list[str], x: np.ndarray,
-                sel: Selection, floors: dict[str, np.ndarray], k: float, rel_sigma_max: float, budget: int) -> list[dict]:
+                sel: Selection, floors: dict[str, np.ndarray], k: float, rel_sigma_max: float | None, budget: int) -> list[dict]:
     """The picks in ``lib_signoff``'s candidate shape: params, the score, relative sigma before any pick and when picked,
     the current prediction with its calibrated k-sigma interval (SRF in Hz; above the sweep: the stop as its lower
     bound) and the nearest measured rows."""

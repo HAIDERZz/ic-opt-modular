@@ -1,12 +1,13 @@
 """Built-in recipe: lib_design -- optimize a device on library predictions (no EMX), report the leaders with their bounds.
 
-``ic-opt run lib_design PROJECT library=<library root> [stratum=...] budget=200 strategy=turbo top=5 [rel_sigma_max=0.15] [cache_dir=DIR]``
+``ic-opt run lib_design PROJECT library=<library root> [stratum=...] budget=200 strategy=turbo top=5 [rel_sigma_max=R] [cache_dir=DIR]``
 
 The project's spec is an em_only spec (one pcell device, its variables, device metrics, constraints,
 objective). Every candidate is built by the pcell (real generator, product DRC) and scored from the
 library; the leaders are written to ``reports/lib_design.json`` with each metric's calibrated interval.
 They are predictions: ``lib_signoff`` runs them through real EMX (after ``--plan`` and approval).
-A prediction whose sigma / mu exceeds ``rel_sigma_max`` fails the point as ``failed:predict``.
+A prediction whose sigma / mu exceeds its ceiling -- ``rel_sigma_max`` when given, else the quantity's in
+library.yaml, else 0.15 -- fails the point as ``failed:predict``.
 
 The library computes here, on the machine running ic-opt, within its ``hosts.local`` entry of site.yaml:
 the models the search needs are fitted (or loaded) once before it starts, the uncached ones in parallel
@@ -19,16 +20,15 @@ from __future__ import annotations
 import json
 
 from ic_opt import blocks as b
-from ic_opt.library import domain, query, stage
+from ic_opt.library import query, stage
 from ic_opt.recipe import Run
 
 
 def main(run: Run, *, library: str, stratum: str | None = None, budget: int = 200, batch: int = 20, strategy: str = "turbo",
-         top: int = 5, seed: int = 0, k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX,
-         cache_dir: str | None = None) -> None:
+         top: int = 5, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, cache_dir: str | None = None) -> None:
     lib = query.Library(library, limits=run.site.host("local"), cache_dir=cache_dir)     # the controller's entry, not the executor host's
     strata = {d.id: stratum or stage.match_stratum(lib, d) for d in run.spec.devices}
-    pipeline = stage.surrogate_pipeline(run.spec, lib, strata, k=float(k), rel_sigma_max=float(rel_sigma_max))
+    pipeline = stage.surrogate_pipeline(run.spec, lib, strata, k=float(k), rel_sigma_max=None if rel_sigma_max is None else float(rel_sigma_max))
     run.note(f"lib_design: {', '.join(f'{d} -> {s}' for d, s in strata.items())} ({library})")
     for note in lib.notes:
         run.note(f"lib_design: {note}")
