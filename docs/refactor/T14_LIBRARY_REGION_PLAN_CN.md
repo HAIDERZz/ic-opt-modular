@@ -1,6 +1,8 @@
 # T14：查询库"目标窗 → 可行参数区域"（`lib.region`）开发方案
 
-状态：规划稿（2026-09-24），待用户拍板第 7 节后开工。
+状态：第 7 节 D1–D5 已批准（2026-09-24）。T14.1–T14.3 已实现：T14.1 模型落盘缓存 + 并行拟合（9257b47）、T14.2 `lib.region` 核心（3b4a73f）、
+T14.3 block `lib.region` + CLI + 文档 + SKILL + 页面脚本改读 block 输出、删原型（提交 `feat(library): lib.region block, CLI, docs and report page`）；
+T14.4 验收（真实 N28 库 C3/C4、P1–P3 耗时、页面重生成）待执行。
 
 ## 0. 一句话
 

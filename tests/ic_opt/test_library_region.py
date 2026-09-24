@@ -1,11 +1,15 @@
-"""T14.2: lib.region on the synthetic transformer library -- window targets, the score split, the grid, both levels and the summaries."""
+"""T14.2/T14.3: lib.region on the synthetic transformer library -- window targets, the score split, the grid, both levels, the
+summaries, and the block the command line calls."""
 from __future__ import annotations
 
 import json
 
 import numpy as np
 import pytest
+from typer.testing import CliRunner
 
+from ic_opt.blocks import library as library_blocks
+from ic_opt.cli import app
 from ic_opt.library import domain, query, region
 from ic_opt.library import suggest as s
 from tests.ic_opt.library_fixtures import XFM_DIMS, build_library, build_xfm_library
@@ -16,6 +20,8 @@ OD_P, OD_S, W_P, W_S, CS = XFM_DIMS
 LATTICE = {OD_P: 20, OD_S: 4, W_P: 1, W_S: 1, CS: 0.5}              # most library rows sit on these multiples
 PLAIN = {"Lp_lf": {"min": 0.40e-9, "max": 0.50e-9}, "k_lf": {"min": 0.6}}
 ANCHORED = {"Lp_lf": {"min": 0.58e-9, "max": 0.82e-9}, "k@10": {"min": 0.66}}   # implies SRF >= 12.5 GHz
+KEYS = ["stratum", "targets", "objective", "grid", "levels", "binding", "edge", "group_by", "trend", "candidates", "candidates_level",
+        "measured", "points_sample", "seconds", "notes"]                          # the answer's documented top-level keys, in order
 
 
 @pytest.fixture(scope="module")
@@ -148,8 +154,7 @@ def test_max_points_coarsens_every_step_on_the_manifest_lattice(lib):
 def test_group_by_trend_edge_and_candidates_have_the_documented_shapes(lib):
     r = run(lib, PLAIN, "max:Qp_peak", steps={OD_P: 5, OD_S: 5, W_P: 1, W_S: 1, CS: 2}, group_by=[W_P, W_S], trend=("k_lf", CS), n=3)
     assert plain(r) and json.loads(json.dumps(r))["grid"] == r["grid"]
-    assert list(r) == ["stratum", "targets", "objective", "grid", "levels", "binding", "edge", "group_by", "trend", "candidates",
-                       "candidates_level", "measured", "points_sample", "seconds", "notes"]
+    assert list(r) == KEYS
     assert set(r["seconds"]) == {"models", "coarse", "grid", "predict", "summarize", "total"}
     assert r["levels"]["robust"]["count"] <= r["levels"]["mean"]["count"] <= r["grid"]["confident"] <= r["grid"]["in_domain"] <= r["grid"]["points"]
     assert set(r["binding"]) == {"Lp_lf", "k_lf"} and min(r["binding"].values()) >= r["levels"]["mean"]["count"]
@@ -199,3 +204,41 @@ def test_turns_go_by_level_and_a_level_keeps_the_dims_it_fixes(tmp_path_factory)
     assert r["edge"]["turns"] == {"at_min": True, "at_max": True} and r["measured"]
     with pytest.raises(ValueError, match="turns go by integer level"):
         region.region(lib, "ind_demo", {"Lp_lf": {"min": 0.8e-9, "max": 1.6e-9}}, steps={"turns": 1})
+
+
+def test_the_block_answers_strict_json_and_parses_the_command_line_spellings(lib, monkeypatch):
+    """The core keeps inf (a minimum's open upper end, an SRF above the sweep); the block's answer has null there instead."""
+    seen = {}
+
+    def core(library, stratum, targets, objective=None, **kw):
+        seen.update(kw)
+        return {"targets": [{"quantity": "k_lf", "kind": "min", "value": 0.6, "tol": 0.0, "upper": float("inf")}],
+                "candidates": [{"predicted": {"SRF": {"value": 5e10, "lo": 5e10, "hi": float("inf")}}}],
+                "trend": {"rows": [(float("-inf"), float("nan"), 0.5)]}}
+
+    monkeypatch.setattr(region, "region", core)
+    out = library_blocks.region(lib, "xfm_demo", PLAIN, group_by=f"{W_P}, {W_S}", trend=f"k@10:{CS}", max_points=3e4, workers="2")
+    assert out == {"targets": [{"quantity": "k_lf", "kind": "min", "value": 0.6, "tol": 0.0, "upper": None}],
+                   "candidates": [{"predicted": {"SRF": {"value": 5e10, "lo": 5e10, "hi": None}}}], "trend": {"rows": [[None, None, 0.5]]}}
+    json.dumps(out, allow_nan=False)
+    assert (seen["group_by"], seen["trend"], seen["max_points"], seen["workers"], seen["threads"]) == ([W_P, W_S], ("k@10", CS), 30000, 2, None)
+    for bad in ("k_lf", "k_lf:", f":{CS}", ["k_lf", CS]):
+        with pytest.raises(ValueError, match="expected <quantity>:<dim>"):
+            library_blocks.region(lib, "xfm_demo", PLAIN, trend=bad)
+    with pytest.raises(ValueError, match="targets: expected a JSON object"):
+        library_blocks.region(lib, "xfm_demo", "{Lp_lf: {min: 4e-10}}")                  # the shell ate the quotes
+
+
+def test_call_lib_region_prints_json(lib):
+    out = CliRunner().invoke(app, ["call", "lib.region", str(lib.root), "stratum=xfm_demo", f"targets={json.dumps(PLAIN)}",
+                                   f"steps={json.dumps({OD_P: 5, OD_S: 5, W_P: 1, W_S: 1, CS: 2})}", f"group_by={W_P},{W_S}",
+                                   f"trend=k_lf:{CS}", "objective=max:Qp_peak", "n=2", "pool_size=2048", "workers=1"])
+    assert out.exit_code == 0, out.output
+    assert "Infinity" not in out.stdout and "NaN" not in out.stdout
+    body = json.loads(out.stdout)
+    assert list(body) == KEYS and body["stratum"] == "xfm_demo" and body["levels"]["mean"]["count"] > 0 and len(body["candidates"]) == 2
+    assert {t["quantity"]: t["upper"] for t in body["targets"]} == {"Lp_lf": 0.5e-9, "k_lf": None}          # null except for a window
+    assert body["group_by"]["dims"] == [W_P, W_S] and (body["trend"]["quantity"], body["trend"]["dim"]) == ("k_lf", CS)
+    assert body["grid"]["steps"] == {OD_P: 5, OD_S: 5, W_P: 1, W_S: 1, CS: 2}
+    bad = CliRunner().invoke(app, ["call", "lib.region", str(lib.root), "stratum=xfm_demo", f"targets={json.dumps(PLAIN)}", "trend=k_lf"])
+    assert bad.exit_code == 2 and "expected <quantity>:<dim>" in bad.output

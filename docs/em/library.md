@@ -12,7 +12,7 @@ from is an `ok` observation with its sNp on disk.
   library.yaml                   # strata, parts, dims, quantities
   ind_sym_top/                   # a part: spec.yaml + .icopt/ (observations.jsonl, sims/<obs>/em/<device>/*.sNp)
   ind_sym_top_nt1/               # another part of the same stratum (e.g. single turns, swept further)
-  .cache/                        # datasets and calibration, keyed by content; safe to delete
+  .cache/                        # datasets, calibration and fitted models, keyed by content; safe to delete
 ```
 
 The blocks take the library root as their directory: `ic-opt call lib.<name>
@@ -133,13 +133,49 @@ ic-opt call lib.suggest <library root> stratum=ind_sym_top \
 ```
 
 Targets are per quantity, in SI units: `{"min": v}`, `{"max": v}` or
-`{"target": v, "tol": relative}`. The answer lists `measured` designs that
+`{"target": v, "tol": relative}`. Both bounds together make a window:
+`{"min": a, "max": b}`. The answer lists `measured` designs that
 meet the targets (exact, already simulated) apart from `candidates`
 (interpolated geometries snapped to `steps`). A candidate must pass the domain
 guard, meet every target with its whole calibrated interval, and build: the
 real generator draws it and the product DRC audit checks it. An anchored
 target such as `Lp@28` adds `SRF >= 1.25 x 28 GHz` unless SRF is already
 constrained.
+
+## 5b. Region questions: `lib.region`
+
+```bash
+ic-opt call lib.region <library root> stratum=xfm_bs_top \
+    'targets={"Lp@40": {"min": 150e-12, "max": 170e-12}, "Qp@40": {"min": 10}}' \
+    group_by=primary_width_um,secondary_width_um trend=k@40:center_spacing_um
+```
+
+(`xfm_bs_top` stands for a single-turn transformer stratum with 40 GHz among
+its anchors.) `lib.suggest` names a few good geometries; `lib.region`
+describes all of them, the region of the stratum whose predictions meet the
+targets, so that a sweep can be bounded by it. Targets are written as for
+`lib.suggest`. A point is `robust` when its whole calibrated interval lies
+inside every window (the `lib.suggest` test: centre a sweep there) and
+`mean` when its predicted value does (the optimistic envelope). A coarse
+pass over the library rows and a Sobol pool, with the stated windows 10%
+wider, brackets the region. Inside the bracket the grid lies on multiples
+of the manifest `steps`, about 20 values per dim (turns by level), every
+step multiplied until the grid fits in `max_points` (2 million);
+`steps={...}` sets steps by hand, and `grid` says what was used.
+
+The answer gives each level's point count and per-dim ranges; `binding`,
+the points meeting each target alone (the smallest count binds); `edge`,
+per dim, whether the mean set reaches the library's coverage, beyond which
+no model answers; `group_by`, the counts and the other dims' ranges for
+every combination of the named dims; `trend`, one quantity's min, median
+and max along one dim over the points meeting every other target;
+`candidates` in `lib.suggest`'s shape; the `measured` rows that already
+meet every target; and a `points_sample` to plot. The per-dim ranges are
+projections. The dims are correlated (a width leaves a short stretch of
+diameters), so take a sweep from the `group_by` rows, not from the ranges
+alone. Fitted models are cached under `.cache/`, and the uncached ones are
+fitted in parallel processes (`workers`, by default one per quantity up to
+6) that share `threads` BLAS threads (default `$OMP_NUM_THREADS`, else 8).
 
 ## 6. Design on the library: `lib_design`
 
