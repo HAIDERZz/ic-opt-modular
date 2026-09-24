@@ -185,8 +185,8 @@ hosts:
     max_threads: 16                    # placeholder: fill in this host's
     max_memory_gb: 32                  # placeholder: fill in this host's
   lab:                                 # --ssh-profile lab
-    max_threads: 128                   # placeholder: fill in this host's
-    max_memory_gb: 256                 # placeholder: fill in this host's
+    max_threads: 64                    # placeholder: fill in this host's
+    max_memory_gb: 128                 # placeholder: fill in this host's
     cshrc: /path/to/cadence_env.csh    # optional, like scratch_root, license_probe, transfer_timeout_s
 ```
 

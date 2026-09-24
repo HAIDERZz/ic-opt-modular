@@ -155,12 +155,20 @@ def migrate_store(
 ) -> None:
     """Restamp a store's observations with identities free of machine facts: the spec fingerprint without resources and
     budget, the EMX process file by content. Backs up observations.jsonl first; a second run changes nothing."""
+    from pathlib import PurePosixPath
+
     from ic_opt import migrate_store as migrate_store_module
+    from ic_opt import site as site_module
     from ic_opt.eval.stage import StageFailure
     from ic_opt.executor import SshExecutor
 
     try:
-        executor = SshExecutor(ssh_profile, f"~/.ic-opt/scratch/{project.resolve().name}") if ssh_profile else None
+        executor = None
+        if ssh_profile:                                   # the host's entry, as load_run reads it: scratch and transfer timeout
+            limits = site_module.load().host(ssh_profile)
+            scratch = PurePosixPath(limits.scratch_root or "~/.ic-opt/scratch") / project.resolve().name
+            timeout = {} if limits.transfer_timeout_s is None else {"transfer_timeout_s": limits.transfer_timeout_s}
+            executor = SshExecutor(ssh_profile, str(scratch), **timeout)
         typer.echo(str(migrate_store_module.migrate(project, executor, dry_run=dry_run)))
     except (OSError, ValueError, RuntimeError, StageFailure) as exc:
         typer.echo(f"error: {exc}", err=True)

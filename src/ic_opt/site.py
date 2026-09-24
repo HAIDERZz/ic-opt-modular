@@ -27,8 +27,8 @@ hosts:
     max_threads: 16                    # required (placeholder): threads ic-opt may use at once
     max_memory_gb: 32                  # required (placeholder): memory in GB ic-opt may use at once
   lab:                                 # named like --ssh-profile lab
-    max_threads: 128                   # required (placeholder)
-    max_memory_gb: 256                 # required (placeholder)
+    max_threads: 64                    # required (placeholder)
+    max_memory_gb: 128                 # required (placeholder)
     cshrc: /path/to/cadence_env.csh    # optional: the Cadence environment on that host
     scratch_root: /scratch/me/ic-opt   # optional: working directories there (else ~/.ic-opt/scratch)
     license_probe: lmstat -a           # optional: the license query env.doctor runs there
