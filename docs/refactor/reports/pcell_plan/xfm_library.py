@@ -53,7 +53,7 @@ def values(family: str, p: dict) -> dict:
 def projects(grid: dict):
     """(name, [(class, spec, points)]) per project, classes in order A, B, C."""
     out = []
-    for family in ("bs", "ms"):
+    for family in [f for f in ("bs", "ms") if f in grid["families"]]:          # a densification grid carries one family
         for tag, pm, sm, three_d in PAIRS[family]:
             name = f"xfm_{family}_{tag}"
             pts = [p for p in grid["families"][family]["points"] if p["status"] == "ok" and p["pair"] == tag]
