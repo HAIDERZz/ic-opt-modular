@@ -19,7 +19,7 @@
 | ③ | 远程权威方 | 项目正本在 Controller；Remote 只做网表导出读取与仿真；`store.publish` 可选回传 |
 | ④ | 护栏 | 保留为不变量：license、超时、线程上限、互斥锁、资源包络（站点上限）、累计仿真预算、来源记录；删除审批链，换 `--plan` |
 | ⑤ | 建议器 | 无状态 `suggest(spec, observations, n)`；续跑 = 加预算再跑；热启动 = `initial=` |
-| ⑥ | 包与版本 | 新包 `ic_opt`，发布 0.2.0；`ic-opt PROJECT_DIR --real/--doctor/--continue` 垫片保留一个版本 |
+| ⑥ | 包与版本 | 新包 `ic_opt`，发布 0.2.0；`ic-opt PROJECT_DIR --real/--doctor/--continue` 垫片保留一个版本（0.3 已删除：旧命令行只报错，提示先 `ic-opt migrate` 再 `ic-opt run`） |
 | ⑦ | 报告 | 六节 + 四图（`REFACTOR_PLAN_CN.md` 2.5 节） |
 
 ## 2. 包布局（实际，2026-09-22 T8 后；41 个文件 3.8k 行）
@@ -36,7 +36,7 @@ src/ic_opt/
   site.py            ~/.ic-opt/site.yaml：max_threads / max_memory_gb / cshrc；slots()
   recipe.py          Run（project, spec, store, executor, cshrc, site；jobs）、PLAN_MODE、load_run、load_recipe
   migrate.py         opt_requirement.md / config/ → Spec；recipe_command / recipe_note / write_spec
-  cli.py             typer：run / blocks / describe / doctor / migrate / call；main() 含 0.1 垫片
+  cli.py             typer：run / blocks / describe / doctor / migrate / call；main() 遇到 0.1 命令行只报错（0.3 删除了垫片）
   executor/
     base.py          Executor 协议、CommandResult、错误类型、shell_program（csh -fc）
     local.py         LocalExecutor
@@ -244,7 +244,7 @@ ic-opt blocks [describe <name>]                                  Block 清单 / 
 ic-opt call <block.name> <project> key=value ...                 单块 CLI（spec/executor/store/observations 自动注入）
 ic-opt doctor <project> [--ssh-profile P]
 ic-opt migrate <old_project_dir> <new_project_dir>               opt_requirement.md + config/ → spec.yaml（+ 把 optimizer/fixed_points/waveform 段落写成 recipe 参数提示）
-ic-opt <project> --real|--doctor|--continue N [--ssh-profile P] 0.1 垫片：内部转 migrate + run optimize/fix_run；0.2.x 保留一版
+ic-opt <project> --real|--doctor|--continue N [--ssh-profile P] 0.1 命令行：0.2.x 内部转 migrate + run optimize/fix_run；0.3 起只报错（退出码 2），提示先 ic-opt migrate 再 ic-opt run
 ```
 
 `--plan` 是唯一的"审批点"：它输出的内容（Block 序列、`max_simulations` 余量、`parallel_jobs×threads`、涉及的 Executor 主机）就是今天 Approval Checklist 四个布尔想确认的事。

@@ -72,4 +72,4 @@ A new process needs `<profile>/rule.yaml` (authoring guide `skills/author-proces
 
 ## 0.1 command line
 
-`ic-opt PROJECT --real|--doctor|--continue N [--ssh-profile P] [--cadence-cshrc F]` is translated and the project migrated in place; prefer the 0.2 form it prints.
+`ic-opt PROJECT --real|--doctor|--continue N` (0.1) is refused since 0.3 (exit 2; nothing is migrated or run). Convert once with `ic-opt migrate PROJECT NEW` (skip it when PROJECT already has `spec.yaml`: 0.2 converted it in place, so NEW is PROJECT), then take the command `NEW/MIGRATION.md` names through Procedure steps 2–4. `--doctor` → `ic-opt doctor NEW`, `--continue N` → the same `ic-opt run` with `budget=` the points done + N, `--dry-orchestration` → `--plan`, `--cadence-cshrc F` → `--cshrc F`.

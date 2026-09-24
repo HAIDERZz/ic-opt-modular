@@ -243,9 +243,21 @@ both still count against `budget.max_simulations`.
 
 ## 0.1 projects
 
-`ic-opt PROJECT --real|--doctor|--continue N [--ssh-profile P] [--cadence-cshrc F]`
-still works for one release: it migrates `opt_requirement.md` to `spec.yaml` in
-place and runs the matching recipe, printing the 0.2 command it used.
+The 0.1 command line, `ic-opt PROJECT --real|--doctor|--continue N`, was translated
+for one release (0.2) and is refused since 0.3: it stops with exit code 2 and these
+steps. Convert the project once, then run it like any other:
+
+```bash
+ic-opt migrate PROJECT NEW_PROJECT                # opt_requirement.md -> spec.yaml, and MIGRATION.md with the recipe to use
+ic-opt run RECIPE NEW_PROJECT key=value --plan    # the command MIGRATION.md names, previewed; drop --plan to run
+```
+
+A project that 0.2 already converted in place (it has `spec.yaml`) skips the first
+step: its NEW_PROJECT is PROJECT. `--doctor` is now `ic-opt doctor NEW_PROJECT`,
+`--continue N` a re-run with `budget=` set to the points done plus N,
+`--dry-orchestration` is `--plan` and `--cadence-cshrc F` is `--cshrc F`. MIGRATION.md
+also lists every resource value it filled in from the 0.1 defaults: review those for
+your machines before the first run.
 
 ## Development
 

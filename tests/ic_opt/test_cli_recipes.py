@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
 import yaml
 from typer.testing import CliRunner
 
-from ic_opt import __version__, blocks, recipe
+from ic_opt import __version__, blocks, cli, recipe
 from ic_opt import site as site_module
 from ic_opt.cli import app
 from ic_opt.recipes import coarse_to_fine, fix_run, optimize, signoff
@@ -262,28 +263,31 @@ def test_migrate_store_command_then_continue_on_a_smaller_machine(tmp_path):
     assert len(later.store.observations()) == 5                 # the 3 migrated rows count: only 2 more ran
 
 
-# -- 0.1 shim -----------------------------------------------------------------------
+# -- the 0.1 command line -----------------------------------------------------------
 
 
-def test_legacy_command_line_is_translated_and_project_migrated_in_place(tmp_path):
-    from ic_opt.cli import legacy_argv
-
+@pytest.mark.parametrize("flags", [["--real"], ["--doctor", "--ssh-profile", "lab", "--cadence-cshrc", "/env.csh"],
+                                   ["--real", "--dry-orchestration"], ["--real", "--continue", "5"], ["--continue=5"],
+                                   ["--ssh-profile", "lab"]], ids=" ".join)
+def test_01_command_line_is_refused_with_migrate_then_run(tmp_path, monkeypatch, capsys, flags):
     old = tmp_path / "legacy"
     old.mkdir()
     (old / "opt_requirement.md").write_text((TEMPLATES[0].parent / "opt_requirement.turbo.md").read_text())
-    assert legacy_argv(["run", "optimize", str(old)]) is None and legacy_argv([str(old)]) is None
+    monkeypatch.setattr(sys, "argv", ["ic-opt", str(old), *flags])
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+    assert exited.value.code == 2
+    err = capsys.readouterr().err
+    assert err.startswith("error: `ic-opt PROJECT --real|--doctor|--continue N` is the 0.1 command line; 0.3 no longer accepts it.\n")
+    assert "\n    ic-opt migrate PROJECT NEW_PROJECT " in err and "\n    ic-opt run RECIPE NEW_PROJECT key=value ... --plan " in err
+    assert [p.name for p in old.iterdir()] == ["opt_requirement.md"]          # refused before anything ran: nothing migrated
 
-    argv = legacy_argv([str(old), "--doctor", "--ssh-profile", "lab", "--cadence-cshrc", "/env.csh"])
-    assert argv == ["doctor", str(old), "--ssh-profile", "lab", "--cshrc", "/env.csh"]
-    assert (old / "spec.yaml").exists() and (old / "MIGRATION.md").exists()
 
-    assert legacy_argv([str(old), "--real", "--dry-orchestration"]) == \
-        ["run", "optimize", str(old), "strategy=turbo_trust_region", "budget=40", "batch=8", "seed=20260528", "--plan"]
-    assert legacy_argv([str(old), "--real", "--continue", "5"])[:4] == ["run", "optimize", str(old), "strategy=turbo_trust_region"]
-    assert "budget=5" in legacy_argv([str(old), "--real", "--continue", "5"])      # 0 done so far + 5
-
-    fix = tmp_path / "fix"
-    fix.mkdir()
-    (fix / "opt_requirement.md").write_text((TEMPLATES[0].parent / "opt_requirement.fix_run.md").read_text())
-    assert legacy_argv([str(fix), "--real"]) == ["run", "fix_run", str(fix), "points=points.json", "waveforms=waveforms.json"]
-    assert (fix / "points.json").exists()
+def test_other_command_lines_reach_the_commands(monkeypatch, capsys):
+    for argv in (["run", "optimize", "proj", "--ssh-profile", "lab"], ["doctor", "proj", "--cshrc", "/env.csh"],
+                 ["migrate-store", "proj", "--ssh-profile", "lab"], ["proj"], ["--version"], []):
+        assert not cli.is_01_command_line(argv), argv
+    monkeypatch.setattr(sys, "argv", ["ic-opt", "--version"])
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+    assert exited.value.code == 0 and capsys.readouterr().out.strip() == f"ic-opt {__version__}"

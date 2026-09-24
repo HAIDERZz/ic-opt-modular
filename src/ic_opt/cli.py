@@ -226,47 +226,32 @@ def _row(item: object) -> object:
     return item.model_dump() if hasattr(item, "model_dump") else str(item)
 
 
-# -- 0.1 shim: ``ic-opt PROJECT_DIR --real|--doctor|--continue N`` (kept for one release) ----------
+# -- the 0.1 command line ``ic-opt PROJECT --real|--doctor|--continue N``: 0.2 translated it, 0.3 refuses it ----------
 
-_LEGACY_FLAGS = {"--real", "--doctor", "--continue", "--dry-orchestration", "--cadence-cshrc", "--ssh-profile"}
+_01_FLAGS = {"--real", "--doctor", "--continue", "--dry-orchestration", "--cadence-cshrc", "--ssh-profile"}
+_01_REFUSED = """\
+error: `ic-opt PROJECT --real|--doctor|--continue N` is the 0.1 command line; 0.3 no longer accepts it.
+Convert a 0.1 project (opt_requirement.md) once, then run a recipe on it:
+    ic-opt migrate PROJECT NEW_PROJECT                  writes spec.yaml, and MIGRATION.md with the recipe to use
+    ic-opt run RECIPE NEW_PROJECT key=value ... --plan  preview; the same command without --plan runs it
+A project that already has spec.yaml (0.2 converted it in place) skips the first step: NEW_PROJECT is PROJECT.
+--doctor is now `ic-opt doctor NEW_PROJECT`, --continue N a re-run with budget=<points done + N>,
+--dry-orchestration is --plan, and --cadence-cshrc F is --cshrc F."""
 
 
-def legacy_argv(argv: list[str]) -> list[str] | None:
-    """Translate a 0.1 command line into the 0.2 one, migrating the project in place when needed; None if not legacy."""
-    if not argv or argv[0] in {c.name or c.callback.__name__ for c in app.registered_commands} or not Path(argv[0]).is_dir():
-        return None
-    project = Path(argv[0])
-    flags = {a for a in argv[1:] if a.startswith("--")}
-    if not flags & _LEGACY_FLAGS:
-        return None
-    value = lambda flag: argv[argv.index(flag) + 1] if flag in argv else None
-    options = [*(["--ssh-profile", value("--ssh-profile")] if value("--ssh-profile") else []),
-               *(["--cshrc", value("--cadence-cshrc")] if value("--cadence-cshrc") else [])]
-    if not (project / "spec.yaml").exists():
-        spec, hints = migrate_module.spec_from_requirement(project / "opt_requirement.md")
-        migrate_module.write_spec(spec, project / "spec.yaml")
-        (project / "MIGRATION.md").write_text(migrate_module.recipe_note(hints, project), encoding="utf-8")
-        typer.echo(f"migrated {project / 'opt_requirement.md'} -> {project / 'spec.yaml'} (see MIGRATION.md)", err=True)
-    if "--doctor" in flags:
-        return ["doctor", str(project), *options]
-    _, hints = migrate_module.spec_from_requirement(project / "opt_requirement.md")
-    recipe, params = migrate_module.recipe_command(hints, project)
-    if value("--continue"):
-        from ic_opt.store import RunStore
-
-        done = len(RunStore(project).observations().by_step("optimize"))
-        recipe, params["budget"] = "optimize", done + int(value("--continue"))
-    plan = ["--plan"] if "--dry-orchestration" in flags else []
-    return ["run", recipe, str(project), *[f"{k}={v}" for k, v in params.items()], *plan, *options]
+def is_01_command_line(argv: list[str]) -> bool:
+    """``ic-opt PROJECT --real ...``: a first word that is neither a command nor an option, then a 0.1 flag."""
+    if not argv or argv[0].startswith("-") or argv[0] in typer.main.get_command(app).commands:
+        return False
+    return any(arg.split("=", 1)[0] in _01_FLAGS for arg in argv[1:])
 
 
 def main() -> None:
     import sys
 
-    translated = legacy_argv(sys.argv[1:])
-    if translated is not None:
-        typer.echo("0.1 command line; running: ic-opt " + " ".join(translated), err=True)
-        sys.argv[1:] = translated
+    if is_01_command_line(sys.argv[1:]):              # refused before anything runs: the project is not touched
+        typer.echo(_01_REFUSED, err=True)
+        raise SystemExit(2)
     app()
 
 
