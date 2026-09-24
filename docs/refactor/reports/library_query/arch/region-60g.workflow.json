@@ -1,0 +1,333 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "60 GHz 可行域查找流程",
+    "locale": "zh-CN",
+    "output": "region-60g.workflow.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "main-line",
+        "label": "主线：目标窗到范围表",
+        "focus": [
+          "targets",
+          "stratum",
+          "anchor",
+          "dataset",
+          "models",
+          "grid",
+          "screen",
+          "summary"
+        ],
+        "note": "目标窗进来，先对齐频率锚点，再用库的模型在采样域内逐点预测、按窗筛选，最后汇总成扫参范围。"
+      },
+      {
+        "id": "existing-vs-new",
+        "label": "已有能力 vs 新增",
+        "focus": [
+          "stratum",
+          "anchor",
+          "dataset",
+          "models",
+          "signoff",
+          "grid",
+          "screen",
+          "summary"
+        ],
+        "note": "上泳道全部是 T13 已交付的库能力；下泳道右侧三步是这次新增的扫描脚本。"
+      },
+      {
+        "id": "evidence-line",
+        "label": "不靠模型的证据",
+        "focus": [
+          "targets",
+          "evidence",
+          "summary"
+        ],
+        "note": "库里的实测行直接按窗筛，作为模型结果的对照：60 GHz 已有 AP 8 行、M10 5 行满足全部条件。"
+      }
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "external": {
+          "label": "用户输入"
+        },
+        "database": {
+          "label": "库数据"
+        },
+        "backend": {
+          "label": "计算步骤"
+        },
+        "security": {
+          "label": "判定 / 筛选"
+        },
+        "cloud": {
+          "label": "真实 EMX"
+        },
+        "frontend": {
+          "label": "输出页面"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "lib",
+      "label": "查询库 · 已有能力"
+    },
+    {
+      "id": "scan",
+      "label": "可行域扫描 · 新增"
+    }
+  ],
+  "phases": [
+    {
+      "id": "align",
+      "label": "输入与频率对齐",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "model",
+      "label": "数据、模型、网格",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "answer",
+      "label": "筛选与输出",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "groups": [
+    {
+      "id": "delivered",
+      "label": "T13 已交付",
+      "lane": "lib",
+      "fromCol": 0,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "new-script",
+      "label": "新增脚本 xfm_bs_region.py",
+      "lane": "scan",
+      "fromCol": 3,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "targets",
+    "stratum",
+    "anchor",
+    "dataset",
+    "models",
+    "grid",
+    "screen",
+    "summary"
+  ],
+  "nodes": [
+    {
+      "id": "stratum",
+      "lane": "lib",
+      "col": 0,
+      "type": "database",
+      "label": "选层",
+      "sublabel": "bs_ap / bs_m10 两层",
+      "width": 140
+    },
+    {
+      "id": "anchor",
+      "lane": "lib",
+      "col": 1,
+      "type": "security",
+      "label": "锚点门",
+      "sublabel": "缺 60 GHz 则加锚点",
+      "tag": "重算 10 s/层",
+      "width": 140
+    },
+    {
+      "id": "dataset",
+      "lane": "lib",
+      "col": 2,
+      "type": "database",
+      "label": "60 GHz 可用行",
+      "sublabel": "AP 1022 / M10 965 行",
+      "width": 140
+    },
+    {
+      "id": "models",
+      "lane": "lib",
+      "col": 3,
+      "type": "backend",
+      "label": "6 个量 GP + 校准",
+      "sublabel": "6 个量，留出校准",
+      "tag": "域守卫",
+      "width": 140
+    },
+    {
+      "id": "signoff",
+      "lane": "lib",
+      "col": 5,
+      "type": "cloud",
+      "label": "可选：lib_signoff",
+      "sublabel": "边界点 EMX 复核回流",
+      "width": 140
+    },
+    {
+      "id": "targets",
+      "lane": "scan",
+      "col": 0,
+      "type": "external",
+      "label": "目标窗 @60 GHz",
+      "sublabel": "L、Q、k 三个窗口",
+      "width": 140
+    },
+    {
+      "id": "evidence",
+      "lane": "scan",
+      "col": 2,
+      "type": "database",
+      "label": "实测命中行",
+      "sublabel": "AP 8 / M10 5 行已满足",
+      "tag": "不靠模型",
+      "width": 140
+    },
+    {
+      "id": "grid",
+      "lane": "scan",
+      "col": 3,
+      "type": "backend",
+      "label": "铺网格 + 域守卫",
+      "sublabel": "5 维网格，域守卫内",
+      "width": 140
+    },
+    {
+      "id": "screen",
+      "lane": "scan",
+      "col": 4,
+      "type": "security",
+      "label": "逐点预测 + 按窗筛",
+      "sublabel": "2σ 稳健 / 均值两级",
+      "width": 140
+    },
+    {
+      "id": "summary",
+      "lane": "scan",
+      "col": 5,
+      "type": "frontend",
+      "label": "范围表 + 图",
+      "sublabel": "各维范围 · 线宽对 · k–CS",
+      "width": 140
+    }
+  ],
+  "edges": [
+    {
+      "id": "targets-stratum",
+      "from": "targets",
+      "to": "stratum",
+      "variant": "emphasis"
+    },
+    {
+      "id": "stratum-anchor",
+      "from": "stratum",
+      "to": "anchor",
+      "label": "含 60 GHz？",
+      "variant": "emphasis"
+    },
+    {
+      "id": "anchor-dataset",
+      "from": "anchor",
+      "to": "dataset",
+      "label": "有 / 补后",
+      "variant": "emphasis"
+    },
+    {
+      "id": "dataset-models",
+      "from": "dataset",
+      "to": "models",
+      "variant": "emphasis"
+    },
+    {
+      "id": "models-grid",
+      "from": "models",
+      "to": "grid",
+      "label": "模型 + 域守卫",
+      "variant": "emphasis"
+    },
+    {
+      "id": "grid-screen",
+      "from": "grid",
+      "to": "screen",
+      "variant": "emphasis"
+    },
+    {
+      "id": "screen-summary",
+      "from": "screen",
+      "to": "summary",
+      "variant": "emphasis"
+    },
+    {
+      "id": "targets-evidence",
+      "from": "targets",
+      "to": "evidence",
+      "label": "按窗直筛",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "evidence-summary",
+      "from": "evidence",
+      "to": "summary",
+      "label": "证据行",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "route": "bottom-channel"
+    },
+    {
+      "id": "summary-signoff",
+      "from": "summary",
+      "to": "signoff",
+      "label": "可选复核",
+      "variant": "dashed",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "已有能力（不用再开发）",
+      "items": [
+        "锚点在 library.yaml 声明，改频率 = 加一个数字，数据集 10 s/层重算",
+        "每个量一个 GP，留出 5 折校准区间；域守卫只在采样域内作答",
+        "lib.query / lib.suggest / lib_signoff 回流，昨日 10 点真实复核覆盖 94.6%"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "本次新增（脚本已写好，约 250 行）",
+      "items": [
+        "5 维网格 + 分块预测（10^5–10^6 点，几分钟）",
+        "两级筛选：2σ 稳健集 / 均值集；按维、按线宽对、k–CS 汇总",
+        "做成正式 block lib.region 含测试与文档：约 1–2 天"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "60 GHz 与 40 GHz 的差别",
+      "items": [
+        "可用行减少：SRF 须 ≥ 75 GHz（AP 1291→1022，M10 1234→965）",
+        "目标窗：Lp、Ls 150–170 pH，Q > 10，k 0.5–0.7；60 GHz 的 Q 更高（min(Qp,Qs) 7–16），实测命中 8 / 5 行",
+        "域边界处 σ 偏大，稳健集比均值集窄；超出库覆盖范围模型拒答"
+      ]
+    }
+  ]
+}
