@@ -109,7 +109,7 @@ td.bad {{ color:var(--warn); font-weight:600; }}
 <p class="note">"out_of_domain" 的锚定量：该候选的谐振离锚定频率太近（SRF ≤ 1.25 f0），库按定义不预测；实测值照录。</p>
 
 <h2>位置</h2>
-<p class="note">候选与签核工程：<code>/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-library/n28_signoff/</code>（<code>candidates_*.json</code>、<code>run_signoff.sh</code>、各工程 <code>.icopt/reports/lib_signoff.json</code>）；本页：<code>docs/refactor/reports/library_query/ind_signoff_report.py</code>。回流（<code>adopt=true</code>）尚未执行。</p>
+<p class="note">候选与签核工程：<code>/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-library/n28_signoff/</code>（<code>candidates_*.json</code>、<code>run_signoff.sh</code>、各工程 <code>.icopt/reports/lib_signoff.json</code>）；本页：<code>docs/refactor/reports/library_query/ind_signoff_report.py</code>。{("回流已执行（用户确认，2026-09-24 14:06，<code>adopt=true</code> 复用观测、未跑 EMX）：" + "；".join(f"{r['stratum']} → {', '.join(r['adopted'])}" for r in REPORTS if r.get('adopted')) + "，各部件 <code>.icopt/adopted.yaml</code> 记录来源；下次建数据集即包含这 10 行。") if any(r.get('adopted') for r in REPORTS) else "回流（<code>adopt=true</code>）尚未执行。"}</p>
 </div>
 """
 out.write_text(page, encoding="utf-8")
