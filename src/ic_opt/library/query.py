@@ -41,6 +41,7 @@ from ic_opt.library import dataset, domain, gp, manifest
 UNITS = {"L": "H", "Q": "1", "SRF": "Hz", "k": "1"}
 ABOVE_SWEEP_VOTES = 3                                # of the 5 nearest measured rows
 MODEL_CACHE_VERSION = 1                              # bump when a fit changes outside gp.py and the settings (e.g. how x, y are prepared)
+FIT_WORKERS = 16                                     # parallel fits by default: one fit keeps ~1.5 cores busy whatever BLAS gets (2026-09-24)
 
 
 def unit(quantity: str) -> str:
@@ -99,13 +100,14 @@ class Library:
 
     def models(self, stratum: str, quantities: list[str], *, workers: int | None = None, threads: int | None = None) -> dict[str, Model]:
         """``model`` for several quantities, in the order asked. The ones without a cache file are fitted first in up to
-        ``workers`` forked processes (default one per missing quantity, at most 6): each fit is a sequential optimisation,
-        so processes, not BLAS threads, are what runs several at once. Each worker caps BLAS at ``threads // workers``
-        (``threads`` defaults to $OMP_NUM_THREADS, else 8), writes the calibration and model caches and returns only the
-        quantity's name; every model is then loaded here from its cache file, so no fitted model crosses a pipe."""
+        ``workers`` forked processes (default one per missing quantity, at most FIT_WORKERS): each fit is a sequential
+        optimisation that no amount of BLAS threads speeds up, so processes are what runs several at once. Each worker caps
+        BLAS at ``threads // workers`` (``threads`` defaults to $OMP_NUM_THREADS or 8, and to at least two per worker), writes
+        the calibration and model caches and returns only the quantity's name; every model is then loaded here from its
+        cache file, so no fitted model crosses a pipe."""
         missing = [q for q in dict.fromkeys(quantities) if (stratum, q) not in self._models and self._model_file(stratum, q) is None]
-        workers = min(6 if workers is None else workers, len(missing))
-        threads = int(os.environ.get("OMP_NUM_THREADS", "8")) if threads is None else threads
+        workers = min(FIT_WORKERS if workers is None else workers, len(missing))
+        threads = max(int(os.environ.get("OMP_NUM_THREADS", "8")), 2 * workers) if threads is None else threads
         if workers > 1:
             with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("fork")) as pool:
                 jobs = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, max(1, threads // workers)) for q in missing]

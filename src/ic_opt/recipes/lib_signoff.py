@@ -80,9 +80,11 @@ def main(run: Run, *, library: str, candidates: str, stratum: str | None = None,
         groups.setdefault(_part_for(ds, parts, params), []).append(_point(params))
     run.note(f"lib_signoff: {len(wanted)} candidates of {name} through em_only with the EMX settings of "
              + ", ".join(f"{part} ({len(pts)})" for part, pts in groups.items()))
-    lib.models(name, ds.columns)                          # every column's model, the uncached ones fitted in parallel processes (T14.1);
+    missing = [q for q in ds.columns if lib._model_file(name, q) is None]
+    if missing:
+        run.note(f"lib_signoff: fitting {len(missing)} of {name}'s {len(ds.columns)} models in parallel (first use; ~2-5 min per round)")
+    lib.models(name, ds.columns)                          # every column's model; sequential fits took ~2 min each on a 28-column stratum
     before = {p.key: query.query(lib, name, {d: float(p.params[d]) for d in ds.dims}, None, k=float(k)) for pts in groups.values() for p in pts}
-    #                                                     # sequential fits took ~2 min per quantity on a 26-column transformer stratum
     done: list[tuple[str, object]] = []
     for part, pts in groups.items():
         spec = dataset._spec(lib.root / part)
