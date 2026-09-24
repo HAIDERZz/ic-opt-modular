@@ -1,6 +1,6 @@
 # T13：器件查询库嵌入 ic-opt 的开发方案
 
-- 状态：**已批准，执行中**（2026-09-23）：§5 六项按建议拍板；追加"工艺接入"三项（§2.4、T13.9–T13.11）。已提交 T13.1–T13.6（94310db、7144b3c、e7a507a、5007e9e、d0073d6、13a1523；T13.6 的真实 EMX 复核未跑）、T13.10（9c74db5）、T13.9（5c4136a）、T13.8 文档；待办 T13.7、T13.11（变压器正式批跑完后）与 T13.6 真实复核（先 `--plan` 经确认）
+- 状态：**已批准，除 T13.6 真实 EMX 复核外全部完成**（2026-09-24）：T13.1–T13.5、T13.6 代码（94310db…13a1523）、T13.7 变压器四个分层（04b3ab9、5ab7add 系统 SRF、eae6b94 Q 峰只在系统 SRF 以下取、验证报告 `reports/library_query/XFM_QUERY_VERIFY_CN.html`）、T13.8 文档（d60d496）、T13.9（5c4136a）、T13.10（9c74db5、cf71c26）、T13.11（300626f：金属按过孔链的层序编号，现有工艺逐字节不变）。T13.6 的 `--plan` 已给出（10 个电感候选），等用户确认
 - 取代：`T10_LIBRARY_PLAN_CN.md`（2026-09-22）。T10 以"从 em-opt 的 sqlite 导入 12,767 行"为前提；按 T12 的决定，各器件族改为用第 7 代几何、细网格全波在 ic-opt 里直接重建，这个前提已不成立
 - 依据：电感查询库验证（`reports/library_query/IND_QUERY_VERIFY_CN.html`）、T12 建库记录（`EXECUTION_PLAN_CN.md`）、em-opt 查询栈分析（`analysis/em/03_device_db_and_surrogate.md`）
 - 架构图与开发流程图（archify 生成，可交互）：`reports/library_query/arch/t13-library-module.architecture.html`、`reports/library_query/arch/t13-dev-plan.workflow.html`

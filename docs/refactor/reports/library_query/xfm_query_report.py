@@ -177,11 +177,42 @@ def library_forward(q: str, key: str) -> list[float]:
     return [V[s]["forward"][f"{q}|library"][key] for s in STRATA if f"{q}|library" in V[s]["forward"]]
 
 
+def _lib(stratum: str, q: str) -> dict | None:
+    return V[stratum]["forward"].get(f"{q}|library")
+
+
+def usable_text() -> str:
+    parts = []
+    for stratum in STRATA:
+        low = [_lib(stratum, q)["median_rel"] for q in ("Lp_lf", "Ls_lf", "k_lf") if _lib(stratum, q)]
+        qsr = [_lib(stratum, q)["median_rel"] for q in ("Qp_peak", "Qs_peak", "SRF") if _lib(stratum, q)]
+        parts.append(f"{stratum}：L / k 中位 {pct(min(low), 3)}–{pct(max(low), 3)}，Q 峰 / 系统 SRF {pct(min(qsr), 2)}–{pct(max(qsr), 2)}")
+    cal = [v["coverage_calibrated_seeds_3_4"] for s_ in STRATA for k_, v in V[s_]["forward"].items() if k_.endswith("|library")]
+    return "；".join(parts) + f"。校准后 2σ 区间跨组覆盖 {pct(min(cal), 1)}–{pct(max(cal), 1)}。"
+
+
+def srf_p_max() -> str:
+    return "、".join(f"{s_} {pct(_lib(s_, 'SRF_p')['max_rel'], 0)}" for s_ in STRATA if _lib(s_, "SRF_p"))
+
+
+def srf_max() -> str:
+    return "、".join(f"{s_} {pct(_lib(s_, 'SRF')['max_rel'], 0)}" for s_ in STRATA if _lib(s_, "SRF"))
+
+
+def qpeak_ms() -> str:
+    return pct(_lib("xfm_ms_ap", "Qp_peak")["median_rel"], 2) if "xfm_ms_ap" in V else "–"
+
+
+def qpeak_ms_max() -> str:
+    return pct(_lib("xfm_ms_ap", "Qp_peak")["max_rel"], 0) if "xfm_ms_ap" in V else "–"
+
+
 jump = "data:image/png;base64," + base64.b64encode(JUMP_FIG.read_bytes()).decode() if JUMP_FIG.is_file() else ""
 rows_total = sum(V[s]["integrity"]["rows"] for s in STRATA)
-cols = [q for s in STRATA for q in [k.split("|")[0] for k in V[s]["forward"] if k.endswith("|library")]]
-med_all = [V[s]["forward"][k]["median_rel"] for s in STRATA for k in V[s]["forward"] if k.endswith("|library")]
-cov_cal = [V[s]["forward"][k]["coverage_calibrated_seeds_3_4"] for s in STRATA for k in V[s]["forward"] if k.endswith("|library")]
+RECOMMENDED = [(s, k) for s in STRATA for k in V[s]["forward"] if k.endswith("|library") and k.split("|")[0] not in ("SRF_p", "SRF_s")]
+cols = [k.split("|")[0] for _, k in RECOMMENDED]
+med_all = [V[s]["forward"][k]["median_rel"] for s, k in RECOMMENDED]
+cov_cal = [V[s]["forward"][k]["coverage_calibrated_seeds_3_4"] for s, k in RECOMMENDED]
 first_hit = [V[s]["inverse"]["conservative"]["first_hit_rate"] for s in STRATA]
 page = f"""<title>N28 变压器查询库验证</title>
 <style>
@@ -226,17 +257,18 @@ figcaption {{ font-size:12.5px; color:var(--muted); margin-top:6px; }}
   <p class="note">用嵌入后的查询模块（<code>ic_opt.library</code>）在新建的变压器库上按电感验证的同一流程逐项检验：数据完整性、正向预测（含 k 的无量纲映射重验）、SRF、域守卫、逆向推荐、真实查询示例。分层：{", ".join(STRATA)}。</p>
 </header>
 <div class="kpis">
-  <div class="kpi"><div class="v">{pct(min(med_all), 3)}–{pct(max(med_all), 2)}</div><div class="l">{len(cols)} 个查询列的留出中位误差</div></div>
-  <div class="kpi"><div class="v">{pct(min(library_forward('k_lf', 'median_rel')), 3)}</div><div class="l">k_lf 留出中位误差（无量纲映射）</div></div>
+  <div class="kpi"><div class="v">{pct(min(med_all), 3)}–{pct(max(med_all), 2)}</div><div class="l">{len(cols)} 个推荐查询列的留出中位误差（不含 SRF_p / SRF_s）</div></div>
+  <div class="kpi"><div class="v">{pct(min(library_forward('k_lf', 'median_rel')), 3)}–{pct(max(library_forward('k_lf', 'median_rel')), 2)}</div><div class="l">k_lf 留出中位误差（无量纲映射，四个分层）</div></div>
   <div class="kpi"><div class="v">{pct(min(cov_cal), 0)}–{pct(max(cov_cal), 0)}</div><div class="l">校准后 2σ 覆盖（跨组，名义 95%）</div></div>
   <div class="kpi"><div class="v">{pct(min(first_hit), 0)}</div><div class="l">逆向推荐首选命中（留出真值）</div></div>
 </div>
 
 <h2>结论</h2>
-<div class="finding ok"><b>可用。</b>所有查询列的留出中位误差 {pct(min(med_all), 3)}–{pct(max(med_all), 2)}；用前 3 组留出定的校准系数在另外 2 组上的 2σ 覆盖 {pct(min(cov_cal), 1)}–{pct(max(cov_cal), 1)}。逆向推荐在留出真值上首选全部命中，推荐出的几何都能实造、通过产品 DRC 审计。</div>
-<div class="finding"><b>已修：变压器的 SRF 改用系统 SRF。</b>SRF_p（初级 Im(Z) 的第一个零点，次级开路）会在次级反射过来的谐振与初级自身谐振之间跳变：反射下陷是否越过零只差约 20 Ω，几何几乎相同的两个点 SRF_p 可差 60 GHz（见第 4 节图）。测量内核新增标量 <code>SRF</code>（各驱动中最低的谐振；电感即 SRF_p，电感库复核不变），耦合对的锚定曲线一律按它截断，推荐隐含的 SRF 下限也用它（5ab7add）。</div>
-<div class="finding ok"><b>k 的无量纲映射在新库上重验通过。</b>以平均外径（对数）、外径比、线宽/外径、中心偏移/平均半径为特征，k_lf 与 k@10/28/60 的中位误差和 p90 都约降到恒等映射的一半；最大误差两者相当，都出在参数盒边角那几行（第 3 节）。库清单里 k 列都用它。</div>
-<div class="finding"><b>留意：60 GHz 锚定的 Lp / Ls 覆盖略低。</b>这两列只有谐振离 60 GHz 足够远的行（约三分之二）可用，跨组覆盖约 92%，低于名义 95%；中位误差仍在 0.25% 以内。</div>
+<div class="finding ok"><b>可用。</b>{usable_text()}逆向推荐在留出真值上首选全部命中，推荐出的几何都能实造、通过产品 DRC 审计。</div>
+<div class="finding"><b>已修：变压器的 SRF 改用系统 SRF。</b>SRF_p（初级 Im(Z) 的第一个零点，次级开路）会在次级反射过来的谐振与初级自身谐振之间跳变：反射下陷是否越过零只差约 20 Ω，几何几乎相同的两个点 SRF_p 可差 60 GHz（见第 4 节图）。测量内核新增标量 <code>SRF</code>（各驱动中最低的谐振；电感即 SRF_p，电感库复核不变），耦合对的锚定曲线一律按它截断，推荐隐含的 SRF 下限也用它（5ab7add）。SRF_p 的留出最大误差 {srf_p_max()}，系统 SRF {srf_max()}。</div>
+<div class="finding"><b>已修：Q 峰只在系统 SRF 以下取。</b>多匝次级在扫频带内谐振，谐振后初级的 Q 曲线会在带边重新抬高：ms 分层 69% 的行"0–150 GHz 内 Q 最大值"落在谐振之后。查询库改为只在系统 SRF 以下找峰（eae6b94；电感和 bs 几乎不受影响），ms_ap 的 Qp_peak 留出误差中位 3.6% → {qpeak_ms()}、最大 82% → {qpeak_ms_max()}。测量内核自带的 <code>Qp_peak</code>（EM 优化指标用，与 em-opt 口径一致）未改，是否同步改由用户决定。</div>
+<div class="finding ok"><b>k 的无量纲映射在新库上重验通过。</b>以平均外径（对数）、外径比、线宽/外径、中心偏移/平均半径（ms 另加匝距/外径与匝数）为特征，bs 的 k 中位误差约减半，ms 的约降到恒等映射的四分之一（第 3 节）。库清单里 k 列都用它。</div>
+<div class="finding"><b>留意：ms 的高频锚定量数据少、误差大。</b>多匝器件谐振低，28 / 60 GHz 锚定列只剩约 440 / 80 行可用，留出中位误差 1.4–5.8%，跨组覆盖最低约 87%。ms 查询以低频量（Lp_lf、Ls_lf、k_lf）和 10 GHz 锚定为主；若要 28 / 60 GHz 的精度，需要在高频可用区定向加密采样（待决定）。bs 的 60 GHz 锚定 Lp / Ls 覆盖约 92%，也略低于名义 95%。</div>
 
 <h2>1 数据完整性</h2>
 <div class="table-wrap"><table><thead><tr><th>分层</th><th class="num">行</th><th class="num">重复坐标</th><th class="num">无源</th><th class="num">存储值复现</th><th class="num">代际</th><th>频率网格</th></tr></thead>
@@ -250,7 +282,7 @@ figcaption {{ font-size:12.5px; color:var(--muted); margin-top:6px; }}
 <h2>3 k 的无量纲映射（新词汇重验）</h2>
 <div class="table-wrap"><table><thead><tr><th>分层</th><th>查询列</th><th>对照</th><th class="num">中位</th><th class="num">p90</th><th class="num">最大</th><th>映射</th><th class="num">中位</th><th class="num">p90</th><th class="num">最大</th></tr></thead>
 <tbody>{kmap_rows()}</tbody></table></div>
-<p class="note">同一数据、同一留出划分。最大误差集中在参数盒边角（外径最小、偏移比最大，k 随偏移陡降）。</p>
+<p class="note">同一数据、同一留出划分。ms 另列"匝数不分层的恒等映射"（identity-joint）作对照。bs 的最大误差集中在参数盒边角（外径最小、偏移比最大，k 随偏移陡降）。</p>
 
 <h2>4 SRF</h2>
 <div class="table-wrap"><table><thead><tr><th>分层</th><th>量</th><th class="num">行（有谐振）</th><th class="num">GP 中位</th><th class="num">GP p90</th><th class="num">GP 最大</th><th class="num">5 近邻均值 中位</th><th class="num">5 近邻 p90</th></tr></thead>
