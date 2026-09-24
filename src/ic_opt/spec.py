@@ -511,7 +511,7 @@ def _unique(values: list[str], label: str) -> None:
 # How a problem is run, not which problem it is: left out of Spec.problem() and so of Spec.fingerprint().
 _NOT_PROBLEM = {
     "simulator": {"parallel_jobs", "threads_per_run", "timeout_s", "license_check", "keep_failed_runs", "keep_successful_runs"},
-    "em": {"threads", "memory_gb", "timeout_s", "verbose"},
+    "em": {"threads", "memory_gb", "timeout_s", "verbose", "binary"},      # the binary is a path on the host, not physics
     "budget": True,
 }
 

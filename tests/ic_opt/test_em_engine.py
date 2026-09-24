@@ -286,13 +286,13 @@ GOLDEN_EM = {              # every field spelled out: the pinned fingerprints be
 
 def test_emx_resources_are_not_part_of_the_problem():
     base, em = Spec.model_validate(GOLDEN_EM), GOLDEN_EM["em"]
-    for how in ({"threads": 16}, {"memory_gb": 200}, {"timeout_s": 60}, {"verbose": None}):
+    for how in ({"threads": 16}, {"memory_gb": 200}, {"timeout_s": 60}, {"verbose": None}, {"binary": "/opt/emx/bin/emx"}):
         assert Spec.model_validate({**GOLDEN_EM, "em": {**em, **how}}).fingerprint() == base.fingerprint(), how
     for what in ({"three_d_metals": ["M6"]}, {"accuracy": "high"}, {"frequencies": {**em["frequencies"], "stop_hz": 8e10}}):
         assert Spec.model_validate({**GOLDEN_EM, "em": {**em, **what}}).fingerprint() != base.fingerprint(), what
-    assert "em" in base.problem() and not {"threads", "memory_gb", "timeout_s", "verbose"} & set(base.problem()["em"])
+    assert "em" in base.problem() and not {"threads", "memory_gb", "timeout_s", "verbose", "binary"} & set(base.problem()["em"])
     # pinned (see test_engine.test_fingerprints_are_pinned): the legacy value is what the code before T15.2 wrote
-    assert base._legacy_fingerprint() == "db88575a8bf11aa2" and base.fingerprint() == "2fa0e0d7de366bf2"
+    assert base._legacy_fingerprint() == "db88575a8bf11aa2" and base.fingerprint() == "6774ae91076aa65d"
 
 
 def test_the_legacy_emx_identities_reproduce_what_the_old_code_stamped():

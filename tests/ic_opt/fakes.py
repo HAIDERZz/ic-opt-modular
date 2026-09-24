@@ -11,6 +11,7 @@ import pytest
 from ic_opt.executor import CommandResult, LocalExecutor
 from ic_opt.site import HostLimits
 from ic_opt.spec import Spec
+from ic_opt.store import RunStore
 
 needs_turbo = pytest.mark.skipif(importlib.util.find_spec("torch") is None, reason="turbo strategy needs the [turbo] extra (torch)")
 
@@ -239,3 +240,9 @@ def rlc_snp(argv: list[str], n_ports: int, z0: float, cwd: str) -> str:
         s = (eye - z0 * y) @ np.linalg.inv(eye + z0 * y)
         lines.append(f"{f:.0f} " + " ".join(f"{v.real:.12e} {v.imag:.12e}" for v in s.T.reshape(-1)))
     return "\n".join(lines) + "\n"
+
+
+def restamp(store: RunStore, **stamps: str) -> None:
+    """Rewrite every observation of ``store`` with these fingerprints, as an older version would have stamped them."""
+    rows = [o.model_copy(update=stamps) for o in store.observations()]
+    store.observations_path.write_text("".join(o.model_dump_json() + "\n" for o in rows), encoding="utf-8")

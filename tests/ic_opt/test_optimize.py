@@ -9,7 +9,7 @@ from ic_opt.deck import Deck
 from ic_opt.observation import ChildResult, Observation
 from ic_opt.store import RunStore
 from ic_opt.suggesters.turbo import _active_start, _batches
-from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec, needs_turbo
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec, needs_turbo, restamp
 
 TEMPLATE = "simulator lang=spectre\nparameters temperature=27 F={{F}} W={{W}}\ntran tran stop=10n\n"
 
@@ -50,6 +50,18 @@ def test_rerun_with_bigger_budget_continues_instead_of_restarting(tmp_path):
     more = optimize(spec, ex, store, deck=deck, strategy="turbo", budget=9, batch=3, seed=2, limits=FAKE_HOST)
     assert len(more) == 9 and more[:6] == first
     assert sum(c.startswith("spectre") for c in ex.commands) == 9
+
+
+@needs_turbo
+def test_a_store_stamped_by_the_previous_version_continues_under_optimize(tmp_path):
+    """T15.2: observations carrying the legacy (whole-spec) fingerprint count as this problem for the budget and the history."""
+    spec, store, ex, deck = project(tmp_path)
+    first = optimize(spec, ex, store, deck=deck, strategy="turbo", budget=6, batch=3, seed=2, limits=FAKE_HOST)
+    restamp(store, spec_fingerprint=spec._legacy_fingerprint())
+    sims = sum(c.startswith("spectre") for c in ex.commands)
+    more = optimize(spec, ex, store, deck=deck, strategy="turbo", budget=9, batch=3, seed=2, limits=FAKE_HOST)
+    assert len(more) == 9 and [o.obs_id for o in more[:6]] == [o.obs_id for o in first]
+    assert sum(c.startswith("spectre") for c in ex.commands) == sims + 3                 # only the three new points ran
 
 
 def test_turbo_batches_and_restart_bookkeeping():

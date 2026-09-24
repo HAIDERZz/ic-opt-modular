@@ -90,16 +90,16 @@ def optimize(
     from ic_opt.blocks.evaluate import default_pipeline, plan_shape
     from ic_opt.recipe import PLAN_MODE
 
-    fp = spec.fingerprint()
+    same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}     # a store stamped before T15.2 is this problem too (engine.py, "Identity")
     if PLAN_MODE.get():
-        done = len(Observations(o for o in store.observations() if o.spec_fingerprint == fp).by_step(step))
+        done = len(Observations(o for o in store.observations() if o.spec_fingerprint in same_problem).by_step(step))
         shape = pipeline if pipeline is not None else default_pipeline(spec, deck or Deck(), waveforms)
         print(f"[plan] opt.optimize step={step!r} strategy={strategy}: {done}/{budget} points done, "
               f"up to {max(0, budget - done)} more in batches of {batch} × "
               f"{plan_shape(spec, shape, corners, executor, parallel_jobs, limits)} (spec budget {spec.budget.max_simulations})")
         return Observations()
     while True:
-        mine = Observations(o for o in store.observations() if o.spec_fingerprint == fp)
+        mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
         done = len(mine.by_step(step))
         if done >= budget:
             break
@@ -113,7 +113,7 @@ def optimize(
             spec, points, executor, store, deck=deck, pipeline=pipeline, corners=corners, waveforms=waveforms,
             step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
         )
-    return Observations(o for o in store.observations() if o.spec_fingerprint == fp and o.step == step)
+    return Observations(o for o in store.observations() if o.spec_fingerprint in same_problem and o.step == step)
 
 
 def adopt(spec: Spec, foreign: Sequence[Observation]) -> Observations:
