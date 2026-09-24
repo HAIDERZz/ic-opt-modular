@@ -22,7 +22,7 @@
 
 | # | 事项 | 状态 |
 |---|---|---|
-| RT-1 | B-5：`migrate-store` 按 0.2.0 发布版的指纹公式匹配并重写 0.2.0 时代的行（含无 pipeline 指纹的行），用 v0.2.0 标签代码真实生成的 store 做夹具验证 | 进行中（subagent） |
+| RT-1 | B-5：`migrate-store` 按 0.2.0 发布版的指纹公式匹配并重写 0.2.0 时代的行，用 v0.2.0 标签代码真实生成的 store 做夹具验证 | 已做（7b0f1d5：`v020_fingerprint` 白名单公式 + 0.2.0 的"只按阶段名"流水线指纹精确匹配并重写；发现 0.2.0 store 因 T9.1 把 `testbench` 改名 `unit` 根本读不进来，加了读取别名；夹具 `tests/ic_opt/fixtures/store_v020/` 由 v0.2.0 代码真实写出；7 个新测试，271 绿） |
 | RT-2 | B-4：N28 脱敏审计（随包 + 随仓库；层号、厚度、规则数值、`.proc` 名与路径、profile 内容），修复可修项，审计文档 `N28_DESENSITISATION_AUDIT_2026-09-25_CN.md` 本身不含数值 | 进行中（subagent） |
 | RT-3 | 按 0.2.0 发布说明的承诺删除 0.1 命令行 shim（`ic-opt PROJECT --real…`），保留 `ic-opt migrate` | 已做（90f6a0b：旧命令行退出码 2 并提示 migrate + run；CLI 测试 77 绿） |
 | RT-4 | Claude：合入并验收 RT-1..3；`RELEASE_NOTES_v0.3.0.md`（升级步骤：写 site.yaml、补 spec 资源字段、`migrate-store`）；版本号 `pyproject` / `__init__` / README；干净环境安装检查；定向测试 | 待 RT-1..3 |

@@ -42,9 +42,12 @@ Do the steps in this order; each one is checked by the tool.
    `ic-opt migrate-store PROJECT [--ssh-profile P] [--dry-run]` restamps a
    project or a library part in place (backup first, idempotent), moves EMX
    cache entries to their new keys and repoints `library.yaml` pins. It
-   matches rows stamped by 0.2.0's own formula too. Rows it cannot match are
-   reported and left as they are: they are not reused and still count against
-   the budget.
+   matches rows stamped by 0.2.0's own formulas too (its spec hash and its
+   stage-name pipeline hash), and a 0.2.0 store loads again in the first
+   place: 0.2.0 wrote a child's unit as `testbench`, which the development
+   line had renamed, so every command on such a store used to fail. Rows
+   migrate-store cannot match are reported and left as they are: they are not
+   reused and still count against the budget.
 
 4. **The 0.1 command line is gone.** `ic-opt PROJECT --real|--doctor|--continue N`
    was kept for one release, as 0.2.0 said. Run `ic-opt migrate PROJECT` once
