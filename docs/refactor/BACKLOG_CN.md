@@ -1,33 +1,45 @@
 # 待办总表（阶段性收尾，2026-09-25）
 
 一张表管全部未完成事项：来源（审查行号 / 方案节 / 记忆）、现状、下一步、谁来定。
-状态含义：**待拍板** = 需要用户决定；**可做** = 已批准或无需决定，等排期；**记录** = 只需知道，不打算单独做。
-编号稳定，后续引用 W-x / B-x / R-x / N-x。新任务从这里领取，完成后在 `EXECUTION_PLAN_CN.md` 追加一条并在此划掉。
+状态含义：**待拍板** = 需要用户决定；**可做** = 已批准或无需决定，等排期；**进行中** = 已派发；**记录** = 只需知道，不打算单独做。
+编号稳定，后续引用 W-x / RT-x / B-x / R-x / N-x。新任务从这里领取，完成后在 `EXECUTION_PLAN_CN.md` 追加一条并在此划掉。
+
+**2026-09-25 用户拍板**：推送已完成；发 0.3.0；B-1 取 a + b；B-2 回流；B-3 暂维持 b；B-4 发布前脱敏；B-5 取 a；B-6 按第 2 节顺序。
 
 ## 0. 收尾动作
 
 | # | 事项 | 状态 |
 |---|---|---|
-| W-1 | `git push origin main`（main 领先 origin 33 提交；只推 `origin`，不推 `github` 远程） | **用户执行**（auto 模式分类器不允许我推） |
-| W-2 | 版本号：T15 是破坏性变更（site.yaml v2、spec 资源字段必填、指纹与代际迁移），`pyproject` 仍是 0.2.0。建议升 **0.3.0**，写 `RELEASE_NOTES_v0.3.0.md`（升级步骤：写 site.yaml、补 spec 资源字段、`ic-opt migrate-store`），与 B-4 一起处理 | **待拍板**（是否发版、版本号） |
-| W-3 | `.gitignore` 加 `.claude/worktrees/`；删除未跟踪的全量加密网格 `reports/pcell_plan/xfm_grid_n28_densify.json`（4318 点"all"档，从未运行；实际跑的 sixty_cells 档已提交） | 已做（本次提交） |
-| W-4 | `EXECUTION_PLAN_CN.md` 补 T15 条目与收尾条目；审查文档状态头修正（行 16、19 已在 T15.1 处理）；新建 `reports/INDEX_CN.md`（每个报告页 → 生成脚本 → 数据 → artifact 链接） | 已做（本次提交） |
-| W-5 | N28 库迁移备份 `<库根>/<部件>/.icopt/observations.jsonl.bak-20260924T1534*`（8 个部件）：验收已过，保留一周后删除 | 可做（2026-10-02 后） |
-| W-6 | 记忆整理：T13–T15 过程记忆压缩为"现状 + 教训 + 本文件指针" | 已做 |
-| W-7 | `reports/library_query/IND_QUERY_VERIFY_CN.html` 仍是 09-23 版（1038 行），其数据 `ind_query_verify.json` 已在 09-24 按回流后 1048 行重做基线：用 `ind_query_report.py DATASET_JSON VERIFY_JSON OUT_HTML` 重生成并重发 artifact（脚本会重拟合四个结果列的模型画对照图，约几分钟） | 可做 |
+| W-1 | `git push origin main`（只推 `origin`，不推 `github` 远程） | 已做（用户推送，origin/main = 1128c7f） |
+| W-2 | 版本号升 **0.3.0**（T15 是破坏性变更：site.yaml v2、spec 资源字段必填、指纹与代际迁移） | 已拍板 → 见"发布 0.3.0"表 |
+| W-3 | `.gitignore` 加 `.claude/worktrees/`；删除未跟踪的全量加密网格 | 已做（1128c7f） |
+| W-4 | `EXECUTION_PLAN_CN.md` 补 T15 条目与收尾条目；审查文档状态头修正；新建 `reports/INDEX_CN.md` | 已做（1128c7f） |
+| W-5 | N28 库迁移备份 `<库根>/<部件>/.icopt/observations.jsonl.bak-20260924T1534*`（8 个部件）与两个变压器复核工程的 `.bak-20260924T1829*`：保留一周后删除 | 可做（2026-10-02 后） |
+| W-6 | 记忆整理 | 已做 |
+| W-7 | `reports/library_query/IND_QUERY_VERIFY_CN.html` 仍是 09-23 版（1038 行），数据已按回流后 1048 行重做基线：用 `ind_query_report.py DATASET_JSON VERIFY_JSON OUT_HTML` 重生成并重发 artifact | 进行中（数据集重算中） |
 
-## 1. 待用户拍板
+## 0.5 发布 0.3.0（用户 2026-09-25 拍板；顺序：RT-1/2/3 并行 → RT-4 → RT-5）
 
-| # | 事项 | 背景 | 选项 / 建议 |
+| # | 事项 | 状态 |
+|---|---|---|
+| RT-1 | B-5：`migrate-store` 按 0.2.0 发布版的指纹公式匹配并重写 0.2.0 时代的行（含无 pipeline 指纹的行），用 v0.2.0 标签代码真实生成的 store 做夹具验证 | 进行中（subagent） |
+| RT-2 | B-4：N28 脱敏审计（随包 + 随仓库；层号、厚度、规则数值、`.proc` 名与路径、profile 内容），修复可修项，审计文档 `N28_DESENSITISATION_AUDIT_2026-09-25_CN.md` 本身不含数值 | 进行中（subagent） |
+| RT-3 | 按 0.2.0 发布说明的承诺删除 0.1 命令行 shim（`ic-opt PROJECT --real…`），保留 `ic-opt migrate` | 进行中（subagent） |
+| RT-4 | Claude：合入并验收 RT-1..3；`RELEASE_NOTES_v0.3.0.md`（升级步骤：写 site.yaml、补 spec 资源字段、`migrate-store`）；版本号 `pyproject` / `__init__` / README；干净环境安装检查；定向测试 | 待 RT-1..3 |
+| RT-5 | 用户：`git push origin main --tags`（标签 v0.3.0 由 Claude 本地打）与 GitHub Release | 待 RT-4 |
+
+## 1. 已拍板事项（2026-09-25）
+
+| # | 事项 | 决定 | 落点 |
 |---|---|---|---|
-| B-1 | 变压器格点间模型不准的**普遍解法** | 真实复核（`XFM_SIGNOFF_N28_CN.html`）：格点间 Lp@40 偏 +1.5…+22%、k 到 +9%、SRF 到 −18%，区间诚实（覆盖 96–98%）但宽；根因是 bs 表次级外径 20 µm 一档太稀，锚定量在谐振附近变化快 | (a) `lib.densify`：按模型不确定度在全域自适应补点（与具体目标无关）；(b) 建模改为 L@f = L_lf × 谐振因子，两者各自平滑；(c) 建库策略把次级外径改为连续采样。建议 a + b 立项 T16 |
-| B-2 | 10 个格点间变压器实测点是否回流入库 | 真实数据，正落在稀疏处；`adopt=true` 几秒，复用观测不跑 EMX | 建议回流（与 B-1 一起看）。注意：adopt 再跑会重复入库 |
-| B-3 | TuRBO 长期方案 | 现按 b（`-e vendor/TuRBO`），仍是 Uber 非商业许可；是 `lib_design` / `lib_signoff` / `coarse_to_fine` 细阶段的默认策略 | 面向商业用户则 (c) 换 MIT 实现或自写 TuRBO-1（需基准对比）或 (d) 默认策略改 OpenBox；否则维持 b |
-| B-4 | 公开发布前的 N28 脱敏 | v0.2.0 已流出含 N28 数值需重发（记忆）；T15.7 之后 pcell README 与 `_pcell_demo` 仍有 N28 层号（74/126/85/138–140）、演示输入 `n28_1p10m`；库与页面在仓库外 | 建议：发 0.3.0 前对随包 / 随仓库内容做一次脱敏审计 |
-| B-5 | v0.2.0 时代工程 store 的指纹兼容 | T9 之前 schema 不同，新旧指纹公式都对不上：旧观测不复用、只计 budget（README 已说明） | (a) `migrate-store` 增加"按 0.2.0 公式"匹配；(b) 接受现状。建议 a（小改） |
-| B-6 | T16 范围与顺序 | 第 2 节 | 按第 2 节建议顺序，或指定子集 |
+| B-1 | 变压器格点间模型不准的普遍解法（真实复核：格点间 Lp@40 偏 +1.5…+22%、k 到 +9%、SRF 到 −18%，区间诚实但宽；根因 bs 表次级外径 20 µm 一档太稀、锚定量在谐振附近变化快） | a + b：`lib.densify` 按模型不确定度全域补点；建模改为 L@f = L_lf × 谐振因子 | T16.1 / T16.2（`T16_PLAN_CN.md`） |
+| B-2 | 10 个格点间变压器实测点回流入库 | 回流 | 已做（2026-09-25 02:33：两复核工程先 `migrate-store` 重写代际，再经 `lib_signoff._adopt` 复制，xfm_bs_ap / xfm_bs_m10 各 1576→1581 行，数据集重建 excluded {}；记录 `<ic-opt-library>/n28_signoff/adopt_xfm_bs.{py,log}`、`migrate_store_xfm_bs.log`） |
+| B-3 | TuRBO 长期方案 | 暂维持 b（`-e vendor/TuRBO`，Uber 非商业许可） | 记录；面向商业用户时再议 c / d |
+| B-4 | 公开发布前的 N28 脱敏 | 发布前审计 | RT-2 |
+| B-5 | v0.2.0 时代工程 store 的指纹兼容 | a：`migrate-store` 加 0.2.0 公式匹配 | RT-1 |
+| B-6 | T16 范围与顺序 | 按第 2 节顺序 | `T16_PLAN_CN.md` |
 
-## 2. T16 候选（可做，按建议顺序）
+## 2. T16 候选（已批准，按顺序；方案见 `T16_PLAN_CN.md`）
 
 | # | 事项 | 来源 | 大小 |
 |---|---|---|---|
@@ -59,6 +71,7 @@
 - ms 表 Q 容量下限的负结果、xfm 限带 parity 开放——随 B-1 一并考虑。
 - 电感表 60 GHz 列的 2σ 覆盖最低 0.85（AP `L@60`、M10 `Q@60`，`ind_query_verify.json`）：在 0.85–0.96 带内，只观察。
 - `em-opt` 老仓库（EM-opt-workflow）的遗留决策（D4 落点悬空 / D5 地环翻转、真实 CT 验证、分代 CV 门）：该工作区只读、不再开发；如需迁移到本仓库另行立项。
+- 变压器两表回流后（B-2）40 GHz / 60 GHz 区域答案会随数据变化，`region_acceptance_40g*.json` 是回流前的验收记录，不是门。
 
 ## 4. 已收官（本文件不再跟踪）
 
