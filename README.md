@@ -216,11 +216,12 @@ leaves out how the problem is run (resources, timeouts, retention, the license
 check, the budget), and the EMX stage (the EMX cache key, the EM pipeline
 fingerprint, a library part's generation) is identified by the process file's
 content instead of its path. Until a store written before this change is
-restamped, its Spectre observations are reused only while `spec.yaml` stays
-exactly as it was, and its EM observations not at all: the points would be
-simulated again (the EMX cache keys changed too), and a library part's new rows
-would form a generation of their own. Restamp every such store once, each
-project and each library part, before its next run and before editing its spec:
+restamped, its EM observations are not reused, its Spectre observations only
+while `spec.yaml` stays exactly as it was, and those the 0.2.0 release wrote not
+at all: the points would be simulated again (the EMX cache keys changed too),
+and a library part's new rows would form a generation of their own. Restamp
+every such store once, each project and each library part, before its next run
+and before editing its spec:
 
 ```bash
 ic-opt migrate-store PROJECT --dry-run      # what would change; "nothing to change" when the store is current
@@ -232,14 +233,20 @@ rewrites the two fingerprints of every row stamped by the store's spec as it
 stands, moves EMX cache entries to their new keys and repoints a `library.yaml`
 above the store that pins a restamped generation (backed up the same way). It
 assumes the process file has not changed since the rows were simulated; a
-second run changes nothing. Resource fields are required now, so a `spec.yaml`
-that left one to its old default is refused. The old stamps hash that default:
-write it in first (`simulator.threads_per_run: 10`; `em.threads: 4`,
-`em.memory_gb: 32`, `em.timeout_s: 3600`), restamp, and only then set your own
+second run changes nothing. Rows the 0.2.0 release wrote are matched by 0.2.0's
+own formulas (its spec schema had no EM fields yet, and its pipeline
+fingerprint hashed the stage names alone): those of the spec as it stands get
+its problem fingerprint and the Spectre pipeline's current one, and are reused
+from then on. The Spectre pipeline was the only one 0.2.0 shipped; a row from a
+stage list a recipe assembled itself keeps its pipeline fingerprint. Resource
+fields are required now, so a `spec.yaml` that left one to its old default is
+refused. The old stamps hash that default, and the other resources and the
+budget too: write the default in first (`simulator.threads_per_run: 10`;
+`em.threads: 4`, `em.memory_gb: 32`, `em.timeout_s: 3600`), restamp with
+everything else as it was when the rows were run, and only then set your own
 values. Rows it cannot match stay as they are and are reported: rows of another
-spec, and every row the 0.2.0 release wrote (its spec schema had no EM fields
-yet, so none of its stamps matches a spec today). Neither kind is reused, and
-both still count against `budget.max_simulations`.
+spec, the spec as it was before an edit included. They are not reused, and
+still count against `budget.max_simulations`.
 
 ## 0.1 projects
 

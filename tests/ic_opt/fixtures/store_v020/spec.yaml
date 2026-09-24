@@ -1,0 +1,25 @@
+# A project the 0.2.0 release ran: .icopt/observations.jsonl is as that release's own code wrote it (tag v0.2.0,
+# sim.evaluate on three points with its tests' fake Spectre host). Upgraded as README says: threads_per_run is
+# required now, so the value 0.2.0 used when the spec left it out is written in -- nothing else changed.
+project: lna_v020
+description: a store written by the 0.2.0 release
+testbenches:
+  - id: tb
+    maestro_point_root: /x
+    virtuoso_library: lib
+    cell: c
+    test_name: t
+variables:
+  - {name: F, kind: integer, lower: 20, upper: 30, step: 2}
+  - {name: W, kind: continuous_step, lower: 0.6u, upper: 1.2u, step: 0.2u}
+metrics:
+  - {name: NF, unit: dB, expression: 'value(getData("NF"))'}
+constraints:
+  - {metric: NF, op: lt, value: 9}
+objective: {direction: minimize, expression: NF}
+simulator:
+  parallel_jobs: 2
+  threads_per_run: 10       # 0.2.0's default, written in before ic-opt migrate-store
+  timeout_s: 60
+budget:
+  max_simulations: 10

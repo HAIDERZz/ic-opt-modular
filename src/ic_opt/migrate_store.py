@@ -5,22 +5,36 @@ license check and budget included -- and the EMX stage's identity (part of ``pip
 generation) and its cache key carried the process file's path. Now the spec fingerprint hashes ``Spec.problem()`` and
 the EMX identity the process file's content, hashed on the simulation host.
 
+The 0.2.0 release stamped by formulas of its own, which neither of those reproduces. Its spec fingerprint hashed the
+whole spec as its schema had it: no ``devices``, ``em`` or ``bindings`` and no device metrics yet. Its pipeline
+fingerprint hashed the stage names alone (stage identities joined them in T9.4). The only stages 0.2.0 had were the
+Spectre chain's, render -> spectre -> ocean -> extract, which ``sim.evaluate`` ran unless a recipe passed a stage list
+of its own; that chain is the pipeline a spec without devices implies today. A row stamped with the hash of those four
+names is one 0.2.0 itself took for that chain's (its reuse compared nothing else), and a stage list a recipe assembled
+stamped the hash of its own names.
+
 ``migrate`` takes a project or a library part store (``.icopt/observations.jsonl`` with ``spec.yaml`` or
 ``.icopt/spec.json``) and forms, from its spec as it is now, each old identity and its new one:
 
-- ``spec_fingerprint``: rows stamped with the spec's legacy fingerprint get its problem fingerprint;
+- ``spec_fingerprint``: rows stamped with the spec's legacy fingerprint, or with its 0.2.0 fingerprint, get its problem
+  fingerprint;
 - ``pipeline_fingerprint``: rows stamped with the legacy fingerprint of an EM pipeline the spec implies (em_only, and
-  em_circuit when it has testbenches) get that pipeline's new one, the process file hashed through the executor;
+  em_circuit when it has testbenches) get that pipeline's new one, the process file hashed through the executor; rows
+  0.2.0 wrote for the spec (its 0.2.0 fingerprint) with the Spectre chain's 0.2.0 stamp get that pipeline's current
+  fingerprint -- a spec 0.2.0 could state has no devices, so the Spectre pipeline is the one it implies;
 - EMX cache entries still under their legacy key move to the new one (each point's ``em/geometry.json`` holds the GDS
   digest and ports the key is formed from);
 - a ``library.yaml`` above the store that pins a restamped generation is repointed.
 
 Anything else stays as it is and is reported: a hash cannot tell which other spec or generation a row came from, and
-guessing would merge problems or generations -- so migrate before editing the spec. Rows are restamped on the premise
-that the process file has not changed since they were simulated. In a row only the two fingerprint values change (the
-line is edited in place); the file is copied to ``observations.jsonl.bak-<UTC time>`` first and replaced atomically,
-under the store's lock. Running it again changes nothing. A library's dataset, calibration and model caches survive:
-the dataset key sees the rows a part keeps, not their stamps.
+guessing would merge problems or generations -- so migrate before editing the spec. The old spec fingerprints hashed
+the resources and the budget too, so a resource the spec left to its old default must be written in with that value
+first (0.2.0: ``simulator.threads_per_run: 10``). Rows are restamped on the premise that the process file has not
+changed since they were simulated. In a row only the two fingerprint values change (the line is edited in place; a
+0.2.0 row keeps its children's ``testbench`` key, which ``ChildResult`` reads as ``unit``); the file is copied to
+``observations.jsonl.bak-<UTC time>`` first and replaced atomically, under the store's lock. Running it again changes
+nothing. A library's dataset, calibration and model caches survive: the dataset key sees the rows a part keeps, not
+their stamps.
 """
 
 from __future__ import annotations
@@ -46,6 +60,7 @@ from ic_opt.executor import Executor, LocalExecutor
 from ic_opt.library.manifest import MANIFEST
 from ic_opt.spec import EmSettings, Spec
 from ic_opt.stages.em_chain import Emx, em_circuit_pipeline, em_only_pipeline
+from ic_opt.stages.spectre_chain import spectre_pipeline
 from ic_opt.store import RunStore
 
 OBSERVATIONS = "observations.jsonl"
@@ -76,6 +91,49 @@ def legacy_emx_cache_key(em: EmSettings, *, gds_sha256: str, ports: list[EmxPort
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:24]
 
 
+# -- the identities the 0.2.0 release wrote (frozen likewise) -------------------------------------------------------
+
+# The 0.2.0 spec schema, field by field (``git show v0.2.0:src/ic_opt/spec.py``): Spec, then each nested model under the
+# Spec field that holds it. Its Spec.fingerprint hashed the ``model_dump(mode="json")`` of exactly these fields.
+_V020_SPEC = ("project", "description", "testbenches", "corners", "corner_policy", "variables", "metrics", "constraints",
+              "objective", "simulator", "budget")
+_V020_NESTED = {
+    "testbenches": ("id", "maestro_point_root", "virtuoso_library", "cell", "test_name", "design_view", "maestro_view",
+                    "corner"),
+    "corners": ("id", "model_section", "model_file", "variables", "description"),
+    "corner_policy": ("objective", "constraints"),
+    "variables": ("name", "kind", "lower", "upper", "step"),
+    "metrics": ("name", "unit", "expression", "testbench", "result", "required_signals"),
+    "constraints": ("metric", "op", "value"),
+    "objective": ("direction", "expression"),
+    "simulator": ("preset", "threads_per_run", "parallel_jobs", "timeout_s", "license_check", "keep_failed_runs",
+                  "keep_successful_runs", "engine", "output_format"),
+    "budget": ("max_simulations",),
+}
+
+
+def v020_fingerprint(spec: Spec) -> str | None:
+    """``Spec.fingerprint`` of the 0.2.0 release: the whole spec, resources and budget included, in the 0.2.0 schema --
+    the dump without the fields added since (``devices``, ``em``, ``bindings``; a metric's ``device``, ``quantity``,
+    ``frequency_hz``). None when the spec sets one of them: 0.2.0 could not have stated that spec, and leaving the field
+    out would give it the fingerprint of the spec without it."""
+    dump = spec.model_dump(mode="json")
+    added = [value for name, value in dump.items() if name not in _V020_SPEC]
+    for name, fields in _V020_NESTED.items():
+        value = dump[name]
+        for model in value if isinstance(value, list) else [] if value is None else [value]:
+            added += [model.pop(f) for f in list(model) if f not in fields]
+    if any(value not in (None, [], {}) for value in added):
+        return None
+    payload = json.dumps({name: dump[name] for name in _V020_SPEC}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def v020_pipeline_fingerprint(stages: list[Stage]) -> str:
+    """``pipeline_fingerprint`` of the 0.2.0 release: the stage names alone."""
+    return hashlib.sha256("|".join(s.name for s in stages).encode()).hexdigest()[:16]
+
+
 # -- the migration --------------------------------------------------------------------------------------------------
 
 
@@ -88,10 +146,13 @@ class Migration:
     spec_old: str                                            # the spec's legacy fingerprint
     spec_new: str                                            # its problem fingerprint
     pipelines: dict[str, tuple[str, str]]                    # EM pipeline -> (legacy, new) fingerprint
+    v020_old: str | None = None                              # the spec's 0.2.0 fingerprint (None: 0.2.0 could not state it)
+    v020_pipeline: tuple[str, str] | None = None             # the Spectre pipeline's (0.2.0, current) fingerprint
     dry_run: bool = False
     rows: int = 0
     restamped: int = 0                                       # rows with a fingerprint changed
-    spec_rows: int = 0
+    spec_rows: int = 0                                       # rows restamped from the legacy spec fingerprint
+    v020_rows: int = 0                                       # rows restamped from the 0.2.0 one
     pipeline_rows: int = 0
     other_specs: collections.Counter = field(default_factory=collections.Counter)     # spec fingerprints left as they are
     before: collections.Counter = field(default_factory=collections.Counter)          # pipeline fingerprint -> rows
@@ -106,9 +167,13 @@ class Migration:
 
     def __str__(self) -> str:
         lines = [f"{self.store} (spec {self.spec_file.relative_to(self.store)}): {self.rows} observations",
-                 f"  spec fingerprint    {self.spec_old} -> {self.spec_new}: {self.spec_rows} rows restamped"]
+                 f"  spec fingerprint    {self.spec_old} -> {self.spec_new}: {self.spec_rows} rows restamped",
+                 f"  0.2.0 fingerprint   {self.v020_old} -> {self.spec_new}: {self.v020_rows} rows restamped" if self.v020_old
+                 else "  0.2.0 fingerprint   none: the spec sets fields the 0.2.0 release did not have"]
         lines += [f"  pipeline {name:<11}{old} -> {new}" for name, (old, new) in self.pipelines.items()]
-        if self.pipelines:
+        if self.v020_pipeline:
+            lines.append(f"  pipeline {'spectre':<11}{self.v020_pipeline[0]} -> {self.v020_pipeline[1]} (0.2.0 rows of this spec)")
+        if self.pipelines or self.v020_pipeline:
             lines.append(f"  pipeline rows       {self.pipeline_rows} restamped")
         if self.other_specs:
             lines.append("  left as they are    " + ", ".join(f"{n} rows of spec {fp}" for fp, n in self.other_specs.most_common())
@@ -138,15 +203,18 @@ def migrate(project: str | Path, executor: Executor | None = None, *, dry_run: b
     spec, spec_file = _spec(project)
     executor = executor or LocalExecutor(project / ".icopt" / "sims")
     pipelines = _em_pipelines(spec)
+    v020 = v020_fingerprint(spec)
     report = Migration(project, spec_file, spec._legacy_fingerprint(), spec.fingerprint(),
                        {name: (legacy_pipeline_fingerprint(stages), pipeline_fingerprint(stages, executor))
-                        for name, stages in pipelines.items()}, dry_run=dry_run)
-    spec_map = {report.spec_old: report.spec_new}
+                        for name, stages in pipelines.items()},
+                       v020, _v020_spectre(spec, executor) if v020 else None, dry_run=dry_run)
+    spec_map = {old: report.spec_new for old in (report.spec_old, report.v020_old) if old}
     pipe_map = {old: new for old, new in report.pipelines.values() if old != new}
+    v020_map = {(report.v020_old, report.v020_pipeline[0]): report.v020_pipeline[1]} if report.v020_pipeline else {}
     with nullcontext() if dry_run else RunStore(project).lock():
         lines = path.read_bytes().decode("utf-8").splitlines(keepends=True)      # bytes: line endings stay as written
         rows = [_parse(line, number, path) for number, line in enumerate(lines, 1)]
-        updates = [_updates(row, spec_map, pipe_map) if row is not None else {} for row in rows]
+        updates = [_updates(row, spec_map, pipe_map, v020_map) if row is not None else {} for row in rows]
         for row, update in zip(rows, updates):
             if row is not None:
                 _count(report, row, update)
@@ -180,6 +248,15 @@ def _em_pipelines(spec: Spec) -> dict[str, list[Stage]]:
     return pipelines
 
 
+def _v020_spectre(spec: Spec, executor: Executor) -> tuple[str, str] | None:
+    """(0.2.0, current) fingerprint of the Spectre pipeline, which a spec without devices implies: the one pipeline
+    0.2.0 shipped (module docstring). None for a spec with devices, which implies an EM pipeline."""
+    if spec.devices:
+        return None
+    stages = spectre_pipeline(spec, Deck())                                   # neither the deck nor waveforms name a stage
+    return v020_pipeline_fingerprint(stages), pipeline_fingerprint(stages, executor)
+
+
 def _parse(line: str, number: int, path: Path) -> dict | None:
     if not line.strip():
         return None
@@ -189,22 +266,30 @@ def _parse(line: str, number: int, path: Path) -> dict | None:
         raise ValueError(f"{path}:{number}: not an observation ({exc.msg}); nothing was changed") from exc
 
 
-def _updates(row: dict, spec_map: dict[str, str], pipe_map: dict[str, str]) -> dict[str, str]:
+def _updates(row: dict, spec_map: dict[str, str], pipe_map: dict[str, str],
+             v020_map: dict[tuple[str, str], str]) -> dict[str, str]:
+    """The stamps ``row`` gets: by its spec fingerprint (legacy or 0.2.0), by its pipeline fingerprint (a legacy EM
+    one), or by both at once (the Spectre pipeline's 0.2.0 stamp counts only in a row 0.2.0 wrote for this spec)."""
     update = {}
-    if row.get("spec_fingerprint") in spec_map:
-        update["spec_fingerprint"] = spec_map[row["spec_fingerprint"]]
-    if row.get("pipeline_fingerprint") in pipe_map:
-        update["pipeline_fingerprint"] = pipe_map[row["pipeline_fingerprint"]]
+    stamps = (row.get("spec_fingerprint"), row.get("pipeline_fingerprint"))
+    if stamps[0] in spec_map:
+        update["spec_fingerprint"] = spec_map[stamps[0]]
+    if stamps[1] in pipe_map:
+        update["pipeline_fingerprint"] = pipe_map[stamps[1]]
+    elif stamps in v020_map:
+        update["pipeline_fingerprint"] = v020_map[stamps]
     return update
 
 
 def _count(report: Migration, row: dict, update: dict[str, str]) -> None:
     report.rows += 1
     report.restamped += bool(update)
-    report.spec_rows += "spec_fingerprint" in update
+    spec = row.get("spec_fingerprint")
+    report.spec_rows += "spec_fingerprint" in update and spec == report.spec_old
+    report.v020_rows += "spec_fingerprint" in update and spec == report.v020_old
     report.pipeline_rows += "pipeline_fingerprint" in update
-    if row.get("spec_fingerprint") not in (report.spec_old, report.spec_new):
-        report.other_specs[row.get("spec_fingerprint")] += 1
+    if spec not in {report.spec_old, report.spec_new, report.v020_old} - {None}:
+        report.other_specs[spec] += 1
     report.before[row.get("pipeline_fingerprint")] += 1
     report.after[update.get("pipeline_fingerprint", row.get("pipeline_fingerprint"))] += 1
 

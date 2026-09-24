@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from ic_opt.space import Point
 
 
 class ChildResult(BaseModel):
-    """Outcome of one child: a testbench × corner simulation or an EM device's measurement."""
+    """Outcome of one child: a testbench × corner simulation or an EM device's measurement. The 0.2.0 release wrote
+    the unit as ``testbench`` (T9.1 renamed it): its rows read as they are."""
 
-    unit: str                                     # testbench id or device id
+    unit: str = Field(validation_alias=AliasChoices("unit", "testbench"))   # testbench id or device id
     corner: str | None = None
     status: str                                   # "ok" | "failed:<stage>"
     metrics: dict[str, float] = Field(default_factory=dict)
