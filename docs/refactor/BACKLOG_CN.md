@@ -23,7 +23,7 @@
 | # | 事项 | 状态 |
 |---|---|---|
 | RT-1 | B-5：`migrate-store` 按 0.2.0 发布版的指纹公式匹配并重写 0.2.0 时代的行，用 v0.2.0 标签代码真实生成的 store 做夹具验证 | 已做（7b0f1d5：`v020_fingerprint` 白名单公式 + 0.2.0 的"只按阶段名"流水线指纹精确匹配并重写；发现 0.2.0 store 因 T9.1 把 `testbench` 改名 `unit` 根本读不进来，加了读取别名；夹具 `tests/ic_opt/fixtures/store_v020/` 由 v0.2.0 代码真实写出；7 个新测试，271 绿） |
-| RT-2 | B-4：N28 脱敏审计（随包 + 随仓库；层号、厚度、规则数值、`.proc` 名与路径、profile 内容），修复可修项，审计文档 `N28_DESENSITISATION_AUDIT_2026-09-25_CN.md` 本身不含数值 | 进行中（subagent） |
+| RT-2 | B-4：N28 脱敏审计（随包 + 随仓库；层号、厚度、规则数值、`.proc` 名与路径、profile 内容），修复可修项，审计文档 `N28_DESENSITISATION_AUDIT_2026-09-25_CN.md` 本身不含数值 | 已做（079e917：30 项敏感发现修 25、5 项待拍板 B-7…B-11；wheel/sdist 命中 30→0；11 个演示改 demo_6m；pcell 套件 917 绿、黄金 GDS 13/13） |
 | RT-3 | 按 0.2.0 发布说明的承诺删除 0.1 命令行 shim（`ic-opt PROJECT --real…`），保留 `ic-opt migrate` | 已做（90f6a0b：旧命令行退出码 2 并提示 migrate + run；CLI 测试 77 绿） |
 | RT-4 | Claude：合入并验收 RT-1..3；`RELEASE_NOTES_v0.3.0.md`（升级步骤：写 site.yaml、补 spec 资源字段、`migrate-store`）；版本号 `pyproject` / `__init__` / README；干净环境安装检查；定向测试 | 待 RT-1..3 |
 | RT-5 | 用户：`git push origin main --tags`（标签 v0.3.0 由 Claude 本地打）与 GitHub Release | 待 RT-4 |
@@ -38,6 +38,16 @@
 | B-4 | 公开发布前的 N28 脱敏 | 发布前审计 | RT-2 |
 | B-5 | v0.2.0 时代工程 store 的指纹兼容 | a：`migrate-store` 加 0.2.0 公式匹配 | RT-1 |
 | B-6 | T16 范围与顺序 | 按第 2 节顺序 | `T16_PLAN_CN.md` |
+
+### 1.1 脱敏审计新出的待拍板项（RT-2，2026-09-25；详见 `N28_DESENSITISATION_AUDIT_2026-09-25_CN.md` 第 7 节）
+
+| # | 事项 | 选项 / 建议 | 状态 |
+|---|---|---|---|
+| B-7 | O-1 参考模式内置层号表（`_pcell_core.py` 的 `metal_layer` / `metal_pin_layer` / `via_layer` 与显示名回退）与私有工艺的金属 / 过孔 / pin 层号相同，随包发布 | 建议：参考模式的层号表也从 profile 读取（N65 profile 在仓库外，`ind_ref.gds` 逐字节比对只在有它时跑）；否则改成明显虚构的层号表。黄金 GDS 与库回放不受影响 | **待拍板** |
+| B-8 | O-2 参考模式过孔常数（`VIA_CUT_UM` / `VIA_SPACE_UM` / `VIA_ENC_UM`、`REFERENCE_MIN_MET_SPACING_UM`）等于私有 N65 profile 的值 | 与 B-7 同一方案：随 profile 读取 | **待拍板** |
+| B-9 | O-3 公开历史：origin/main 自 2026-09-22 起的提交仍含本次修掉的内容（v0.2.0 标签本身干净；私有 profile 与 `.proc` 从未入库） | (a) 接受现状，只保证 0.3.0 起干净；(b) `git filter-repo --replace-text` 改写历史并强制推送（词表放仓库外，改写后复查全部历史 blob）；(c) 先转私有再定。建议 a，除非层号级别的信息也必须从历史清除 | **待拍板** |
+| B-10 | O-4 N65 不在本次范围：一处测试注释含 N65 顶层金属最小线距；B-8 的常数 | 若 N65 同受此规则约束，以 N65 profile 为词表再审一遍（小） | **待拍板** |
+| B-11 | O-5 demo_6m 与 N28 的巧合（一个绘图层号、两组线宽 / 线距数值相同） | 建议不动（通用量级的巧合）；若要求零重合则改 demo_6m 与 skills 里的副本、重生黄金 GDS、升 `GEOMETRY_VERSION` | **待拍板** |
 
 ## 2. T16 候选（已批准，按顺序；方案见 `T16_PLAN_CN.md`）
 

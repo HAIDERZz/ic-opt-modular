@@ -91,6 +91,13 @@ Do the steps in this order; each one is checked by the tool.
 - `env.doctor` prints the host envelope and compares it with `nproc` /
   `MemTotal` (a warning, never a block); `migrate-store` for stores; every
   recipe passes `limits=run.limits` to `sim.evaluate` and `opt.optimize`.
+- **No private process facts in the package.** The wheel, the sdist and the
+  repository were audited for the layer numbers, rule values and file names of
+  the private process the pcell port was first built against
+  (`docs/refactor/N28_DESENSITISATION_AUDIT_2026-09-25_CN.md`); the shipped
+  demonstrations (`_pcell_demo.generate_all`) run on the bundled `demo_6m`
+  profile, and the pcell tests read a private profile's values from that
+  profile when `IC_OPT_PROFILE_DIRS` names one, else skip.
 
 ## Verified
 
