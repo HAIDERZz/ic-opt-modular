@@ -128,7 +128,8 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
     ``group_by`` is a comma list of dims to tabulate the region by; ``trend`` is ``<quantity>:<dim>`` (e.g.
     ``Qp_peak:width_um``, or ``k@<f>:center_spacing_um`` for a transformer): that quantity along that dim over the points
     meeting every other target. A point with sigma / mu above the ceiling of any quantity (``rel_sigma_max`` when given,
-    else the quantity's in library.yaml, else 0.15) is not confident and joins neither level. ``threads`` caps BLAS and ``workers`` the processes fitting uncached models, both within site.yaml's
+    else the quantity's in library.yaml, else 0.15) is not confident and joins neither level; the answer echoes ``k``
+    and the ceiling each quantity was held to (``rel_sigma_max``, per quantity). ``threads`` caps BLAS and ``workers`` the processes fitting uncached models, both within site.yaml's
     hosts.local (above it they are refused; by default they follow from it). ``cache_dir`` holds the library's cache
     files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name). The answer
     is strict JSON, every non-finite number null: ``targets[].upper`` is null except for windows.

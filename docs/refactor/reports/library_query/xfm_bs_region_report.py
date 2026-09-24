@@ -7,6 +7,10 @@ A REGION_JSON is what ``ic-opt call lib.region LIBRARY_ROOT stratum=S 'targets={
 manifest step, the part's fixed fields, how many rows measured every target quantity, and the calibration cached for
 each model (read, never computed). Its figures -- the first two dims' projection, the count per pair of group_by dims,
 the trend -- are saved under figs/ next to the page and embedded as data URIs.
+
+The page words each answer's robust level with the ``k`` the answer echoes (``kσ``), its coarse pass with
+``grid.relax`` and its confidence gate with ``rel_sigma_max``. An older answer, without these keys, is worded with
+lib.region's defaults (2σ, 10%).
 """
 from __future__ import annotations
 
@@ -93,6 +97,25 @@ def pct(v: float | None, digits: int = 2) -> str:
     return "–" if v is None else f"{v * 100:.{digits}f}%"
 
 
+def sigma(a: dict) -> str:
+    """The interval behind the answer's robust level as the page writes it, ``kσ`` from the ``k`` it echoes (lib.region's
+    default 2 for an answer that does not)."""
+    return f"{a.get('k', 2.0):g}σ"
+
+
+def widened(a: dict) -> str:
+    """How much wider the answer's coarse pass took the stated windows (``grid.relax``; lib.region's default 0.10 without)."""
+    return f"{a['grid'].get('relax', 0.10) * 100:g}%"
+
+
+def ceilings(a: dict) -> str:
+    """The confidence ceilings on σ/μ the answer held its quantities to, as text: one value when they agree ('' without)."""
+    held = a.get("rel_sigma_max") or {}
+    if len(set(held.values())) == 1:
+        return f"{next(iter(held.values())) * 100:g}%"
+    return "、".join(f"{q} {v * 100:g}%" for q, v in held.items())
+
+
 def bounds(t: dict) -> tuple[float | None, float | None]:
     """A target's window in SI units, None at an open end."""
     if t["kind"] == "min":
@@ -162,7 +185,7 @@ def fig_projection(stratum: str, a: dict, dims: list[str]) -> str | None:
     ax.scatter(coords(pts, dx), coords(pts, dy), s=10, c="#9fc7b3",
                label=f"预测均值满足（{n_mean} 点" + (f"，图中抽样 {len(pts)} 点）" if len(pts) < n_mean else "）"))
     if robust:
-        ax.scatter(coords(robust, dx), coords(robust, dy), s=12, c="#2f6b4f", label=f"2σ 区间整体满足（{a['levels']['robust']['count']} 点）")
+        ax.scatter(coords(robust, dx), coords(robust, dy), s=12, c="#2f6b4f", label=f"{sigma(a)} 区间整体满足（{a['levels']['robust']['count']} 点）")
     if hits:
         ax.scatter(coords(hits, dx), coords(hits, dy), marker="*", s=170, c="#c8102e", edgecolors="k", linewidths=0.5, zorder=5,
                    label=f"库内实测满足（{len(hits)} 行）")
@@ -197,7 +220,7 @@ def fig_groups(stratum: str, a: dict) -> str | None:
     ax.set_xlabel(axis(dx))
     ax.set_ylabel(axis(dy))
     ax.set_title(f"{stratum}：均值可行点数按 {abbr(dx)} × {abbr(dy)}"
-                 + ("（括号内为 2σ 稳健）" if written else ""))
+                 + (f"（括号内为 {sigma(a)} 稳健）" if written else ""))
     fig.colorbar(im, ax=ax, fraction=0.046, label="均值可行点数")
     return save(fig, f"{out.stem}_{stratum}_groups")
 
@@ -273,7 +296,7 @@ def range_table(stratum: str, a: dict, dims: list[str]) -> str:
                     f"<td class='num'>{span([float(x[:, i].min()), float(x[:, i].max())], d)}</td>"
                     f"<td class='num'>{f'{steps[d]:g}{um(d)}' if d in steps else '–'}</td>"
                     f"<td class='num'>{f'{grid:g}{um(d)}' if grid else '按层' if d == ds.nt_dim else '–'}</td></tr>")
-    return ("<div class='table-wrap'><table><thead><tr><th>参数</th><th class='num'>建议扫描范围（2σ 稳健）</th><th class='num'>均值可行范围（外包络）</th>"
+    return (f"<div class='table-wrap'><table><thead><tr><th>参数</th><th class='num'>建议扫描范围（{sigma(a)} 稳健）</th><th class='num'>均值可行范围（外包络）</th>"
             "<th class='num'>库覆盖范围</th><th class='num'>库步长</th><th class='num'>网格步长</th></tr></thead>"
             f"<tbody>{''.join(rows)}</tbody></table></div>")
 
@@ -285,7 +308,7 @@ def group_table(a: dict, dims: list[str]) -> str:
     rest = [d for d in dims if d not in g["dims"]]
     obj = a["objective"].partition(":")[2] if a["objective"] else None
     head = ("".join(f"<th class='num'>{short(d)}</th>" for d in g["dims"]) + "".join(f"<th class='num'>{short(d)} 范围</th>" for d in rest)
-            + (f"<th class='num'>{esc(obj)} 预测范围</th>" if obj else "") + "<th class='num'>2σ 稳健点数</th><th class='num'>均值点数</th>")
+            + (f"<th class='num'>{esc(obj)} 预测范围</th>" if obj else "") + f"<th class='num'>{sigma(a)} 稳健点数</th><th class='num'>均值点数</th>")
     body = "".join(
         "<tr>" + "".join(f"<td class='num'>{r['key'][d]:g}</td>" for d in g["dims"])
         + "".join(f"<td class='num'>{span(r['ranges'][d], d, unit=False)}</td>" for d in rest)
@@ -294,7 +317,7 @@ def group_table(a: dict, dims: list[str]) -> str:
         + f"<td class='num'>{r['count_mean']}</td></tr>" for r in g["rows"])
     names = "、".join(short(d) for d in g["dims"])
     unit = "，µm" if any(d.endswith("_um") for d in rest) else ""
-    return (f"<h3>按 {names} 分组看其余维（均值可行点的范围{unit}；2σ 稳健点数加粗）</h3>"
+    return (f"<h3>按 {names} 分组看其余维（均值可行点的范围{unit}；{sigma(a)} 稳健点数加粗）</h3>"
             f"<div class='table-wrap'><table><thead><tr>{head}</tr></thead><tbody>{body or empty(len(dims) + 2 + bool(obj))}</tbody></table></div>")
 
 
@@ -311,9 +334,9 @@ def trend_table(a: dict) -> str:
 
 
 def candidate_table(a: dict, dims: list[str], qn: list[str]) -> str:
-    level = "2σ 稳健" if a["candidates_level"] == "robust" else "均值"
+    level = f"{sigma(a)} 稳健" if a["candidates_level"] == "robust" else "均值"
     sense, _, obj = (a["objective"] or "").partition(":")
-    rule = (f"按 {esc(obj)} 的 2σ {'下界从高到低' if sense == 'max' else '上界从低到高'}" if obj else "按离目标窗中点从近到远")
+    rule = (f"按 {esc(obj)} 的 {sigma(a)} {'下界从高到低' if sense == 'max' else '上界从低到高'}" if obj else "按离目标窗中点从近到远")
     rows = "".join(
         "<tr><td>" + ", ".join(f"{short(d)}={c['params'][d]:g}" for d in dims) + "</td>"
         + "".join(f"<td class='num'>{fmt_q(q, c['predicted'][q]['value'])}<br><span class='small'>[{fmt_q(q, c['predicted'][q]['lo'])}, "
@@ -321,7 +344,7 @@ def candidate_table(a: dict, dims: list[str], qn: list[str]) -> str:
         + "</tr>" for c in a["candidates"])
     head = f"代表性候选（{level}集里{rule}排序的前 {len(a['candidates'])} 个，彼此拉开）" if a["candidates"] else "代表性候选"
     return (f"<h3>{head}</h3>"
-            "<div class='table-wrap'><table><thead><tr><th>参数</th>" + "".join(f"<th class='num'>{esc(q)}<br><span class='small'>预测 [2σ]</span></th>" for q in qn)
+            "<div class='table-wrap'><table><thead><tr><th>参数</th>" + "".join(f"<th class='num'>{esc(q)}<br><span class='small'>预测 [{sigma(a)}]</span></th>" for q in qn)
             + f"</tr></thead><tbody>{rows or empty(len(qn) + 1)}</tbody></table></div>")
 
 
@@ -370,13 +393,15 @@ def stratum_section(a: dict) -> str:
     figs = "".join(f"<figure><img src='{uri}' alt='{caption}'><figcaption>{caption}</figcaption></figure>" for uri, caption in figures)
     same = a["targets"] == ANSWERS[0]["targets"]
     notes = "".join(f"<li>{esc(n)}</li>" for n in a["notes"])
+    held = ceilings(a)
+    gate = f"，可信即 σ/μ 不超过 {esc(held)}" if held else ""
     return f"""
 <h2>{esc(stratum)}</h2>
 <p class="note">{esc(DEVICE.get(declared.generator, declared.generator))}（<code>{esc(declared.generator)}</code>），部件 {'、'.join(f'<code>{esc(p.store)}</code>' for p in declared.parts)}，库 {len(ds.rows)} 行。{'' if same else '目标：' + targets_html(a) + '。'}
-网格 {grid['points']} 格（域内 {grid['in_domain']}、可信 {grid['confident']}）{'，自动步长' if grid['auto_steps'] else ''}{f"，步长已放粗 ×{grid['coarsened']}" if grid['coarsened'] > 1 else ''}；
+区间取 {sigma(a)}，粗筛放宽 {widened(a)}；网格 {grid['points']} 格（域内 {grid['in_domain']}、可信 {grid['confident']}{gate}）{'，自动步长' if grid['auto_steps'] else ''}{f"，步长已放粗 ×{grid['coarsened']}" if grid['coarsened'] > 1 else ''}；
 耗时 {sec['total']:.0f} s（模型 {sec['models']:.0f} s、粗筛 {sec['coarse']:.0f} s、网格 {sec['grid']:.0f} s、预测 {sec['predict']:.0f} s、汇总 {sec['summarize']:.0f} s）。</p>
 <div class="kpis">
-  <div class="kpi"><div class="v">{rb['count']}</div><div class="l">2σ 区间整体满足的网格点</div></div>
+  <div class="kpi"><div class="v">{rb['count']}</div><div class="l">{sigma(a)} 区间整体满足的网格点</div></div>
   <div class="kpi"><div class="v">{mn['count']}</div><div class="l">预测均值满足的网格点（共 {grid['confident']} 个域内可信点）</div></div>
   <div class="kpi"><div class="v">{len(a['measured'])}</div><div class="l">库内实测已满足全部目标的行（{full} 行有全部目标量的实测值）</div></div>
   <div class="kpi"><div class="v">{esc(tight or '–')}</div><div class="l">最紧约束（单项满足的均值级格点最少）：{' / '.join(f'{esc(q)} {c}' for q, c in a['binding'].items())}</div></div>
@@ -398,10 +423,10 @@ def finding(a: dict) -> str:
     rb, mn, dims = a["levels"]["robust"], a["levels"]["mean"], LIB.dataset(a["stratum"]).dims
     hits = f"库内已有 {len(a['measured'])} 行实测满足全部条件。"
     if rb["count"]:
-        body = (f"2σ 稳健可行 {rb['count']} 点，均值可行 {mn['count']} 点；{hits}建议扫描："
+        body = (f"{sigma(a)} 稳健可行 {rb['count']} 点，均值可行 {mn['count']} 点；{hits}建议扫描："
                 + "；".join(f"{label(d)} {span(rb['ranges'][d], d)}" for d in dims) + "。")
     elif mn["count"]:
-        body = f"2σ 稳健集为空；均值可行 {mn['count']} 点：" + "；".join(f"{label(d)} {span(mn['ranges'][d], d)}" for d in dims) + f"。{hits}"
+        body = f"{sigma(a)} 稳健集为空；均值可行 {mn['count']} 点：" + "；".join(f"{label(d)} {span(mn['ranges'][d], d)}" for d in dims) + f"。{hits}"
     else:
         body = "网格上没有满足全部目标的点。" + (esc(a["notes"][-1]) if a["notes"] else "")
     return f"<div class='finding{' ok' if rb['count'] else ''}'><b>{esc(a['stratum'])}：</b>{body}</div>"
@@ -419,6 +444,12 @@ reading = ("读法：范围是可行点在各维上的投影（外包络），�
            + (f"——按分组表（{'、'.join(group_dims)}）取对应的其余维范围更准" if group_dims else "——各维范围不能任意组合")
            + (f"；{'、'.join(trends)} 的走势见各层走势表" if trends else "") + "。单项满足数最少的目标约束最紧："
            + "；".join(f"{esc(a['stratum'])} 为 {esc(tightest(a) or '–（网格为空）')}" for a in ANSWERS) + "。")
+k_used = sorted({sigma(a) for a in ANSWERS})                   # the robust level's interval: one kσ, or each layer's in its section
+k_all = k_used[0] if len(k_used) == 1 else "kσ"
+k_note = "" if len(k_used) == 1 else "（各层的 k 不同，见各节）"
+widen_used = sorted({widened(a) for a in ANSWERS})
+widen_all = widen_used[0] if len(widen_used) == 1 else "各层不同比例（见各节）"
+gate_all = "σ/μ 超过该量置信上限的点不算可信" + ("，上限见各节" if any(ceilings(a) for a in ANSWERS) else "")
 sections = "".join(stratum_section(a) for a in ANSWERS)
 page = f"""<title>{esc(title)}</title>
 <style>
@@ -464,8 +495,8 @@ details {{ margin:10px 0; }}
   <h1>{esc(title)}</h1>
   <p class="note">问题：{targets_html(ANSWERS[0])}{'' if all(a['targets'] == ANSWERS[0]['targets'] for a in ANSWERS) else '（各层目标不同，见各节）'}——参数化建模的扫参范围。
   分层：{'、'.join(f"<code>{esc(a['stratum'])}</code>" for a in ANSWERS)}。
-  方法：<code>lib.region</code> 先用放宽 10% 的目标窗粗筛库内行与 Sobol 点定括号盒，盒内按清单步长的整数倍铺网格（自动时每维约 20 档，匝数按层；各维步长见扫参范围表），
-  只保留库采样域内的格点，用库的 GP 模型对每个量预测一次；"2σ 稳健"= 校准后的 2σ 区间整体落在目标窗内，"均值可行"= 预测均值落在窗内。</p>
+  方法：<code>lib.region</code> 先用放宽 {widen_all} 的目标窗粗筛库内行与 Sobol 点定括号盒，盒内按清单步长的整数倍铺网格（自动时每维约 20 档，匝数按层；各维步长见扫参范围表），
+  只保留库采样域内的格点，用库的 GP 模型对每个量预测一次（{gate_all}）；"{k_all} 稳健"= 校准后的 {k_all} 区间整体落在目标窗内{k_note}，"均值可行"= 预测均值落在窗内。</p>
 </header>
 
 <h2>结论</h2>

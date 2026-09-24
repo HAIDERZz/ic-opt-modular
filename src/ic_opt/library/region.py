@@ -26,6 +26,10 @@ the real devices inside those windows form a region of the geometry space, and i
    quantity's trend along one dim, diversified candidates, the measured rows that already meet every target, and a
    seeded sample of points to plot.
 
+The answer echoes what its levels mean: ``k``, the interval half-width in sigmas behind ``robust``, and
+``rel_sigma_max``, the confidence ceiling each quantity was held to (the call's, else the quantity's in
+library.yaml, else the default).
+
 Every prediction goes through ``suggest.predict_all``: one GP prediction per quantity and point, with SRF mapped
 from the GHz it is fitted in back to Hz in that one place (the T14 prototype predicted every point twice, and
 compared SRF in the wrong unit, which emptied a whole run).
@@ -115,7 +119,8 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
             notes.append(f"{len(missed)} of {len(measured)} measured designs meeting every target lie where a model has no confident "
                          f"answer, so the region cannot contain them: {', '.join(missed[:3])}{' ...' if len(missed) > 3 else ''}")
         step = {**grid["steps"], **({ds.nt_dim: 1.0} if ds.nt_dim else {})}
-        out = {"stratum": stratum, "targets": [dataclasses.asdict(t) for t in goals], "objective": objective,
+        out = {"stratum": stratum, "targets": [dataclasses.asdict(t) for t in goals], "objective": objective, "k": k,
+               "rel_sigma_max": {q: models[q].rel_sigma_max if rel_sigma_max is None else float(rel_sigma_max) for q in names},
                "grid": {"steps": grid["steps"], "bracket": grid["bracket"], "relax": relax, "points": grid["points"], "in_domain": len(x),
                         "confident": int(ok.sum()), "coarsened": grid["coarsened"], "auto_steps": not steps},
                "levels": {"robust": _level(x, robust, ds.dims), "mean": _level(x, mean, ds.dims)},

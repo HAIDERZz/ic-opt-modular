@@ -31,8 +31,8 @@ OD_P, OD_S, W_P, W_S, CS = XFM_DIMS
 LATTICE = {OD_P: 20, OD_S: 4, W_P: 1, W_S: 1, CS: 0.5}              # most library rows sit on these multiples
 PLAIN = {"Lp_lf": {"min": 0.40e-9, "max": 0.50e-9}, "k_lf": {"min": 0.6}}
 ANCHORED = {"Lp_lf": {"min": 0.58e-9, "max": 0.82e-9}, "k@10": {"min": 0.66}}   # implies SRF >= 12.5 GHz
-KEYS = ["stratum", "targets", "objective", "grid", "levels", "binding", "edge", "group_by", "trend", "candidates", "candidates_level",
-        "measured", "points_sample", "seconds", "notes"]                          # the answer's documented top-level keys, in order
+KEYS = ["stratum", "targets", "objective", "k", "rel_sigma_max", "grid", "levels", "binding", "edge", "group_by", "trend", "candidates",
+        "candidates_level", "measured", "points_sample", "seconds", "notes"]     # the answer's documented top-level keys, in order
 
 
 @pytest.fixture(scope="module")
@@ -181,6 +181,7 @@ def test_group_by_trend_edge_and_candidates_have_the_documented_shapes(lib):
     r = run(lib, PLAIN, "max:Qp_peak", steps={OD_P: 5, OD_S: 5, W_P: 1, W_S: 1, CS: 2}, group_by=[W_P, W_S], trend=("k_lf", CS), n=3)
     assert plain(r) and json.loads(json.dumps(r))["grid"] == r["grid"]
     assert list(r) == KEYS
+    assert r["k"] == 2.0 and r["rel_sigma_max"] == dict.fromkeys(["Lp_lf", "Qp_peak", "k_lf"], domain.DEFAULT_SIGMA_REL_MAX)
     assert set(r["seconds"]) == {"models", "coarse", "grid", "predict", "summarize", "total"}
     assert r["levels"]["robust"]["count"] <= r["levels"]["mean"]["count"] <= r["grid"]["confident"] <= r["grid"]["in_domain"] <= r["grid"]["points"]
     assert set(r["binding"]) == {"Lp_lf", "k_lf"} and min(r["binding"].values()) >= r["levels"]["mean"]["count"]
@@ -205,8 +206,9 @@ def test_group_by_trend_edge_and_candidates_have_the_documented_shapes(lib):
 
 def test_candidates_come_from_the_mean_set_when_no_interval_fits_the_window(lib):
     """Every calibrated interval at k = 1e4 is wider than a +-1.1 % window (sigma is floored at the held-out error), so the
-    robust set is empty while predicted values still fall inside."""
+    robust set is empty while predicted values still fall inside. The answer says which k its robust level used (N-7)."""
     r = run(lib, {"Lp_lf": {"min": 0.445e-9, "max": 0.455e-9}}, k=1e4, steps={OD_P: 2, OD_S: 8, W_P: 1, W_S: 1, CS: 3}, n=3)
+    assert r["k"] == 1e4 and r["rel_sigma_max"] == {"Lp_lf": domain.DEFAULT_SIGMA_REL_MAX}
     assert r["levels"]["robust"]["count"] == 0 < r["levels"]["mean"]["count"] and r["candidates_level"] == "mean"
     assert len(r["candidates"]) == 3 and {p["level"] for p in r["points_sample"]} == {"mean"}
     off = [abs(c["predicted"]["Lp_lf"]["value"] / 0.45e-9 - 1) for c in r["candidates"]]
@@ -268,6 +270,7 @@ def test_call_lib_region_prints_json(lib, tmp_path, monkeypatch):
     assert "Infinity" not in out.stdout and "NaN" not in out.stdout
     body = json.loads(out.stdout)
     assert list(body) == KEYS and body["stratum"] == "xfm_demo" and body["levels"]["mean"]["count"] > 0 and len(body["candidates"]) == 2
+    assert body["k"] == 2.0 and body["rel_sigma_max"] == dict.fromkeys(["Lp_lf", "Qp_peak", "k_lf"], domain.DEFAULT_SIGMA_REL_MAX)
     assert {t["quantity"]: t["upper"] for t in body["targets"]} == {"Lp_lf": 0.5e-9, "k_lf": None}          # null except for a window
     assert body["group_by"]["dims"] == [W_P, W_S] and (body["trend"]["quantity"], body["trend"]["dim"]) == ("k_lf", CS)
     assert body["grid"]["steps"] == {OD_P: 5, OD_S: 5, W_P: 1, W_S: 1, CS: 2}

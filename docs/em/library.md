@@ -196,7 +196,10 @@ of the manifest `steps`, about 20 values per dim (turns by level), every
 step multiplied until the grid fits in `max_points` (2 million);
 `steps={...}` sets steps by hand, and `grid` says what was used.
 
-The answer gives each level's point count and per-dim ranges; `binding`,
+The answer states what its levels mean: `k`, the number of sigmas in the
+calibrated interval behind `robust` (`k=2` unless given), and
+`rel_sigma_max`, the confidence ceiling each quantity was held to (section
+4). It gives each level's point count and per-dim ranges; `binding`,
 the points meeting each target alone (the smallest count binds); `edge`,
 per dim, whether the mean set reaches the library's coverage, beyond which
 no model answers; `group_by`, the counts and the other dims' ranges for

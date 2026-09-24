@@ -86,6 +86,7 @@ def test_suggest_and_region_gate_each_quantity_on_its_own_ceiling(ceilings):
     assert any("where a model has no confident answer" in note for note in shut["notes"]), shut["notes"]
     open_ = region.region(lib, "ind_demo", TARGETS, pool_size=256, n=1, workers=1, rel_sigma_max=0.5)
     assert open_["levels"]["mean"]["count"] > 0
+    assert (shut["rel_sigma_max"], open_["rel_sigma_max"]) == ({"Lp_lf": STRICT}, {"Lp_lf": 0.5})   # N-7: the ceiling held to
 
 
 def test_densify_divides_by_each_quantitys_ceiling(ceilings):
