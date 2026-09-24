@@ -167,6 +167,9 @@ ic-opt call em.validate_profile PROFILE_DIR proc=SITE.proc generate=true    # br
 
 Building, querying and growing a library: [docs/em/library.md](docs/em/library.md); writing a
 process profile: [skills/author-process-rule/SKILL.md](skills/author-process-rule/SKILL.md).
+`proc=` is a path on the machine running ic-opt; with `--ssh-profile P` it is a path on host `P`
+(where EMX runs and the site's `.proc` usually stays), read through SSH into a temporary
+directory that is deleted after the check.
 
 A Python script of your own that fits library models (through `Library.models`, `lib.region`,
 `lib.suggest`, `lib_design` or `lib_signoff`) must be a file that keeps its top-level work under

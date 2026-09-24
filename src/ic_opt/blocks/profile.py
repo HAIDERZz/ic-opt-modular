@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import tempfile
+from pathlib import Path, PurePosixPath
+
+from ic_opt.executor import Executor, ExecutorError
+
+_PROC_STAGES = ("emx-names-vs-proc", "gds-layers-vs-proc")      # the stages that read the proc
 
 
 def validate_profile(profile_dir: str | Path, proc: str | None = None, generate: bool = False,
-                     families: str | list[str] | None = None, out: str | None = None):
+                     families: str | list[str] | None = None, out: str | None = None, executor: Executor | None = None):
     """Check a process rule profile directory ``<id>/rule.yaml`` before anything is generated or simulated with it.
 
     Stages: schema (errors as ``<yaml.path>: <message>``) -> consistency (cross-references the loader does
@@ -14,6 +19,11 @@ def validate_profile(profile_dir: str | Path, proc: str | None = None, generate:
     every drawing layer in the ``define`` of its emx_name) -> with ``generate=true`` one canonical device per
     family (``families``: comma list, default all six) built through the production generator and DRC-audited;
     ``out`` keeps those artifacts. The report prints one line per finding; ``call`` exits 1 when a stage fails.
+
+    ``proc`` is a path on the controller. With ``executor`` -- ``ic-opt call ... --ssh-profile P`` gives that host's --
+    it is a path on that host instead, read through the executor (ADR-0001): downloaded into a temporary directory,
+    checked, and deleted with the directory. A proc that cannot be read there fails the proc stages, as an unreadable
+    local one does.
     """
     from ic_opt.em.pcell.profile_validation import validate_profile as _validate
 
@@ -21,5 +31,18 @@ def validate_profile(profile_dir: str | Path, proc: str | None = None, generate:
     if not (directory / "rule.yaml").is_file():
         raise FileNotFoundError(f"{directory} holds no rule.yaml (a profile directory is <id>/rule.yaml)")
     names = [f.strip() for f in families.split(",") if f.strip()] if isinstance(families, str) else families
-    return _validate(directory.name, extra_dirs=(directory.parent,), proc_path=Path(proc).expanduser() if proc else None,
-                     generate=bool(generate), families=names or None, out_dir=Path(out).expanduser() if out else None)
+    settings = {"extra_dirs": (directory.parent,), "generate": bool(generate), "families": names or None,
+                "out_dir": Path(out).expanduser() if out else None}
+    if not proc or executor is None:
+        return _validate(directory.name, proc_path=Path(proc).expanduser() if proc else None, **settings)
+    with tempfile.TemporaryDirectory(prefix="ic-opt-proc-") as held:
+        local = Path(held) / PurePosixPath(proc).name              # the proc's own name: the report quotes it
+        try:
+            executor.get(proc, local)
+        except (ExecutorError, OSError) as exc:
+            report = _validate(directory.name, proc_path=None, **settings)
+            for stage in report.stages:
+                if stage.name in _PROC_STAGES:
+                    stage.status, stage.details = "FAIL", [f"cannot read proc file {proc} on {executor.host}: {exc}"]
+            return report
+        return _validate(directory.name, proc_path=local, **settings)

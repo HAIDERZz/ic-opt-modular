@@ -343,6 +343,10 @@ ic-opt call em.validate_profile /abs/path/to/your/profiles/<profile_id> \
     proc=/path/to/site.proc generate=true
 ```
 
+When the site `.proc` stays on the simulation host, add `--ssh-profile
+<host>`: `proc=` is then that host's path, copied over SSH into a temporary
+directory for the check and deleted after it.
+
 All five stages must pass, and the command exits 0 (1 on any failed
 stage):
 

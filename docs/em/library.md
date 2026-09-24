@@ -276,7 +276,12 @@ and prove it:
 
 ```bash
 ic-opt call em.validate_profile /path/to/profiles/<profile> proc=/path/to/site.proc generate=true
+ic-opt call em.validate_profile /path/to/profiles/<profile> proc=/path/on/lab/site.proc --ssh-profile lab
 ```
+
+`proc=` is a path on the machine running ic-opt; with `--ssh-profile` it is a
+path on that host, read through SSH (its site.yaml entry gives the transfer
+timeout) into a temporary directory that is deleted after the check.
 
 This runs schema, consistency, the site proc (names, conductor thicknesses,
 and every drawing and pin layer in the proc's `define` of its EMX name), and one

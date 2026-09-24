@@ -156,24 +156,29 @@ def migrate_store(
 ) -> None:
     """Restamp a store's observations with identities free of machine facts: the spec fingerprint without resources and
     budget, the EMX process file by content. Backs up observations.jsonl first; a second run changes nothing."""
-    from pathlib import PurePosixPath
-
     from ic_opt import migrate_store as migrate_store_module
-    from ic_opt import site as site_module
     from ic_opt.eval.stage import StageFailure
-    from ic_opt.executor import SshExecutor
 
     try:
-        executor = None
-        if ssh_profile:                                   # the host's entry, as load_run reads it: scratch and transfer timeout
-            limits = site_module.load().host(ssh_profile)
-            scratch = PurePosixPath(limits.scratch_root or "~/.ic-opt/scratch") / project.resolve().name
-            timeout = {} if limits.transfer_timeout_s is None else {"transfer_timeout_s": limits.transfer_timeout_s}
-            executor = SshExecutor(ssh_profile, str(scratch), **timeout)
+        executor = _ssh_executor(ssh_profile, project) if ssh_profile else None
         typer.echo(str(migrate_store_module.migrate(project, executor, dry_run=dry_run)))
     except (OSError, ValueError, RuntimeError, StageFailure) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
+
+
+def _ssh_executor(ssh_profile: str, directory: Path):
+    """The executor for ``--ssh-profile`` outside a run, built from that host's site.yaml entry as ``load_run`` builds it
+    (scratch root, transfer timeout). A missing file or entry raises ``SiteError``."""
+    from pathlib import PurePosixPath
+
+    from ic_opt import site as site_module
+    from ic_opt.executor import SshExecutor
+
+    limits = site_module.load().host(ssh_profile)
+    scratch = PurePosixPath(limits.scratch_root or "~/.ic-opt/scratch") / directory.resolve().name
+    timeout = {} if limits.transfer_timeout_s is None else {"transfer_timeout_s": limits.transfer_timeout_s}
+    return SshExecutor(ssh_profile, str(scratch), **timeout)
 
 
 @app.command()
@@ -181,11 +186,13 @@ def call(
     name: Annotated[str, typer.Argument(help="block name")],
     project: Annotated[Path, typer.Argument(help="project directory")],
     params: Annotated[list[str] | None, typer.Argument(help="block parameters as key=value")] = None,
-    ssh_profile: Annotated[str | None, typer.Option("--ssh-profile")] = None,
+    ssh_profile: Annotated[str | None, typer.Option("--ssh-profile", help="the OpenSSH host the block works on (for a profile "
+                                                    "directory: the host whose proc= path is read)")] = None,
     cshrc: Annotated[str | None, typer.Option("--cshrc")] = None,
 ) -> None:
     """Call one block; spec / executor / store / observations are filled in from the project (a library root fills in the library,
-    a process profile directory -- one holding rule.yaml -- the profile). A report that failed (``ok`` false) exits 1."""
+    a process profile directory -- one holding rule.yaml -- the profile, and with --ssh-profile that host's executor, through
+    which em.validate_profile reads proc=). A report that failed (``ok`` false) exits 1."""
     if name not in blocks.REGISTRY:
         typer.echo(f"unknown block {name!r}; run `ic-opt blocks`", err=True)
         raise typer.Exit(code=2)
@@ -195,6 +202,12 @@ def call(
         provided: dict[str, object] = {"library": library_query.Library(project)}
     elif (project / "rule.yaml").is_file():                          # a process profile directory
         provided = {"profile_dir": project}
+        if ssh_profile:                                              # the site .proc lives on that host (ADR-0001)
+            try:
+                provided["executor"] = _ssh_executor(ssh_profile, project)
+            except (OSError, ValueError) as exc:                     # SiteError is a ValueError
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(code=2) from exc
     else:
         ctx = _run(project, ssh_profile, cshrc)
         provided = {"spec": ctx.spec, "executor": ctx.executor, "store": ctx.store, "observations": ctx.store.observations(), "cshrc": ctx.cshrc,
