@@ -11,17 +11,20 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 
 from ic_opt.blocks.evaluate import default_pipeline, evaluate
 from ic_opt.blocks.netlist import import_netlists
 from ic_opt.em import measure, touchstone
 from ic_opt.space import Point
-from ic_opt.spec import Spec
+from ic_opt.spec import Device, Spec, Topology
+from ic_opt.stages.em_chain import polarity_issue
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, synthetic_snp
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, minimal_spec, synthetic_snp
 from tests.ic_opt.library_fixtures import rlc_touchstone, xfm_touchstone
 from tests.ic_opt.test_em_circuit import em_circuit_spec
-from tests.ic_opt.test_em_emx import em_only_spec
+from tests.ic_opt.test_em_emx import EM, em_only_spec
+from tests.ic_opt.test_em_pcell import XFM_FIXED
 
 pytest.importorskip("klayout.db")
 
@@ -351,3 +354,81 @@ def test_a_metric_between_the_high_samples_of_a_frequency_list_is_measured(tmp_p
     assert q.at("Lp", 60e9) < o.metrics["L62"] < q.at("Lp", 65e9)
     with pytest.raises(measure.MeasureError):
         old_at(q, "Lp", 62e9)
+
+
+# -- T16.6: a coupled pair measured with k < 0 (audit row 25) -------------------------------------------------------------
+
+STATED = measure.Topology.from_labels([("P1", "N1"), ("P2", "N2")], [], ["P1", "N1", "P2", "N2"])
+
+
+def test_a_secondary_wound_the_other_way_flips_the_sign_of_k_and_nothing_else(tmp_path):
+    """The synthetic transformer with its secondary wound P2 -> N2 instead of N2 -> P2: under the default drives (P1, N1),
+    (N2, P2) its k is negative and every other quantity is unchanged; the drives (P1, N1), (P2, N2) measure it positive.
+    A coupling that is zero but for rounding (the fake host's pair, k_lf about -8e-17) is not a reversed one."""
+    normal = measured(xfm_touchstone(120, 100, 5, 5, 0, stop_ghz=150), tmp_path / "a.s4p", XFM)
+    wound = xfm_touchstone(120, 100, 5, 5, 0, stop_ghz=150, secondary_reversed=True)
+    flipped, stated = measured(wound, tmp_path / "b.s4p", XFM), measured(wound, tmp_path / "c.s4p", STATED)
+    k = normal.scalars["k_lf"]
+    assert k > 0.5 and flipped.scalars["k_lf"] == pytest.approx(-k, rel=1e-9) and stated.scalars["k_lf"] == pytest.approx(k, rel=1e-9)
+    assert np.allclose(flipped.curves["k"][1:], -normal.curves["k"][1:], rtol=1e-9)
+    for name in ("Lp_lf", "Ls_lf", "Qp_peak", "Qs_peak", "SRF"):
+        assert flipped.scalars[name] == pytest.approx(normal.scalars[name], rel=1e-9), name
+    assert measure.reversed_coupling(flipped.scalars["k_lf"]) and not measure.reversed_coupling(k) and not measure.reversed_coupling(None)
+    fake = measured(synthetic_snp(["emx"], 4, 50.0, freqs=tuple(np.arange(1e9, 21e9, 1e9))), tmp_path / "d.s4p", XFM)
+    assert abs(fake.scalars["k_lf"]) < 1e-12 and not measure.reversed_coupling(fake.scalars["k_lf"])
+
+
+def test_the_warning_states_a_topology_the_spec_accepts():
+    """The issue ends with the topology to state -- the secondary's pair swapped, taps and the low-frequency limit kept --
+    as one line of YAML that the spec's Topology reads back. No warning for k >= 0, a rounding-sized k or one drive."""
+    taps = Device(id="x", generator="g", profile="p", ports=["P1", "N1", "P2", "N2", "CTP"],
+                  topology=Topology(drives=[("P1", "N1"), ("N2", "P2")], grounded=["CTP"], low_freq_max_hz=2e9))
+    assert polarity_issue(taps, 0.4) is None and polarity_issue(taps, -1e-12) is None and polarity_issue(taps, None) is None
+    issue = polarity_issue(taps, -0.4)
+    assert issue.startswith("k_lf = -0.4 < 0: the drives' polarity may be reversed") and "measured with drives [[P1, N1], [N2, P2]]" in issue
+    stated = yaml.safe_load(issue.split("state its topology in the spec: ")[1])["topology"]
+    assert Topology.model_validate(stated) == Topology(drives=[("P1", "N1"), ("P2", "N2")], grounded=["CTP"], low_freq_max_hz=2e9)
+    relative = taps.model_copy(update={"topology": Topology(drives=[("P1", "N1"), ("N2", "P2")], grounded=["CTP"], low_freq_max_hz="relative")})
+    assert yaml.safe_load(polarity_issue(relative, -0.4).split("in the spec: ")[1])["topology"]["low_freq_max_hz"] == "relative"
+    one = Device(id="x", generator="g", profile="p", ports=["P1", "N1"], topology=Topology(drives=[("P1", "N1")]))
+    assert polarity_issue(one, -0.4) is None
+
+
+def xfm_only_spec(topology: dict | None = None) -> Spec:
+    """One demo_6m broadside transformer, its two widths the variables, k_lf and Lp_lf its metrics."""
+    d = minimal_spec()
+    d["testbenches"] = []
+    d["devices"] = [{"id": "xfm", "generator": "clean_port_xfm_bs", "profile": "demo_6m", "ports": ["P1", "N1", "P2", "N2"],
+                     "fixed": XFM_FIXED, "topology": topology}]
+    d["variables"] = [{"name": f"xfm.{w}", "kind": "continuous_step", "lower": "4", "upper": "8", "step": "1"}
+                      for w in ("primary_width_um", "secondary_width_um")]
+    d["em"] = {**EM, "frequencies": {"start_hz": 0, "stop_hz": 60e9, "step_hz": 1e9}}
+    d["metrics"] = [{"name": "k", "unit": "1", "device": "xfm", "quantity": "k_lf"}, {"name": "Lp", "unit": "H", "device": "xfm", "quantity": "Lp_lf"}]
+    d["constraints"], d["objective"] = [], {"direction": "maximize", "expression": "Lp"}
+    return Spec.model_validate(d)
+
+
+def test_a_pair_measured_with_negative_k_keeps_its_point_and_says_which_topology_to_state(tmp_path):
+    """Audit row 25 through the measure stage. The default four-port topology reverses the secondary, the built-in
+    families' winding sense; the fake EMX answers with a transformer whose secondary winds the other way. Its k is a
+    measurement, so the point stays ok, but the device child and the point carry an issue that names the topology to
+    state; stated as the issue says, the same S-parameters measure k > 0 and nothing is reported."""
+    wound = "! EMX was run on fake as: emx\n" + xfm_touchstone(120, 100, 5, 5, 0, secondary_reversed=True)
+    point = Point({"xfm.primary_width_um": "6", "xfm.secondary_width_um": "5"}, "user")
+
+    def run(spec: Spec, name: str):
+        store = RunStore(tmp_path / name)
+        (o,) = evaluate(spec, [point], FakeSpectreExecutor(store.root / "sims", snp_fn=lambda argv, n_ports, z0: wound), store,
+                        limits=FAKE_HOST)
+        return o
+
+    default = xfm_only_spec()
+    assert default.device("xfm").topology.drives == [("P1", "N1"), ("N2", "P2")]
+    o = run(default, "default")
+    (issue,) = o.issues
+    assert o.status == "ok" and o.feasible and o.metrics["k"] < -0.5 and o.children["xfm/nominal"].status == "ok"
+    assert o.children["xfm/nominal"].issues == [issue.removeprefix("xfm/nominal: ")] and issue.startswith("xfm/nominal: k_lf = ")
+    stated = yaml.safe_load(issue.split("state its topology in the spec: ")[1])["topology"]
+    assert stated == {"drives": [["P1", "N1"], ["P2", "N2"]]}
+    fixed = run(xfm_only_spec(stated), "stated")
+    assert fixed.status == "ok" and fixed.issues == [] and fixed.metrics["k"] == pytest.approx(-o.metrics["k"], rel=1e-9)

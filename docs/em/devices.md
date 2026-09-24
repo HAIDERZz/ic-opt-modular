@@ -187,6 +187,24 @@ Ports: `P1, N1, P2, N2` (+ `CTP` / `CTS`, upward or downward)
 
 Retired names (refused with the replacement): `top_metal` → `metal`, `opening_p_um` → `primary_opening_um`, `opening_s_um` → `secondary_opening_um`, `lead_p_um` → `primary_lead_length_um`, `lead_s_um` → `secondary_lead_length_um`
 
+## Measurement topology (`topology`)
+
+A device's `topology` (a spec field next to its `ports`) states how its S-parameters are measured: `drives`, one
+`[plus, minus]` port pair per differential drive (the primary, then the secondary), and `grounded`, the ports held at
+0 V. A drive pushes its current in at plus and out at minus. A device without a topology gets one from its ports other
+than the `CT*` taps, which are grounded: two ports are one drive, `[P1, N1]`; four ports are two drives with the
+secondary reversed, `[[P1, N1], [N2, P2]]` for `P1, N1, P2, N2`, because that is how the families above wind it, so
+their `k` is positive.
+
+Only the sign of `k` (`k_lf`, and `k` at a frequency) depends on the drives' polarity. A generator of your own whose
+secondary winds the other way measures `k < 0` under that default: the measure stage keeps the point but says so in its
+issues, and `lib.load` counts such library rows (`negative_k_lf`). State the drives of such a device, every port
+exactly once:
+
+```yaml
+topology: {drives: [[P1, N1], [P2, N2]]}          # with taps: grounded: [CTP, CTS]
+```
+
 ## A generator of your own (`plugin:`)
 
 A device can name a generator from its own plugin file: `plugin: /abs/path/devices.py`, a module that exports
@@ -195,4 +213,5 @@ stage validates the device's config with the generator's `config_model` (passing
 along with the device's fields), calls `generate`, and runs the same DRC gate as for the families above: the GDS is
 audited against the config's `process_profile`, and every conductor the generator's `expected_conductors(config)`
 lists must be drawn (the six families declare theirs the same way). A generator that declares none fails every
-build unless its config sets `drc_check: false`.
+build unless its config sets `drc_check: false`. Its S-parameters are measured with the device's `topology`: the
+default above unless the spec states one.

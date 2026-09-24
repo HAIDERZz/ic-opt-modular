@@ -102,6 +102,19 @@ def test_corner_policy_nominal_and_constraint_scope():
     assert agg.status == "ok" and agg.selected_corner == "tt" and agg.objective == pytest.approx(6.0)
 
 
+def test_the_issues_of_a_child_that_succeeded_reach_the_point_as_warnings():
+    """T16.6: a child may succeed and still report an issue (the measure stage's k_lf < 0 warning). It keeps the point
+    ok and lands in the point's issues, after the point's own when another child failed."""
+    spec = make_spec(**three_by_three())
+    children = {f"{tb}/{c}": ChildResult(unit=tb, corner=c, status="ok", metrics=m)
+                for c in ("tt", "ss", "ff") for tb, m in (("cg", {"NF": 8.0}), ("iip3", {"IIP3": 2.0}))}
+    children["xfm/nominal"] = ChildResult(unit="xfm", status="ok", issues=["k_lf = -0.6 < 0: ..."])
+    agg = aggregate(spec, children)
+    assert agg.status == "ok" and agg.feasible and agg.issues == ["xfm/nominal: k_lf = -0.6 < 0: ..."]
+    children["cg/ss"] = ChildResult(unit="cg", corner="ss", status="failed:spectre", issues=["spectre exited 1"])
+    assert aggregate(spec, children).issues == ["cg/ss: spectre exited 1", "xfm/nominal: k_lf = -0.6 < 0: ..."]
+
+
 def test_child_failure_marks_observation_and_keeps_going(tmp_path):
     spec = make_spec(**three_by_three())
     store = RunStore(tmp_path)

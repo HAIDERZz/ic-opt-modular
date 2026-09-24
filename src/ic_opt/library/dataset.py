@@ -133,9 +133,12 @@ def build(root: str | Path, name: str, *, library: manifest.Library | None = Non
 
 
 def check(ds: Dataset) -> dict:
-    """Integrity evidence for a built dataset: duplicates, passivity, stored-value reproduction, sweep grids, port counts."""
+    """Integrity evidence for a built dataset: duplicates, passivity, stored-value reproduction, sweep grids, port counts,
+    and for a stratum with a ``k_lf`` column the rows measured with k_lf < 0 (``measure.reversed_coupling``: the part
+    spec's topology reverses a drive the generator does not; None without that column)."""
     keys = [tuple(round(r.coords[d], 9) for d in ds.dims) for r in ds.rows]
     grids = collections.Counter((r.part, r.n_freq, round(r.stop_hz / 1e9, 6)) for r in ds.rows)
+    negative_k = sum(measure.reversed_coupling(r.values.get("k_lf")) for r in ds.rows) if "k_lf" in ds.columns else None
     return {
         "stratum": ds.stratum,
         "rows": len(ds.rows),
@@ -149,6 +152,7 @@ def check(ds: Dataset) -> dict:
         "grids": [{"part": p, "n_freq": n, "stop_ghz": s, "rows": c} for (p, n, s), c in sorted(grids.items())],
         "ports": dict(collections.Counter(r.n_ports for r in ds.rows)),
         "values": {c: sum(r.values.get(c) is not None for r in ds.rows) for c in ds.columns},
+        "negative_k_lf": negative_k,
     }
 
 

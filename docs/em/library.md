@@ -123,6 +123,13 @@ table: a part without observations or with more than one device, rows that
 lack a declared dim, a quantity the kernel does not know, a peak band beyond
 a part's sweep, a transformer quantity on a device with one port pair.
 
+For a stratum with a `k_lf` column, `negative_k_lf` counts the rows measured
+with `k_lf < 0` (null without that column). The built-in families measure a
+positive `k` under the default topology; a row with a negative one usually
+belongs to a part whose generator winds its secondary the other way. State the
+device's `topology` in that part's spec ([devices.md](devices.md), measurement
+topology): the dataset measures the stored sNp again with it, without EMX.
+
 ## 4. Forward questions: `lib.query`
 
 ```bash

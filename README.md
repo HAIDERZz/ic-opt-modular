@@ -156,6 +156,13 @@ metrics:
   - {name: Qp, unit: ratio, device: xfmr_in, quantity: Qp_peak}        # Lp/Qp/Ls/Qs/k at frequency_hz, or L*_lf L*_res Q*_peak SRF_* k_lf
 ```
 
+A device's `topology` states how its S-parameters are measured: `drives`, one `[plus, minus]` port pair
+per differential drive (the primary, then the secondary), and `grounded` ports. A device without one gets
+it from its ports: two are one drive; four are two drives with the secondary reversed, `[[P1, N1], [N2, P2]]`,
+because the built-in families wind it that way and so measure a positive `k`; `CT*` taps are grounded. A
+generator of your own whose secondary winds the other way measures `k < 0`: the point's `issues` say so,
+and the device needs `topology: {drives: [[P1, N1], [P2, N2]]}` (every port exactly once, taps under `grounded`).
+
 Every family's fields, constraints and retired names: [docs/em/devices.md](docs/em/devices.md) (generated from the config models).
 
 A **device library** (a directory of em_only run stores plus `library.yaml`) answers

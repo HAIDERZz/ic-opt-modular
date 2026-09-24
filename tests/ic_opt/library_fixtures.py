@@ -119,11 +119,13 @@ def xfm_physics(op: float, os_: float, wp: float, ws: float, cs: float) -> dict:
             "Rp": 0.4 + 0.02 * op / wp, "Rs": 0.4 + 0.02 * os_ / ws, "Cp": 8e-15 * (op / 100) ** 2, "Cs": 8e-15 * (os_ / 100) ** 2}
 
 
-def xfm_touchstone(op: float, os_: float, wp: float, ws: float, cs: float, stop_ghz: float = XFM_STOP_GHZ, start_ghz: float = 0.0) -> str:
-    """Ports P1 N1 P2 N2: the primary branch P1 -> N1, the secondary N2 -> P2 (drives (P1, N1), (N2, P2) couple positively), C/2 per port."""
+def xfm_touchstone(op: float, os_: float, wp: float, ws: float, cs: float, stop_ghz: float = XFM_STOP_GHZ, start_ghz: float = 0.0, *,
+                   secondary_reversed: bool = False) -> str:
+    """Ports P1 N1 P2 N2: the primary branch P1 -> N1, the secondary N2 -> P2 (drives (P1, N1), (N2, P2) couple positively), C/2 per port.
+    ``secondary_reversed``: the secondary wound the other way, P2 -> N2 (as a generator of your own might): those drives couple negatively."""
     ph = xfm_physics(op, os_, wp, ws, cs)
     m = ph["k"] * np.sqrt(ph["Lp"] * ph["Ls"])
-    inc = np.array([[1, 0], [-1, 0], [0, -1], [0, 1]], dtype=float)
+    inc = np.array([[1, 0], [-1, 0], [0, 1], [0, -1]] if secondary_reversed else [[1, 0], [-1, 0], [0, -1], [0, 1]], dtype=float)
     lines = ["! Touchstone from a synthetic coupled-inductor library", "# Hz S RI R 50"]
     eye = np.eye(4)
     for f in np.arange(start_ghz * 1e9, stop_ghz * 1e9 + 0.5e9, 1e9):
@@ -167,8 +169,9 @@ def xfm_points() -> list[tuple[float, float, float, float, float]]:
     return out
 
 
-def build_xfm_library(root: Path, *, feature_map: str | None = "xfm_bs_dimensionless") -> Path:
-    """Stratum xfm_demo (one part, 224 rows): Lp_lf, Ls_lf, k_lf, Qp_peak, Qs_peak, SRF_p, SRF_s, SRF and k@10 (k with ``feature_map``)."""
+def build_xfm_library(root: Path, *, feature_map: str | None = "xfm_bs_dimensionless", reversed_secondary=()) -> Path:
+    """Stratum xfm_demo (one part, 224 rows): Lp_lf, Ls_lf, k_lf, Qp_peak, Qs_peak, SRF_p, SRF_s, SRF and k@10 (k with ``feature_map``).
+    The rows at the ``reversed_secondary`` indices of ``xfm_points()`` have their secondary wound the other way."""
     project = root / "xfm"
     (project / ".icopt").mkdir(parents=True)
     (project / "spec.yaml").write_text(yaml.safe_dump(xfm_part_spec("xfm").model_dump(mode="json")), encoding="utf-8")
@@ -177,7 +180,7 @@ def build_xfm_library(root: Path, *, feature_map: str | None = "xfm_bs_dimension
         obs = f"obs_{i:04d}"
         em = project / ".icopt" / "sims" / obs / "em" / "xfm"
         em.mkdir(parents=True)
-        (em / "xfm.s4p").write_text(xfm_touchstone(*geometry), encoding="utf-8")
+        (em / "xfm.s4p").write_text(xfm_touchstone(*geometry, secondary_reversed=i - 1 in reversed_secondary), encoding="utf-8")
         o = Observation(obs_id=obs, params={d: f"{v:g}" for d, v in zip(XFM_DIMS, geometry)}, origin="grid", status="ok",
                         spec_fingerprint="spec", pipeline_fingerprint="gen1", started_at="", finished_at="")
         lines.append(o.model_dump_json())

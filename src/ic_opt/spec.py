@@ -239,7 +239,15 @@ class Budget(Model):
 
 
 class Topology(Model):
-    """Ideal-balun measurement topology for a device's S-parameters (see ic_opt.em.touchstone)."""
+    """Ideal-balun measurement topology for a device's S-parameters (ic_opt.em.measure): ``drives``, one (plus, minus) port
+    pair per differential drive -- the primary, then the secondary -- and ``grounded``, the ports held at 0 V.
+
+    A drive pushes its current in at plus and out at minus. Only the sign of k (``k_lf``, ``k`` at a frequency) depends on
+    that: k > 0 when the two drives' currents make the windings' fluxes add. A device without a topology gets
+    ``Device.default_topology``, whose four-port form reverses the secondary -- (P1, N1) and (N2, P2) for ports P1, N1, P2,
+    N2 -- because that is how the built-in families wind it. A generator of your own whose secondary winds the other way
+    measures k < 0 under that default, and the measure stage says so in the point's issues: state its drives instead,
+    ``topology: {drives: [[P1, N1], [P2, N2]]}`` (every port exactly once: taps under ``grounded``)."""
 
     drives: list[tuple[str, str]] = Field(min_length=1, max_length=2)   # (plus, minus) port labels per drive
     grounded: list[str] = Field(default_factory=list)
@@ -280,7 +288,10 @@ class Device(Model):
         return value
 
     def default_topology(self) -> Topology:
-        """2 ports: one differential drive; 4 ports: two drives with the secondary reversed (library parity); extra ports grounded."""
+        """The topology of a device that states none, from its ports other than the ``CT*`` taps (which are grounded): two
+        ports, one differential drive (ports[0], ports[1]); four ports, two drives, the primary (ports[0], ports[1]) and
+        the secondary reversed, (ports[3], ports[2]) -- the built-in families' winding sense, so their k is positive
+        (``Topology``: a generator whose secondary winds the other way states its topology)."""
         base = [p for p in self.ports if not p.upper().startswith("CT")]
         extra = [p for p in self.ports if p.upper().startswith("CT")]
         if len(base) == 2:

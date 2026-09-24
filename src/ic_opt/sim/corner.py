@@ -9,6 +9,9 @@ Rules (unchanged from the legacy aggregator):
   ``nominal`` the nominal corner's;
 - the reported metrics are those of the selected (worst / nominal) corner.
 
+Since T16.6 a child that succeeded may still carry issues, as warnings (a coupled pair measured with k < 0): they reach
+the point's issues after its own, whatever its status.
+
 The nominal corner is the one with id ``nominal`` if present, else the first
 evaluated corner in spec order (a run may cover only a subset of the corners).
 """
@@ -37,11 +40,12 @@ class Aggregate:
 
 def aggregate(spec: Spec, children: dict[str, ChildResult]) -> Aggregate:
     failed = [c for c in children.values() if c.status != "ok"]
+    warnings = [f"{c.unit}/{c.corner or 'nominal'}: {issue}" for c in children.values() if c.status == "ok" for issue in c.issues]
     if failed:
         worst = failed[0]
         return Aggregate(
             status=worst.status,
-            issues=[f"{c.unit}/{c.corner or 'nominal'}: {issue}" for c in failed for issue in c.issues],
+            issues=[f"{c.unit}/{c.corner or 'nominal'}: {issue}" for c in failed for issue in c.issues] + warnings,
         )
 
     cornered = [c for c in children.values() if c.corner is not None]
@@ -55,7 +59,7 @@ def aggregate(spec: Spec, children: dict[str, ChildResult]) -> Aggregate:
 
     evaluations = {cid: objective_contract.evaluate(spec, metrics) for cid, metrics in per_corner.items()}
     objectives = {cid: ev.objective for cid, ev in evaluations.items()}
-    issues = [f"{cid}: {issue}" for cid, ev in evaluations.items() for issue in ev.issues]
+    issues = [f"{cid}: {issue}" for cid, ev in evaluations.items() for issue in ev.issues] + warnings
 
     metric_failed = [cid for cid, ev in evaluations.items() if ev.status == "metric_failed"]
     if metric_failed:
@@ -79,5 +83,5 @@ def aggregate(spec: Spec, children: dict[str, ChildResult]) -> Aggregate:
     ev = evaluations[selected]
     return Aggregate(
         status="ok", metrics=per_corner[selected], fom=ev.fom, objective=ev.objective, feasible=True,
-        selected_corner=selected, corner_objectives=objectives,
+        selected_corner=selected, corner_objectives=objectives, issues=warnings,
     )

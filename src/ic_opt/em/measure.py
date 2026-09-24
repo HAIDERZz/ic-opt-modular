@@ -49,10 +49,19 @@ LOW_FREQ_CAP_HZ = 3e9                      # top of the low-frequency band: the 
 RELATIVE = "relative"                      # low_freq_max_hz: min(LOW_FREQ_CAP_HZ, SRF / SRF_TO_LOW_FREQ)
 SRF_TO_LOW_FREQ = 10.0
 SAMPLE_REL_TOL = 1e-9                      # Quantities.at: a frequency this close to a sample (relatively) reads that sample
+NO_COUPLING = 1e-6                         # |k_lf| below this is no coupling at all (numerical zero): its sign means nothing
 
 
 class MeasureError(ValueError):
     """Raised when a quantity cannot be produced (fail-closed)."""
+
+
+def reversed_coupling(k_lf: float | None) -> bool:
+    """True for a coupled pair measured with k_lf < 0 beyond numerical zero: with each drive's current in at plus and out
+    at minus, the two windings' fluxes oppose -- usually a topology that reverses a drive the generator does not wind the
+    other way (T16.6, audit row 25). Only k's sign depends on the drives' polarity. The measure stage warns about such a
+    device; a library's dataset check counts such rows."""
+    return k_lf is not None and k_lf < -NO_COUPLING
 
 
 @dataclass(frozen=True)

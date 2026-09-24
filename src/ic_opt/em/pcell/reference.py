@@ -93,8 +93,28 @@ def render() -> str:
     for name, field in CleanPortPgsConfig.model_fields.items():
         head.append(f"| `{name}` | {_type_name(field.annotation)} | {_constraints(field)} | {_default(field)} |")
     sections = [family_section(gid, gen.config_model) for gid, gen in PLUGIN_GENERATORS.items()]
-    return "\n".join(head) + "\n\n" + "\n".join(sections) + "\n" + PLUGIN_SECTION
+    return "\n".join(head) + "\n\n" + "\n".join(sections) + "\n" + TOPOLOGY_SECTION + "\n" + PLUGIN_SECTION
 
+
+TOPOLOGY_SECTION = """\
+## Measurement topology (`topology`)
+
+A device's `topology` (a spec field next to its `ports`) states how its S-parameters are measured: `drives`, one
+`[plus, minus]` port pair per differential drive (the primary, then the secondary), and `grounded`, the ports held at
+0 V. A drive pushes its current in at plus and out at minus. A device without a topology gets one from its ports other
+than the `CT*` taps, which are grounded: two ports are one drive, `[P1, N1]`; four ports are two drives with the
+secondary reversed, `[[P1, N1], [N2, P2]]` for `P1, N1, P2, N2`, because that is how the families above wind it, so
+their `k` is positive.
+
+Only the sign of `k` (`k_lf`, and `k` at a frequency) depends on the drives' polarity. A generator of your own whose
+secondary winds the other way measures `k < 0` under that default: the measure stage keeps the point but says so in its
+issues, and `lib.load` counts such library rows (`negative_k_lf`). State the drives of such a device, every port
+exactly once:
+
+```yaml
+topology: {drives: [[P1, N1], [P2, N2]]}          # with taps: grounded: [CTP, CTS]
+```
+"""
 
 PLUGIN_SECTION = """\
 ## A generator of your own (`plugin:`)
@@ -105,7 +125,8 @@ stage validates the device's config with the generator's `config_model` (passing
 along with the device's fields), calls `generate`, and runs the same DRC gate as for the families above: the GDS is
 audited against the config's `process_profile`, and every conductor the generator's `expected_conductors(config)`
 lists must be drawn (the six families declare theirs the same way). A generator that declares none fails every
-build unless its config sets `drc_check: false`.
+build unless its config sets `drc_check: false`. Its S-parameters are measured with the device's `topology`: the
+default above unless the spec states one.
 """
 
 

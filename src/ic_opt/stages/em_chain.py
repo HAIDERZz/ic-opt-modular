@@ -272,7 +272,8 @@ def em_circuit_pipeline(spec: Spec, deck: Deck, *, waveforms: list[WaveformExpor
 
 class Measure:
     """Device child: the spec's quantity metrics for this device from its S-parameters (curves at a frequency, read as
-    ``measure.Quantities.at`` reads them, or scalars)."""
+    ``measure.Quantities.at`` reads them, or scalars). A metric it cannot produce fails the child (``failed:measure``); a
+    coupled pair measured with k_lf < 0 does not, but its issues -- and so the point's -- carry ``polarity_issue``."""
 
     name = "measure"
     level = "child"
@@ -306,7 +307,38 @@ class Measure:
             else:
                 metrics[metric.name] = float(value)
         (ctx.workdir / "quantities.json").write_text(json.dumps({k: v for k, v in q.scalars.items()}, indent=1), encoding="utf-8")
-        return ChildResult(unit=ctx.unit, corner=None, metrics=metrics, issues=issues, status="ok" if not issues else "failed:measure")
+        warning = polarity_issue(device, q.scalars.get("k_lf"))
+        return ChildResult(unit=ctx.unit, corner=None, metrics=metrics, issues=issues + ([warning] if warning else []),
+                           status="ok" if not issues else "failed:measure")
+
+
+def polarity_issue(device: Device, k_lf: float | None) -> str | None:
+    """The warning for a coupled pair measured with k_lf < 0 (``measure.reversed_coupling``; T16.6, audit row 25), else
+    None. A drive pushes its current in at plus and out at minus; only the sign of k depends on that. Four ports without a
+    stated topology reverse the secondary (``Device.default_topology``), the built-in families' winding sense, so a
+    generator whose secondary winds the other way measures k < 0: the warning names the topology that measures it
+    positive, to state in the spec."""
+    if not measure_kernel.reversed_coupling(k_lf) or len(device.topology.drives) != 2:
+        return None
+    primary, (plus, minus) = device.topology.drives
+    stated = _topology_yaml([primary, (minus, plus)], device.topology.grounded, device.topology.low_freq_max_hz)
+    return (f"k_lf = {k_lf:.3g} < 0: the drives' polarity may be reversed against the windings (measured with drives "
+            f"{_pairs(device.topology.drives)}; without a stated topology, four ports reverse the secondary, as the built-in "
+            f"families wind it). If this device's secondary winds the other way, state its topology in the spec: {stated}")
+
+
+def _pairs(drives) -> str:
+    return "[" + ", ".join(f"[{plus}, {minus}]" for plus, minus in drives) + "]"
+
+
+def _topology_yaml(drives, grounded: list[str], low_freq_max_hz) -> str:
+    """A device's ``topology`` as one line of YAML (a flow mapping), the way a spec states it."""
+    fields = [f"drives: {_pairs(drives)}"]
+    if grounded:
+        fields.append(f"grounded: [{', '.join(grounded)}]")
+    if low_freq_max_hz is not None:
+        fields.append(f"low_freq_max_hz: {low_freq_max_hz if isinstance(low_freq_max_hz, str) else repr(float(low_freq_max_hz))}")
+    return "topology: {" + ", ".join(fields) + "}"
 
 
 def em_only_pipeline(spec: Spec) -> list:

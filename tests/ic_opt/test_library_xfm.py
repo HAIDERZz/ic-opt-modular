@@ -37,6 +37,16 @@ def test_dataset_carries_the_secondary_and_coupling_columns(xfm_library):
     assert all(r.values["SRF"] is None for r in ds.rows if r.values["SRF_p"] is None and r.values["SRF_s"] is None)
 
 
+def test_check_counts_the_rows_measured_with_negative_coupling(xfm_library, tmp_path):
+    """T16.6 (audit row 25): three rows whose secondary winds the other way than the part's topology drives it measure
+    k_lf < 0, and the dataset check counts them; the library as built has none."""
+    assert dataset.check(query.Library(xfm_library).dataset("xfm_demo"))["negative_k_lf"] == 0
+    ds = dataset.build(build_xfm_library(tmp_path, reversed_secondary={3, 50, 101}), "xfm_demo", cache=False)
+    assert dataset.check(ds)["negative_k_lf"] == 3 and len(ds.rows) == 224
+    flipped = {ds.find(dict(zip(XFM_DIMS, xfm_points()[i]))).obs_id for i in (3, 50, 101)}
+    assert flipped == {r.obs_id for r in ds.rows if r.values["k_lf"] < 0}
+
+
 def test_anchored_curves_of_a_coupled_pair_stop_below_the_lower_resonance():
     """The other winding's resonance reflects into this drive's impedance: SRF_p may sit far above it, the curve may not."""
     q = measure.Quantities(np.array([0.0]), {}, {"SRF_p": 150e9, "SRF_s": 70e9, "SRF": 70e9})

@@ -117,7 +117,7 @@ def test_check_reports_passivity_reproduction_grids_and_duplicates(library):
     assert c["rows"] == 8 and c["duplicate_coordinates"] == 0 and c["passive_rows"] == 8 and c["stored_reproduced"] == 8
     assert c["stored_mismatch"] == [] and c["ports"] == {2: 8}
     assert {(g["part"], g["n_freq"], g["stop_ghz"], g["rows"]) for g in c["grids"]} == {("ind_nt2", 31, 30.0, 4), ("ind_nt1", 41, 40.0, 4)}
-    assert c["values"]["Lp_lf"] == 8
+    assert c["values"]["Lp_lf"] == 8 and c["negative_k_lf"] is None                    # no k_lf column: nothing to count
 
 
 def test_dataset_cache_hits_until_the_observations_change(tmp_path):
