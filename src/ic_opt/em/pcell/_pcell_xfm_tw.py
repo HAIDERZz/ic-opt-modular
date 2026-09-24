@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from ic_opt.em.pcell._pcell_core import (
     _EPS,
     DBU_UM,
-    GRID_UM,
     Cell,
     PortError,
     ProcessRuleContext,
@@ -28,6 +27,7 @@ from ic_opt.em.pcell._pcell_core import (
     chamfer,
     finalize_emx_ports,
     floortogrid,
+    grid_um,
     max_opening,
     octagon,
     snap_nm_to_grid,
@@ -836,10 +836,11 @@ def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
     # sliver (measured 1.998 vs 2.0 at W=4/S=2 on an N65-class top
     # metal). Same remedy as base_oct_quad's chamfer_bias: bias ring i's
     # BA inward by i*delta grids, growing every adjacent pair's diagonal
-    # separation by delta*GRID_UM/sqrt(2); cardinal flats and the slot
+    # separation by delta*grid/sqrt(2); cardinal flats and the slot
     # legs' +-G endpoints do not move. delta stays 0 whenever the margin
     # already clears -- the entire pre-existing sweep territory.
     if process is not None and len(H) > 1:
+        grid = grid_um()
         floor_eff = _effective_min_spacing(sl, W, process)
         # The centrelines' diagonal separation, less what add_wide_path's
         # per-vertex mask-grid snap can take off the two drawn outlines
@@ -849,16 +850,16 @@ def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
         worst = min(
             ((H[i] - H[i + 1]) + chamfer[i][1] - chamfer[i + 1][1])
             / math.sqrt(2.0) - W
-            for i in range(len(H) - 1)) - GRID_UM
+            for i in range(len(H) - 1)) - grid
         if worst < floor_eff - 1e-9:
             delta = math.ceil(
-                (floor_eff - worst) * math.sqrt(2.0) / GRID_UM - 1e-9)
+                (floor_eff - worst) * math.sqrt(2.0) / grid - 1e-9)
             if delta > 4:
                 raise PortError(
                     f"xfm_tw: ring chamfer separation short of the "
                     f"effective floor by {floor_eff - worst:.4f} um -- "
                     "beyond quantization recovery; increase S")
-            chamfer = {i: (a, ba - i * delta * GRID_UM)
+            chamfer = {i: (a, ba - i * delta * grid)
                        for i, (a, ba) in chamfer.items()}
     n = len(segments)
     start_angle = segments[0].angle_from

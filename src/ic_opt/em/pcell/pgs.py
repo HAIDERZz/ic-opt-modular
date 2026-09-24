@@ -32,7 +32,6 @@ def add_pgs(cell, config: CleanPortPgsConfig, process_profile: str,
 
     from ._pcell_core import (
         DBU_UM,
-        GRID_UM,
         Cell,
         PortError,
         Shape,
@@ -44,10 +43,11 @@ def add_pgs(cell, config: CleanPortPgsConfig, process_profile: str,
     fixture_metal = context.adapter.profile.fixture_conductor          # the ground ring's conductor, the stack bottom
     rule = context.adapter.metal_rule(fixture_metal)
     layer = tuple(rule.drawing)
-    grid = round(GRID_UM / DBU_UM)
+    grid_um = context.adapter.profile.layout_rules.manufacturing_grid_um      # the profile's manufacturing grid (T16 R-23)
+    grid = round(grid_um / DBU_UM)
     # Even grid multiples keep both edges of a centred strip on the mask grid.
-    width = 2 * math.ceil(config.strip_width_um / (2 * GRID_UM)) * grid
-    spacing = math.ceil(config.strip_spacing_um / GRID_UM) * grid
+    width = 2 * math.ceil(config.strip_width_um / (2 * grid_um)) * grid
+    spacing = math.ceil(config.strip_spacing_um / grid_um) * grid
     if rule.min_width_um is None or rule.min_space_um is None:
         raise PortError("PGS requires M1 width and spacing rules in the process profile")
     if (config.strip_width_um < rule.min_width_um
@@ -69,10 +69,10 @@ def add_pgs(cell, config: CleanPortPgsConfig, process_profile: str,
 
     xmin, ymin, xmax, ymax = _body_bbox_um(body, context)
     inset = config.margin_um
-    left = math.ceil((xmin + inset) / GRID_UM) * grid
-    right = math.floor((xmax - inset) / GRID_UM) * grid
-    bottom = math.ceil((ymin + inset) / GRID_UM) * grid
-    top = math.floor((ymax - inset) / GRID_UM) * grid
+    left = math.ceil((xmin + inset) / grid_um) * grid
+    right = math.floor((xmax - inset) / grid_um) * grid
+    bottom = math.ceil((ymin + inset) / grid_um) * grid
+    top = math.floor((ymax - inset) / grid_um) * grid
     half = width // 2
     if right - left < 3 * width or top - bottom < 3 * width + 2 * spacing:
         raise PortError("PGS margin/strip dimensions leave no usable fishbone area")

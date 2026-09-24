@@ -181,7 +181,7 @@ def _escape_tip_pad_width(*, ring_od, ring_bias, ring_w, tip_w, x_tip,
     the corridor line ``x + y = ring_od/2 + BA - C - W`` (same quantized
     helpers as ``base_oct_quad``; see ``base_ind_hud_cross``) by less than
     the effective spacing floor.  ``ring_bias`` is the enclosing ring's
-    chamfer-staircase bias in GRID_UM steps.
+    chamfer-staircase bias in manufacturing-grid steps.
 
     Returns ``None`` when the full ``tip_w`` already clears (the caller
     keeps its byte-identical untrimmed pad), else the trimmed width; fails

@@ -11,7 +11,9 @@ below" is position - 1 -- and resolve names through ``index`` / ``name``. Two mo
   skipped by name, so the conductors the generators reach are the same.
 * reference mode (no profile): the fixed 1P10M+AP convention, "M<n>" / "<n>" -> n, "AP" -> 11.
 
-The active stack lives in a context variable, so concurrent builds in threads never see each other's profile.
+The same context carries the profile's manufacturing grid (``layout_rules.manufacturing_grid_um``, T16 R-23): the
+pcell's snapping (``_pcell_core.ceiltogrid`` and the rest) reads ``grid_um()``, the reference 0.005 um outside a
+profile. Both live in context variables, so concurrent builds in threads never see each other's profile.
 """
 
 from __future__ import annotations
@@ -27,21 +29,32 @@ if TYPE_CHECKING:
     from ic_opt.em.pcell.process_rules import ProcessRuleProfile
 
 REFERENCE_SIZE = 11                                  # M1..M10 + AP
+REFERENCE_GRID_UM = 0.005                            # the manufacturing grid outside a profile, and a profile's default
 _ACTIVE: ContextVar[tuple[str, ...] | None] = ContextVar("ic_opt_pcell_metal_stack", default=None)
+_GRID: ContextVar[float | None] = ContextVar("ic_opt_pcell_manufacturing_grid", default=None)
 
 
 @contextlib.contextmanager
 def use_stack(profile: ProcessRuleProfile | str | None) -> Iterator[tuple[str, ...] | None]:
-    """Resolve metal names against ``profile``'s stack (a profile, a profile id, or None: reference mode) inside."""
+    """Resolve metal names against ``profile``'s stack, and snap to its manufacturing grid, inside (a profile, a
+    profile id, or None: reference mode)."""
     if isinstance(profile, str):
         from ic_opt.em.pcell.process_rules import get_process_rule_profile
 
         profile = get_process_rule_profile(profile)
     token = _ACTIVE.set(None if profile is None else tuple(profile.metal_stack))
+    grid = _GRID.set(None if profile is None else profile.layout_rules.manufacturing_grid_um)
     try:
         yield _ACTIVE.get()
     finally:
+        _GRID.reset(grid)
         _ACTIVE.reset(token)
+
+
+def grid_um() -> float:
+    """The manufacturing grid the active build snaps to, in um: the profile's inside ``use_stack``, else 0.005."""
+    grid = _GRID.get()
+    return REFERENCE_GRID_UM if grid is None else grid
 
 
 def builds_on_profile_stack(fn: Callable) -> Callable:

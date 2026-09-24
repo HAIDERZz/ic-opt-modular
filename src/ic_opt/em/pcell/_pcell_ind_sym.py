@@ -10,7 +10,6 @@ import klayout.db as kdb
 
 from ic_opt.em.pcell._pcell_core import (
     _EPS,
-    GRID_UM,
     Cell,
     PortError,
     ProcessRuleContext,
@@ -27,6 +26,7 @@ from ic_opt.em.pcell._pcell_core import (
     cross_endpoint_offset,
     finalize_emx_ports,
     floortogrid,
+    grid_um,
     max_opening,
     octagon,
     roundtogrid,
@@ -660,10 +660,11 @@ def _compact_two_turn_via_length(
             )
         metal_widths.append(width)
     start = ceiltogrid(max(metal_widths))
-    first_step = math.ceil((start - _EPS) / GRID_UM)
-    last_step = math.floor((W + _EPS) / GRID_UM)
+    grid = grid_um()
+    first_step = math.ceil((start - _EPS) / grid)
+    last_step = math.floor((W + _EPS) / grid)
     for step in range(first_step, last_step + 1):
-        length = step * GRID_UM
+        length = step * grid
         try:
             vias(
                 Length=length,
@@ -941,10 +942,12 @@ def _compact_two_turn_lane_offsets(
     inner_max = min(max_opening(inner_od, W) + pad_length / 2.0, octagon(inner_od, W, cb_delta).BA - pad_length / 2.0)
     minimum_total = ceiltogrid(pitch + pad_length)
     maximum_total = floortogrid(outer_max + inner_max)
-    # Fifty mask-grid units retain 250-nm lane resolution while keeping this
-    # real-polygon feasibility search cheap enough for query-library sweeps;
-    # every candidate coordinate remains on the 0.005-um mask grid.
-    lane_step = 50 * GRID_UM
+    # Fifty mask-grid units (250 nm on the reference 0.005-um grid) retain
+    # lane resolution while keeping this real-polygon feasibility search
+    # cheap enough for query-library sweeps; every candidate coordinate
+    # remains on the profile's manufacturing grid.
+    grid = grid_um()
+    lane_step = 50 * grid
     total_steps = math.floor(
         (maximum_total - minimum_total + _EPS) / lane_step
     )
@@ -994,9 +997,9 @@ def _compact_two_turn_lane_offsets(
             # on the 5-nm mask grid so a 50-nm conditional-spacing repair is
             # not skipped.  Later coarse pairs only move farther toward that
             # same outer obstacle, so they cannot recover qualification.
-            refine_steps = int(round(lane_step / GRID_UM))
+            refine_steps = int(round(lane_step / grid))
             for refine_step in range(refine_steps + 1):
-                adjustment = refine_step * GRID_UM
+                adjustment = refine_step * grid
                 refined_outer = roundtogrid(outer_g - adjustment)
                 refined_inner = roundtogrid(inner_g - adjustment)
                 if refined_outer < pad_length / 2.0 - _EPS:
@@ -1069,7 +1072,7 @@ def _compact_two_turn_winding(
             f"{family}: compact bridge pad cap {maximum_pad:.3f} um is "
             f"below the minimum legal landing {minimum_pad:.3f} um"
         )
-    pad_step = 50 * GRID_UM
+    pad_step = 50 * grid_um()
     pad_steps = math.floor((maximum_pad - minimum_pad + _EPS) / pad_step)
     pad_candidates = [
         roundtogrid(minimum_pad + step * pad_step)

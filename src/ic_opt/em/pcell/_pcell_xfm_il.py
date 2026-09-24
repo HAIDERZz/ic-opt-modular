@@ -11,7 +11,6 @@ import klayout.db as kdb
 from ic_opt.em.pcell._pcell_core import (
     _EPS,
     _ORIENTS,
-    GRID_UM,
     Cell,
     PortError,
     ProcessRuleContext,
@@ -31,6 +30,7 @@ from ic_opt.em.pcell._pcell_core import (
     cross_endpoint_offset,
     finalize_emx_ports,
     floortogrid,
+    grid_um,
     max_opening,
     octagon,
     vias,
@@ -510,7 +510,7 @@ def _il_bridge_lane_offset(
 
     In every colliding pair the even-band bridge moves ``+q/-q`` on
     SL-1/SL-2 and the odd-band bridge moves ``-q/+q``.  ``q`` is the
-    smallest 0.005-um grid value for which the REAL snapped diagonal
+    smallest manufacturing-grid value for which the REAL snapped diagonal
     polygons clear by ``target_gap``.  A binary search is safe here because
     the two parallel polygons translate monotonically apart; full landing-
     pad DRC is checked separately on the completed windings.
@@ -521,8 +521,10 @@ def _il_bridge_lane_offset(
     even_od = 4.0 * pitch
     odd_od = even_od - pitch
 
+    grid = grid_um()
+
     def clears(step: int) -> bool:
-        q = step * GRID_UM
+        q = step * grid
         even = _il_bridge_diagonal_regions(
             W, S, sl, even_od, +q, -q, process
         )
@@ -540,11 +542,11 @@ def _il_bridge_lane_offset(
     # Keep a positive physical gap between the two SL landing pads at the
     # smaller opening.  q==facing would collapse that opening to zero and
     # turn the intended series break into a same-layer bypass.
-    max_step = math.floor((facing - GRID_UM) / GRID_UM + _EPS)
+    max_step = math.floor((facing - grid) / grid + _EPS)
     if max_step < 0 or not clears(max_step):
         raise PortError(
             f"xfm_il: W={W}, S={S} needs a symmetric bridge-lane offset "
-            f"larger than the available {max(facing - GRID_UM, 0.0):.3f} "
+            f"larger than the available {max(facing - grid, 0.0):.3f} "
             f"um to preserve target gap {target:.3f} um; increase OD/S or "
             "reduce W (lane target is never relaxed)"
         )
@@ -555,7 +557,7 @@ def _il_bridge_lane_offset(
             hi = mid
         else:
             lo = mid
-    return hi * GRID_UM, target
+    return hi * grid, target
 
 
 def _il_shifted_hud_cross(
@@ -790,12 +792,12 @@ def _il_staggered_ring_turns(
             ("destination", dest_open, dest_od),
         ):
             available = max_opening(ring_od, W)
-            if opening < GRID_UM - _EPS or opening > available + _EPS:
+            if opening < grid_um() - _EPS or opening > available + _EPS:
                 raise PortError(
                     f"xfm_il: {role} transition {k}->{k + 1}, W={W}, "
                     f"S={S}, q={lane_offset:.3f} um needs {label} bridge "
                     f"opening {opening:.3f} um, but turn OD={ring_od:.3f} "
-                    f"allows [{GRID_UM:.3f}, {available:.3f}] um; increase "
+                    f"allows [{grid_um():.3f}, {available:.3f}] um; increase "
                     "OD/S or reduce W (lane target is never relaxed)"
                 )
 

@@ -7,7 +7,6 @@ from copy import deepcopy
 
 from ic_opt.em.pcell._pcell_core import (
     DBU_UM,
-    GRID_UM,
     Cell,
     Label,
     Port,
@@ -15,6 +14,7 @@ from ic_opt.em.pcell._pcell_core import (
     ProcessRuleContext,
     Shape,
     _nm,
+    grid_um,
     transform_point,
     via_layer,
 )
@@ -51,7 +51,8 @@ def extend_straight_x(
     center_x_um: float = 0.0,
     process: ProcessRuleContext | None = None,
 ) -> Cell:
-    """Add total X width in 10nm steps about one winding's local centre.
+    """Add total X width in steps of two manufacturing-grid units (10 nm on the reference 0.005-um grid) about
+    one winding's local centre.
 
     Left/right geometry translates rigidly by half the requested extension;
     points on the cut stay put so horizontal winding edges grow continuously.
@@ -69,17 +70,18 @@ def extend_straight_x(
         valid = False
     if not valid or extension_um < 0:
         raise PortError("STRAIGHT_EXTENSION must be finite and non-negative")
-    step = 2 * GRID_UM
+    grid = grid_um()
+    step = 2 * grid
     steps = extension_um / step
     if (not math.isfinite(steps)
             or not math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-7)
             or (extension_um != 0 and round(steps) == 0)):
-        raise PortError("STRAIGHT_EXTENSION must use 0.01 um steps")
+        raise PortError(f"STRAIGHT_EXTENSION must use {step:g} um steps")
     if extension_um == 0:
         return cell
     if not math.isfinite(center_x_um):
         raise PortError("STRAIGHT_EXTENSION local X centre must be finite")
-    half_nm = round(steps) * _nm(GRID_UM)
+    half_nm = round(steps) * _nm(grid)
     center_nm = _nm(center_x_um)
     _check_rigid_instances(cell, center_nm, lambda point: point)
     cut_layers = (

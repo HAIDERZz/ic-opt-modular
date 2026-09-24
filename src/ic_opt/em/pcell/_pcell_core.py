@@ -17,8 +17,9 @@ from ic_opt.em.pcell import stack as _stack
 if TYPE_CHECKING:
     from ic_opt.em.pcell.rule_adapter import GeometryRuleAdapter
 
-GRID_UM = 0.005
+GRID_UM = _stack.REFERENCE_GRID_UM  # the reference manufacturing grid; a build on a profile snaps to grid_um() (T16 R-23)
 DBU_UM = 0.001
+grid_um = _stack.grid_um            # the active build's manufacturing grid: its profile's layout_rules.manufacturing_grid_um
 PI = 3.141592  # the SKILL sources hardcode this value
 
 # Reconstructed "vias" PCell fill rule (measured in ind_ref.gds).
@@ -34,20 +35,23 @@ class PortError(ValueError):
 
 
 # ---------------------------------------------------------------------------
-# grid helpers (SKILL ceiltogrid / roundtogrid / floortogrid)
+# grid helpers (SKILL ceiltogrid / roundtogrid / floortogrid), on the active manufacturing grid
 # ---------------------------------------------------------------------------
 
 
 def ceiltogrid(x: float) -> float:
-    return math.ceil(x / GRID_UM - _EPS) * GRID_UM
+    g = grid_um()
+    return math.ceil(x / g - _EPS) * g
 
 
 def roundtogrid(x: float) -> float:
-    return math.floor(x / GRID_UM + 0.5 + _EPS) * GRID_UM
+    g = grid_um()
+    return math.floor(x / g + 0.5 + _EPS) * g
 
 
 def floortogrid(x: float) -> float:
-    return math.floor(x / GRID_UM + _EPS) * GRID_UM
+    g = grid_um()
+    return math.floor(x / g + _EPS) * g
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +72,7 @@ class Chamfer:
     """The 45-degree corner of a W-wide octagon trace (independent of OD)."""
 
     W: float
-    C: float                             # inner-chamfer offset; ceil(W tan(pi/8)) + half a grid: the diagonal is drawn AT LEAST W wide
+    C: float                             # inner-chamfer offset; ceil(W tan(pi/8) + one grid step): the diagonal is drawn AT LEAST W wide
     C2: float                            # ceil(C / sqrt2): the crossover diagonals' 45-degree junction offset
 
     @property
@@ -78,7 +82,7 @@ class Chamfer:
 
 
 def chamfer(W: float) -> Chamfer:
-    C = ceiltogrid(W * math.tan(PI / 8) + 0.005)
+    C = ceiltogrid(W * math.tan(PI / 8) + grid_um())
     return Chamfer(W, C, ceiltogrid(C / SQRT2))
 
 
@@ -116,8 +120,9 @@ class Octagon:
 
 
 def octagon(OD: float, W: float, bias: int = 0) -> Octagon:
+    g = grid_um()
     A = roundtogrid(OD / OCT_DIV)
-    BA = floortogrid((OD - 2 * A) / 2 - 0.005) - bias * GRID_UM
+    BA = floortogrid((OD - 2 * A) / 2 - g) - bias * g
     return Octagon(OD, W, bias, A, BA, chamfer(W).C)
 
 
@@ -969,7 +974,7 @@ def _effective_min_spacing(top_met, W: float, process) -> float:
 
 
 def chamfer_staircase_delta(ring_ods, W: float, top_met, process) -> int:
-    """Uniform BA-staircase step (in GRID_UM counts) for concentric
+    """Uniform BA-staircase step (in manufacturing-grid counts) for concentric
     octagon rings drawn by ``base_oct_quad``'s quantized chamfer math.
 
     Each ring's chamfer parameters quantize independently (A rounds, BA
@@ -978,7 +983,7 @@ def chamfer_staircase_delta(ring_ods, W: float, top_met, process) -> int:
     measured 6-9 nm short of the floor at S == min_space, invisible
     whenever the process leaves >= ~15 nm of margin. Biasing ring k's BA
     inward by ``k * delta`` grid steps grows EVERY adjacent pair's
-    diagonal separation by exactly ``delta * GRID_UM / sqrt(2)`` (the
+    diagonal separation by exactly ``delta * grid / sqrt(2)`` (the
     difference of consecutive biases) while cardinal flats/arms -- where
     all bridges and leads land -- derive from OD alone and do not move.
 
@@ -997,7 +1002,7 @@ def chamfer_staircase_delta(ring_ods, W: float, top_met, process) -> int:
     worst = min(outer.diagonal_gap(inner) for outer, inner in zip(rings, rings[1:]))
     if worst >= floor - 1e-9:
         return 0
-    delta = math.ceil((floor - worst) * math.sqrt(2.0) / GRID_UM - 1e-9)
+    delta = math.ceil((floor - worst) * math.sqrt(2.0) / grid_um() - 1e-9)
     if delta > 4:
         raise PortError(
             f"chamfer staircase cannot recover a "
@@ -1135,12 +1140,13 @@ _LAYER_NAMES.update({via_layer(m): f"via{m}" for m in range(1, 10)})
 # path extrusion: a width along a centreline, mitred and snapped to the mask grid
 # ---------------------------------------------------------------------------
 
-GRID_DBU = int(round(GRID_UM / DBU_UM))  # 5 (0.005 um mask grid, in nm)
+GRID_DBU = int(round(GRID_UM / DBU_UM))  # 5 (the reference 0.005 um mask grid, in nm)
 
 
 def snap_nm_to_grid(v: int) -> int:
-    """Snap an integer dbu (nm) coordinate to the nearest 0.005 um mask-grid
-    multiple (every path-extruded conductor: xfm_tw's rings and legs, the NT=2 compact bridge legs).
+    """Snap an integer dbu (nm) coordinate to the nearest multiple of the active manufacturing grid, 0.005 um
+    unless the profile says otherwise (every path-extruded conductor: xfm_tw's rings and legs, the NT=2 compact
+    bridge legs).
 
     ``kdb.Path(...).polygon()`` mitres each turn by offsetting the
     centerline perpendicular to its own local direction; for anything other
@@ -1156,7 +1162,8 @@ def snap_nm_to_grid(v: int) -> int:
     two-plus orders of magnitude below any clearance margin this module
     derives) is the correct point to fix it, mirroring how every other
     device in this file grid-snaps its own hand-computed polygon vertices."""
-    return int(round(v / GRID_DBU)) * GRID_DBU
+    grid = int(round(grid_um() / DBU_UM))
+    return int(round(v / grid)) * grid
 
 
 def add_wide_path(cell: Cell, layer: tuple[int, int], pts_um: list,

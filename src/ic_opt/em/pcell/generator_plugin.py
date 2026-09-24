@@ -42,14 +42,15 @@ from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
 
 _PORT_NAME_RE = re.compile(r"[A-Za-z0-9_]+")
 
-_CONFIG_STACKS: dict[tuple, tuple[str, ...] | None] = {}
-_CONFIG_STACKS_LOCK = threading.Lock()
+_CONFIG_PROFILES: dict[tuple, tuple[tuple[str, ...], float] | None] = {}
+_CONFIG_PROFILES_LOCK = threading.Lock()
 
 
-def _config_stack(profile_id) -> tuple[str, ...] | None:
-    """The metal stack (bottom first) a config's metals are judged on: its profile's, or None -- the reference
-    convention -- when no profile of that id loads (the pcell then refuses the profile with its own message).
-    Memoized on the profile file's path and stamp, so one validation's checks read the YAML once, not per field."""
+def _config_profile(profile_id) -> tuple[tuple[str, ...], float] | None:
+    """What a config is judged on from its profile -- the metal stack (bottom first) and the manufacturing grid --,
+    or None when no profile of that id loads (the reference convention; the pcell then refuses the profile with its
+    own message). Memoized on the profile file's path and stamp, so one validation reads the YAML once, not per
+    check."""
     from ic_opt.em.pcell.process_rules import _profile_path, get_process_rule_profile
 
     if not isinstance(profile_id, str):
@@ -60,16 +61,23 @@ def _config_stack(profile_id) -> tuple[str, ...] | None:
     except (ValueError, OSError):
         return None
     key = (profile_id, str(path), stamp.st_mtime_ns, stamp.st_size)
-    with _CONFIG_STACKS_LOCK:
-        if key in _CONFIG_STACKS:
-            return _CONFIG_STACKS[key]
+    with _CONFIG_PROFILES_LOCK:
+        if key in _CONFIG_PROFILES:
+            return _CONFIG_PROFILES[key]
     try:
-        names = tuple(get_process_rule_profile(profile_id).metal_stack)
+        profile = get_process_rule_profile(profile_id)
+        facts = (tuple(profile.metal_stack), profile.layout_rules.manufacturing_grid_um)
     except Exception:
-        names = None
-    with _CONFIG_STACKS_LOCK:
-        _CONFIG_STACKS[key] = names
-    return names
+        facts = None
+    with _CONFIG_PROFILES_LOCK:
+        _CONFIG_PROFILES[key] = facts
+    return facts
+
+
+def _config_stack(profile_id) -> tuple[str, ...] | None:
+    """The metal stack (bottom first) a config's metals are judged on, or None: the reference convention."""
+    facts = _config_profile(profile_id)
+    return None if facts is None else facts[0]
 
 
 def _metal_position(value, profile_id) -> int | None:
@@ -194,6 +202,8 @@ class CleanPortGroundFixtureConfig(BaseModel):
 
 
 METAL_FIELDS = ("metal", "ct_metal", "primary_metal", "secondary_metal", "ct_primary_metal", "ct_secondary_metal")
+HALF_IS_A_COORDINATE = ("center_spacing_um", "port_spacing_um", "primary_port_spacing_um", "secondary_port_spacing_um",
+                        "straight_extension_um")
 
 
 class _CleanPortDeviceConfigBase(BaseModel):
@@ -238,6 +248,24 @@ class _CleanPortDeviceConfigBase(BaseModel):
             if token not in names and not (digits.isdigit() and f"M{int(digits)}" in names):
                 raise ValueError(f"{field_name} {value!r} is not a metal of profile {self.process_profile} "
                                  f"(its metals, bottom first: {', '.join(stack)})")
+        return self
+
+    @model_validator(mode="after")
+    def _halves_on_the_profile_grid(self):
+        """Half of a centre spacing, a port spacing or a straight extension is a coordinate (D9), so the value is a
+        multiple of twice the profile's manufacturing grid. ``multiple_of=0.01`` states it for the reference 0.005 um
+        grid; a profile with another grid is checked here (T16 R-23)."""
+        facts = _config_profile(self.process_profile)
+        if facts is None or facts[1] == _stack.REFERENCE_GRID_UM:
+            return self
+        step = 2 * facts[1]
+        for field_name in HALF_IS_A_COORDINATE:
+            value = getattr(self, field_name, None)
+            if value is None:
+                continue
+            if abs(value / step - round(value / step)) > 1e-6:
+                raise ValueError(f"{field_name} {value} must be a multiple of {step:g} um: half of it is a coordinate, "
+                                 f"and profile {self.process_profile} draws on a {facts[1]:g} um manufacturing grid")
         return self
 
     @model_serializer(mode="wrap")

@@ -8,7 +8,6 @@ import math
 
 from ic_opt.em.pcell._pcell_core import (
     _EPS,
-    GRID_UM,
     PI,
     Cell,
     PortError,
@@ -24,6 +23,7 @@ from ic_opt.em.pcell._pcell_core import (
     chamfer,
     cross_endpoint_offset,
     floortogrid,
+    grid_um,
     junction_half_offset,
     octagon,
     vias,
@@ -108,7 +108,7 @@ def _pad_trim_floor(TOP_ME, process: ProcessRuleContext | None) -> float:
     if process is not None:
         mw = process.adapter.metal_rule(
             _metal_name(_metal_index(TOP_ME))).min_width_um or 0.0
-    return max(2 * GRID_UM, mw)
+    return max(2 * grid_um(), mw)
 
 
 def xfm_cross_far_pad_y0(
@@ -237,7 +237,7 @@ def base_oct_quad(
 
     ``chamfer_bias`` (six-family tight-spacing clearance, 2026-07-28;
     default 0 = byte-identical): pulls the chamfer baseline BA inward by
-    that many GRID_UM steps, moving ONLY the 45-degree edges and their
+    that many grid steps, moving ONLY the 45-degree edges and their
     flat junctions -- the cardinal flats/arm openings derive from OD and
     do not move. Callers use it as a per-ring staircase
     (``chamfer_staircase_delta``) so adjacent concentric rings' diagonal

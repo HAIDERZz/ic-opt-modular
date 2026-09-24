@@ -60,6 +60,9 @@ emx_stack:
     VIA5: {via: VIA5, emx_effective_size_um: 0.52}
 
 layout_rules:
+  # The process's manufacturing grid: the generators snap every coordinate
+  # they quantize to it (default 0.005 when left out).
+  manufacturing_grid_um: 0.005
   metal_width_space:
     M1: {min_width_um: 0.1, max_width_um: 12.0, min_space_um: 0.1}
     M2: {min_width_um: 0.1, max_width_um: 12.0, min_space_um: 0.1}

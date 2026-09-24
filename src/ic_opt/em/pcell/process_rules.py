@@ -8,6 +8,10 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ic_opt.em.pcell.stack import REFERENCE_GRID_UM
+
+GDS_DBU_UM = 0.001                                   # the database unit the generators write their GDS in
+
 
 class Units(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -226,6 +230,17 @@ class LayoutRules(BaseModel):
     # The vias whose cut enclosure the DRC audit checks (``ProcessRuleProfile.audited_vias``); left out: every via of
     # the metal stack. A list, empty included, is the author's explicit choice.
     audited_vias: tuple[str, ...] | None = None
+    # The grid every drawn coordinate the pcell quantizes lands on (``stack.grid_um`` inside a build, T16 R-23).
+    manufacturing_grid_um: float = Field(default=REFERENCE_GRID_UM, gt=0)
+
+    @field_validator("manufacturing_grid_um")
+    @classmethod
+    def _grid_is_whole_nanometres(cls, value: float) -> float:
+        steps = value / GDS_DBU_UM
+        if abs(steps - round(steps)) > 1e-6:
+            raise ValueError(f"manufacturing_grid_um {value} is not a whole number of GDS database units "
+                             f"({GDS_DBU_UM} um): the generators write integer-nanometre coordinates")
+        return value
 
 
 class ProcessRuleProfile(BaseModel):

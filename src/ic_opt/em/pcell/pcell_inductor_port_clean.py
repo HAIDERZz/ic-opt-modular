@@ -33,7 +33,10 @@ Coordinate conventions
 * All PCell parameters are micrometres, exactly as in SKILL.
 * Internally every point is snapped to integer nanometres (Virtuoso dbu
   0.001 um); the SKILL grid helpers (ceiltogrid/roundtogrid/floortogrid)
-  operate on the 0.005 um mask grid as in the reference environment.
+  operate on the profile's manufacturing grid
+  (``layout_rules.manufacturing_grid_um``), the 0.005 um mask grid of the
+  reference environment when the profile leaves it out or no profile is
+  given.
 * In reference mode, ``MetalVec(MET-1)`` (metal MET) maps to GDS layer
   ``30 + MET`` and the via layer between metal m and m+1 maps to GDS layer
   ``50 + m`` following the reference proc file under ``gdsgen_ref/``
@@ -123,6 +126,7 @@ from ic_opt.em.pcell._pcell_core import (  # noqa: F401
     emx_port_lines,
     finalize_emx_ports,
     floortogrid,
+    grid_um,
     max_opening,
     metal_drawing_pin,
     metal_layer,

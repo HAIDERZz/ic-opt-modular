@@ -26,8 +26,9 @@ from the failed M7 generators or earlier port prototypes.
 - **Process-backed mode**
   (`process=process_rule_context(profile_id)`, e.g. the packaged
   `"demo_6m"`): every conductor and via layer/datatype, cut size, spacing,
-  enclosure, minimum count and maximum spacing comes from the profile's
-  `rule.yaml` (the packaged `profiles/demo_6m/`, or a private profile found
+  enclosure, minimum count and maximum spacing, and the manufacturing grid
+  the construction snaps to (`layout_rules.manufacturing_grid_um`, 0.005 um
+  when left out), comes from the profile's `rule.yaml` (the packaged `profiles/demo_6m/`, or a private profile found
   through `IC_OPT_PROFILE_DIRS`; real-process profiles never ship)
   through the existing `GeometryRuleAdapter.plan_passive_via_array`. The
   crossover endpoints come out on the profile's own via layer with the

@@ -34,8 +34,10 @@ repository:
 - Schema `process-rule-profile-v1`, strict validation: unknown keys are
   rejected (`extra="forbid"`), missing pieces make the loader raise --
   the workflow is fail-closed rather than guessing.
-- Every length is micrometres. Prefer values on the 0.005 um layout
-  grid.
+- Every length is micrometres. `layout_rules.manufacturing_grid_um`
+  states the process's manufacturing grid (default 0.005 um, a whole
+  number of nanometres); the generators snap the coordinates they
+  quantize to it, so prefer rule values on it too.
 
 Seven top-level sections:
 
@@ -101,6 +103,7 @@ encrypted blocks.
 | `emx_stack.conductors` | ict/itf `thickness` fields, or proc | `thickness_um` per conductor (must equal the proc's `conductor` thickness; the validator compares them) |
 | `emx_stack.geometry_scaling` | proc `geometry scaling` line | usually `1.0` |
 | `emx_stack.via_models` | proc via statements | one entry per *modeled* via: `{via: <catalog via>, emx_effective_size_um}`; keys are model names -- pair-style keys like `M5_M6` are fine |
+| `layout_rules.manufacturing_grid_um` | DRM grid rule (the deck's off-grid check) | the manufacturing grid in um; leave it out for 0.005 |
 | `layout_rules.metal_width_space` | deck `INTERNAL`/`EXTERNAL` width & space rules, or DRM tables | `min_width_um` / `max_width_um` / `min_space_um` per metal the devices can touch (every `M<n>` and AP); any bound the process does not define stays `null` |
 | `layout_rules.via_primitives` | deck via rules, or DRM | `cut_size_um: [x, y]`, `min_cut_space_um`, `min_enclosure_um` for BOTH connected metals |
 | `layout_rules.audited_vias` (optional) | (your choice) | the vias whose cut enclosure the DRC audit checks; leave it out to check every via of the metal stack |
@@ -275,6 +278,9 @@ emx_stack:
     VIA5: {via: VIA5, emx_effective_size_um: 0.52}
 
 layout_rules:
+  # The process's manufacturing grid: the generators snap every coordinate
+  # they quantize to it (default 0.005 when left out).
+  manufacturing_grid_um: 0.005
   metal_width_space:
     M1: {min_width_um: 0.1, max_width_um: 12.0, min_space_um: 0.1}
     M2: {min_width_um: 0.1, max_width_um: 12.0, min_space_um: 0.1}
