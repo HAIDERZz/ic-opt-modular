@@ -4,7 +4,7 @@ Ported from em-opt ``surrogate/domain.py`` (2026-09-23). A query is in domain if
   1. every dim lies inside the ACHIEVED per-dim min/max of the rows (not the nominal ranges);
   2. its integer turns level has at least ``min_per_level`` rows (the model's sub-GP floor); skipped when the
      family has no turns dim;
-  3. it lies inside the Delaunay hull of its level (or of all rows without a turns dim), in min-max scaled
+  3. it lies inside the convex hull of its level (or of all rows without a turns dim), in min-max scaled
      coordinates -- the achieved box can have notches the per-dim test misses. A degenerate hull fails closed.
 Criterion 4 (relative sigma) asks a different question -- is the model confident here -- and is the
 separate ``sigma_ok``.
@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-from scipy.spatial import Delaunay, QhullError
+from scipy.spatial import ConvexHull, QhullError
 
 DEFAULT_MIN_PER_LEVEL = 25                       # mirrors StratumGP.MIN_NT_SAMPLES
 DEFAULT_SIGMA_REL_MAX = 0.15
@@ -50,6 +50,21 @@ def sigma_ok(mu, sigma, rel_max: float = DEFAULT_SIGMA_REL_MAX) -> np.ndarray:
     return sigma / np.maximum(mu, 1e-30) <= rel_max
 
 
+def in_hull(hull: ConvexHull, points: np.ndarray, tol: float = 1e-9) -> np.ndarray:
+    """Membership in a convex hull by its facet half-spaces (normal . x + offset <= 0 for every facet), a boolean
+    per row. The same set Delaunay.find_simplex >= 0 answers, but as one matrix product instead of a simplex walk
+    per point: in 5-6 dims a library level triangulates into 1e5-1e6 simplices and the walk cost milliseconds per
+    point, while its hull has a few hundred to a few thousand facets. Chunked so a large batch stays within memory."""
+    points = np.asarray(points, dtype=float)
+    normals, offsets = hull.equations[:, :-1], hull.equations[:, -1]
+    out = np.empty(len(points), dtype=bool)
+    chunk = max(1, int(2e7 // max(len(offsets), 1)))
+    for start in range(0, len(points), chunk):
+        block = points[start:start + chunk]
+        out[start:start + chunk] = (block @ normals.T + offsets <= tol).all(axis=1)
+    return out
+
+
 class DomainGuard:
     def __init__(self, x, dims: list[str], ranges: dict[str, tuple[float, float]], *, nt_dim: str | None = None,
                  min_per_level: int = DEFAULT_MIN_PER_LEVEL, ids=None):
@@ -67,13 +82,13 @@ class DomainGuard:
         self._min, self._max = x.min(axis=0), x.max(axis=0)
         self._nt_idx = dims.index(nt_dim) if nt_dim is not None else None
         self._levels = np.round(x[:, self._nt_idx]).astype(int) if nt_dim is not None else None
-        self._hulls: dict[Any, tuple[list[int], dict[int, float], Delaunay | None]] = {}
+        self._hulls: dict[Any, tuple[list[int], dict[int, float], ConvexHull | None]] = {}
         self._scaled = (x - self._lo) / (self._hi - self._lo)
 
     def _level_rows(self, level) -> np.ndarray:
         return np.ones(len(self._x), dtype=bool) if level == _GLOBAL else self._levels == level
 
-    def _hull(self, level) -> tuple[list[int], dict[int, float], Delaunay | None]:
+    def _hull(self, level) -> tuple[list[int], dict[int, float], ConvexHull | None]:
         """(varying dim indices, {fixed dim index: value}, hull over the varying dims) for one level, built lazily."""
         if level not in self._hulls:
             pts = self._x[self._level_rows(level)]
@@ -84,7 +99,7 @@ class DomainGuard:
             if varying:
                 scaled = (pts[:, varying] - self._lo[varying]) / (self._hi[varying] - self._lo[varying])
                 try:
-                    hull = Delaunay(scaled)
+                    hull = ConvexHull(scaled)
                 except (QhullError, ValueError):
                     hull = None
             self._hulls[level] = (varying, fixed, hull)
@@ -118,7 +133,7 @@ class DomainGuard:
             if hull is None:
                 raise self._reject(3, f"degenerate hull at {where} (no reliable coverage)", q)
             scaled = (q[varying] - self._lo[varying]) / (self._hi[varying] - self._lo[varying])
-            if hull.find_simplex(scaled) < 0:
+            if not in_hull(hull, scaled[None, :])[0]:
                 raise self._reject(3, f"outside the convex hull at {where}", q)
         return Verdict(True, self.nearest(params))
 
@@ -151,7 +166,7 @@ class DomainGuard:
                 else:
                     idx = np.nonzero(sel)[0]
                     scaled = (x[np.ix_(idx, varying)] - self._lo[varying]) / (self._hi[varying] - self._lo[varying])
-                    sel[idx[hull.find_simplex(scaled) < 0]] = False
+                    sel[idx[~in_hull(hull, scaled)]] = False
             ok &= ~mask | sel
         return ok
 

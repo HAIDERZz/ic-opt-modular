@@ -103,3 +103,17 @@ def test_sigma_is_floored_at_a_fraction_of_the_mean():
     assert np.all(sigma_f >= 0.02 * np.abs(mu_f) - 1e-12) and np.all(sigma_f >= sigma)
     _lo, hi = floored.predict_bounds(x[:10], 2.0)
     assert np.all(hi / mu_f >= np.exp(2 * 0.02) - 1e-9)                          # the 2-sigma interval is at least +-2 x 2 %
+
+
+def test_hull_membership_matches_a_simplex_walk_and_keeps_vertices_inside():
+    """in_hull is the half-space form of the same convex hull Delaunay.find_simplex walks: identical verdicts on
+    random points around a 4-D cloud, and every hull vertex counts as inside (boundary tolerance)."""
+    from scipy.spatial import ConvexHull, Delaunay
+
+    rng = np.random.default_rng(3)
+    pts = rng.uniform(0, 1, size=(300, 4)) ** 1.5
+    hull, tri = ConvexHull(pts), Delaunay(pts)
+    probe = rng.uniform(-0.2, 1.2, size=(5000, 4))
+    assert (domain.in_hull(hull, probe) == (tri.find_simplex(probe) >= 0)).all()
+    assert domain.in_hull(hull, pts[hull.vertices]).all()
+    assert not domain.in_hull(hull, np.full((1, 4), 1.5))[0]
