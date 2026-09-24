@@ -16,3 +16,6 @@ docs/toolchain_evidence/
 docs/refactor/diagrams/*.html
 docs/refactor/diagrams/*.png
 smoke/
+
+# Claude Code subagent worktrees (harness-managed, never part of the repo)
+.claude/worktrees/
