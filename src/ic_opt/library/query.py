@@ -15,7 +15,9 @@ instead of refitting it: the GP hyperparameter optimisation is sequential, takes
 Every cache file -- dataset, calibration, model -- goes to one directory, ``Library.cache`` (``cache.locate``): the
 library's own ``.cache``, the ``cache_dir`` it was opened with, or, when its own cannot be written, a directory under
 ``~/.cache/ic-opt/``; the files in its own ``.cache`` are read in every case. ``Library.notes`` says where the files go
-when that is not the library's own ``.cache``, and every answer below carries it in its ``notes``.
+when that is not the library's own ``.cache``, and every answer below carries it in its ``notes``. One process at a
+time calibrates and fits a model into a cache directory: the fit holds a lock file next to the calibration file, and
+another process that needs the same model waits for it, then loads what it wrote (``Library._fit``).
 
 The library computes on the machine running ic-opt, within that machine's limits and nothing else: the
 ``limits`` a library is given, else site.yaml's ``hosts.local``, read the first time a model has to be fitted
@@ -48,6 +50,7 @@ import pickle
 import sys
 import tempfile
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,7 +58,7 @@ import numpy as np
 import sklearn
 from threadpoolctl import threadpool_limits
 
-from ic_opt import site
+from ic_opt import _lock, site
 from ic_opt.library import cache, dataset, domain, gp, manifest
 
 UNITS = {"L": "H", "Q": "1", "SRF": "Hz", "k": "1"}
@@ -193,13 +196,24 @@ class Library:
         return True
 
     def _fit(self, stratum: str, quantity: str) -> None:
-        """Calibrate (the five hold-out fits, cached), fit, (over)write the model's cache file and keep the model. BLAS is
-        capped by the caller: ``models`` in this process, ``_fit_in_worker`` in a worker's."""
+        """Calibrate (the five hold-out fits, cached), fit, (over)write the model's cache file and keep the model -- holding
+        the lock file next to the calibration file (``<calibration file>.lock`` in the cache directory) meanwhile. Another
+        process that needs the same model, on this machine or on another sharing the cache directory, waits for the lock
+        and then loads what this one wrote instead of computing it again; on a file system that takes no locks both
+        compute, as they did without it, and the last write wins. BLAS is capped by the caller: ``models`` in this
+        process, ``_fit_in_worker`` in a worker's."""
         ds, rows, x, y, settings = self._fit_inputs(stratum, quantity)
-        calibration = self._calibration(ds, quantity, x, y, settings)
-        model = gp.StratumGP(**settings, k_scale=calibration["k_scale"], sigma_floor_rel=calibration.get("median_rel", 0.0)).fit(x, y)
-        _save_model(self.cache.target(self._model_name(ds, quantity, settings, calibration)), model)
-        self._keep(stratum, quantity, ds, rows, x, settings, model, calibration)
+        with ExitStack() as held:
+            try:
+                held.enter_context(_lock.waiting_lock(self.cache.target(f"{_calibration_name(ds, quantity)}.lock")))
+            except OSError:                              # no locks here (or no lock file): unguarded
+                pass
+            if self._load(stratum, quantity):            # fitted by another process while this one waited
+                return
+            calibration = self._calibration(ds, quantity, x, y, settings)
+            model = gp.StratumGP(**settings, k_scale=calibration["k_scale"], sigma_floor_rel=calibration.get("median_rel", 0.0)).fit(x, y)
+            _save_model(self.cache.target(self._model_name(ds, quantity, settings, calibration)), model)
+            self._keep(stratum, quantity, ds, rows, x, settings, model, calibration)
 
     def _keep(self, stratum: str, quantity: str, ds: dataset.Dataset, rows: list[dataset.Row], x: np.ndarray, settings: dict,
               model: gp.StratumGP, calibration: dict) -> None:
@@ -246,7 +260,7 @@ class Library:
     def _calibration(self, ds: dataset.Dataset, quantity: str, x, y, settings: dict, *, compute: bool = True) -> dict | None:
         if not self.calibrate:
             return {"k_scale": 1.0, "source": "off"}
-        name = f"calibration-{ds.stratum}-{_file_part(quantity)}-{ds.key}.json"
+        name = _calibration_name(ds, quantity)
         found = self.cache.find(name)
         if found is not None:
             return json.loads(found.read_text(encoding="utf-8"))
@@ -266,6 +280,11 @@ class Library:
 def _file_part(quantity: str) -> str:
     """A quantity as it appears in cache file names: ``Lp@28`` -> ``Lp_at_28``."""
     return quantity.replace("@", "_at_")
+
+
+def _calibration_name(ds: dataset.Dataset, quantity: str) -> str:
+    """The cache file name of a quantity's calibration, keyed by the dataset (its lock file adds ``.lock``)."""
+    return f"calibration-{ds.stratum}-{_file_part(quantity)}-{ds.key}.json"
 
 
 def _load_model(path: Path, dims: list[str]) -> gp.StratumGP | None:

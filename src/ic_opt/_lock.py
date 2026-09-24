@@ -1,4 +1,5 @@
-"""An exclusive, non-blocking lock on a file, on any controller: Linux, macOS or Windows.
+"""An exclusive lock on a file, on any controller: Linux, macOS or Windows -- refused at once while another handle holds
+it (``exclusive_lock``), or waited for (``waiting_lock``).
 
 ``fcntl.flock`` where ``fcntl`` exists (Linux, macOS), ``msvcrt.locking`` on Windows. Each module exists only on its
 own platforms, so neither is imported at module level: the lock imports whichever is there when it is taken, and
@@ -11,9 +12,12 @@ from __future__ import annotations
 
 import errno
 import os
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+
+POLL_S = 0.2                                         # how often waiting_lock tries again while another handle holds the lock
 
 
 class LockHeld(RuntimeError):
@@ -32,6 +36,26 @@ def exclusive_lock(path: str | os.PathLike[str], *, what: str = "file") -> Itera
             raise LockHeld(f"{what} is locked by another run: {path}")
         try:
             yield
+        finally:
+            unlock()
+    finally:
+        os.close(fd)
+
+
+@contextmanager
+def waiting_lock(path: str | os.PathLike[str], *, poll_s: float = POLL_S) -> Iterator[bool]:
+    """Hold an exclusive lock on ``path`` (created if missing, never truncated) for the ``with`` block, waiting as long as
+    another handle holds it: tried again every ``poll_s`` seconds, so Ctrl-C ends the wait. Yields whether it had to wait.
+    A holder that dies lets go with its process, so no wait outlives the work it waits for."""
+    path = Path(path)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o666)
+    try:
+        waited = False
+        while (unlock := _try_lock(fd)) is None:
+            waited = True
+            time.sleep(poll_s)
+        try:
+            yield waited
         finally:
             unlock()
     finally:

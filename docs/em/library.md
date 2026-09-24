@@ -376,6 +376,14 @@ already in the library's own `.cache/` are still read: a library its owner
 has queried answers another user at once, and only what the owner never
 computed is computed again, into that user's directory.
 
+Two commands that need the same model at the same time do not both fit it.
+The first holds a lock file next to the model's calibration file (its name
+plus `.lock`) while it calibrates and fits; the second waits for it and then
+loads what the first wrote. That holds for commands on one machine and, on a
+file system that honours file locks, for machines sharing a cache
+directory; where locks are not supported both fit, and the last one to
+finish writes the file. The lock files are empty.
+
 ## A new process
 
 The library is only as good as the process profile the generator drew with.

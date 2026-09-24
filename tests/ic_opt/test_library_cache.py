@@ -1,24 +1,32 @@
 """T16.5 R-20: where a library keeps its cache files -- its own .cache, a cache_dir= of the caller's, or, when its own
-cannot be written, ~/.cache/ic-opt/<key>/ with a note in every answer; the files in its own .cache are read in every case."""
+cannot be written, ~/.cache/ic-opt/<key>/ with a note in every answer; the files in its own .cache are read in every case.
+N-4: two processes that need the same uncached model at once compute it once."""
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import multiprocessing
 import os
 import shutil
+import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
+from ic_opt import _lock
 from ic_opt.blocks import library as library_blocks
 from ic_opt.cli import app
+from ic_opt.library import gp
 from ic_opt.library import query as q
 from tests.ic_opt.fakes import FAKE_HOST
 from tests.ic_opt.library_fixtures import LOCAL, build_library, params, use_site
 from tests.ic_opt.test_library_query import count_fits, fresh_copy
 
 TARGETS = {"Lp_lf": {"min": 1.0e-9, "max": 1.3e-9}}
+HOLD_S = 1.5                                         # what each hold-out takes at least in the N-4 test: the other process arrives meanwhile
 
 
 @pytest.fixture(scope="module")
@@ -50,7 +58,8 @@ def tree(root: Path) -> dict[str, bytes]:
 
 
 def stems(directory: Path) -> list[str]:
-    return sorted(p.name.rsplit("-", 1)[0] for p in directory.glob("*-ind_demo-*"))
+    """The cache files of ind_demo in ``directory`` by kind and column; the fits' lock files (N-4) aside."""
+    return sorted(p.name.rsplit("-", 1)[0] for p in directory.glob("*-ind_demo-*") if p.suffix != ".lock")
 
 
 def test_a_library_that_cannot_be_written_caches_under_home_and_says_so(shared, tmp_path, monkeypatch):
@@ -117,3 +126,48 @@ def test_cache_dir_takes_every_cache_file_the_fit_workers_too(owned, tmp_path, m
     with pytest.raises(ValueError, match=r"is not the cache directory of the library given"):
         library_blocks.coverage(lib, "ind_demo", cache_dir=str(tmp_path / "third"))
     assert not (root / ".cache").exists()
+
+
+# -- N-4: one process computes a model, the others wait for it ------------------------------------------------------------
+
+def calibrate_marked(root: str, marker: str, start, guarded: bool) -> dict:
+    """In a spawned process: Qp_peak's model of the library at ``root``, every hold-out noting this process in ``marker``
+    and taking HOLD_S longer; the processes set off together from ``start``. Unguarded: N-4's lock is replaced by nothing,
+    as it was before N-4."""
+    original = gp.holdout
+
+    def holdout(*args, **kwargs):
+        with open(marker, "a", encoding="utf-8") as f:
+            f.write(f"{os.getpid()}\n")
+        time.sleep(HOLD_S)
+        return original(*args, **kwargs)
+
+    gp.holdout = holdout
+    if not guarded:
+        _lock.waiting_lock = lambda path: contextlib.nullcontext(False)
+    lib = q.Library(root, limits=LOCAL)                                                # one fit worker: the fit runs here
+    lib.dataset("ind_demo")                                                            # read from its cache before the start
+    start.wait(timeout=120)
+    return lib.model("ind_demo", "Qp_peak").calibration
+
+
+@pytest.mark.parametrize("guarded", [True, False], ids=["locked", "unlocked"])
+def test_two_processes_that_need_the_same_model_compute_it_once(owned, tmp_path, guarded):
+    """Two spawned processes ask for the same uncached model at the same moment. The first to take the lock next to the
+    calibration file computes the hold-out and the model; the other waits for it and loads them: one hold-out between the
+    two, both with the same calibration. The control without the lock computes it in both."""
+    root = fresh_copy(owned, tmp_path / "lib")
+    q.Library(root, limits=LOCAL).dataset("ind_demo")                                   # cached: neither process builds it
+    marker = tmp_path / "holdouts.txt"
+    context = multiprocessing.get_context("spawn")
+    with context.Manager() as manager, ProcessPoolExecutor(max_workers=2, mp_context=context) as pool:
+        start = manager.Barrier(2)
+        jobs = [pool.submit(calibrate_marked, str(root), str(marker), start, guarded) for _ in range(2)]
+        first, second = (job.result(timeout=300) for job in jobs)
+    computed = marker.read_text(encoding="utf-8").split()
+    assert first == second and first["source"] == "holdout 5x20%"
+    if guarded:
+        (calibration,) = (root / ".cache").glob("calibration-ind_demo-Qp_peak-*.json")
+        assert len(computed) == 1 and (root / ".cache" / f"{calibration.name}.lock").is_file()
+    else:
+        assert len(computed) == 2 and len(set(computed)) == 2                         # each process computed it

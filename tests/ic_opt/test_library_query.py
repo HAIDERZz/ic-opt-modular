@@ -177,9 +177,11 @@ def test_models_fits_the_uncached_quantities_in_spawned_processes(library, tmp_p
     monkeypatch.setattr(gp.StratumGP, "fit", fit_here)
     got = q.Library(parallel, limits=FAKE_HOST).models("ind_demo", names, workers=2, threads=2)
     assert list(got) == names
-    stems = sorted(p.name.rsplit("-", 1)[0] for p in (parallel / ".cache").glob("*-ind_demo-*"))
+    stems = sorted(p.name.rsplit("-", 1)[0] for p in (parallel / ".cache").glob("*-ind_demo-*") if p.suffix != ".lock")
     assert stems == ["calibration-ind_demo-Qp_peak", "calibration-ind_demo-SRF_p", "dataset-ind_demo", "model-ind_demo-Qp_peak",
                      "model-ind_demo-SRF_p"]
+    locks = sorted(p.name for p in (parallel / ".cache").glob("*.lock"))            # N-4: each fit's lock, next to its calibration
+    assert locks == sorted(f"{p.name}.lock" for p in (parallel / ".cache").glob("calibration-*.json"))
     x = reference.dataset("ind_demo").matrix()[::15]
     for name in names:
         for mine, theirs in zip(got[name].gp.predict(x), expected[name].gp.predict(x)):

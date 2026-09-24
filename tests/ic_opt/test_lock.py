@@ -1,5 +1,5 @@
 """T15.4: the run-store lock on any controller (fcntl on Linux / macOS, msvcrt on Windows), and no ic_opt module that
-imports a platform-only module when it is itself imported."""
+imports a platform-only module when it is itself imported. T16.5 N-4: the same lock, waited for instead of refused."""
 from __future__ import annotations
 
 import ast
@@ -7,13 +7,15 @@ import errno
 import os
 import subprocess
 import sys
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 import ic_opt
-from ic_opt._lock import LockHeld, exclusive_lock
+from ic_opt._lock import LockHeld, exclusive_lock, waiting_lock
 from ic_opt.store import RunStore
 
 PLATFORM_ONLY = {"fcntl", "grp", "pwd", "pty", "resource", "termios", "tty", "msvcrt", "winreg", "_winapi"}
@@ -84,6 +86,33 @@ def test_without_fcntl_the_lock_is_taken_with_msvcrt(tmp_path, monkeypatch):
     with RunStore(project).lock():
         pass
     assert fake.held == {}
+
+
+@pytest.mark.parametrize("platform", ["fcntl", "msvcrt"])
+def test_a_waiting_lock_waits_for_the_holder_and_then_takes_it(tmp_path, monkeypatch, platform):
+    """Another handle holds the lock: waiting_lock keeps trying until the holder lets go, then holds it and says it waited;
+    a free lock is taken at once. With msvcrt as a Windows controller takes it, too."""
+    if platform == "msvcrt":
+        monkeypatch.setitem(sys.modules, "fcntl", None)
+        monkeypatch.setitem(sys.modules, "msvcrt", FakeMsvcrt())
+    path = tmp_path / "lock"
+    events: list[tuple[str, bool | None]] = []
+
+    def second() -> None:
+        with waiting_lock(path, poll_s=0.01) as waited:
+            events.append(("second holds it", waited))
+
+    with exclusive_lock(path):
+        other = threading.Thread(target=second)
+        other.start()
+        time.sleep(0.3)
+        assert other.is_alive() and events == []                          # still waiting
+        events.append(("first lets go", None))
+    other.join(timeout=30)
+    assert events == [("first lets go", None), ("second holds it", True)]
+    with waiting_lock(path) as waited, pytest.raises(LockHeld), exclusive_lock(path):
+        pass
+    assert waited is False
 
 
 def test_without_fcntl_or_msvcrt_the_lock_says_so(tmp_path, monkeypatch):
