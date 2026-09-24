@@ -1,6 +1,6 @@
 # 0001: Remote mode treats filesystem separation as mandatory
 
-- **Status**: Accepted (2026-08-07); enforcement and acceptance rewritten for 0.2 (2026-09-22); platforms note (2026-09-24)
+- **Status**: Accepted (2026-08-07); enforcement and acceptance rewritten for 0.2 (2026-09-22); platforms note (2026-09-24); the acceptance sandbox keeps the controller's site.yaml (2026-09-25)
 
 ## Context
 
@@ -63,12 +63,27 @@ Self-SSH and shared-NFS runs exercise the transport but cannot detect a
 same-named-path bug. The acceptance for any change near this boundary is the
 isolated run in `docs/refactor/analysis/isolated_ssh_smoke.sh`: the controller
 runs inside a bubblewrap sandbox where the Maestro exports, `/opt/eda`, the
-cshrc and `~/.ic-opt` are hidden (tmpfs / empty file), a local `ic-opt doctor`
-must FAIL on tools and exports, and the same project run with `--ssh-profile`
-must complete with results identical to a recorded run. Passed 2026-09-22 on
-`t8_ssh_isolated` (2 points × 3 testbenches, metrics / fom / penalty
-bit-identical to the 0.1.10 recording; evidence in
-`docs/refactor/EXECUTION_PLAN_CN.md` §3).
+cshrc and `~/.ic-opt` are hidden (tmpfs / empty file). Of `~/.ic-opt` only the
+controller's own `site.yaml` is bound back, read-only: since 0.3.0 nothing
+starts without the entry of the host a command runs on (`hosts.local` for the
+local doctor, `hosts.<profile>` for the remote run), while the rest of
+`~/.ic-opt`, where a self-SSH host keeps its scratch, stays hidden. A local
+`ic-opt doctor` must FAIL on tools and exports, and the same project run with
+`--ssh-profile` must complete with results identical to a recorded run. Passed
+2026-09-22 on `t8_ssh_isolated` (2 points × 3 testbenches, metrics / fom /
+penalty bit-identical to the 0.1.10 recording; evidence in
+`docs/refactor/EXECUTION_PLAN_CN.md` §3), before 0.3.0 made site.yaml
+mandatory.
+
+The site.yaml bind (2026-09-25) is verified only up to the site check. On the
+development host (bubblewrap 0.6.3) the script was run with a profile that has
+no site.yaml entry, so nothing reached SSH: inside the sandbox `~/.ic-opt` held
+only `site.yaml`, readable and not writable; the local doctor read
+`hosts.local` and failed on tools, license and exports; the remote step
+stopped at the missing entry. Without the bind, the local doctor and the
+remote step both stopped at "site.yaml not found". The full remote run with
+the bind is unverified: it has not been repeated (it needs the lab host and
+Spectre).
 
 ## Alternatives considered
 
