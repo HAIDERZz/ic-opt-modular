@@ -761,10 +761,9 @@ DEMOS = [
          "NT_P": 2, "NT_S": 1, "CENTER_SPACING": 0.0, "BALUN_ME": "6",
          "process_profile": "demo_6m"},
     ),
-    # Type 3 same-layer overlapping-inductor ("twisted") transformer
-    # (ticket 03 recipe/argv passthrough -- .scratch/xfm-tw-twisted/):
-    # NR=3 concentric rings shared half-and-half by P/S, no CT (spec.md
-    # "非目标"). Clean-room composition (no single .il source).
+    # Type 3 same-layer overlapping-inductor ("twisted") transformer:
+    # NR=3 concentric rings shared half-and-half by P/S, no CT (the device
+    # has none by design). Clean-room composition (no single .il source).
     (
         "xfm_tw",
         xfm_tw,
@@ -780,10 +779,10 @@ DEMOS = [
          "OPENING_N": 10.0, "LEAD": 20.0, "SL_ME": "6",
          "process_profile": "demo_6m"},
     ),
-    # Type 3 same-layer interleaved ("Rabjohn/Frlan") transformer (ticket
-    # 04, .scratch/xfm-il-interleaved/): P and S alternate radial bands on
-    # one metal plane SL_ME, no CT -- the SAME reference geometry
-    # test_pcell_inductor_python_port_clean.py's `_il()` helper defaults
+    # Type 3 same-layer interleaved ("Rabjohn/Frlan") transformer: P and S
+    # alternate radial bands on one metal plane SL_ME, no CT -- the SAME
+    # reference geometry the `_il()` helper of
+    # tests/ic_opt/pcell/test_pcell_inductor_python_port_clean.py defaults
     # to. Clean-room composition (no single .il source).
     (
         "xfm_il",
@@ -852,9 +851,8 @@ def _render_png(gds_path, png_path, title, process: ProcessRuleContext | None = 
     """Render the polygons of a GDS file (parsed via KLayout) to PNG.
 
     ``process`` is optional (default ``None``, matching every call site
-    that predates this parameter -- generate_all's reference-mode demos,
-    experiments/m13_ct_validation/visual_review.py, gen_samples.py's
-    original call): when supplied, its process rule profile's own layer
+    that predates this parameter, such as generate_all's reference-mode
+    demos): when supplied, its process rule profile's own layer
     catalog additionally names layers the generic reference-map patterns
     can't reach (e.g. an AP conductor and its via). With no ``process``,
     rendering is byte-identical to before this parameter existed."""

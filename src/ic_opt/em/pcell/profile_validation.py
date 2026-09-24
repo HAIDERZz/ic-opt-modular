@@ -1,6 +1,6 @@
 """Authoring-time validation for process rule profiles (validate-profile).
 
-The runtime loader (``geometry/process_rules.py``) is the fail-closed gate
+The runtime loader (``process_rules.py``) is the fail-closed gate
 the optimizer trips over when a profile is wrong; this module is its
 authoring-side counterpart:
 

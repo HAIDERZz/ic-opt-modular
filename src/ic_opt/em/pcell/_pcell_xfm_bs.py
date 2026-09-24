@@ -41,7 +41,7 @@ from ic_opt.em.pcell.stack import builds_on_profile_stack
 # device): two open-octagon windings on two different metals, independent
 # OD_P/OD_S + CENTER_SPACING (M7R2), openings opposite, optional per-winding
 # center tap with a geometric Region clearance, optional M1 ground fixture.
-# Replaces the gdsfactory single_turn_transformer.py placeholder.
+# Replaces an earlier gdsfactory placeholder.
 # ---------------------------------------------------------------------------
 
 
@@ -166,8 +166,8 @@ def xfm_bs(
     distance (CENTER_SPACING). STRAIGHT_EXTENSION adds the same total X width
     to each winding about its OWN centre, in non-negative 0.01 um steps;
     vias, leads and CT keep their dimensions. Zero preserves legacy geometry.
-    The base winding follows the product single_turn_transformer.py
-    conventions. Primary at (-CENTER_SPACING/2,0) opens LEFT (outward); secondary
+    The base winding keeps the conventions of the single-turn transformer it
+    replaces. Primary at (-CENTER_SPACING/2,0) opens LEFT (outward); secondary
     at (+CENTER_SPACING/2,0) opens RIGHT (outward); ports P1/N1 left, P2/N2
     right. Larger CENTER_SPACING moves both coil centers and lead terminals
     farther apart. Optional per-winding center tap on a lower metal. Each

@@ -848,7 +848,7 @@ def cross_endpoint_offset(
 # port lattice contract (2026-09-21): compose every port registered
 # anywhere under a cell into the flat emx_ports list, and pin the one
 # structural invariant that makes a mis-registered port impossible to ship
-# silently. See .scratch/port-lattice-contract-2026-09-21/spec.md.
+# silently.
 # ---------------------------------------------------------------------------
 
 
@@ -1191,8 +1191,7 @@ def _process_layer_names(process: ProcessRuleContext) -> dict[tuple[int, int], s
     layers a numeric-metal-body render never needs: a profile's AP conductor
     and its AP<->M10 via sit outside the reference-map ranges
     ``_layer_display_name``'s generic fallback covers, so without this they
-    render as the generic "?" placeholder (ticket 02's deferred gap,
-    .scratch/xfm-tw-twisted/issues/02-n28-domain-sample-gallery.md)."""
+    render as the generic "?" placeholder."""
     catalog = process.adapter.profile.layer_catalog
     names: dict[tuple[int, int], str] = {}
     for rule in catalog.conductors.values():

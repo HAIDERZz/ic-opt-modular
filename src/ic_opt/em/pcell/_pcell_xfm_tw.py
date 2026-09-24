@@ -50,26 +50,26 @@ from ic_opt.em.pcell.stack import builds_on_profile_stack
 # xfm_tw (ticket 01: path planner + geometry kernel) -- Type 3 same-layer
 # overlapping-inductor transformer ("twisted"): NR concentric rings shared
 # half-and-half by P (CCW) and S (x-mirror of P, CW), crossing between rings
-# through four classes of X (see .scratch/xfm-tw-twisted/spec.md, approved
-# 2026-07-18). No single .il source models this device.
+# through four classes of X (the topology approved 2026-07-18). No single
+# .il source models this device.
 #
 # Path planner
 # ------------
-# ``_tw_plan`` is a direct port of the RULE encoded in
-# .scratch/xfm-tw-twisted/gen_topology.py's ``build_p``/``build_s`` (the
-# connectivity authority the spec names) -- boundary slot angles, the
-# odd-boundary "self-crossing" / even-boundary "P x S crossing" dive
-# assignment, and S = x-mirror of P with the even-boundary dive flag
-# flipped -- but expressed in SIZE-DECOUPLED terms (ring index / cardinal
-# angle / desc-or-asc / dive flag) instead of gen_topology's literal
-# coordinates (that script's own G/PSTUB/NSTUB/EXT constants and square-ring
-# ``_walk`` are a diagram-only stand-in; this port's renderer draws real
-# octagon rings sized from OD/W/S and a rule-derived slot half-width, see
-# below). gen_topology.py itself asserts its K=3 output reproduces the
-# user-confirmed v4 replica exactly; ``test_tw_plan_nr3_matches_v4_baseline``
-# pins the same case here as the leg table quoted in the spec.
+# ``_tw_plan`` is a direct port of the RULE encoded in the approved design's
+# reference topology script (its ``build_p``/``build_s``, the design's
+# connectivity authority; the script is not part of this repository) --
+# boundary slot angles, the odd-boundary "self-crossing" / even-boundary
+# "P x S crossing" dive assignment, and S = x-mirror of P with the
+# even-boundary dive flag flipped -- but expressed in SIZE-DECOUPLED terms
+# (ring index / cardinal angle / desc-or-asc / dive flag) instead of the
+# script's literal coordinates (its own G/PSTUB/NSTUB/EXT constants and
+# square-ring ``_walk`` are a diagram-only stand-in; this port's renderer
+# draws real octagon rings sized from OD/W/S and a rule-derived slot
+# half-width, see below). The script asserts that its K=3 output reproduces
+# the user-confirmed v4 replica exactly; ``test_tw_plan_nr3_matches_v4_baseline``
+# pins the same case here as a leg table for both windings.
 #
-# gen_topology's own mirror step (``build_s``) literally mirrors every
+# The reference script's own mirror step (``build_s``) literally mirrors every
 # already-computed (x, y) point and flips the tag ("b"/"c", i.e. dive/
 # same-layer) only on even-boundary legs. Working in (ring, angle) space
 # instead of (x, y), mirroring x negates a point's *signed tangential
@@ -118,7 +118,7 @@ _TW_MIRROR_ANGLE = {0: 180, 90: 90, 180: 0, 270: 270}
 # -coded for exactly ONE opening per quadrant pair (ind_sym's own single
 # lead/crossunder gap per ring); xfm_tw needs FOUR independent slots per
 # ring (one per cardinal edge, since boundary angles rotate through all of
-# 0/90/180/270 as NR grows -- see spec.md's boundary rule), which does not
+# 0/90/180/270 as NR grows -- see the boundary rule in ``_tw_plan_p``), which does not
 # fit that algebra without forking it per-edge. A direct centerline walk
 # generalizes to any number/position of slots for free, stays visually and
 # electrically consistent with the family's chamfered-octagon convention
@@ -140,12 +140,13 @@ def _tw_mirror_angle(a: int) -> int:
 
 
 def _tw_plan_p(NR: int) -> list:
-    """Port of gen_topology.build_p's rule, decoupled from coordinates.
+    """Port of the reference topology script's ``build_p`` rule (see the
+    path-planner comment above), decoupled from coordinates.
 
     Boundary Bk (k=1..NR-1) descend slot angle = (k-1)*90 deg; ascend slot
     angle = same (k odd) or +180 (k even). k odd = winding self-crossing
     (descend leg dives, ascend leg stays same-layer); k even = P x S true
-    crossing (dive iff angle==270, matching gen_topology's ``a == 270``
+    crossing (dive iff angle==270, matching the script's ``a == 270``
     branch -- P dives in the bottom quadrant there, S -- via the mirror's
     even-boundary flip -- in the top one). The innermost ring resides for
     exactly half a turn (its descend-landing angle to ascend-departure angle
@@ -173,8 +174,8 @@ def _tw_plan_p(NR: int) -> list:
 def _tw_mirror_segments(segments: list) -> list:
     """S = x-mirror of P: mirror every angle, reverse each arc's rotational
     sense (x-mirroring an CCW walk yields a CW one), and flip the dive flag
-    of even-boundary legs only (gen_topology.build_s's own ``meta[1] % 2 ==
-    0`` condition -- odd-boundary self-crossings keep their own dive side
+    of even-boundary legs only (the reference script's ``build_s`` condition
+    ``meta[1] % 2 == 0`` -- odd-boundary self-crossings keep their own dive side
     under mirroring, even-boundary P x S crossings swap which winding
     dives)."""
     out = []
@@ -202,8 +203,8 @@ def _tw_plan(NR: int) -> tuple[list, list]:
     each an ordered list of ``TwArc``/``TwLeg`` from the bottom port arc to
     the top port arc. Fails closed on the connectivity model's own
     precondition (NR rings, NR odd >= 3 -- an even NR leaves the innermost
-    ring's half-turn residency and the boundary parity rule ill-defined;
-    spec.md "非目标")."""
+    ring's half-turn residency and the boundary parity rule ill-defined, and
+    the design leaves it out)."""
     if NR < 3 or NR % 2 == 0:
         raise PortError(
             f"xfm_tw: NR={NR} must be an odd integer >= 3 (NR concentric "
@@ -235,7 +236,7 @@ def _tw_plan(NR: int) -> tuple[list, list]:
 # rigid pitch/offset relationship left to be unreachable at any angle.
 #
 # Endpoint rule (unchanged from the very first working derivation, directly
-# read off gen_topology.py's own build_p/build_s coordinates -- see
+# read off the reference script's build_p/build_s coordinates -- see
 # ``_tw_plan_p``'s docstring): walking a winding's own path in order, a leg
 # is always ENTERED at tangential offset -G (from the ring/angle it is
 # entered on) and LEFT at +G (on the ring/angle it is left on), using
@@ -247,10 +248,9 @@ def _tw_plan(NR: int) -> tuple[list, list]:
 # per-angle table is needed for the sign either, since the flip applies
 # uniformly at every angle S's mirrored plan can land on.
 #
-# Leg shape (ticket 02b, xfm-tw-twisted issue 02b-leg-straight-diag-
-# straight.md -- user 目检 on ticket 02's sample gallery: topology approved,
-# but the leg itself was a single end-to-end oblique wide path butting into
-# the ring arc's tangential end at a skewed cap, "生硬拼接"): the ENDPOINT
+# Leg shape (ticket 02b -- user 目检 on ticket 02's sample gallery: topology
+# approved, but the leg itself was a single end-to-end oblique wide path butting
+# into the ring arc's tangential end at a skewed cap, "生硬拼接"): the ENDPOINT
 # rule above is unchanged (a leg still enters/leaves at tangential offset
 # -+G on its own outer/inner ring), but the path DRAWN between those two
 # endpoints is now tangential-straight + exact-45-degree-diagonal +
@@ -262,21 +262,21 @@ def _tw_plan(NR: int) -> tuple[list, list]:
 # problem). ``_tw_slot_half_width``'s own G derivation is re-derived for
 # this shape in the same ticket (see that function's own docstring).
 #
-# Ticket 02c (issue 02c-port-joint-and-x-degeneracy.md -- user 二轮目检):
-# two further defects in 02b's own gallery. (1) 02b's bare G>=pitch/2
-# bound let the AP body land G exactly on it, collapsing the straight run
-# to zero -- the endpoint via() pad then sat centred on the diagonal's own
-# start point, overlapping only a quarter of a flush footprint (the same
-# partial-corner-overlap 02b was meant to fix). ``_tw_slot_half_width``'s
-# bound (c) is tightened to pitch/2 + W/2 (the pad's own tangential
-# half-width) so the straight run always fully contains the pad before
-# the diagonal begins. (2) every port stub was a SEPARATE rectangle from
-# the ring arc it attached to (a radial band and a tangential band meeting
-# only at a corner); ``_tw_render_winding`` now draws the stub as an extra
-# waypoint on the SAME wide-path call as ring 0's own first/last arc hop,
-# and the standalone ``_tw_port_lead`` is retired. OPENING_P/OPENING_N
-# were also redefined to the family/replica v4 convention in the same
-# ticket (stub centreline +-(OPENING/2+W/2), inner-edge gap == OPENING).
+# Ticket 02c (user 二轮目检): two further defects in 02b's own gallery. (1)
+# 02b's bare G>=pitch/2 bound let the AP body land G exactly on it,
+# collapsing the straight run to zero -- the endpoint via() pad then sat
+# centred on the diagonal's own start point, overlapping only a quarter of
+# a flush footprint (the same partial-corner-overlap 02b was meant to fix).
+# ``_tw_slot_half_width``'s bound (c) is tightened to pitch/2 + W/2 (the
+# pad's own tangential half-width) so the straight run always fully
+# contains the pad before the diagonal begins. (2) every port stub was a
+# SEPARATE rectangle from the ring arc it attached to (a radial band and a
+# tangential band meeting only at a corner); ``_tw_render_winding`` now
+# draws the stub as an extra waypoint on the SAME wide-path call as ring
+# 0's own first/last arc hop, and the standalone ``_tw_port_lead`` is
+# retired. OPENING_P/OPENING_N were also redefined to the family/replica
+# v4 convention in the same ticket (stub centreline +-(OPENING/2+W/2),
+# inner-edge gap == OPENING).
 # ---------------------------------------------------------------------------
 
 
@@ -287,7 +287,7 @@ def _tw_cardinal_point(H: float, angle: int) -> tuple[float, float]:
 
 def _tw_edge_point(H: float, angle: int, offset: float) -> tuple[float, float]:
     """Point on the ring of half-size ``H`` at cardinal ``angle``, shifted
-    ``offset`` along the CCW tangent (gen_topology's own +-G convention)."""
+    ``offset`` along the CCW tangent (the reference script's +-G convention)."""
     px, py = _tw_cardinal_point(H, angle)
     tx, ty = _TW_TANGENT_CCW[angle]
     return (px + offset * tx, py + offset * ty)
@@ -510,7 +510,7 @@ def _tw_slot_half_width(W: float, S: float, sl: int,
     automatic by construction, not a separate clearance to solve for -- and
     ticket 02b's straight runs are now literally COLLINEAR with the arc's
     own tangential direction at the junction (not just flush at a point),
-    which is the whole point of the rework (see spec's user-facing note).
+    which is the whole point of the rework.
 
     The closed forms themselves are irrational (general sqrt/sums), so the
     raw max(g_a, g_b, g_c) is ``ceiltogrid``-ed before returning: G is a
@@ -602,10 +602,10 @@ def _tw_leg_waypoints(seg: TwLeg, H: list, G: float,
     own tangential midpoint: solving for the two straight runs' shared
     length algebraically (they must be symmetric, since the diagonal is
     the enter/leave-independent centred pitch-square described above) gives
-    exactly ``(2*G - pitch) / 2`` each (spec 02b: "两段直段长度 = (2G -
-    pitch)/2 各半"). Ticket 02b required only 2*G >= pitch (G >= pitch/2,
-    non-negative length); ticket 02c tightened this to G >= pitch/2 + W/2
-    (``_tw_slot_half_width``'s own bound (c)), so the straight run is now
+    exactly ``(2*G - pitch) / 2`` each. Ticket 02b required only
+    2*G >= pitch (G >= pitch/2, non-negative length); ticket 02c tightened
+    this to G >= pitch/2 + W/2 (``_tw_slot_half_width``'s own bound (c)),
+    so the straight run is now
     ALWAYS long enough to fully contain the endpoint ``vias()`` pad's own
     tangential half-width (W/2) before the diagonal begins -- 02b's own
     "at 2*G == pitch the straight runs collapse to zero length, a legal
@@ -733,10 +733,9 @@ def _tw_stub_zone(
     covers ONLY the W-wide straight radial run from the ring-0 boundary
     point ``base`` (where ``_tw_render_winding``'s own arc walk hands off
     to the stub) out to the port tip ``tip`` -- never the fused ring arc
-    that same wide-path call also draws (spec.md section 10's own finding:
-    the pre-contract point-in-bbox exclusion used to carry the WHOLE fused
-    polygon, over-shrinking ``_body_bbox_um`` by the ring's own extent, not
-    the ~LEAD-sized stub).
+    that same wide-path call also draws (the pre-contract point-in-bbox
+    exclusion used to carry the WHOLE fused polygon, over-shrinking
+    ``_body_bbox_um`` by the ring's own extent, not the ~LEAD-sized stub).
 
     Verified algebraically for all four cardinal directions
     (``test_tw_stub_zone_matches_algebra_all_four_cardinal_directions``,
@@ -769,8 +768,8 @@ def _tw_drawn_tip_um(
     end cap, whose along-stub coordinate is ``LEAD``-derived and so is not
     itself on that 5nm grid in general. Registering the port at the
     unsnapped ``tip`` can therefore land it up to 4nm off the real drawn
-    conductor whenever ``LEAD``'s nm value is not a 5nm multiple
-    (break-the-contract review: ``tw_mitre_snap_vs_port_probe.py``); this
+    conductor whenever ``LEAD``'s nm value is not a 5nm multiple (found by
+    the break-the-contract review); this
     predicts the SAME snapped vertex instead, so the registered port
     matches what actually lands in the GDS. It does not change
     ``add_wide_path``'s own input -- ``_tw_render_winding`` still
@@ -910,9 +909,9 @@ def _tw_render_winding(cell: Cell, segments: list, H: list, W: float,
     # not the unsnapped waypoint, so the point lands on the real drawn
     # conductor even when LEAD's nm value is not a 5nm multiple
     # (port contract 2026-09-21, break-the-contract review). lead_zone_um
-    # is built from that same snapped tip, covering just the stub (spec.md
-    # section 9), not the whole fused ring-arc+stub polygon
-    # _body_bbox_um's pre-contract point-in-bbox exclusion used to carry.
+    # is built from that same snapped tip, covering just the stub, not the
+    # whole fused ring-arc+stub polygon _body_bbox_um's pre-contract
+    # point-in-bbox exclusion used to carry.
     start_port_tip = _tw_drawn_tip_um(start_base, start_tip)
     end_port_tip = _tw_drawn_tip_um(end_base, end_tip)
     cell.add_emx_port(name=start_port_name, logical_name=start_port_name,
@@ -947,10 +946,10 @@ def xfm_tw(
     (CCW, ports P1 bottom-right/N1 top-right) and S (P's x-mirror, CW, ports
     P2 bottom-left/N2 top-left), each winding NR/2 turns, connected across
     the NR-1 ring boundaries by explicit two-endpoint legs (``_tw_leg``)
-    whose dive layer (SL_ME vs SL_ME-1) alternates per the rule ``_tw_plan``
-    ports from .scratch/xfm-tw-twisted/gen_topology.py (spec.md, approved
-    2026-07-18; see that module's own docstring and ``_tw_plan``'s here for
-    the full boundary-parity rule). No CT (spec.md "非目标").
+    whose dive layer (SL_ME vs SL_ME-1) alternates per the boundary-parity
+    rule of the topology approved 2026-07-18, which ``_tw_plan`` ports (see
+    its docstring and ``_tw_plan_p``'s for the full rule). No CT: the design
+    has none.
 
     OPENING_P/OPENING_N semantics (ticket 02c, family/replica v4 口径): the
     two P-side (P1/P2) or N-side (N1/N2) port stubs' own tangential

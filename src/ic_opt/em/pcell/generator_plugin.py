@@ -1,13 +1,11 @@
 """Product-generator plugin wrapping the clean-port inductors.
 
-Loaded by the product registry via geometry.yaml's `plugin_module` (contract-
-explicit plugin mechanism, Stage 2 spec 2026-07-09). This file and the ported
-module it wraps ship inside the installed package under
-``ic_opt.em.pcell/devices/clean_port/`` (M11 R2: the device library ships
-in the release; see this directory's README.md for the provenance/licensing
-note). Contracts may still reference this file by absolute path, or via the
-``plugin_module: builtin:clean_port`` shorthand resolved by
-``geometry/registry.py``.
+Loaded by the registry (``registry.py``) like any plugin: a spec's device names
+it with ``plugin: builtin:clean_port`` (the default, resolved to this file by
+``registry.resolve_plugin_module_path``) or by this file's absolute path. This
+file and the ported module it wraps (``pcell_inductor_port_clean.py``) ship
+inside the installed package, in ``ic_opt/em/pcell/``; see this directory's
+README.md for the provenance/licensing note.
 """
 from __future__ import annotations
 
@@ -106,7 +104,7 @@ def _forbid_m1_metal(value: str, profile_id) -> str:
     (add_ground_fixture(), independent of any device parameter) -- a
     product winding/crossunder placed on the same layer would share one
     merged GDS region with that fixture, which the per-layer DRC audit
-    (em_candidate_preparation.py) cannot then reliably separate from
+    (``drc_audit.py``) cannot then reliably separate from
     genuine product geometry. Forbidding M1 here removes the ambiguity at
     its source instead of trying to filter it out after the fact."""
     if _metal_position(value, profile_id) == 1:
@@ -121,7 +119,7 @@ def _forbid_m1_and_m2_metal(value: str, profile_id) -> str:
     """Like ``_forbid_m1_metal``, but ALSO rejects M2: this generator draws
     its crossunder/crossover one stack level below this field's own metal
     (see _EXPECTED_RECIPES's _xfm_ms_recipe/_xfm_balun_recipe in
-    geometry/drc_audit.py), so an M2 winding would put that implicit,
+    drc_audit.py), so an M2 winding would put that implicit,
     unconfigurable crossunder on M1 just the same."""
     index = _metal_position(value, profile_id)
     if index in (1, 2):
@@ -139,7 +137,7 @@ def _forbid_m1_through_m3_metal(value: str, profile_id) -> str:
     """Like ``_forbid_m1_and_m2_metal``, but ALSO rejects M3: xfm_il draws
     its crossunder leg2 TWO stack levels below this field's own metal
     (ticket 02d's dual-layer legs -- see ``_xfm_il_recipe`` in
-    geometry/drc_audit.py), so an M3 metal would put that implicit
+    drc_audit.py), so an M3 metal would put that implicit
     leg2 on M1 just the same as M1/M2 would directly."""
     index = _metal_position(value, profile_id)
     if index in (1, 2, 3):
@@ -664,7 +662,7 @@ class CleanPortXfmTwConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     spacing_um: float = Field(gt=0)
     # NR (ring count): deliberately not called "turns" like the other xfm
     # configs' turn-count fields -- each winding's own turn count is the
-    # fraction ring_count/2 (spec.md), so reusing "turns" here would
+    # fraction ring_count/2, so reusing "turns" here would
     # misrepresent it.
     ring_count: int
     # ticket 02c semantics (mirrors xfm_tw's own pcell docstring): the two
@@ -818,7 +816,7 @@ def _auto_stub_widths(config) -> dict[str, float]:
     two-winding devices the P1/N1/CTP leads carry the primary/single width
     and P2/N2/CTS the secondary/multi width. xfm_tw and xfm_il both draw
     every port (taps included) at the SAME width_um (P and S share the
-    winding's own W, spec.md for each), same rule as ind_sym's single
+    winding's own W), same rule as ind_sym's single
     winding."""
     if isinstance(config, (CleanPortIndSymConfig, CleanPortXfmTwConfig,
                            CleanPortXfmIlConfig)):
@@ -912,8 +910,8 @@ def audit_via_landing(gds_path: Path, process_profile: str) -> dict:
 
 
 def audit_port_lattice(gds_path: Path, ports: list[dict], process_profile: str) -> dict:
-    """Independent post-write port audit (port contract 2026-09-21,
-    spec.md's "加一层独立复核"). Re-parses the just-written GDS -- an
+    """Independent post-write port audit (port contract 2026-09-21: one more
+    check, independent of the build). Re-parses the just-written GDS -- an
     independent source from the in-memory ``Cell`` -- and, for every port
     the manifest names, asserts closed:
 
@@ -1258,7 +1256,7 @@ class CleanPortXfmTwGenerator(_CleanPortGenerator):
             process=p.process_rule_context(config.process_profile),
         )
         # every ring boundary crossing draws a dive leg with vias() at both
-        # endpoints (spec.md: NR-1 dive legs per winding, NR>=3 so always
+        # endpoints (NR-1 dive legs per winding, NR>=3 so always
         # >=2 total) -- xfm_tw is unconditionally via-ful, unlike
         # xfm_bs/xfm_balun where vias depend on an optional CT/nested mode.
         return _write_geometry_outputs(

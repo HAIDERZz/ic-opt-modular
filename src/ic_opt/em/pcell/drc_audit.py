@@ -1,17 +1,14 @@
-"""Rule-profile-driven DRC audit core (migrated from M12's
-``experiments/device_db_sweep_n28/ap_drc_audit.py`` so the real optimizer
-path can use it too -- ``src`` must never import from ``experiments``).
+"""Rule-profile-driven DRC audit core (it began as a sweep-side audit script and
+moved into the package so the optimizer's own path uses the same checks).
 
 Every layer number and rule value comes from the process rule profile
 (``ic_opt.em.pcell.rule_adapter``); nothing here hardcodes a
 layer number or a rule value, so the same checks apply to any conductor/via
 the loaded profile happens to carry, not just AP.
 
-Two things this module does NOT do (kept in the experiments-side CLI/sweep
-wrapper, `experiments/device_db_sweep_n28/ap_drc_audit.py`, since neither is
-needed by the live optimizer path): building a GDS from scratch for a
-representative sweep point (``audit_stratum_point``), and CLI argument
-parsing.
+Two things this module does NOT do, since neither is needed on the optimizer's
+path: building a GDS from scratch for a representative sweep point, and CLI
+argument parsing.
 """
 from __future__ import annotations
 

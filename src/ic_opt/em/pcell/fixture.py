@@ -61,8 +61,8 @@ def _body_bbox_um(
     2026-09-21).
 
     A lead is identified by its registered ``lead_zone_nm``: subtracted,
-    per same-layer polygon, from that polygon's own region (spec.md's
-    "用zone做区域布尔减法" -- not "does the port's point fall inside some
+    per same-layer polygon, from that polygon's own region (a region
+    boolean with the zone -- not "does the port's point fall inside some
     polygon's bbox", which a coordinate a few nm off its own lead could
     silently miss, or which over-matches a bigger fused polygon that only
     partly belongs to the lead -- xfm_tw's ring-0 arc, whose own zone now

@@ -71,8 +71,8 @@ from ic_opt.em.pcell.stack import builds_on_profile_stack
 # each turn's crossunder bridge split across TWO further layers (SL_ME-1,
 # SL_ME-2).
 #
-# Topology (ticket 02d, v4 final -- user-confirmed 2026-07-18,
-# proposal_final.png): P is ``ind_sym`` completely unmodified -- native
+# Topology (ticket 02d, v4 final -- user-confirmed 2026-07-18): P is
+# ``ind_sym`` completely unmodified -- native
 # port-right + alternating left/right bridge zigzag (the same, long-tested
 # topology every standalone multi-turn ind_sym already uses). S is the exact
 # same construction (``_ind_ring_turns``, the ring/bridge kernel factored out
@@ -1036,7 +1036,7 @@ def xfm_il(
 ) -> Cell:
     """Same-layer interleaved transformer: P and S alternate radial bands on
     one metal plane SL_ME (ring pitch ``2*(W+S)``, shared W/S -- unequal
-    winding widths are out of scope, see the ticket spec) with each turn's
+    winding widths are out of scope) with each turn's
     crossunder split across SL_ME-1 (leg1) and SL_ME-2 (leg2). Counting
     radial bands from one at the outside, P occupies 1/3/5/... (zero-based
     lattice indices are even; outer radius ``OD/2 - k*2*(W+S)``) and S
