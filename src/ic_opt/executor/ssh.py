@@ -14,6 +14,15 @@ locally), and all three platforms have them. Everything past ``ssh`` runs on
 the Linux host under its ``/bin/sh`` or ``csh``; remote paths are POSIX strings
 (``PurePosixPath``), never a local ``Path``, and remote output is decoded as
 UTF-8 whatever the controller's locale.
+
+A timeout ends the remote command too, not only the local client. A command
+run with a timeout starts on the host as the leader of a session of its own
+(``setsid``) after writing its process-group id into its working directory (the
+scratch root without one), and deletes that record when it ends. When the
+timeout passes, the local ``ssh`` is killed with its process group
+(``process_group``), then one more ``ssh HOST`` sends the remote group SIGTERM,
+SIGKILL if it is still there after a grace, and the ``CommandTimeout`` says how
+that went. Killing the client alone leaves the remote job running.
 """
 
 from __future__ import annotations
@@ -26,6 +35,7 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
+from ic_opt.executor import process_group
 from ic_opt.executor.base import (
     CommandResult,
     CommandTimeout,
@@ -36,10 +46,40 @@ from ic_opt.executor.base import (
 )
 
 Execute = Callable[..., subprocess.CompletedProcess]
+TERM_GRACE_S = 3                  # seconds a timed-out remote group has between SIGTERM and SIGKILL
 
 
-def _default_execute(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(argv, check=False, **kwargs)
+def _default_execute(argv: list[str], *, input: str | bytes | None = None, timeout: float | None = None,
+                     encoding: str | None = None, errors: str | None = None, capture_output: bool = True) -> subprocess.CompletedProcess:
+    """The OpenSSH client on the controller, in a process group of its own: a deadline ends the client and anything it
+    started (a ProxyCommand). Output is always captured; standard input is ``input`` or nothing, never the terminal."""
+    return process_group.run(argv, timeout=timeout, input=input, encoding=encoding, errors=errors)
+
+
+def in_own_session(program: str, record: str, *, make_dir: bool = False) -> str:
+    """The remote ``sh`` script that runs ``program`` (a shell command line) as the leader of a session of its own, once
+    the leader has written its process-group id to ``record``; it waits for the command, deletes the record and exits
+    with the command's status. ``setsid`` comes with every Linux (util-linux); a host without it runs the command as
+    before, and a timeout can then end that process only. ``make_dir`` creates the record's directory first."""
+    q = shlex.quote
+    leader = f"{{ echo $$ > {q(record)}; }} 2>/dev/null; exec {program}"
+    prepare = f"mkdir -p {q(str(PurePosixPath(record).parent))} 2>/dev/null; " if make_dir else ""
+    return (f"{prepare}s=; command -v setsid >/dev/null 2>&1 && s=setsid; "
+            f"$s /bin/sh -c {q(leader)}; status=$?; rm -f {q(record)}; exit $status")
+
+
+def end_group_script(record: str) -> str:
+    """The remote ``sh`` script for after a timeout: read the process-group id ``in_own_session`` recorded, delete the
+    record, send the group SIGTERM and, if it is still there TERM_GRACE_S seconds on, SIGKILL. It prints one line."""
+    return (f"pgid=$(cat {shlex.quote(record)} 2>/dev/null); rm -f {shlex.quote(record)}; "
+            'if [ "$pgid" -gt 1 ] 2>/dev/null; then '
+            'if kill -TERM -- "-$pgid" 2>/dev/null; then n=0; '
+            f'while kill -0 -- "-$pgid" 2>/dev/null && [ $n -lt {TERM_GRACE_S} ]; do sleep 1; n=$((n+1)); done; '
+            'if kill -KILL -- "-$pgid" 2>/dev/null; then echo "process group $pgid killed (SIGTERM, then SIGKILL)"; '
+            'else echo "process group $pgid ended on SIGTERM"; fi; '
+            'elif kill -TERM -- "$pgid" 2>/dev/null; then echo "process $pgid sent SIGTERM (no setsid there: its children may remain)"; '
+            'else echo "process group $pgid had already ended"; fi; '
+            'else echo "no process group recorded (the command may not have started)"; fi')
 
 
 class SshExecutor:
@@ -48,7 +88,7 @@ class SshExecutor:
         profile: str,
         scratch_root: str,
         *,
-        execute: Execute = _default_execute,
+        execute: Execute | None = None,
         transfer_timeout_s: int = 1800,
     ) -> None:
         if not profile.strip() or profile.startswith("-"):
@@ -57,7 +97,9 @@ class SshExecutor:
         self.host = profile
         self._scratch_root = PurePosixPath(scratch_root)       # may start with "~": resolved on the remote, once
         self._scratch_lock = threading.Lock()
-        self._execute = execute
+        self._execute = _default_execute if execute is None else execute
+        if execute is None:
+            process_group.forward_signals()      # Ctrl-C still reaches the ssh clients, which run in groups of their own
         self.transfer_timeout_s = transfer_timeout_s
 
     # -- commands ----------------------------------------------------------
@@ -70,9 +112,24 @@ class SshExecutor:
         timeout_s: int | None = None,
         cshrc: str | None = None,
     ) -> CommandResult:
-        program = shell_program(command, cwd=cwd, cshrc=cshrc)
-        argv = self._ssh_argv("exec " + " ".join(shlex.quote(p) for p in program))
-        return self._run_argv(argv, timeout_s=timeout_s, label=command)
+        program = " ".join(shlex.quote(p) for p in shell_program(command, cwd=cwd, cshrc=cshrc))
+        if timeout_s is None:                    # nothing will cut it short, so nothing has to find it again
+            return self._run_argv(self._ssh_argv("exec " + program), timeout_s=None, label=command)
+        record = str(PurePosixPath(cwd or self.scratch_root) / f".ic-opt-pgid-{uuid.uuid4().hex[:12]}")
+        script = in_own_session(program, record, make_dir=cwd is None)
+        try:
+            return self._run_argv(self._ssh_argv("exec /bin/sh -c " + shlex.quote(script)), timeout_s=timeout_s, label=command)
+        except CommandTimeout as exc:
+            raise CommandTimeout(f"{exc}; {self._end_group(record)}") from exc
+
+    def _end_group(self, record: str) -> str:
+        """After a timeout, the local client already killed: one ssh that ends the remote command's process group
+        (``end_group_script``), best-effort. What happened, for the timeout's message."""
+        try:
+            done = self._sh(end_group_script(record), timeout_s=self.transfer_timeout_s, label=f"end the group recorded in {record}")
+        except ExecutorError as exc:
+            return f"its process group on {self.host} was not ended: {exc}"
+        return f"on {self.host}: " + (done.stdout.strip() or done.stderr.strip() or f"the cleanup exited {done.returncode}")
 
     def _run_argv(
         self, argv: list[str], *, timeout_s: int | None, label: str, input_text: str | None = None
@@ -99,10 +156,11 @@ class SshExecutor:
     def _ssh_argv(self, remote_shell_command: str) -> list[str]:
         return ["ssh", "-o", "BatchMode=yes", self.profile, remote_shell_command]
 
-    def _sh(self, command: str, *, timeout_s: int | None = None, input_text: str | None = None) -> CommandResult:
-        """Run a plain POSIX-sh command on the remote (used for transfers and probes)."""
+    def _sh(self, command: str, *, timeout_s: int | None = None, input_text: str | None = None,
+            label: str | None = None) -> CommandResult:
+        """Run a plain POSIX-sh command on the remote (used for transfers and probes); ``label`` names it in errors."""
         argv = self._ssh_argv(f"exec /bin/sh -c {shlex.quote(command)}")
-        return self._run_argv(argv, timeout_s=timeout_s, label=command, input_text=input_text)
+        return self._run_argv(argv, timeout_s=timeout_s, label=label or command, input_text=input_text)
 
     # -- probes and directories ---------------------------------------------
 

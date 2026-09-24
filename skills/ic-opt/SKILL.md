@@ -68,7 +68,7 @@ A new process needs `<profile>/rule.yaml` (authoring guide `skills/author-proces
 
 ## Remote hosts
 
-`--ssh-profile P` (an OpenSSH alias or `user@host`) runs every simulation on that host, within its `P` entry of `~/.ic-opt/site.yaml`; the spec's paths are remote paths, netlists are fetched through SSH, results come back to `.icopt/`. Nothing on the controller reads remote paths directly (see `docs/adr/0001-remote-filesystem-boundary.md`).
+`--ssh-profile P` (an OpenSSH alias or `user@host`) runs every simulation on that host, within its `P` entry of `~/.ic-opt/site.yaml`; the spec's paths are remote paths, netlists are fetched through SSH, results come back to `.icopt/`. Nothing on the controller reads remote paths directly (see `docs/adr/0001-remote-filesystem-boundary.md`). A command that times out is ended with its whole process group, on the host too (it runs under `setsid`; the timeout's message says how the cleanup went), so no stray Spectre / EMX keeps the host's cores.
 
 ## 0.1 command line
 

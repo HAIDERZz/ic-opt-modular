@@ -3,6 +3,10 @@
 This machine is then both the controller and the simulation host. Commands run under ``/bin/sh`` or ``csh``
 (``shell_program``), so running them needs Linux or macOS; a Windows controller simulates on a Linux host through
 ``SshExecutor`` (``--ssh-profile``). ``put``, ``get``, ``exists`` and ``scratch`` are file operations and work anywhere.
+
+Each command runs in a process group of its own (``process_group``): when its timeout passes, the whole group is
+killed -- the shell and the Spectre, OCEAN or EMX it started, with their children -- before ``CommandTimeout`` is raised,
+so no job outlives its deadline to hold cores the next one was sized to have.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from ic_opt.executor import process_group
 from ic_opt.executor.base import CommandResult, CommandTimeout, ExecutorError, shell_program
 
 _WINDOWS = os.name == "nt"                                           # no /bin/sh, no csh
@@ -23,6 +28,7 @@ class LocalExecutor:
 
     def __init__(self, scratch_root: Path) -> None:
         self.scratch_root = Path(scratch_root)
+        process_group.forward_signals()          # Ctrl-C still reaches the commands, which run in groups of their own
 
     def run(
         self,
@@ -38,9 +44,9 @@ class LocalExecutor:
         argv = shell_program(command, cwd=cwd, cshrc=cshrc)
         started = time.monotonic()
         try:
-            done = subprocess.run(argv, encoding="utf-8", errors="replace", capture_output=True, timeout=timeout_s, check=False)
+            done = process_group.run(argv, timeout=timeout_s, encoding="utf-8", errors="replace")
         except subprocess.TimeoutExpired as exc:
-            raise CommandTimeout(f"timed out after {timeout_s}s: {command}") from exc
+            raise CommandTimeout(f"timed out after {timeout_s}s: {command} (its process group was killed)") from exc
         return CommandResult(done.returncode, done.stdout, done.stderr, argv, time.monotonic() - started)
 
     def put(self, local: Path, remote: str) -> None:

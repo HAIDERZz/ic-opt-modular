@@ -49,6 +49,13 @@ needs Linux or macOS. The device library (`lib.*`, `lib_design`) runs on all
 three; it fits models in spawned worker processes, so a script that calls it
 keeps its top-level work under `if __name__ == "__main__":`.
 
+Every command runs in a process group of its own, so a timeout ends the whole
+job and not only its shell: locally the group is killed; on an SSH host the
+command runs under `setsid` and, once the local `ssh` is killed, one more `ssh`
+sends its group SIGTERM (SIGKILL after a few seconds) and the timeout's message
+says how that went. Ctrl-C and a terminal hangup are passed on to the running
+commands, as when they shared ic-opt's process group.
+
 ## Use
 
 ```bash
