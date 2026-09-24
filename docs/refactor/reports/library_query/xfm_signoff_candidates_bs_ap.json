@@ -1,0 +1,1651 @@
+{
+ "stratum": "xfm_bs_ap",
+ "source": "docs/refactor/reports/library_query/region_40g_xfm_bs_ap.json",
+ "candidates": [
+  {
+   "params": {
+    "primary_outer_diameter_um": 90.0,
+    "secondary_outer_diameter_um": 98.0,
+    "primary_width_um": 5.0,
+    "secondary_width_um": 9.0,
+    "center_spacing_um": 12.0
+   },
+   "distance_to_nearest_row": 0.27661502122000453,
+   "level": "mean",
+   "predicted": {
+    "Lp@40": {
+     "status": "predicted",
+     "value": 1.5519328423829434e-10,
+     "lo": 1.2892461052017415e-10,
+     "hi": 1.8681425815825285e-10,
+     "k": 2.0,
+     "k_scale": 1.0665147415753875,
+     "rel_sigma": 0.08693903092509225,
+     "unit": "H",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0292",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.5176963679917877e-10,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0296",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.3517108120643495e-10,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0408",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 96.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.7738233288789661e-10,
+       "scaled_distance": 0.2766
+      }
+     ]
+    },
+    "Ls@40": {
+     "status": "predicted",
+     "value": 1.5525191374153347e-10,
+     "lo": 1.3116955338488377e-10,
+     "hi": 1.8375572759391769e-10,
+     "k": 2.0,
+     "k_scale": 1.0276910241685693,
+     "rel_sigma": 0.08200823819954928,
+     "unit": "H",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0292",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.535824925982024e-10,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0296",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.4937854924426405e-10,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0408",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 96.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.613206025955081e-10,
+       "scaled_distance": 0.2766
+      }
+     ]
+    },
+    "Qp@40": {
+     "status": "predicted",
+     "value": 10.336129305543169,
+     "lo": 8.781354730883608,
+     "hi": 12.166183042938998,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.08150738203082475,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0292",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 8.525011075137577,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0296",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 9.672851154224432,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0408",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 96.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 9.741283537937388,
+       "scaled_distance": 0.2766
+      }
+     ]
+    },
+    "Qs@40": {
+     "status": "predicted",
+     "value": 12.808090122737207,
+     "lo": 10.684627140960153,
+     "hi": 15.353570174037596,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.09063550975336239,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0292",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.65767368957115,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0296",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.093582543984242,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0408",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 96.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 12.328436995821091,
+       "scaled_distance": 0.2766
+      }
+     ]
+    },
+    "SRF": {
+     "status": "predicted",
+     "value": 132102913953.87895,
+     "lo": 104588351886.27448,
+     "hi": 166855864542.9437,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.11677454159593217,
+     "unit": "Hz",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0292",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 135976536856.83162,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0296",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 137988262067.64587,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0408",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 96.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 93890364549.4328,
+       "scaled_distance": 0.2766
+      }
+     ]
+    },
+    "k@40": {
+     "status": "predicted",
+     "value": 0.5148803803687986,
+     "lo": 0.3821787709236246,
+     "hi": 0.6936591623025999,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.14902305835503352,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0292",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.5505328830900764,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0296",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.5385372622794745,
+       "scaled_distance": 0.2766
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0408",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 96.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.690349057596273,
+       "scaled_distance": 0.2766
+      }
+     ]
+    }
+   },
+   "build": {
+    "built": true,
+    "ports": [
+     "N1",
+     "N2",
+     "P1",
+     "P2"
+    ],
+    "gds_sha256": "ff3823db2796029f6abf4287ce72eb0753a8b45f11e7ae52068a96c561e8f3e1"
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 114.0,
+    "secondary_outer_diameter_um": 96.0,
+    "primary_width_um": 9.0,
+    "secondary_width_um": 9.0,
+    "center_spacing_um": 8.0
+   },
+   "distance_to_nearest_row": 0.25394764378528917,
+   "level": "mean",
+   "predicted": {
+    "Lp@40": {
+     "status": "predicted",
+     "value": 1.6884931494752024e-10,
+     "lo": 1.3845927560306898e-10,
+     "hi": 2.0590957907347994e-10,
+     "k": 2.0,
+     "k_scale": 1.0665147415753875,
+     "rel_sigma": 0.09302752156139191,
+     "unit": "H",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0442",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 1.491269210081612e-10,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0434",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 1.6267801631319958e-10,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0588",
+       "params": {
+        "primary_outer_diameter_um": 120.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.7735677049507228e-10,
+       "scaled_distance": 0.2549
+      }
+     ]
+    },
+    "Ls@40": {
+     "status": "predicted",
+     "value": 1.589762416764833e-10,
+     "lo": 1.3252679776879972e-10,
+     "hi": 1.907044148283922e-10,
+     "k": 2.0,
+     "k_scale": 1.0276910241685693,
+     "rel_sigma": 0.08853336804005485,
+     "unit": "H",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0442",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 1.5727801757382011e-10,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0434",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 1.7349308570896524e-10,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0588",
+       "params": {
+        "primary_outer_diameter_um": 120.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.644563530591503e-10,
+       "scaled_distance": 0.2549
+      }
+     ]
+    },
+    "Qp@40": {
+     "status": "predicted",
+     "value": 11.586543685104791,
+     "lo": 9.645412902194364,
+     "hi": 13.918325314647738,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.09168097109951752,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0442",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 12.027763734150746,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0434",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 12.142756446511694,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0588",
+       "params": {
+        "primary_outer_diameter_um": 120.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.220636032161156,
+       "scaled_distance": 0.2549
+      }
+     ]
+    },
+    "Qs@40": {
+     "status": "predicted",
+     "value": 12.260753029841574,
+     "lo": 10.043541188421434,
+     "hi": 14.967436488643147,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.09973679510932244,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0442",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 11.78903661877149,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0434",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 12.019112148718794,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0588",
+       "params": {
+        "primary_outer_diameter_um": 120.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.95706248693045,
+       "scaled_distance": 0.2549
+      }
+     ]
+    },
+    "SRF": {
+     "status": "predicted",
+     "value": 126656753888.81596,
+     "lo": 101732905885.9272,
+     "hi": 157686769742.32773,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.1095649465648061,
+     "unit": "Hz",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0442",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 105619435369.04884,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0434",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 113451616401.15483,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0588",
+       "params": {
+        "primary_outer_diameter_um": 120.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 111369608673.21692,
+       "scaled_distance": 0.2549
+      }
+     ]
+    },
+    "k@40": {
+     "status": "predicted",
+     "value": 0.5048205049687323,
+     "lo": 0.3815421375299091,
+     "hi": 0.6679307923542487,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.13999081676080496,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0442",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 0.5870162980338551,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0434",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 0.5512660103267025,
+       "scaled_distance": 0.2539
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0588",
+       "params": {
+        "primary_outer_diameter_um": 120.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 10.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.5775347171598638,
+       "scaled_distance": 0.2549
+      }
+     ]
+    }
+   },
+   "build": {
+    "built": true,
+    "ports": [
+     "N1",
+     "N2",
+     "P1",
+     "P2"
+    ],
+    "gds_sha256": "f973d0c0dd3e611eab8b3cd1aed62371c9c0375224c48d8dad7b709e0de9774e"
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 86.0,
+    "secondary_outer_diameter_um": 98.0,
+    "primary_width_um": 5.0,
+    "secondary_width_um": 7.0,
+    "center_spacing_um": 8.0
+   },
+   "distance_to_nearest_row": 0.253379271349747,
+   "level": "mean",
+   "predicted": {
+    "Lp@40": {
+     "status": "predicted",
+     "value": 1.512827542576327e-10,
+     "lo": 1.298607063319973e-10,
+     "hi": 1.7623862045894424e-10,
+     "k": 2.0,
+     "k_scale": 1.0665147415753875,
+     "rel_sigma": 0.07158281003663616,
+     "unit": "H",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 1.7927776762642989e-10,
+       "scaled_distance": 0.2534
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0291",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.528692947147574e-10,
+       "scaled_distance": 0.2543
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0295",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.3600016700684698e-10,
+       "scaled_distance": 0.2543
+      }
+     ]
+    },
+    "Ls@40": {
+     "status": "predicted",
+     "value": 1.6971587451039271e-10,
+     "lo": 1.4784213550753564e-10,
+     "hi": 1.94825906443696e-10,
+     "k": 2.0,
+     "k_scale": 1.0276910241685693,
+     "rel_sigma": 0.06713139292929779,
+     "unit": "H",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 1.9361242996522984e-10,
+       "scaled_distance": 0.2534
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0291",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.678337909695657e-10,
+       "scaled_distance": 0.2543
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0295",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.642182621736094e-10,
+       "scaled_distance": 0.2543
+      }
+     ]
+    },
+    "Qp@40": {
+     "status": "predicted",
+     "value": 10.787158357939619,
+     "lo": 9.442449106660249,
+     "hi": 12.323369088342757,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.06657049997745314,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 11.997311161227627,
+       "scaled_distance": 0.2534
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0291",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 9.048079044208398,
+       "scaled_distance": 0.2543
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0295",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 10.23279016882176,
+       "scaled_distance": 0.2543
+      }
+     ]
+    },
+    "Qs@40": {
+     "status": "predicted",
+     "value": 12.193417649794222,
+     "lo": 10.481069190276363,
+     "hi": 14.185521656535586,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.07566278678637267,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 11.940104052081667,
+       "scaled_distance": 0.2534
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0291",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.999554690899497,
+       "scaled_distance": 0.2543
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0295",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.569742816926059,
+       "scaled_distance": 0.2543
+      }
+     ]
+    },
+    "SRF": {
+     "status": "predicted",
+     "value": 144434603644.42438,
+     "lo": 117893054380.26585,
+     "hi": 176951516266.8816,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.10152447023894207,
+     "unit": "Hz",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 120605282555.73964,
+       "scaled_distance": 0.2534
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0291",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 153494198538.83295,
+       "scaled_distance": 0.2543
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0295",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 155111977034.00543,
+       "scaled_distance": 0.2543
+      }
+     ]
+    },
+    "k@40": {
+     "status": "predicted",
+     "value": 0.5051132065714053,
+     "lo": 0.384091788444605,
+     "hi": 0.6642666131604744,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.13695050957468347,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 0.5138414574222653,
+       "scaled_distance": 0.2534
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0291",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 4.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.48086608130117875,
+       "scaled_distance": 0.2543
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0295",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 8.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.47065052168185156,
+       "scaled_distance": 0.2543
+      }
+     ]
+    }
+   },
+   "build": {
+    "built": true,
+    "ports": [
+     "N1",
+     "N2",
+     "P1",
+     "P2"
+    ],
+    "gds_sha256": "2f5f2a1513cb1c5491123b3de02a7452d4f464f1548b6d4e8e03caf55ac94788"
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 96.0,
+    "secondary_outer_diameter_um": 86.0,
+    "primary_width_um": 7.0,
+    "secondary_width_um": 5.0,
+    "center_spacing_um": 8.0
+   },
+   "distance_to_nearest_row": 0.2515136372925244,
+   "level": "mean",
+   "predicted": {
+    "Lp@40": {
+     "status": "predicted",
+     "value": 1.5264740355935164e-10,
+     "lo": 1.2859971086360515e-10,
+     "hi": 1.811919300357153e-10,
+     "k": 2.0,
+     "k_scale": 1.0665147415753875,
+     "rel_sigma": 0.08036745287316416,
+     "unit": "H",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 1.7927776762642989e-10,
+       "scaled_distance": 0.2515
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0377",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 4.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.651959204623934e-10,
+       "scaled_distance": 0.2531
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0378",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.6063597982177534e-10,
+       "scaled_distance": 0.2531
+      }
+     ]
+    },
+    "Ls@40": {
+     "status": "predicted",
+     "value": 1.630290520598669e-10,
+     "lo": 1.3920559273287615e-10,
+     "hi": 1.909296264162364e-10,
+     "k": 2.0,
+     "k_scale": 1.0276910241685693,
+     "rel_sigma": 0.0768599170052387,
+     "unit": "H",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 1.9361242996522984e-10,
+       "scaled_distance": 0.2515
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0377",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 4.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.8709528851345223e-10,
+       "scaled_distance": 0.2531
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0378",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.6584029897574158e-10,
+       "scaled_distance": 0.2531
+      }
+     ]
+    },
+    "Qp@40": {
+     "status": "predicted",
+     "value": 11.74256579228233,
+     "lo": 10.012890705864448,
+     "hi": 13.771033304629963,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.07967350419024774,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 11.997311161227627,
+       "scaled_distance": 0.2515
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0377",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 4.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.778119811768875,
+       "scaled_distance": 0.2531
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0378",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.144668581889526,
+       "scaled_distance": 0.2531
+      }
+     ]
+    },
+    "Qs@40": {
+     "status": "predicted",
+     "value": 10.607142730332008,
+     "lo": 8.889330533586483,
+     "hi": 12.656912292386249,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.08833793777019132,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 11.940104052081667,
+       "scaled_distance": 0.2515
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0377",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 4.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 9.007545424417392,
+       "scaled_distance": 0.2531
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0378",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 10.390418885662772,
+       "scaled_distance": 0.2531
+      }
+     ]
+    },
+    "SRF": {
+     "status": "predicted",
+     "value": 142079366179.2567,
+     "lo": 118394684815.90163,
+     "hi": 170502132974.03073,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.0911809942680713,
+     "unit": "Hz",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 120605282555.73964,
+       "scaled_distance": 0.2515
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0377",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 4.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 108560848577.70825,
+       "scaled_distance": 0.2531
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0378",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 109882012717.22572,
+       "scaled_distance": 0.2531
+      }
+     ]
+    },
+    "k@40": {
+     "status": "predicted",
+     "value": 0.523958184773663,
+     "lo": 0.4086018950414604,
+     "hi": 0.6718818065282233,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.12433528041239188,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0426",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 6.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 12.5
+       },
+       "value": 0.5138414574222653,
+       "scaled_distance": 0.2515
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0377",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 4.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.6505552722066263,
+       "scaled_distance": 0.2531
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0378",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 88.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 6.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.6426927638110781,
+       "scaled_distance": 0.2531
+      }
+     ]
+    }
+   },
+   "build": {
+    "built": true,
+    "ports": [
+     "N1",
+     "N2",
+     "P1",
+     "P2"
+    ],
+    "gds_sha256": "2dc55b08ac47714da6173053421bb72f301e4b4bd56b317658c562a5ff23fb9c"
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 90.0,
+    "secondary_outer_diameter_um": 102.0,
+    "primary_width_um": 7.0,
+    "secondary_width_um": 9.0,
+    "center_spacing_um": 6.0
+   },
+   "distance_to_nearest_row": 0.2513613666242491,
+   "level": "mean",
+   "predicted": {
+    "Lp@40": {
+     "status": "predicted",
+     "value": 1.5349514702130216e-10,
+     "lo": 1.3577536780134232e-10,
+     "hi": 1.7352750016898305e-10,
+     "k": 2.0,
+     "k_scale": 1.0665147415753875,
+     "rel_sigma": 0.05750841194625986,
+     "unit": "H",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0300",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.2214728099583666e-10,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0437",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.8452844762413468e-10,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0456",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 104.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.908401618137897e-10,
+       "scaled_distance": 0.2514
+      }
+     ]
+    },
+    "Ls@40": {
+     "status": "predicted",
+     "value": 1.6839671616343789e-10,
+     "lo": 1.5091241710337464e-10,
+     "hi": 1.879066981957136e-10,
+     "k": 2.0,
+     "k_scale": 1.0276910241685693,
+     "rel_sigma": 0.05333458669345267,
+     "unit": "H",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0300",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.4516440966128005e-10,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0437",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.8131344339769393e-10,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0456",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 104.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 1.9202033809404452e-10,
+       "scaled_distance": 0.2514
+      }
+     ]
+    },
+    "Qp@40": {
+     "status": "predicted",
+     "value": 10.94643996923891,
+     "lo": 9.861429159209374,
+     "hi": 12.150829871170306,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.05219159158597884,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0300",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 10.314839933649774,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0437",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 10.786944132827148,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0456",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 104.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.07756931525599,
+       "scaled_distance": 0.2514
+      }
+     ]
+    },
+    "Qs@40": {
+     "status": "predicted",
+     "value": 11.528827154452056,
+     "lo": 10.234999833455214,
+     "hi": 12.986209840744174,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.05951870252806869,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0300",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 10.59326522394337,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0437",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.695864299693033,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0456",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 104.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 11.51325172636689,
+       "scaled_distance": 0.2514
+      }
+     ]
+    },
+    "SRF": {
+     "status": "predicted",
+     "value": 115979482234.9352,
+     "lo": 95121403566.46576,
+     "hi": 141411289101.56,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.09912964507900786,
+     "unit": "Hz",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0300",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 140376230226.92563,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0437",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 78741335600.54607,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0456",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 104.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 76722521241.25058,
+       "scaled_distance": 0.2514
+      }
+     ]
+    },
+    "k@40": {
+     "status": "predicted",
+     "value": 0.589935180775756,
+     "lo": 0.4852684213951833,
+     "hi": 0.7171773438632789,
+     "k": 2.0,
+     "k_scale": 1.0,
+     "rel_sigma": 0.09765524187708327,
+     "unit": "1",
+     "nearest": [
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0300",
+       "params": {
+        "primary_outer_diameter_um": 80.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.5239358832579716,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0437",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 100.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.7515674453595476,
+       "scaled_distance": 0.2514
+      },
+      {
+       "part": "xfm_bs_ap",
+       "obs_id": "obs_0456",
+       "params": {
+        "primary_outer_diameter_um": 100.0,
+        "secondary_outer_diameter_um": 104.0,
+        "primary_width_um": 8.0,
+        "secondary_width_um": 10.0,
+        "center_spacing_um": 0.0
+       },
+       "value": 0.7608129764326618,
+       "scaled_distance": 0.2514
+      }
+     ]
+    }
+   },
+   "build": {
+    "built": true,
+    "ports": [
+     "N1",
+     "N2",
+     "P1",
+     "P2"
+    ],
+    "gds_sha256": "5a0874a775e981eec8b5228b43113b0a12a3d339b672b2c66687b4ae5f2b2430"
+   }
+  }
+ ]
+}
