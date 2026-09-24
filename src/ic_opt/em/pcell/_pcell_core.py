@@ -141,7 +141,8 @@ def _nm(x_um: float) -> int:
 
 
 # ---------------------------------------------------------------------------
-# layer mapping (tsmcN28_1p10m.proc: M1=31..M10=40, via1=51..via9=59)
+# reference-mode layer mapping, the reference process's: M1=31..M10=40, AP=41,
+# the via above M<m> = 50+m; in process mode every profile carries its own
 # ---------------------------------------------------------------------------
 
 
@@ -183,7 +184,7 @@ def via_layer(bottom_met: int) -> tuple[int, int]:
 
 
 # ---------------------------------------------------------------------------
-# N28 process-backed mode: layer/datatype and via rules come from the
+# Process-backed mode: layer/datatype and via rules come from the
 # process rule profile (ic_opt/em/pcell/profiles or IC_OPT_PROFILE_DIRS)
 # through the existing GeometryRuleAdapter. Reference mode (process=None)
 # keeps the reconstructed PCell/ind_ref behavior and is NOT N28 DRC proof.
@@ -205,7 +206,7 @@ class ProcessRuleContext:
 
 
 def process_rule_context(profile_id: str) -> ProcessRuleContext:
-    """Load a process rule profile (e.g. "n28_1p10m") for process mode."""
+    """Load a process rule profile (e.g. the packaged "demo_6m") for process mode."""
     from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
 
     return ProcessRuleContext(

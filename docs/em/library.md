@@ -21,8 +21,11 @@ The blocks take the library root as their directory: `ic-opt call lib.<name>
 ## 1. Build the parts (real EMX)
 
 A part is an em_only project: one device (`generator`, `profile`, `fixed`
-fields), `variables` that become the library's dims, an `em:` section, and a
-budget large enough for the sweep. Sweep it with a few-line recipe:
+fields), `variables` that become the library's dims, an `em:` section, the
+resource fields every spec states (`simulator.parallel_jobs` /
+`threads_per_run` / `timeout_s`, `em.threads` / `memory_gb` / `timeout_s`:
+yours, with no defaults), and a budget large enough for the sweep. Sweep it
+with a few-line recipe:
 
 ```python
 # sweep.py -- space-filling points on this part
@@ -79,8 +82,8 @@ The low-frequency scalars (`Lp_lf`, `Ls_lf`, `k_lf`) average the samples
 up to 3 GHz; a stratum's `low_freq_max_hz` sets another top, in Hz or
 `relative` for min(3 GHz, SRF / 10), over the parts' own
 `topology.low_freq_max_hz`, and a row swept entirely above that top keeps
-its other columns: only these (and `Lp_res` when nothing lies below
-SRF / 5) stay empty.
+its other columns: only these (and `Lp_res` / `Ls_res` when nothing lies
+below SRF / 5) stay empty.
 
 For a transformer, query `SRF` rather than `SRF_p` / `SRF_s`: the secondary's
 resonance reflects into the primary's impedance as a sharp dip, and whether
@@ -148,24 +151,31 @@ meet the targets (exact, already simulated) apart from `candidates`
 (interpolated geometries snapped to `steps`). A candidate must pass the domain
 guard, meet every target with its whole calibrated interval, and build: the
 real generator draws it and the product DRC audit checks it. An anchored
-target such as `Lp@28` adds `SRF >= 1.25 x 28 GHz` unless SRF is already
-constrained.
+target such as `Lp@28` adds `SRF ≥ srf_margin × f0` (the manifest's
+`srf_margin`, 1.25 in the example manifest, which keeps the default: here
+SRF ≥ 35 GHz) unless SRF is already constrained.
 
 ## 5b. Region questions: `lib.region`
 
 ```bash
-ic-opt call lib.region <library root> stratum=xfm_bs_top \
-    'targets={"Lp@40": {"min": 150e-12, "max": 170e-12}, "Qp@40": {"min": 10}}' \
-    group_by=primary_width_um,secondary_width_um trend=k@40:center_spacing_um
+ic-opt call lib.region <library root> stratum=<stratum> \
+    'targets={"<quantity>@<f>": {"min": <a>, "max": <b>}, "<quantity>@<f>": {"min": <c>}}' \
+    group_by=<dim>,<dim> trend=<quantity>:<dim>
 ```
 
-(`xfm_bs_top` stands for a single-turn transformer stratum with 40 GHz among
-its anchors.) `lib.suggest` names a few good geometries; `lib.region`
-describes all of them, the region of the stratum whose predictions meet the
-targets, so that a sweep can be bounded by it. Targets are written as for
-`lib.suggest`. A point is `robust` when its whole calibrated interval lies
-inside every window (the `lib.suggest` test: centre a sweep there) and
-`mean` when its predicted value does (the optimistic envelope). A coarse
+Every value in angle brackets is a placeholder. For example, an inductance
+window and a minimum Q at one frequency: `Lp@<f>` between `<a>` and `<b>`
+henries, `Qp@<f>` at least `<c>`. An anchored column exists only at its
+curve's anchors, so `<f>` must be one of the `anchors_ghz` the stratum
+declares in `library.yaml` (the manifest of section 2 answers `Lp@10`,
+`Lp@28`, `Qp@10` and `Qp@28`).
+
+`lib.suggest` names a few good geometries; `lib.region` describes all of
+them, the region of the stratum whose predictions meet the targets, so that
+a sweep can be bounded by it. Targets are written as for `lib.suggest`. A
+point is `robust` when its whole calibrated interval lies inside every
+window (the `lib.suggest` test: centre a sweep there) and `mean` when its
+predicted value does (the optimistic envelope). A coarse
 pass over the library rows and a Sobol pool, with the stated windows 10%
 wider, brackets the region. Inside the bracket the grid lies on multiples
 of the manifest `steps`, about 20 values per dim (turns by level), every
@@ -225,19 +235,21 @@ of every cache and every `predict` stage changes with it.
 The library computes on the machine running ic-opt, within that machine's
 entry `hosts.local` of `~/.ic-opt/site.yaml` (`max_threads`,
 `max_memory_gb`) and nothing else: no core count is read from the machine
-and no number is built in. The entry is read when a model has to be fitted
-or a batch predicted. Datasets, coverage, measured rows and models already
-cached in `.cache/` need no entry; without one, a fit is refused with the
-entry to add. `lib_design` fits on the same entry
-(`run.site.host("local")`), never on the simulation host's, and fits every
-model it needs once, before the search starts.
+and no machine size is built in. The entry is read when a model has to be
+fitted or a batch predicted. Datasets, coverage, measured rows and models
+already cached in `.cache/` need no entry; without one, a fit is refused with
+the entry to add. `lib_design` and `lib_signoff` fit on the same entry
+(`run.site.host("local")`), never on the simulation host's; `lib_design` fits
+every model it needs once, before the search starts.
 
 - Fitting: one worker process per uncached model, at most
-  `max_threads // 2` (a fit keeps about two cores busy whatever BLAS gets)
-  and at most `max_memory_gb` over one fit's peak, 3 x rows² x (dims + 2)
-  x 8 bytes for the largest model; 61 on Windows. Each worker gets
-  `max_threads // workers` BLAS threads. With one worker the fits run in
-  the calling process, one after another.
+  `max_threads // 2` (a fit keeps about two cores busy whatever BLAS gets),
+  at most `max_memory_gb` over one fit's peak (3 x rows² x (dims + 2) x 8
+  bytes for the largest model, rounded up to 0.1 GB) and at most 61 on
+  Windows. A single fit whose peak exceeds `max_memory_gb` is refused, not
+  run alone: raise the entry or fit fewer rows. Each worker gets
+  `max_threads // workers` BLAS threads, at least one. With one worker the
+  fits run in the calling process, one after another.
 - Prediction (`lib.suggest`, `lib.region`): up to `max_threads` BLAS
   threads, in chunks that keep each GP call within 10% of `max_memory_gb`
   (a call over m rows holds about 7 x m x training rows x 8 bytes).
@@ -247,8 +259,9 @@ model it needs once, before the search starts.
 
 For example, a 1300-row inductor stratum over four dims with 28 columns to
 fit (0.3 GB per fit): an entry of 8 threads and 16 GB gives 4 workers of 2
-threads and chunks of about 23 600 rows; 128 threads and 256 GB give 28
-workers of 4 threads and chunks of about 377 600 rows. Each command takes
+threads and chunks of about 23 600 rows; 32 threads and 64 GB give 16
+workers of 2 threads and chunks of about 94 400 rows; from 56 threads and
+8.4 GB on, the 28 models are the bound, one worker each. Each command takes
 the whole entry. A second command on the same machine, such as a local EMX
 sweep, needs its own share: lower `hosts.local` or set `OMP_NUM_THREADS`
 for one of them.

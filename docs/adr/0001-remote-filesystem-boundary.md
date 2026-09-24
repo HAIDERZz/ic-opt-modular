@@ -15,7 +15,9 @@ failed on the first genuinely isolated host.
 
 In 0.2 the project (`spec.yaml`, `.icopt/`) is owned by the controller; the
 remote host owns only the Maestro exports (`maestro_point_root`), the Cadence
-installation and cshrc, and the simulation scratch (`~/.ic-opt/scratch/<project>/`).
+installation and cshrc, and the simulation scratch (`<scratch_root>/<project>/`:
+that host's `scratch_root` in the controller's `~/.ic-opt/site.yaml`, a path on
+the host, `~/.ic-opt/scratch` by default).
 
 **Platforms.** The simulation host is Linux. The controller may be Linux, macOS
 or Windows 10+ (the personal PC is usually Windows or macOS), so nothing on its

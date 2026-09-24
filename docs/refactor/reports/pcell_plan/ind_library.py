@@ -8,6 +8,7 @@ One run store per project under LIBRARY_ROOT:
 EMX: --full-wave, thickness 0.25 / edge 0.2 / splits 5 (pilot 2026-09-23), --3d = winding + crossunder metal,
 8 threads and 32 GB per job, 8 jobs at a time (64 threads peak), simultaneous frequencies 0.
 """
+# Adapted 2026-09-25 (T15.7) to the T15 API: limits from ~/.ic-opt/site.yaml hosts.local, threads_per_run stated.
 from __future__ import annotations
 
 import argparse
@@ -16,11 +17,11 @@ import shutil
 import time
 from pathlib import Path
 
+from ic_opt import site
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.em.pcell import GEOMETRY_VERSION
 from ic_opt.eval.engine import workers_for
 from ic_opt.executor.local import LocalExecutor
-from ic_opt.site import Site
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.stages.em_chain import em_only_pipeline
@@ -57,7 +58,7 @@ def spec_for(project: str, metal: str, three_d: list[str], stop_hz: float) -> Sp
                     {"name": "Q_peak", "unit": "ratio", "device": "ind", "quantity": "Qp_peak"}],
         "constraints": [],
         "objective": {"direction": "maximize", "expression": "Q_peak"},
-        "simulator": {"parallel_jobs": JOBS, "timeout_s": TIMEOUT_S},
+        "simulator": {"parallel_jobs": JOBS, "threads_per_run": 10, "timeout_s": TIMEOUT_S},      # 10: 0.2.0's default, as these runs had it
         "budget": {"max_simulations": 2000},
     })
 
@@ -83,12 +84,12 @@ def main() -> None:
     ap.add_argument("--only", nargs="*", default=None)
     args = ap.parse_args()
     grid = json.loads(args.grid.read_text())
-    site = Site(max_threads=JOBS * THREADS, max_memory_gb=JOBS * MEMORY_GB)
+    limits = site.load().host("local")
     todo = [p for p in projects(grid) if not args.only or p[0] in args.only]
     total = sum(len(pts) for _, _, pts in todo)
     print(f"geometry generation {GEOMETRY_VERSION}; {total} points in {len(todo)} projects under {args.root}")
     for name, spec, pts in todo:
-        w = workers_for(spec, em_only_pipeline(spec), JOBS, site)
+        w = workers_for(spec, em_only_pipeline(spec), JOBS, limits)
         print(f"  {name:<18} {len(pts):4d} points  full-wave 0-{spec.em.frequencies.stop_hz / 1e9:.0f} GHz step 1 GHz  3d={spec.em.three_d_metals}  "
               f"{w} jobs x {THREADS} threads = {w * THREADS} threads peak, EMX memory caps {w * MEMORY_GB:.0f} GB")
     if args.plan:
@@ -101,7 +102,7 @@ def main() -> None:
         t0 = time.time()
         print(f"[{time.strftime('%m-%d %H:%M:%S')}] {name}: {len(pts)} points", flush=True)
         obs = evaluate(spec, pts, LocalExecutor(store.root / "sims"), store, pipeline=em_only_pipeline(spec),
-                       cshrc=CSHRC, parallel_jobs=JOBS, site=site)
+                       cshrc=CSHRC, parallel_jobs=JOBS, limits=limits)
         bad = [o for o in obs if o.status != "ok"]
         print(f"[{time.strftime('%m-%d %H:%M:%S')}] {name}: done in {time.time() - t0:.0f} s, {len(obs) - len(bad)} ok, {len(bad)} not ok", flush=True)
         for o in bad:

@@ -587,14 +587,13 @@ class CleanPortXfmTwConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     """Type 3 same-layer overlapping-inductor ("twisted") transformer: NR
     concentric octagon rings shared half-and-half by P (CCW) and S (P's
     x-mirror, CW), each NR/2 turns, connected across the NR-1 ring
-    boundaries by explicit dive/same-layer legs (spec.md,
-    .scratch/xfm-tw-twisted/). Both windings share ONE metal plane
-    (``metal``) and ONE width (width_um) -- there is no separate primary/
-    secondary width the way xfm_bs/xfm_ms/xfm_balun have, since P and S
-    occupy the SAME rings (spec.md: "两绕组共享每个环...线宽必然同 W").
+    boundaries by explicit dive/same-layer legs. Both windings share ONE
+    metal plane (``metal``) and ONE width (width_um) -- there is no
+    separate primary / secondary width the way xfm_bs/xfm_ms/xfm_balun
+    have, since P and S occupy the SAME rings and so share their width.
 
-    No CT: xfm_tw has no tap winding at all (spec.md "非目标"), so unlike
-    every other xfm config in this module there is no ct_primary_metal/
+    No CT: xfm_tw has no tap winding at all (a non-goal of the family), so
+    unlike every other xfm config in this module there is no ct_primary_metal/
     ct_secondary_metal field to opt into -- any attempt to pass one (or any
     other CT-shaped field) is just an unknown field, rejected by the base
     class's extra="forbid" the same as any other typo.
@@ -650,11 +649,10 @@ class CleanPortXfmTwConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 class CleanPortXfmIlConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     """Type 3 same-layer interleaved ("Rabjohn/Frlan") transformer: P and S
     alternate radial bands on ONE metal plane (``metal``), each turn's
-    crossunder split across metal-1 (leg1) and metal-2 (leg2)
-    (spec.md, .scratch/xfm-il-interleaved/, ticket 02d). Both windings
+    crossunder split across metal-1 (leg1) and metal-2 (leg2). Both windings
     share ONE width (width_um) and ONE spacing (spacing_um) -- unequal
-    winding widths are out of scope (spec.md "Out of Scope"), the same
-    rationale as xfm_tw's shared width_um; the CT tap leads also reuse
+    winding widths are not supported, the same rationale as xfm_tw's
+    shared width_um; the CT tap leads also reuse
     that same shared W (the pcell's ``_il_ct_tap_exact`` draws every lead,
     tap included, at W).
 

@@ -60,6 +60,7 @@ ic-opt blocks | ic-opt describe sim.evaluate       # what a recipe can compose
 ic-opt call points.sobol PROJECT n=12 seed=3       # one block by name
 ic-opt doctor PROJECT                              # tools, license, exports, site envelope, budget
 ic-opt migrate OLD_PROJECT NEW_PROJECT             # 0.1 opt_requirement.md -> spec.yaml (+ MIGRATION.md)
+ic-opt migrate-store PROJECT --dry-run             # a store written by an earlier version: see Results
 ```
 
 `--plan` is the only approval point: it prints everything a reviewer wants to
@@ -111,26 +112,30 @@ neither → Spectre. The recipes do not change.
 
 ### EM devices
 
+The example uses `demo_6m`, the fictitious six-metal profile that ships with the package (metals `M1`..`M6`,
+`M6` the thick top one; `M1` carries the ground fixture). Your process has its own profile, found through
+`IC_OPT_PROFILE_DIRS`, and its own metal names. Values marked placeholder are yours to fill in.
+
 ```yaml
 devices:
   - id: xfmr_in
     generator: clean_port_xfm_bs          # six clean-port families ship in ic_opt.em.pcell (plugin: builtin:clean_port)
-    profile: n28_1p10m                    # process rule profile: IC_OPT_PROFILE_DIRS=/path/to/profiles (demo_6m ships)
+    profile: demo_6m                      # process rule profile; yours: IC_OPT_PROFILE_DIRS=/path/to/profiles
     ports: [P1, N1, P2, N2]
-    fixed: {primary_outer_diameter_um: 90, primary_metal: "10", secondary_metal: "9", ground_fixture: {...}}
+    fixed: {primary_outer_diameter_um: 90, primary_metal: "6", secondary_metal: "5", ground_fixture: {...}}
     variables: {primary_width_um: xfmr_in.wp}    # default: spec variables named <id>.<field>
 em:
-  process_file: /site/tsmcN28.proc      # on the simulation host
+  process_file: /path/to/your.proc      # placeholder: your EMX process file, a path on the simulation host
   frequencies: {start_hz: 0, stop_hz: 200e9, step_hz: 1e9}
   accuracy: standard
-  three_d_metals: [M10, AP]
-  threads: 4                            # required (your value): --parallel
-  memory_gb: 32                         # required (your value): --max-memory; threads and memory bound the worker count
-  timeout_s: 3600                       # required (your value): one EMX run's limit
+  three_d_metals: [M6, M5]              # the windings' metals, by their EMX names
+  threads: 4                            # required, placeholder: --parallel of one EMX run
+  memory_gb: 32                         # required, placeholder: --max-memory; threads and memory bound the worker count
+  timeout_s: 3600                       # required, placeholder: one EMX run's limit
 bindings:
   - {testbench: lo_xfmr_tb, instance: NPORT0, device: xfmr_in, terminals: [P1, N1, P2, N2]}   # sNp columns follow this order
 metrics:
-  - {name: gain, unit: dB, testbench: lo_xfmr_tb, expression: 'value(db20(getData("gain" ?result "sp")) 4e10)'}
+  - {name: gain, unit: dB, testbench: lo_xfmr_tb, expression: 'value(db20(getData("gain" ?result "sp")) <f0_hz>)'}   # placeholder: your frequency
   - {name: Qp, unit: ratio, device: xfmr_in, quantity: Qp_peak}        # Lp/Qp/Ls/Qs/k at frequency_hz, or L*_lf L*_res Q*_peak SRF_* k_lf
 ```
 
@@ -151,12 +156,19 @@ ic-opt call em.validate_profile PROFILE_DIR proc=SITE.proc generate=true    # br
 Building, querying and growing a library: [docs/em/library.md](docs/em/library.md); writing a
 process profile: [skills/author-process-rule/SKILL.md](skills/author-process-rule/SKILL.md).
 
+A Python script of your own that fits library models (through `Library.models`, `lib.region`,
+`lib.suggest`, `lib_design` or `lib_signoff`) must be a file that keeps its top-level work under
+`if __name__ == "__main__":`. The fits run in spawned worker processes, and each worker imports the
+script again: without the guard it re-runs the script, and code piped in on standard input
+(`python - <<EOF`) cannot be imported at all. `ic-opt call` and `ic-opt run`, recipe files included,
+need nothing.
+
 Every EMX run is cached under `.icopt/cache/emx:<device>/` (`emx-<device>` on
 Windows) by GDS bytes, port order, physics settings and the process file's
 content hash. `ic-opt migrate` converts em-opt's `em_opt_requirement.md`
 (Geometry Generator / EM Devices / EMX Settings / Nport Bindings). The private
-process profiles never enter the repository. Install with
-`uv pip install -e ".[em]"` (klayout).
+process profiles never enter the repository. The `em` extra (klayout) is part
+of the install above.
 
 ### Site envelope
 
@@ -164,16 +176,17 @@ process profiles never enter the repository. Install with
 host: `local` (the machine running ic-opt, also the simulation host without
 `--ssh-profile`) and one per `--ssh-profile` name. `max_threads` and
 `max_memory_gb` are required and have no defaults: a missing file, host entry or
-field refuses to start, and so does a job bigger than its host.
+field refuses to start, and so does a job bigger than its host. Every number
+below is a placeholder: fill in what each of your hosts may give ic-opt.
 
 ```yaml
 hosts:
-  local:
-    max_threads: 16                    # placeholder: write this machine's numbers
-    max_memory_gb: 32                  # placeholder
+  local:                               # the machine running ic-opt
+    max_threads: 16                    # placeholder: fill in this host's
+    max_memory_gb: 32                  # placeholder: fill in this host's
   lab:                                 # --ssh-profile lab
-    max_threads: 128                   # placeholder
-    max_memory_gb: 256                 # placeholder
+    max_threads: 128                   # placeholder: fill in this host's
+    max_memory_gb: 256                 # placeholder: fill in this host's
     cshrc: /path/to/cadence_env.csh    # optional, like scratch_root, license_probe, transfer_timeout_s
 ```
 
@@ -196,6 +209,38 @@ status, provenance), `steps.jsonl`, `decks/`, `sims/<obs>/<tb>/<corner>/`,
 `reports/report.md` + `report.html` (best observed, top feasible, constraint
 margins, parameter importance, corners, space-compression advisory; four figures).
 
+### Stores written by an earlier version
+
+An observation's identity holds no machine facts any more: the spec fingerprint
+leaves out how the problem is run (resources, timeouts, retention, the license
+check, the budget), and the EMX stage (the EMX cache key, the EM pipeline
+fingerprint, a library part's generation) is identified by the process file's
+content instead of its path. Until a store written before this change is
+restamped, its Spectre observations are reused only while `spec.yaml` stays
+exactly as it was, and its EM observations not at all: the points would be
+simulated again (the EMX cache keys changed too), and a library part's new rows
+would form a generation of their own. Restamp every such store once, each
+project and each library part, before its next run and before editing its spec:
+
+```bash
+ic-opt migrate-store PROJECT --dry-run      # what would change; "nothing to change" when the store is current
+ic-opt migrate-store PROJECT                # add --ssh-profile P when the EMX process file lives on that host
+```
+
+It copies `.icopt/observations.jsonl` to `observations.jsonl.bak-<UTC time>`,
+rewrites the two fingerprints of every row stamped by the store's spec as it
+stands, moves EMX cache entries to their new keys and repoints a `library.yaml`
+above the store that pins a restamped generation (backed up the same way). It
+assumes the process file has not changed since the rows were simulated; a
+second run changes nothing. Resource fields are required now, so a `spec.yaml`
+that left one to its old default is refused. The old stamps hash that default:
+write it in first (`simulator.threads_per_run: 10`; `em.threads: 4`,
+`em.memory_gb: 32`, `em.timeout_s: 3600`), restamp, and only then set your own
+values. Rows it cannot match stay as they are and are reported: rows of another
+spec, and every row the 0.2.0 release wrote (its spec schema had no EM fields
+yet, so none of its stamps matches a spec today). Neither kind is reused, and
+both still count against `budget.max_simulations`.
+
 ## 0.1 projects
 
 `ic-opt PROJECT --real|--doctor|--continue N [--ssh-profile P] [--cadence-cshrc F]`
@@ -205,9 +250,10 @@ place and runs the matching recipe, printing the 0.2 command it used.
 ## Development
 
 ```bash
-.venv/bin/python -m pytest -q          # 70 tests, ~12 s, no Cadence needed (fake Spectre host)
-# replay parity against recordings: IC_OPT_RECORDED_RUNS (Spectre), IC_OPT_EM_RECORDED_RUNS, IC_OPT_EM_SWEEPS,
-# IC_OPT_EM_OPT_REPO, IC_OPT_EM_DB (EM), plus IC_OPT_PROFILE_DIRS for the private process profiles
+.venv/bin/python -m pytest -q          # no Cadence needed (fake Spectre host); tests that need private data skip
+# replay parity against recordings: IC_OPT_RECORDED_RUNS (Spectre), IC_OPT_EM_RECORDED_RUNS, IC_OPT_EM_RECORDED_ARGV,
+# IC_OPT_EM_SWEEPS, IC_OPT_EM_DB (EM), IC_OPT_LIBRARY (a real library), plus IC_OPT_PROFILE_DIRS for the private
+# process profiles
 .venv/bin/ruff check src tests
 ```
 

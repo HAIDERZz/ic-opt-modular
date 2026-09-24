@@ -1,9 +1,10 @@
 """Region questions: which part of a stratum's geometry space lands inside a set of target windows?
 
 ``lib.suggest`` answers "the best few geometries for these targets". A sweep plan needs the other half of the
-answer: the extent of everything that meets them. A pre-simulation with ideal elements yields windows (Lp and Ls
-150-170 pH, both Q > 10, k 0.5-0.7 at 40 GHz); the real devices inside those windows form a region of the geometry
-space, and its bounds are the sweep ranges. ``region`` grids that region and describes it:
+answer: the extent of everything that meets them. A pre-simulation with ideal elements yields windows (say, an
+inductance window per winding, a minimum Q and a coupling window, all at one of the stratum's anchor frequencies);
+the real devices inside those windows form a region of the geometry space, and its bounds are the sweep ranges.
+``region`` grids that region and describes it:
 
 1. targets as in ``suggest`` (``{min}``, ``{max}``, ``{min, max}``, ``{target, tol}``); anchored quantities add
    ``SRF >= srf_margin x f0``;

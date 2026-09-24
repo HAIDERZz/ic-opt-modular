@@ -10,6 +10,7 @@ grid): the class sets the per-job EMX memory cap and how many jobs run at once, 
 Threads per job are 8, except the memory-limited ms classes B-E, which take more threads per job so the run keeps
 using ~128 threads (user approval 2026-09-23); 16 at most, the thread count the memory model was fitted at.
 """
+# Adapted 2026-09-25 (T15.7) to the T15 API: limits from ~/.ic-opt/site.yaml hosts.local instead of a Site per class.
 from __future__ import annotations
 
 import argparse
@@ -19,11 +20,11 @@ import sys
 import time
 from pathlib import Path
 
+from ic_opt import site
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.em.pcell import GEOMETRY_VERSION
 from ic_opt.eval.engine import workers_for
 from ic_opt.executor.local import LocalExecutor
-from ic_opt.site import Site
 from ic_opt.space import Point
 from ic_opt.stages.em_chain import em_only_pipeline
 from ic_opt.store import RunStore
@@ -75,6 +76,7 @@ def main() -> None:
     ap.add_argument("--only", nargs="*", default=None)
     args = ap.parse_args()
     grid = json.loads(args.grid.read_text())
+    limits = site.load().host("local")
     todo = [p for p in projects(grid) if not args.only or p[0] in args.only]
     print(f"geometry generation {GEOMETRY_VERSION}; {sum(len(pts) for _, runs in todo for _, _, pts in runs)} points in {len(todo)} projects under {args.root}")
     for name, runs in todo:
@@ -82,7 +84,7 @@ def main() -> None:
             cap, jobs, threads = spec.em.memory_gb, spec.simulator.parallel_jobs, spec.em.threads
             if jobs * threads > MAX_THREADS or jobs * cap > MAX_MEMORY_GB:
                 raise SystemExit(f"{name}/{cls}: {jobs} jobs x {threads} threads / {cap:g} GB exceeds the ceiling")
-            w = workers_for(spec, em_only_pipeline(spec), jobs, Site(max_threads=jobs * threads, max_memory_gb=jobs * cap))
+            w = workers_for(spec, em_only_pipeline(spec), jobs, limits)
             print(f"  {name:<11} class {cls} {len(pts):5d} points  full-wave 0-{spec.em.frequencies.stop_hz / 1e9:.0f} GHz  3d={spec.em.three_d_metals}  "
                   f"{w} jobs x {threads} threads = {w * threads} threads, EMX memory caps {w} x {cap:g} = {w * cap:.0f} GB")
     if args.plan:
@@ -94,11 +96,10 @@ def main() -> None:
         (store.root / "spec.json").write_text(runs[0][1].model_dump_json(indent=1))
         for cls, spec, pts in runs:
             cap, jobs, threads = spec.em.memory_gb, spec.simulator.parallel_jobs, spec.em.threads
-            site = Site(max_threads=jobs * threads, max_memory_gb=jobs * cap)
             t0 = time.time()
             print(f"[{time.strftime('%m-%d %H:%M:%S')}] {name} class {cls}: {len(pts)} points, {jobs} jobs x {threads} threads x {cap:g} GB", flush=True)
             obs = evaluate(spec, pts, LocalExecutor(store.root / "sims"), store, pipeline=em_only_pipeline(spec),
-                           cshrc=CSHRC, parallel_jobs=jobs, site=site)
+                           cshrc=CSHRC, parallel_jobs=jobs, limits=limits)
             bad = [o for o in obs if o.status != "ok"]
             print(f"[{time.strftime('%m-%d %H:%M:%S')}] {name} class {cls}: done in {time.time() - t0:.0f} s, {len(obs) - len(bad)} ok, {len(bad)} not ok", flush=True)
             for o in bad:

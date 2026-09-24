@@ -77,11 +77,11 @@ objective:
   direction: minimize
   expression: -(0.1*min(max(0,min(1,10*(ln(BW/28e9)/ln(10))/0.6)),max(0,min(1,(MAX_GAIN-5.5)/2)),max(0,min(1,(9-NF_3G)/0.7)),max(0,min(1,(IIP3-1)/2)),max(0,min(1,(P1dB+6)/1.5)))+0.8*(0.1*max(0,min(1,10*(ln(BW/28e9)/ln(10))/0.6))+0.10*max(0,min(1,(MAX_GAIN-5.5)/2))+0.30*max(0,min(1,(9-NF_3G)/0.7))+0.20*max(0,min(1,(IIP3-1)/2))+0.30*max(0,min(1,(P1dB+6)/1.5))))
 
-simulator:
+simulator:                # the resource fields are required and have no defaults
   preset: ax
-  threads_per_run: 10
-  parallel_jobs: 10
-  timeout_s: 7200
+  threads_per_run: 10     # placeholder: Spectre threads per simulation on your host
+  parallel_jobs: 10       # placeholder: simulations at once, within the host's ~/.ic-opt/site.yaml entry
+  timeout_s: 7200         # placeholder: one simulation's time limit
 
 budget:
   max_simulations: 300

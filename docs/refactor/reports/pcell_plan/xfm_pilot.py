@@ -1,10 +1,11 @@
 """Transformer library pilot: mesh convergence of L / k / Q / SRF and full-wave cost on four geometries, through the real em_only pipeline.
 
 Usage: xfm_pilot.py OUT_DIR [--only ARM ...]
-Strictly one EMX at a time (site envelope = one job), fine arms before extra-fine, so a surprise in cost
+Strictly one EMX at a time (parallel_jobs=1), fine arms before extra-fine, so a surprise in cost
 shows up before the expensive runs. Each arm is its own spec + run store under OUT_DIR/<arm>/.
 spec_for() is shared with the production driver (xfm_library.py).
 """
+# Adapted 2026-09-25 (T15.7) to the T15 API: limits from ~/.ic-opt/site.yaml hosts.local, threads_per_run stated.
 from __future__ import annotations
 
 import argparse
@@ -12,9 +13,9 @@ import json
 import time
 from pathlib import Path
 
+from ic_opt import site
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.executor.local import LocalExecutor
-from ic_opt.site import Site
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.stages.em_chain import em_only_pipeline
@@ -60,7 +61,7 @@ def spec_for(project: str, family: str, primary_metal: str, secondary_metal: str
                     {"name": "Qs_peak", "unit": "ratio", "device": "xfm", "quantity": "Qs_peak"}],
         "constraints": [],
         "objective": {"direction": "maximize", "expression": "k_lf"},
-        "simulator": {"parallel_jobs": jobs, "timeout_s": timeout_s},
+        "simulator": {"parallel_jobs": jobs, "threads_per_run": 10, "timeout_s": timeout_s},      # 10: 0.2.0's default, as these runs had it
         "budget": {"max_simulations": 10000},
     })
 
@@ -89,7 +90,7 @@ def main() -> None:
     ap.add_argument("out", type=Path)
     ap.add_argument("--only", nargs="*", default=None)
     args = ap.parse_args()
-    site = Site(max_threads=THREADS, max_memory_gb=MEMORY_GB)      # exactly one EMX job fits: strictly serial
+    limits = site.load().host("local")                             # parallel_jobs=1 below keeps it strictly serial
     for arm, fam, mesh in ARMS:
         if args.only and arm not in args.only:
             continue
@@ -99,7 +100,7 @@ def main() -> None:
         t0 = time.time()
         print(f"[{time.strftime('%H:%M:%S')}] {arm}: mesh={MESHES[mesh]} 0-{STOP_GHZ[fam]} GHz 3d={THREE_D[fam]} x {len(geoms)} points", flush=True)
         obs = evaluate(spec, [Point(point(GEOMETRIES[g][1]), "user") for g in geoms], LocalExecutor(store.root / "sims"), store,
-                       pipeline=em_only_pipeline(spec), cshrc=CSHRC, parallel_jobs=1, site=site)
+                       pipeline=em_only_pipeline(spec), cshrc=CSHRC, parallel_jobs=1, limits=limits)
         (store.root / "pilot_arm.json").write_text(json.dumps({"arm": arm, "family": fam, "mesh": mesh, "mesh_values": MESHES[mesh],
                                                                 "geometries": geoms, "wall_s": time.time() - t0}, indent=1))
         for g, o in zip(geoms, obs):

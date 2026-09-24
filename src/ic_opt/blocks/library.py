@@ -31,7 +31,7 @@ def _trend(value: str | None) -> tuple[str, str] | None:
         return None
     quantity, sep, dim = value.partition(":") if isinstance(value, str) else ("", "", "")
     if not (sep and quantity.strip() and dim.strip()):
-        raise ValueError(f"trend {value!r}: expected <quantity>:<dim>, e.g. k@40:center_spacing_um")
+        raise ValueError(f"trend {value!r}: expected <quantity>:<dim>, e.g. Qp_peak:width_um or <curve>@<f>:<dim>")
     return quantity.strip(), dim.strip()
 
 
@@ -73,8 +73,9 @@ def suggest(library: _query.Library | str | Path, stratum: str, targets: dict, o
     """Designs that meet ``targets`` with margin: measured ones first (exact), then predicted candidates built and audited.
 
     ``targets`` maps quantities to ``{"min": v}``, ``{"max": v}`` or ``{"target": v, "tol": rel}`` (JSON on the command
-    line); ``objective`` is ``max:<quantity>`` or ``min:<quantity>``. Anchored targets add SRF >= 1.25 x f0 unless SRF is
-    already constrained. A candidate with sigma / mu above ``rel_sigma_max`` for any quantity is dropped.
+    line); ``objective`` is ``max:<quantity>`` or ``min:<quantity>``. Anchored targets add SRF >= srf_margin x f0
+    (library.yaml; 1.25 unless set) unless SRF is already constrained. A candidate with sigma / mu above
+    ``rel_sigma_max`` for any quantity is dropped.
     """
     from ic_opt.library import suggest as _suggest
 
@@ -92,14 +93,16 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
     Two levels: ``robust`` -- the calibrated k-sigma interval lies inside every window (``lib.suggest``'s test; centre a
     sweep there); ``mean`` -- the predicted value does (the optimistic envelope). ``targets`` maps quantities to
     ``{"min": v}``, ``{"max": v}``, a window ``{"min": a, "max": b}`` or ``{"target": v, "tol": rel}`` (JSON on the command
-    line); anchored targets add SRF >= 1.25 x f0 unless SRF is already constrained. ``objective`` (``max:<quantity>`` or
-    ``min:<quantity>``) ranks the candidates. The grid lies on multiples of the manifest steps, about ``levels_per_dim``
-    values per dim and at most ``max_points``, unless ``steps`` (JSON) sets a dim's step. ``group_by`` is a comma list of
-    dims to tabulate the region by; ``trend`` is ``<quantity>:<dim>`` (e.g. ``k@40:center_spacing_um``): that quantity
-    along that dim over the points meeting every other target. A point with sigma / mu above ``rel_sigma_max`` is not
-    confident and joins neither level. ``threads`` caps BLAS and ``workers`` the processes fitting uncached models, both
-    within site.yaml's hosts.local (above it they are refused; by default they follow from it). The answer is strict JSON,
-    every non-finite number null: ``targets[].upper`` is null except for windows.
+    line), an anchored quantity ``<curve>@<f>`` naming one of the stratum's anchors; anchored targets add
+    SRF >= srf_margin x f0 (library.yaml; 1.25 unless set) unless SRF is already constrained. ``objective``
+    (``max:<quantity>`` or ``min:<quantity>``) ranks the candidates. The grid lies on multiples of the manifest steps,
+    about ``levels_per_dim`` values per dim and at most ``max_points``, unless ``steps`` (JSON) sets a dim's step.
+    ``group_by`` is a comma list of dims to tabulate the region by; ``trend`` is ``<quantity>:<dim>`` (e.g.
+    ``Qp_peak:width_um``, or ``k@<f>:center_spacing_um`` for a transformer): that quantity along that dim over the points
+    meeting every other target. A point with sigma / mu above ``rel_sigma_max`` is not confident and joins neither
+    level. ``threads`` caps BLAS and ``workers`` the processes fitting uncached models, both within site.yaml's
+    hosts.local (above it they are refused; by default they follow from it). The answer is strict JSON, every non-finite
+    number null: ``targets[].upper`` is null except for windows.
     """
     from ic_opt.library import region as _region
 

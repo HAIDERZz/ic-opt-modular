@@ -22,16 +22,17 @@ from the failed M7 generators or earlier port prototypes.
   PCell/ind_ref **shape study only** — it is explicitly **not N28 DRC
   proof** (the N28 rule profile mandates its own VIA8/VIA9 cut, spacing and
   datatype geometry, read from the profile).
-- **N28 process-backed mode**
-  (`process=process_rule_context("n28_1p10m")`): every conductor and via
-  layer/datatype, cut size, spacing, enclosure, minimum count and maximum
-  spacing comes from
-  `process_data/profiles/n28_1p10m/rule.yaml` (repo-only, resolved via
-  `EM_IC_OPT_PROFILE_DIRS`)
+- **Process-backed mode**
+  (`process=process_rule_context(profile_id)`, e.g. the packaged
+  `"demo_6m"`): every conductor and via layer/datatype, cut size, spacing,
+  enclosure, minimum count and maximum spacing comes from the profile's
+  `rule.yaml` (the packaged `profiles/demo_6m/`, or a private profile found
+  through `IC_OPT_PROFILE_DIRS`; real-process profiles never ship)
   through the existing `GeometryRuleAdapter.plan_passive_via_array`. The
-  M8<->M9 crossover endpoints come out on the profile's own VIA8 layer with
-  the profile's cut geometry. The reference via constants are never
-  consulted in this mode.
+  crossover endpoints come out on the profile's own via layer with the
+  profile's cut geometry. The reference via constants are never consulted
+  in this mode. The N28 notes below are history: the process this port was
+  first built against.
 - **N28 center tap**: an `ind_sym(CT_ME=...)` M9->M8->M7 stack requires
   VIA7. Generator enforcement is **geometric-only** (user directive
   2026-07-19, `.scratch/n28-rules-slim/`): the deck's cited IND.R.1
@@ -89,10 +90,9 @@ is empty.
 - `<basename>.emx_ports` holds one `-p name=signal[:reference]` line per
   port (sorted by name). Without a ground fixture every line is
   `-p name=signal`; with a fixture it becomes `-p name=signal:G0n`. Both forms are
-  consumable as-is by the product
-  `em_candidate_preparation._parse_emx_port_line`. Every port `signal` and
-  `reference` is present among the cell's GDS labels (the product M2
-  `_validate_configured_ports_against_geometry` invariant).
+  read as-is by `ic_opt.em.pcell.base.read_emx_ports`, which the pcell stage
+  uses. Every port `signal` and `reference` is present among the cell's GDS
+  labels.
 - `<basename>.coordinates.json` records the labels and an `emx_ports`
   block (now carrying `reference`) alongside the polygons.
 
@@ -352,7 +352,7 @@ coplanarly. This is the only balun-family milestone with real `.il` porting:
 
 ```bash
 ./.venv/bin/python - <<'PYCODE'
-from em_ic_opt_workflow.devices.clean_port.generator_plugin import PLUGIN_GENERATORS
+from ic_opt.em.pcell.generator_plugin import PLUGIN_GENERATORS
 for name, generator in PLUGIN_GENERATORS.items():
     print(name, list(generator.config_model.model_fields))
 PYCODE
@@ -364,10 +364,10 @@ PYCODE
 `base_ind_hud_cross.il` hardcodes the octagon ring on MET 9, so with PCell
 defaults the local crossover is an **M9 same-layer mirrored diagonal over an
 M8 underpass diagonal**, with via8 arrays only at the underpass endpoints
-and never at the central crossing. The independent reference
-`/home/zzchen/Prj/Prj_For_N65/ind_ref.gds` shows the same relationship
-(M9=39 diagonals, M8=38, via8=58 arrays; zero via area on the projected
-diagonal overlap) and contains no M10.
+and never at the central crossing. The independent reference layout
+`ind_ref.gds` (not shipped) shows the same relationship (M9=39 diagonals,
+M8=38, via8=58 arrays; zero via area on the projected diagonal overlap) and
+contains no M10.
 
 ## User-directed corrections vs the .il sources (referenced on ind_ref.gds)
 
@@ -389,9 +389,9 @@ diagonal overlap) and contains no M10.
 ## Notes for consumers
 
 - Import the module via `importlib` **with a `sys.modules` registration**
-  (see the top of `tests/test_pcell_inductor_python_port_clean.py`); a bare
-  `spec.loader.exec_module` fails inside the dataclass decorators.
-- GDS layers use datatype 0. `tsmcN28_1p10m.proc` maps M7/M8 to datatype 20
-  and M9/M10 to datatype 80 (and `ind_ref.gds` uses its own datatypes), so
-  any automated layer/datatype-keyed diff against those files must remap
-  datatypes first or it will silently match nothing.
+  (see the top of `tests/ic_opt/pcell/test_pcell_inductor_python_port_clean.py`);
+  a bare `spec.loader.exec_module` fails inside the dataclass decorators.
+- Reference-mode GDS layers use datatype 0. The reference process's own EMX
+  process file gives some metals other datatypes (and `ind_ref.gds` uses its
+  own), so any automated layer/datatype-keyed diff against those files must
+  remap datatypes first or it will silently match nothing.

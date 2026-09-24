@@ -1,10 +1,11 @@
 """Inductor library pilot: mesh convergence and full-wave cost on three geometries, through the real em_only pipeline.
 
 Usage: ind_pilot.py OUT_DIR [--only NAME ...]
-Runs strictly one EMX at a time (site envelope = one job's threads), cheapest
+Runs strictly one EMX at a time (parallel_jobs=1), cheapest
 arms first, so a surprise in full-wave cost shows up before the expensive runs.
 Each arm is its own spec + run store under OUT_DIR/<arm>/; ind_pilot_report.py reads them.
 """
+# Adapted 2026-09-25 (T15.7) to the T15 API: limits from ~/.ic-opt/site.yaml hosts.local, threads_per_run stated.
 from __future__ import annotations
 
 import argparse
@@ -12,9 +13,9 @@ import json
 import time
 from pathlib import Path
 
+from ic_opt import site
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.executor.local import LocalExecutor
-from ic_opt.site import Site
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.stages.em_chain import em_only_pipeline
@@ -64,7 +65,7 @@ def spec_for(mode: str, mesh: str, three_d: list[str]) -> Spec:
                     {"name": "Q_peak", "unit": "ratio", "device": "ind", "quantity": "Qp_peak"}],
         "constraints": [],
         "objective": {"direction": "maximize", "expression": "Q_peak"},
-        "simulator": {"parallel_jobs": 1, "timeout_s": TIMEOUT_S},
+        "simulator": {"parallel_jobs": 1, "threads_per_run": 10, "timeout_s": TIMEOUT_S},      # 10: 0.2.0's default, as these runs had it
         "budget": {"max_simulations": 100},
     })
 
@@ -74,7 +75,7 @@ def main() -> None:
     ap.add_argument("out", type=Path)
     ap.add_argument("--only", nargs="*", default=None)
     args = ap.parse_args()
-    site = Site(max_threads=THREADS, max_memory_gb=MEMORY_GB)      # exactly one EMX job fits: strictly serial
+    limits = site.load().host("local")                             # parallel_jobs=1 below keeps it strictly serial
     for arm, mode, mesh, three_d, geoms in ARMS:
         if args.only and arm not in args.only:
             continue
@@ -84,7 +85,7 @@ def main() -> None:
         t0 = time.time()
         print(f"[{time.strftime('%H:%M:%S')}] {arm}: {mode} mesh={mesh} {MESHES[mesh]} 3d={three_d} x {len(points)} points", flush=True)
         obs = evaluate(spec, points, LocalExecutor(store.root / "sims"), store, pipeline=em_only_pipeline(spec),
-                       cshrc=CSHRC, parallel_jobs=1, site=site)
+                       cshrc=CSHRC, parallel_jobs=1, limits=limits)
         (store.root / "pilot_arm.json").write_text(json.dumps({"arm": arm, "mode": mode, "mesh": mesh, "mesh_values": MESHES[mesh],
                                                                 "three_d": three_d, "geometries": geoms, "wall_s": time.time() - t0}, indent=1))
         for g, o in zip(geoms, obs):

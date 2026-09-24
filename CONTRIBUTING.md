@@ -13,7 +13,8 @@ Rules of thumb:
 - Keep protective code out until a real run needs it; prefer a root-cause fix over a tolerance.
 
 ```bash
-uv venv .venv && uv pip install -e vendor/open-box -e ".[dev,report]"   # add the turbo extra with -e vendor/TuRBO, or prf, in the same command
+uv venv --python 3.11 .venv
+uv pip install -e ".[dev,em,turbo,report]" -e vendor/open-box -e vendor/TuRBO   # the README install plus dev / report, one resolver call; prf needs swig
 .venv/bin/python -m pytest -q            # fake Spectre host, no Cadence needed
 .venv/bin/ruff check src tests
 ```

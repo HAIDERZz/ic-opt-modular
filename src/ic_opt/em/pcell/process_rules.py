@@ -366,12 +366,11 @@ def _external_profile_dirs() -> list[Path]:
 
 def _profile_path(profile_id: str, extra_dirs: Sequence[Path] = ()) -> Path:
     # Generic: resolve any <id>/rule.yaml, searching ``extra_dirs`` (from a
-    # caller such as validate-profile's --profile-dir), then external
-    # directories from IC_OPT_PROFILE_DIRS (os.pathsep-separated, in
-    # order), then the packaged resources dir. NDA-derived profiles (e.g.
-    # n28_1p10m) live only under the external dirs (process_data/profiles in
-    # this repo) and are never packaged; the packaged dir stays available for
-    # future bundled generic profiles.
+    # caller such as em.validate_profile, which passes its profile directory's
+    # parent), then external directories from IC_OPT_PROFILE_DIRS
+    # (os.pathsep-separated, in order), then the packaged resources dir.
+    # Real-process (NDA-bound) profiles live only under the external dirs and
+    # are never packaged; the packaged dir holds the fictitious demo_6m.
     for directory in [*extra_dirs, *_external_profile_dirs()]:
         candidate = directory / profile_id / "rule.yaml"
         if candidate.is_file():

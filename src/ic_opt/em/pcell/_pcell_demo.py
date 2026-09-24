@@ -366,10 +366,10 @@ KNOWN_DEVIATIONS = [
     "ind_ref.gds additionally shows a layer-pair-dependent pitch (via7 "
     "0.7 um, via8 0.9 um); lacking the vias source, this port applies the "
     "single 0.7 um rule to every pair instead of guessing per-pair tables.",
-    "Reference-mode GDS datatypes are always 0; tsmcN28_1p10m.proc lists "
-    "EMX-oriented datatypes (e.g. l39t80) that are irrelevant for the "
-    "structural comparison reference mode serves. Process mode is exempt: "
-    "it draws on the rule-profile datatypes (e.g. N28 M9 (39,80)).",
+    "Reference-mode GDS datatypes are always 0; the reference process's EMX "
+    "process file gives some layers EMX-oriented datatypes that are irrelevant "
+    "for the structural comparison reference mode serves. Process mode is "
+    "exempt: it draws on the rule-profile datatypes.",
     "RFVLSI/DMEXCL dummy layers, labels, base_oct_fill, base_em_gr and the "
     "rfvlsiEMVport/rfvlsiEMBoundary/rfvlsiEMDie EM helpers are not ported; "
     "dummy parameters are accepted for signature fidelity and ignored.",
@@ -442,8 +442,8 @@ KNOWN_DEVIATIONS = [
     "data in rule.yaml for documentation; the N28 domain of every "
     "CT-bearing device in this module (ind_sym, xfm_il, xfm_bs, xfm_ms, "
     "xfm_balun) widened accordingly (e.g. the M9-body ind_sym M7 CT tap "
-    "and xfm_il's SL_ME=\"9\" body now build; see the device tests and "
-    "docs/guide/07-device-inventory.md for the current matrix).",
+    "and xfm_il's SL_ME=\"9\" body now build; see the device tests for the "
+    "current matrix).",
     "Diagonal via fail-closed (M7N): base_oct_quad_vias.il places two via "
     "groups — an axis-aligned BB block (vias_nomet, faithfully reconstructed) "
     "and a diagonal VIA8 arm (vias_diagonal_nomet, a sourceless library PCell "
@@ -914,10 +914,11 @@ def _write_report(out_dir, manifest):
         "provenance": {
             "license": "MIT (original code; construction conventions follow the reference SKILL PCells)",
             "status": "in-package product implementation (ic_opt.em.pcell)",
-            "independent_gds_reference": "/home/zzchen/Prj/Prj_For_N65/ind_ref.gds",
+            "independent_gds_reference": "ind_ref.gds, an independent reference layout (not shipped)",
         },
         "layer_mapping": {
-            "metal_m": "GDS layer 30+m, datatype 0 (tsmcN28_1p10m.proc: M1=31..M10=40)",
+            "metal_m": "GDS layer 30+m, datatype 0 (the reference process's mapping: M1=31..M10=40; "
+                       "process mode takes every layer from the profile)",
             "via_m_to_m_plus_1": "GDS layer 50+m, datatype 0 (via1=51..via9=59)",
         },
         "modes": {

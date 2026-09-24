@@ -13,7 +13,8 @@ Python function     PCell source file
 ==================  =====================================================
 vias                (library PCell, no .il source in gdsgen_ref; interface
                     reconstructed from every call site and from the via
-                    geometry observed in /home/zzchen/Prj/Prj_For_N65/ind_ref.gds)
+                    geometry observed in ind_ref.gds, an independent
+                    reference layout that is not shipped)
 base_ind_diag       gdsgen_ref/pcell/inductor/base_ind_diag.il
 base_xfm_cross      gdsgen_ref/pcell/transformer/base_xfm_cross.il
 base_oct_quad       gdsgen_ref/pcell/common/base_oct_quad.il

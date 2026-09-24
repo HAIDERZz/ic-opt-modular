@@ -93,8 +93,9 @@ def main(run: Run, *, library: str, candidates: str, stratum: str | None = None,
              + ", ".join(f"{part} ({len(pts)})" for part, pts in groups.items()))
     missing = [q for q in ds.columns if lib._model_file(name, q) is None]
     if missing:
-        run.note(f"lib_signoff: fitting {len(missing)} of {name}'s {len(ds.columns)} models in parallel (first use; ~2-5 min per round)")
-    lib.models(name, ds.columns)                          # every column's model; sequential fits took ~2 min each on a 28-column stratum
+        run.note(f"lib_signoff: fitting {len(missing)} of {name}'s {len(ds.columns)} models in parallel "
+                 "(first use; minutes per round on the reference host)")
+    lib.models(name, ds.columns)                          # every column's model; a fit took ~2 min on a 28-column stratum on the reference host
     before = {p.key: query.query(lib, name, {d: float(p.params[d]) for d in ds.dims}, None, k=float(k)) for pts in groups.values() for p in pts}
     done: list[tuple[str, object]] = []
     for part, pts in groups.items():
