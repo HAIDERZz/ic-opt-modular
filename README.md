@@ -75,7 +75,11 @@ counts the observations its step already holds and stops at `budget`.
 `objective`, `simulator` (preset, retention, and the required `threads_per_run`,
 `parallel_jobs`, `timeout_s`) and `budget.max_simulations`. A spec with no metrics
 is a valid waveform-only fix-run. Resource fields have no defaults: a spec that
-leaves one out is refused with the field's name.
+leaves one out is refused with the field's name. `simulator.license_queue_timeout_s`
+is optional: how many seconds Spectre waits in its license queue, passed as
+`+lqtimeout`; left out, the flag is not passed and Spectre waits as it does by
+itself. Like `timeout_s`, it says how the problem is run, so it is not part of
+the spec's fingerprint.
 
 ### Recipes
 

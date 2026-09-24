@@ -126,7 +126,8 @@ def test_a_spec_0_2_0_could_not_state_has_no_0_2_0_fingerprint():
     base = yaml.safe_load((FIXTURE / "spec.yaml").read_text())
     later = yaml.safe_load(LATER)
     frequency = {**base["metrics"][0], "frequency_hz": 1e9}  # an OCEAN metric may carry one today
-    for fields in ({"em": later["em"]}, later, {"metrics": [frequency]}):
+    queue = {**base["simulator"], "license_queue_timeout_s": 600}  # R-17
+    for fields in ({"em": later["em"]}, later, {"metrics": [frequency]}, {"simulator": queue}):
         spec = Spec.model_validate({**base, **fields})
         assert migrate_store.v020_fingerprint(spec) is None, fields
 

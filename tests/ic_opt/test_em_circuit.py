@@ -81,6 +81,20 @@ def test_em_circuit_pipeline_binds_the_snp_and_runs_spectre(tmp_path):
     assert obs[0].children["tb/tt"].sim_dir.endswith("obs_0001/tb/tt")
 
 
+def test_the_em_circuit_spectre_takes_the_license_queue_wait_from_the_spec(tmp_path):
+    """R-17: the EM circuit's Spectre stage passes ``+lqtimeout`` as the plain chain does, only when the spec states it."""
+    spec = em_circuit_spec(tmp_path)
+    stated = Spec.model_validate({**spec.model_dump(mode="json"),
+                                  "simulator": {**spec.simulator.model_dump(mode="json"), "license_queue_timeout_s": 1200}})
+
+    def spectre_argv(s: Spec) -> list[str]:
+        return next(stage for stage in default_pipeline(s, Deck()) if stage.name == "spectre").argv()
+
+    assert "+lqtimeout" not in spectre_argv(spec)
+    argv = spectre_argv(stated)
+    assert argv[argv.index("+lqtimeout") + 1] == "1200"
+
+
 def test_binding_failures_are_child_failures(tmp_path):
     spec = em_circuit_spec(tmp_path)
     store = RunStore(tmp_path / "proj")

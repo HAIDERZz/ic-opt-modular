@@ -176,6 +176,7 @@ def test_spec_fingerprint_is_the_problem_not_the_machine():
     for how in ({"simulator": {**sim, "parallel_jobs": 4}},                        # the audit's 10 -> 4 on a smaller machine
                 {"simulator": {**sim, "threads_per_run": 2, "timeout_s": 7200, "license_check": False,
                                "keep_failed_runs": False, "keep_successful_runs": False}},
+                {"simulator": {**sim, "license_queue_timeout_s": 600}},                # R-17: the host's license queue
                 {"budget": {"max_simulations": 5000}}):
         assert golden(**how).fingerprint() == base.fingerprint(), how
         assert golden(**how)._legacy_fingerprint() != base._legacy_fingerprint()     # the old formula counted them

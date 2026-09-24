@@ -6,14 +6,15 @@ from ic_opt.deck import Deck
 from ic_opt.eval.stage import StageContext, StageFailure
 from ic_opt.space import Point
 from ic_opt.stages import spectre_pipeline
+from ic_opt.stages.spectre_chain import Spectre
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor, make_spec
+from tests.ic_opt.fakes import FakeSpectreExecutor, make_spec, minimal_spec
 
 TEMPLATE = "simulator lang=spectre\nparameters temperature=27 F={{F}} W={{W}}\ntran tran stop=10n\n"
 
 
-def run_chain(tmp_path: Path, executor, corner=None):
-    spec = make_spec()
+def run_chain(tmp_path: Path, executor, corner=None, spec=None):
+    spec = spec or make_spec()
     store = RunStore(tmp_path)
     deck = Deck(templates={("tb", corner): TEMPLATE})
     workdir = store.sim_dir("obs_0001", "tb", corner)
@@ -36,6 +37,23 @@ def test_chain_produces_child_result_from_point(tmp_path):
     assert (ctx.workdir / "netlist" / "input.scs").read_text().splitlines()[1] == "parameters temperature=27 F=24 W=0.8u"
     assert executor.commands[0].startswith("spectre -64 input.scs +escchars +preset=ax +mt=2")    # the fixture's threads_per_run
     assert (ctx.workdir / "metrics" / "probe.ocn").exists()
+
+
+def test_the_license_queue_wait_is_passed_only_when_the_spec_states_it(tmp_path):
+    """R-17: ``+lqtimeout`` is simulator.license_queue_timeout_s. Unset, the flag stays off and Spectre waits in its license
+    queue as it does by itself: no lab's wait is assumed. It is how the problem is run, not the problem (fingerprint)."""
+    unset = spectre_pipeline(make_spec(), Deck())[1].argv()
+    assert "+lqtimeout" not in unset and "900" not in unset
+    stated_spec = make_spec(simulator={**minimal_spec()["simulator"], "license_queue_timeout_s": 600})
+    stated = spectre_pipeline(stated_spec, Deck())[1].argv()
+    at = stated.index("+lqtimeout")
+    assert stated[at:at + 2] == ["+lqtimeout", "600"] and stated[:at] + stated[at + 2:] == unset
+    assert Spectre(preset="ax", threads=1, timeout_s=1, license_queue_timeout_s=0).argv()[6:8] == ["+lqtimeout", "0"]
+    assert stated_spec.fingerprint() == make_spec().fingerprint()
+
+    executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {"NF": 8.0})
+    child, _ = run_chain(tmp_path, executor, spec=stated_spec)
+    assert child.status == "ok" and " +mt=2 +lqtimeout 600 -maxw 5 " in executor.commands[0]
 
 
 def test_spectre_failure_stops_the_chain(tmp_path):

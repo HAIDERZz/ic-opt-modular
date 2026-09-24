@@ -82,6 +82,7 @@ simulator:                # the resource fields are required and have no default
   threads_per_run: 10     # placeholder: Spectre threads per simulation on your host
   parallel_jobs: 10       # placeholder: simulations at once, within the host's ~/.ic-opt/site.yaml entry
   timeout_s: 7200         # placeholder: one simulation's time limit
+  # license_queue_timeout_s: <seconds>   # optional: Spectre's +lqtimeout; left out, Spectre's own license queue wait
 
 budget:
   max_simulations: 300

@@ -70,17 +70,20 @@ class Spectre:
     name = "spectre"
     level = "child"
 
-    def __init__(self, *, preset: str, threads: int, timeout_s: int, output_format: str = "psfxl") -> None:
+    def __init__(self, *, preset: str, threads: int, timeout_s: int, output_format: str = "psfxl",
+                 license_queue_timeout_s: int | None = None) -> None:
         self.preset, self.threads, self.timeout_s, self.output_format = preset, threads, timeout_s, output_format
+        self.license_queue_timeout_s = license_queue_timeout_s        # None: no +lqtimeout, Spectre's own license queue wait
         self.resources = Resources(threads=threads)
 
     def fingerprint(self, netlist: Netlist, ctx: StageContext) -> str | None:
         return None
 
     def argv(self) -> list[str]:
+        queue = [] if self.license_queue_timeout_s is None else ["+lqtimeout", str(self.license_queue_timeout_s)]
         return [
             "spectre", "-64", "input.scs", "+escchars", f"+preset={self.preset}", f"+mt={self.threads}",
-            "+lqtimeout", "900", "-maxw", "5", "-maxn", "5", "-env", "ade", "+logstatus",
+            *queue, "-maxw", "5", "-maxn", "5", "-env", "ade", "+logstatus",
             "-format", self.output_format, "-raw", "../psf", "+log", "../psf/spectre.out",
         ]
 
@@ -186,7 +189,8 @@ def spectre_pipeline(spec, deck: Deck, *, waveforms: list[WaveformExport] = ()) 
     sim = spec.simulator
     return [
         Render(deck),
-        Spectre(preset=sim.preset, threads=sim.threads_per_run, timeout_s=sim.timeout_s, output_format=sim.output_format),
+        Spectre(preset=sim.preset, threads=sim.threads_per_run, timeout_s=sim.timeout_s, output_format=sim.output_format,
+                license_queue_timeout_s=sim.license_queue_timeout_s),
         Ocean(timeout_s=sim.timeout_s, waveforms=waveforms),
         Extract(),
     ]

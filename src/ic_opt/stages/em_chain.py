@@ -261,7 +261,9 @@ def em_circuit_pipeline(spec: Spec, deck: Deck, *, waveforms: list[WaveformExpor
     """pcell -> emx per device -> bind_nport -> spectre -> ocean -> extract, plus the measure chain when the spec has device metrics."""
     sim = spec.simulator
     devices = [Measure()] if any(m.quantity is not None for m in spec.metrics) else []
-    return [Pcell(spec), *emx_stages(spec), BindNport(deck), Spectre(preset=sim.preset, threads=sim.threads_per_run, timeout_s=sim.timeout_s),
+    return [Pcell(spec), *emx_stages(spec), BindNport(deck),
+            Spectre(preset=sim.preset, threads=sim.threads_per_run, timeout_s=sim.timeout_s,
+                    license_queue_timeout_s=sim.license_queue_timeout_s),
             Ocean(timeout_s=sim.timeout_s, waveforms=list(waveforms)), Extract(), *devices]
 
 
