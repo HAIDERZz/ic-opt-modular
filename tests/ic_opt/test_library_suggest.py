@@ -77,5 +77,6 @@ def test_call_lib_suggest_prints_json(library):
     out = CliRunner().invoke(app, ["call", "lib.suggest", str(library), "stratum=ind_demo", 'targets={"Lp_lf":{"target":1.2e-9,"tol":0.05}}',
                                    "objective=max:Qp_peak", "n=1", "pool_size=256"])
     assert out.exit_code == 0, out.output
+    assert "Infinity" not in out.output and "NaN" not in out.output      # strict JSON: open bounds and non-window uppers are null
     body = json.loads(out.output)
     assert body["stratum"] == "ind_demo" and len(body["candidates"]) <= 1 and "measured" in body

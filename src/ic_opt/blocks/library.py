@@ -68,8 +68,8 @@ def suggest(library: _query.Library | str | Path, stratum: str, targets: dict, o
     """
     from ic_opt.library import suggest as _suggest
 
-    return _suggest.suggest(_lib(library), stratum, targets, objective, n=int(n), pool_size=int(pool_size), seed=int(seed),
-                            k=float(k), verify_build=bool(verify_build))
+    return _strict_json(_suggest.suggest(_lib(library), stratum, targets, objective, n=int(n), pool_size=int(pool_size), seed=int(seed),
+                                         k=float(k), verify_build=bool(verify_build)))
 
 
 def region(library: _query.Library | str | Path, stratum: str, targets: dict, objective: str | None = None, steps: dict | None = None,
