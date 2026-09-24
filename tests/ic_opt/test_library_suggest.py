@@ -24,9 +24,10 @@ def test_targets_objective_and_implied_srf():
     goals = s.parse_targets({"Lp_lf": {"target": 1e-9, "tol": 0.05}, "Qp_peak": {"min": 10}, "SRF_p": {"max": 80e9}})
     assert [(t.quantity, t.kind) for t in goals] == [("Lp_lf", "target"), ("Qp_peak", "min"), ("SRF_p", "max")]
     assert goals[0].window() == pytest.approx((0.95e-9, 1.05e-9)) and goals[1].window() == (10, np.inf)
-    for bad in ({"Lp_lf": {"target": 1e-9}}, {"Lp_lf": {"target": 1e-9, "tol": 1.5}}, {"Lp_lf": {"min": 1, "max": 2}}):
+    for bad in ({"Lp_lf": {"target": 1e-9}}, {"Lp_lf": {"target": 1e-9, "tol": 1.5}}):
         with pytest.raises(ValueError):
             s.parse_targets(bad)
+    assert [(t.kind, t.window()) for t in s.parse_targets({"Lp_lf": {"min": 1, "max": 2}})] == [("window", (1, 2))]
     assert s.parse_objective("max:Qp_peak") == ("max", "Qp_peak") and s.parse_objective(None) is None
     with pytest.raises(ValueError, match="max:<quantity>"):
         s.parse_objective("best:Qp_peak")

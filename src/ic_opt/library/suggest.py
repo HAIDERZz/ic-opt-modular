@@ -1,9 +1,9 @@
 """Inverse queries: which geometries meet these targets, with margin, and can actually be built?
 
-Targets are per quantity: ``{"min": v}``, ``{"max": v}`` or ``{"target": v, "tol": rel}``; an optional
-objective ``"max:<quantity>"`` / ``"min:<quantity>"`` ranks the survivors (without one they rank by
-closeness to the targets). The pipeline (the T13.0-verified procedure, formerly em-opt's
-``inverse.suggest``):
+Targets are per quantity: ``{"min": v}``, ``{"max": v}``, a window ``{"min": a, "max": b}`` or
+``{"target": v, "tol": rel}``; an optional objective ``"max:<quantity>"`` / ``"min:<quantity>"`` ranks the
+survivors (without one they rank by closeness to the targets). The pipeline (the T13.0-verified procedure,
+formerly em-opt's ``inverse.suggest``):
 
 1. candidate pool: the measured rows themselves (exact values, zero-width intervals) plus scrambled Sobol over
    the achieved box, snapped to the manifest's ``steps``, one integer turns level per candidate, dims fixed
@@ -12,7 +12,7 @@ closeness to the targets). The pipeline (the T13.0-verified procedure, formerly 
 2. domain: every model involved must accept the candidate (guard criteria 1-3) and have a model there;
 3. predict every quantity; criterion 4 (sigma / mu) drops candidates the model is unsure about;
 4. conservative constraints on the calibrated k-sigma bounds: ``min`` needs the lower bound above,
-   ``max`` the upper bound below, ``target`` the whole interval inside the window. An anchored quantity
+   ``max`` the upper bound below, ``target`` and a window the whole interval inside. An anchored quantity
    (``Lp@28``) adds ``SRF >= srf_margin x f0`` unless the targets already constrain SRF. SRF whose nearest
    measured rows mostly resonate above their sweep counts as at least that sweep's stop;
 5. rank (objective bound, else closeness to targets then uncertainty), keep a minimum scaled spacing;
@@ -20,7 +20,10 @@ closeness to the targets). The pipeline (the T13.0-verified procedure, formerly 
    audit, ports) until ``n`` pass.
 
 ``score`` is the reusable core (fitted models + candidate matrix in, ranks out) so a hold-out test can rank
-known rows exactly as ``suggest`` ranks a Sobol pool.
+known rows exactly as ``suggest`` ranks a Sobol pool. It is three parts ``lib.region`` shares:
+``predict_all`` (the one prediction path: one GP call per quantity, the bounds derived from it, SRF mapped
+from the GHz it is fitted in back to Hz, settled rows, the domain + confidence gate), ``satisfy`` (robust:
+the interval inside every window; mean: the predicted value) and ``rank``.
 """
 
 from __future__ import annotations
@@ -36,26 +39,31 @@ from scipy.stats import qmc
 
 from ic_opt.eval.stage import StageContext, StageFailure
 from ic_opt.executor.local import LocalExecutor
-from ic_opt.library import dataset, domain, query
+from ic_opt.library import dataset, domain, gp, query
 from ic_opt.space import Point
 from ic_opt.stages.em_chain import Pcell
 from ic_opt.store import RunStore
 
 _ANCHOR = re.compile(r"^(Lp|Qp|Ls|Qs|k)@([0-9.]+)$")
+LEVELS = ("robust", "mean")                          # satisfy: the calibrated interval, or the predicted value, inside every window
+PREDICT_CHUNK = 40_000                               # rows per GP call: bounds the (rows x training rows) kernel block of a large grid
 
 
 @dataclass(frozen=True)
 class Target:
     quantity: str
-    kind: str                                          # min | max | target
-    value: float
-    tol: float = 0.0
+    kind: str                                          # min | max | target | window
+    value: float                                       # the bound, the target value, or a window's lower end
+    tol: float = 0.0                                   # target: relative half-width
+    upper: float = float("inf")                        # window: the upper end
 
     def window(self) -> tuple[float, float]:
         if self.kind == "min":
             return self.value, np.inf
         if self.kind == "max":
             return -np.inf, self.value
+        if self.kind == "window":
+            return self.value, self.upper
         return self.value * (1 - self.tol), self.value * (1 + self.tol)
 
 
@@ -67,12 +75,17 @@ def parse_targets(spec: dict) -> list[Target]:
             out.append(Target(name, "min", float(rule["min"])))
         elif keys == {"max"}:
             out.append(Target(name, "max", float(rule["max"])))
+        elif keys == {"min", "max"}:
+            lo, hi = float(rule["min"]), float(rule["max"])
+            if not lo < hi:
+                raise ValueError(f"{name}: a window needs min < max, got {lo:g} and {hi:g}")
+            out.append(Target(name, "window", lo, upper=hi))
         elif keys == {"target", "tol"}:
             if not 0 < float(rule["tol"]) < 1:
                 raise ValueError(f"{name}: tol is relative, 0 < tol < 1")
             out.append(Target(name, "target", float(rule["target"]), float(rule["tol"])))
         else:
-            raise ValueError(f"{name}: expected {{min}}, {{max}} or {{target, tol}}, got {sorted(keys)}")
+            raise ValueError(f"{name}: expected {{min}}, {{max}}, {{min, max}} or {{target, tol}}, got {sorted(keys)}")
     return out
 
 
@@ -105,49 +118,104 @@ def implied_srf(targets: list[Target], objective: tuple[str, str] | None, margin
     return extra
 
 
-def score(x: np.ndarray, models: dict[str, query.Model], targets: list[Target], objective: tuple[str, str] | None, *,
-          k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX, srf_floor: dict[str, np.ndarray] | None = None,
-          check_domain: bool = True, exact: dict[str, np.ndarray] | None = None) -> dict:
-    """Predict, gate and rank candidate rows ``x``. ``models`` must cover every target and the objective.
+def _settled(n: int, floor: np.ndarray | None, measured: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+    """(above the sweep, measured): the rows whose value is known without the model."""
+    above = np.zeros(n, dtype=bool) if floor is None else np.isfinite(floor)
+    known = np.zeros(n, dtype=bool) if measured is None else np.isfinite(measured)
+    return above, known
+
+
+def in_domain(x: np.ndarray, models: dict[str, query.Model], *, srf_floor: dict[str, np.ndarray] | None = None,
+              exact: dict[str, np.ndarray] | None = None) -> np.ndarray:
+    """The domain half of ``predict_all``'s gate: every model's guard accepts the row (criteria 1-3), or the value is
+    settled without the model there. A caller predicting a large grid filters with it first."""
+    ok = np.ones(len(x), dtype=bool)
+    for q, m in models.items():
+        above, known = _settled(len(x), (srf_floor or {}).get(q), (exact or {}).get(q))
+        ok &= m.guard.inside(x) | above | known
+    return ok
+
+
+def _gp_predict(model: gp.StratumGP, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """``model.predict`` in chunks of PREDICT_CHUNK rows (a pool is one chunk, a region grid many)."""
+    if len(x) <= PREDICT_CHUNK:
+        return model.predict(x) if len(x) else (np.empty(0), np.empty(0))
+    parts = [model.predict(x[i:i + PREDICT_CHUNK]) for i in range(0, len(x), PREDICT_CHUNK)]
+    return np.concatenate([p[0] for p in parts]), np.concatenate([p[1] for p in parts])
+
+
+def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX,
+                srf_floor: dict[str, np.ndarray] | None = None, exact: dict[str, np.ndarray] | None = None,
+                check_domain: bool = True) -> tuple[np.ndarray, dict]:
+    """``(ok, pred)`` for candidate rows ``x`` and every quantity in ``models``: ``ok`` is the domain (``in_domain``) and
+    confidence gate (a finite value, sigma / mu within ``rel_sigma_max``); ``pred[q]`` holds value, lo, hi (calibrated
+    k-sigma), rel_sigma and sigma in SI units. One GP prediction per quantity: the bounds come from that (mu, sigma)
+    as ``StratumGP.predict_bounds`` derives them, and SRF, fitted in GHz, is mapped back to Hz here and nowhere else.
     ``srf_floor[q]`` gives a per-candidate lower bound for an SRF known to lie above the sweep (NaN elsewhere);
     ``exact[q]`` gives measured values (NaN where not measured), used as zero-width intervals instead of predictions."""
     n = len(x)
-    ok = np.ones(n, dtype=bool)
+    ok = in_domain(x, models, srf_floor=srf_floor, exact=exact) if check_domain else np.ones(n, dtype=bool)
     pred: dict[str, dict[str, np.ndarray]] = {}
-    names = sorted({t.quantity for t in targets} | ({objective[1]} if objective else set()))
-    for q in names:
-        m = models[q]
-        scale = 1e9 if q.startswith("SRF") else 1.0
-        mu, sigma = m.gp.predict(x)
-        lo, hi = m.gp.predict_bounds(x, k)
+    for q, m in models.items():
+        mu, sigma = _gp_predict(m.gp, x)
+        lo, hi = gp.prediction_bounds(mu, sigma, log_target=m.gp.log_target, k=k * m.gp.k_scale)
+        scale = 1e9 if q.startswith("SRF") else 1.0            # the library fits SRF in GHz (Library.model)
         mu, sigma, lo, hi = mu * scale, sigma * scale, lo * scale, hi * scale
-        floor = (srf_floor or {}).get(q)
-        above = np.zeros(n, dtype=bool) if floor is None else np.isfinite(floor)
-        measured = (exact or {}).get(q)
-        known_exact = np.zeros(n, dtype=bool) if measured is None else np.isfinite(measured)
-        mu, sigma, lo, hi = mu.copy(), sigma.copy(), lo.copy(), hi.copy()
+        floor, measured = (srf_floor or {}).get(q), (exact or {}).get(q)
+        above, known = _settled(n, floor, measured)
         if above.any():                                           # above the sweep: at least the stop, no finite upper bound
             mu[above], lo[above], hi[above], sigma[above] = floor[above], floor[above], np.inf, 0.0
-        if known_exact.any():                                     # measured: the value itself, zero-width interval
-            mu[known_exact] = lo[known_exact] = hi[known_exact] = measured[known_exact]
-            sigma[known_exact] = 0.0
-        settled = above | known_exact
+        if known.any():                                           # measured: the value itself, zero-width interval
+            mu[known] = lo[known] = hi[known] = measured[known]
+            sigma[known] = 0.0
+        settled = above | known
         ok &= (np.isfinite(mu) | above) & (settled | domain.sigma_ok(mu, sigma, rel_sigma_max))
-        if check_domain:
-            ok &= m.guard.inside(x) | settled
-        pred[q] = {"value": mu, "lo": lo, "hi": hi, "rel_sigma": np.where(settled, 0.0, sigma / np.maximum(np.abs(mu), 1e-300))}
+        pred[q] = {"value": mu, "lo": lo, "hi": hi, "rel_sigma": np.where(settled, 0.0, sigma / np.maximum(np.abs(mu), 1e-300)),
+                   "sigma": sigma}
+    return ok, pred
+
+
+def satisfy(pred: dict, targets: list[Target], level: str = "robust") -> np.ndarray:
+    """Rows meeting every target: ``robust`` -- the calibrated interval lies inside each window (``score``'s test);
+    ``mean`` -- the predicted value does."""
+    if level not in LEVELS:
+        raise ValueError(f"level {level!r}: expected one of {LEVELS}")
+    ok = np.ones(len(next(iter(pred.values()))["value"]) if pred else 0, dtype=bool)
     for t in targets:
         a, b = t.window()
-        ok &= (pred[t.quantity]["lo"] >= a) & (pred[t.quantity]["hi"] <= b)
+        p = pred[t.quantity]
+        lo, hi = (p["lo"], p["hi"]) if level == "robust" else (p["value"], p["value"])
+        ok &= (lo >= a) & (hi <= b)
+    return ok
+
+
+def rank(pred: dict, targets: list[Target], objective: tuple[str, str] | None, ok: np.ndarray) -> list[int]:
+    """The ``ok`` rows best first: the objective's conservative bound, else closeness to the target values (a window's
+    midpoint), each then certainty."""
+    n = len(ok)
     if objective:
         sense, q = objective
         key = -pred[q]["lo"] if sense == "max" else pred[q]["hi"]            # conservative: the bound the objective worries about
         order = np.lexsort((pred[q]["rel_sigma"], key))
     else:                                                      # closeness to the target windows, then certainty
-        dist = sum((np.abs(pred[t.quantity]["value"] / t.value - 1) for t in targets if t.kind == "target"), np.zeros(n))
+        centres = [(t.quantity, t.value if t.kind == "target" else (t.value + t.upper) / 2) for t in targets if t.kind in ("target", "window")]
+        dist = sum((np.abs(pred[q]["value"] / c - 1) for q, c in centres), np.zeros(n))
         order = np.lexsort((sum((pred[t.quantity]["rel_sigma"] for t in targets), np.zeros(n)), dist))
-    ranked = [int(i) for i in order if ok[i]]
-    return {"ok": ok, "ranked": ranked, "pred": pred}
+    return [int(i) for i in order if ok[i]]
+
+
+def score(x: np.ndarray, models: dict[str, query.Model], targets: list[Target], objective: tuple[str, str] | None, *,
+          k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX, srf_floor: dict[str, np.ndarray] | None = None,
+          check_domain: bool = True, exact: dict[str, np.ndarray] | None = None) -> dict:
+    """Predict, gate and rank candidate rows ``x``: ``predict_all`` over the targets' and the objective's quantities,
+    the robust ``satisfy``, ``rank``. ``models`` must cover every target and the objective; ``srf_floor`` and ``exact``
+    as in ``predict_all``."""
+    names = sorted({t.quantity for t in targets} | ({objective[1]} if objective else set()))
+    ok, pred = predict_all(x, {q: models[q] for q in names}, k=k, rel_sigma_max=rel_sigma_max, srf_floor=srf_floor, exact=exact,
+                           check_domain=check_domain)
+    if targets:
+        ok &= satisfy(pred, targets, "robust")
+    return {"ok": ok, "ranked": rank(pred, targets, objective, ok), "pred": pred}
 
 
 def srf_floors(library: query.Library, stratum: str, x: np.ndarray, quantity: str) -> np.ndarray:
