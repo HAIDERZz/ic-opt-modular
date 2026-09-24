@@ -27,6 +27,7 @@ is layered on top by the CLI's ``--generate`` flag; see
 from __future__ import annotations
 
 import contextlib
+import math
 import os
 import re
 import tempfile
@@ -63,12 +64,35 @@ GENERATION_FAMILIES: dict[str, int] = {
 
 #: Ground fixture used by every canonical smoke device: the constants the
 #: reference geometry sweep campaigns ran with (stub width follows the winding
-#: width per device below).
+#: width per device below), raised where the profile's fixture conductor asks
+#: for more (``_smoke_fixture``).
 _SMOKE_FIXTURE = {
     "inner_margin_um": 15.0,
     "ring_width_um": 50.0,
     "stub_length_um": 2.0,
     "stub_chamfer_um": 0.0,
+}
+
+#: The canonical winding width: the reference sweep campaigns' mid-range,
+#: clamped into each profile's width rules (``_smoke_width``).
+_SMOKE_WIDTH_UM = 6.0
+
+#: How far inside a width rule a clamped canonical width stays, in grid
+#: steps: the drawn geometry is a few nanometres off the nominal width (the
+#: quantized 45-degree segments, outlines snapped half a step a side).
+_SMOKE_WIDTH_MARGIN_STEPS = 10
+
+#: How many stack levels, from the family's top metal down, its canonical
+#: device draws at the winding width: the windings and the crossunders or
+#: legs under them (ms: the secondary one level down and its crossunder
+#: two; il: its two legs).
+_SMOKE_LEVELS: dict[str, int] = {
+    "clean_port_ind_sym": 2,
+    "clean_port_xfm_bs": 2,
+    "clean_port_xfm_ms": 3,
+    "clean_port_xfm_balun": 2,
+    "clean_port_xfm_tw": 2,
+    "clean_port_xfm_il": 3,
 }
 
 
@@ -355,12 +379,15 @@ def _derived_opening(od: float, w: float, max_um: float, max_opening) -> float:
 
 def _smoke_winding_spacing(
     profile: ProcessRuleProfile, metal_index: int, base_um: float,
-    factor: float,
+    factor: float, width_um: float = _SMOKE_WIDTH_UM,
 ) -> float:
     """Canonical winding spacing on the metal at stack position ``metal_index``: the reference-sweep
-    mid-range ``base_um``, grown to ``factor`` x the metal's own min_space
-    when the process is coarser than that territory (plain parallel-run
-    clearance; 1.5 leaves margin over the rule itself). Values are
+    mid-range ``base_um``, grown to ``factor`` x the metal's own spacing
+    floor when the process is coarser than that territory (plain parallel-run
+    clearance; 1.5 leaves margin over the rule itself). The floor is the
+    min_space, or a wide-parallel rule's spacing when windings ``width_um``
+    wide trigger it (the drawn 45-degree segments come out up to two grid
+    steps wider, hence the margin in the test). Values are
     unchanged for fine-pitch top metals (min_space around 1 um). The tw
     family briefly carried a special 2.1 factor here as a workaround for
     its diagonal-vs-pad-corner approach; that geometry is now guaranteed
@@ -370,8 +397,53 @@ def _smoke_winding_spacing(
     stack = profile.metal_stack
     name = stack[metal_index - 1] if 1 <= metal_index <= len(stack) else None
     rule = profile.layout_rules.metal_width_space.get(name)
+    floor = getattr(rule, "min_space_um", None) or 0.0
+    grid = profile.layout_rules.manufacturing_grid_um
+    for wide in profile.layout_rules.passive_region.wide_parallel_spacing:
+        if name in wide.metals and width_um + 2 * grid > wide.when_width_gt_um:
+            floor = max(floor, wide.min_space_um)
+    return max(base_um, round(factor * floor, 2))
+
+
+def _smoke_width(profile: ProcessRuleProfile, family: str, top: int) -> float:
+    """The canonical winding width on this profile (T16 R-26): 6 um, or --
+    when that is not inside [the largest min_width, the smallest max_width]
+    of the metals the family's canonical device draws at that width
+    (``_SMOKE_LEVELS``) -- the nearest width ten grid steps inside that
+    range, so a process whose windings must be wider or narrower than 6 um
+    still gets a device it can build. When the range is too narrow for the
+    margin, the max_width side wins and the audit names the rule."""
+    stack = profile.metal_stack
+    rules = profile.layout_rules.metal_width_space
+    drawn = [rules.get(stack[i - 1]) for i in range(top, top - _SMOKE_LEVELS.get(family, 1), -1) if 1 <= i <= len(stack)]
+    lows = [r.min_width_um for r in drawn if r is not None and r.min_width_um is not None]
+    highs = [r.max_width_um for r in drawn if r is not None and r.max_width_um is not None]
+    grid = profile.layout_rules.manufacturing_grid_um
+    margin = _SMOKE_WIDTH_MARGIN_STEPS * grid
+    width = _SMOKE_WIDTH_UM
+    if lows and width < max(lows) + margin:
+        width = round(math.ceil((max(lows) + margin) / grid - 1e-9) * grid, 6)
+    if highs and width > min(highs) - margin:
+        width = round(math.floor((min(highs) - margin) / grid + 1e-9) * grid, 6)
+    return width
+
+
+def _smoke_fixture(profile: ProcessRuleProfile, width_um: float) -> dict:
+    """The reference ground fixture on this profile (T16 R-26): the ring,
+    the stub length and the stub width (the winding width, as in the
+    reference campaigns) at least the fixture conductor's min_width, the
+    margin at least its min_space. Its max_width is exempt by design (the
+    wide ring: ``drc_audit.fixture_exemptions``), so nothing is capped."""
+    rule = profile.layout_rules.metal_width_space.get(profile.fixture_conductor)
+    min_width = getattr(rule, "min_width_um", None) or 0.0
     min_space = getattr(rule, "min_space_um", None) or 0.0
-    return max(base_um, round(factor * min_space, 2))
+    return {
+        "inner_margin_um": max(_SMOKE_FIXTURE["inner_margin_um"], min_space),
+        "ring_width_um": max(_SMOKE_FIXTURE["ring_width_um"], min_width),
+        "stub_length_um": max(_SMOKE_FIXTURE["stub_length_um"], min_width),
+        "stub_chamfer_um": _SMOKE_FIXTURE["stub_chamfer_um"],
+        "stub_width_um": max(width_um, min_width),
+    }
 
 
 def _canonical_config(
@@ -380,19 +452,31 @@ def _canonical_config(
 ) -> dict:
     """Canonical smoke device for one family: mid-range of the reference
     sweep campaigns (od 60-240, w 4-10, s 2-4, lead 20), expressed with
-    the profile's conductor names and no center taps. Winding spacings adapt to
-    the profile's own min_space (see _smoke_winding_spacing)."""
+    the profile's conductor names and no center taps. The winding width is
+    clamped into the profile's width rules (_smoke_width), winding spacings
+    adapt to its spacing rules (_smoke_winding_spacing) and the ground fixture
+    to its fixture conductor (_smoke_fixture); on demo_6m none of them moves."""
+    width = _smoke_width(profile, family, top)
+    scale = max(1.0, width / _SMOKE_WIDTH_UM)
+    step = 2 * profile.layout_rules.manufacturing_grid_um
+
+    def size(value: float) -> float:
+        """A reference-campaign dimension, grown with a winding wider than 6 um so the device keeps its
+        proportions (a multiple of twice the grid: half of it may be a coordinate)."""
+        if scale == 1.0:
+            return value
+        return round(math.ceil(value * scale / step - 1e-9) * step, 6)
 
     def dop(od: float, w: float, max_um: float = 8.0) -> float:
-        return _derived_opening(od, w, max_um, max_opening)
+        return _derived_opening(od, w, size(max_um), max_opening)
 
     def spacing(metal_index: int, base_um: float, factor: float = 1.5) -> float:
-        return _smoke_winding_spacing(profile, metal_index, base_um, factor)
+        return _smoke_winding_spacing(profile, metal_index, size(base_um), factor, width)
 
     stack = profile.metal_stack
     top_name, below_name = stack[top - 1], stack[top - 2]
     xfm_ports = ["P1", "N1", "P2", "N2"]
-    fixture = dict(_SMOKE_FIXTURE, stub_width_um=6.0)
+    fixture = _smoke_fixture(profile, width)
     base = {
         "process_profile": profile_id,
         "ground_fixture": fixture,
@@ -401,10 +485,10 @@ def _canonical_config(
     if family == "clean_port_ind_sym":
         return base | {
             "port_order": ["P1", "N1"],
-            "outer_diameter_um": 120.0,
-            "width_um": 6.0,
+            "outer_diameter_um": size(120.0),
+            "width_um": width,
             "spacing_um": spacing(top, 3.0),
-            "opening_um": dop(120.0, 6.0),
+            "opening_um": dop(size(120.0), width),
             "lead_length_um": 20.0,
             "turns": 2,
             "metal": top_name,
@@ -412,12 +496,12 @@ def _canonical_config(
     if family == "clean_port_xfm_bs":
         return base | {
             "port_order": xfm_ports,
-            "primary_outer_diameter_um": 120.0,
-            "secondary_outer_diameter_um": 120.0,
-            "primary_width_um": 6.0,
-            "secondary_width_um": 6.0,
-            "primary_opening_um": dop(120.0, 6.0),
-            "secondary_opening_um": dop(120.0, 6.0),
+            "primary_outer_diameter_um": size(120.0),
+            "secondary_outer_diameter_um": size(120.0),
+            "primary_width_um": width,
+            "secondary_width_um": width,
+            "primary_opening_um": dop(size(120.0), width),
+            "secondary_opening_um": dop(size(120.0), width),
             "primary_lead_length_um": 20.0,
             "secondary_lead_length_um": 20.0,
             "center_spacing_um": 0.0,
@@ -427,12 +511,12 @@ def _canonical_config(
     if family == "clean_port_xfm_ms":
         return base | {
             "port_order": xfm_ports,
-            "primary_outer_diameter_um": 160.0,
-            "secondary_outer_diameter_um": 120.0,
-            "primary_width_um": 6.0,
-            "secondary_width_um": 6.0,
-            "primary_opening_um": dop(160.0, 6.0),
-            "secondary_opening_um": dop(120.0, 6.0),
+            "primary_outer_diameter_um": size(160.0),
+            "secondary_outer_diameter_um": size(120.0),
+            "primary_width_um": width,
+            "secondary_width_um": width,
+            "primary_opening_um": dop(size(160.0), width),
+            "secondary_opening_um": dop(size(120.0), width),
             "primary_lead_length_um": 20.0,
             "secondary_lead_length_um": 20.0,
             "secondary_turns": 2,
@@ -442,7 +526,7 @@ def _canonical_config(
             "secondary_metal": below_name,
         }
     if family == "clean_port_xfm_balun":
-        od_p, w, s = 120.0, 6.0, spacing(top, 3.0)
+        od_p, w, s = size(120.0), width, spacing(top, 3.0)
         od_s = od_p - 2 * (w + s)
         return base | {
             "port_order": xfm_ports,
@@ -463,17 +547,17 @@ def _canonical_config(
     if family == "clean_port_xfm_tw":
         return base | {
             "port_order": xfm_ports,
-            "outer_diameter_um": 160.0,
-            "width_um": 6.0,
+            "outer_diameter_um": size(160.0),
+            "width_um": width,
             "spacing_um": spacing(top, 4.0),
             "ring_count": 3,
-            "port_gap_p_um": dop(160.0, 6.0),
-            "port_gap_n_um": dop(160.0, 6.0),
+            "port_gap_p_um": dop(size(160.0), width),
+            "port_gap_n_um": dop(size(160.0), width),
             "lead_length_um": 20.0,
             "metal": top_name,
         }
     if family == "clean_port_xfm_il":
-        od, w, s = 150.0, 6.0, spacing(top, 3.0)
+        od, w, s = size(150.0), width, spacing(top, 3.0)
         return base | {
             "port_order": xfm_ports,
             "outer_diameter_um": od,

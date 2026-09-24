@@ -84,11 +84,57 @@ def test_too_shallow_profile_skips_families(tmp_path: Path) -> None:
 
 
 def test_rule_violation_is_reported_per_family(tmp_path: Path) -> None:
-    # M6 min_width above the canonical winding width: generation (or its audit) fails and names the family
-    profile = demo_variant(tmp_path, "demo_6m_broken", lambda d: d["layout_rules"]["metal_width_space"]["M6"].__setitem__("min_width_um", 8.0))
+    # a via enclosure no winding-width landing can hold (a transcription slip the smoke cannot size its way around):
+    # generation fails and names the family
+    profile = demo_variant(tmp_path, "demo_6m_broken",
+                           lambda d: d["layout_rules"]["via_primitives"]["VIA5"].__setitem__("min_enclosure_um", {"M5": 3.0, "M6": 3.0}))
     result = runner.invoke(app, ["call", "em.validate_profile", str(profile), "generate=true", "families=clean_port_ind_sym"])
     assert result.exit_code == 1
     assert "[generation] FAIL" in result.output and "clean_port_ind_sym" in result.output
+
+
+def set_rule(key: str, value: float, metals: tuple[str, ...]):
+    def mutate(d: dict) -> None:
+        for metal in metals:
+            d["layout_rules"]["metal_width_space"][metal][key] = value
+    return mutate
+
+
+@pytest.mark.parametrize(("name", "mutate", "inside"), [
+    ("wide_windings", set_rule("min_width_um", 8.0, ("M4", "M5", "M6")), lambda w: w > 8.0),        # min_width > 6
+    ("wide_everything", set_rule("min_width_um", 7.0, ("M1", "M2", "M3", "M4", "M5", "M6")), lambda w: w > 7.0),
+    ("narrow_windings", set_rule("max_width_um", 4.0, ("M4", "M5", "M6")), lambda w: w < 4.0),        # max_width < 6
+])
+def test_a_profile_whose_width_rules_exclude_6_um_still_validates(tmp_path: Path, name, mutate, inside) -> None:
+    """T16 R-26: the smoke's winding width (6 um in the reference campaigns) is clamped into the width rules of the
+    metals the device draws, the device grows with a wider winding, the fixture follows its conductor's rules."""
+    from ic_opt.em.pcell._pcell_core import max_opening
+    from ic_opt.em.pcell.process_rules import get_process_rule_profile
+    from ic_opt.em.pcell.profile_validation import _canonical_config
+
+    profile_dir = demo_variant(tmp_path, name, mutate)
+    report = validate_profile(name, extra_dirs=(profile_dir.parent,), generate=True)
+    assert report.passed and "6 PASS, 0 FAIL, 0 SKIP" in report.format(), report.format()
+    profile = get_process_rule_profile(name, extra_dirs=(profile_dir.parent,))
+    config = _canonical_config("clean_port_ind_sym", profile, name, 6, max_opening)
+    assert inside(config["width_um"]) and config["ground_fixture"]["stub_width_um"] >= config["width_um"]
+
+
+def test_the_demo_smoke_devices_are_the_reference_campaigns_mid_range() -> None:
+    """demo_6m's canonical devices do not move: 6 um windings, the reference outer diameters and fixture."""
+    from ic_opt.em.pcell._pcell_core import max_opening
+    from ic_opt.em.pcell.process_rules import get_process_rule_profile
+    from ic_opt.em.pcell.profile_validation import GENERATION_FAMILIES, _canonical_config
+
+    profile = get_process_rule_profile("demo_6m")
+    fixture = {"inner_margin_um": 15.0, "ring_width_um": 50.0, "stub_length_um": 2.0, "stub_chamfer_um": 0.0, "stub_width_um": 6.0}
+    diameters = {"clean_port_ind_sym": (120.0,), "clean_port_xfm_bs": (120.0, 120.0), "clean_port_xfm_ms": (160.0, 120.0),
+                 "clean_port_xfm_balun": (120.0, 102.0), "clean_port_xfm_tw": (160.0,), "clean_port_xfm_il": (150.0,)}
+    for family in GENERATION_FAMILIES:
+        config = _canonical_config(family, profile, "demo_6m", 6, max_opening)
+        assert config["ground_fixture"] == fixture, family
+        assert {v for k, v in config.items() if k.endswith("width_um")} == {6.0}, family
+        assert tuple(v for k, v in config.items() if k.endswith("outer_diameter_um")) == diameters[family], family
 
 
 def test_unknown_family_fails(tmp_path: Path) -> None:

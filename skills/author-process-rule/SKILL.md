@@ -380,7 +380,11 @@ result: PASS
 `generate=true` builds one canonical device per family (ind_sym, xfm_bs,
 xfm_ms, xfm_balun, xfm_tw, xfm_il) through the production generator
 path and runs the production-scope DRC audit on each. The canonical
-devices are mid-range (~100-250 um class); a stack too shallow for a
+devices are mid-range (~100-250 um class) with 6 um windings; when the
+width rules of the metals a device draws exclude 6 um, its winding width
+moves just inside them (a wider winding grows the device in proportion),
+its spacings follow the spacing rules, and its ground fixture follows the
+bottom metal's rules. A stack too shallow for a
 family (xfm_il needs a top metal at M4 or above) is reported as SKIP,
 not a failure. Add `out=<dir>` to keep the generated GDS/ports/manifest
 per family for inspection, `families=<generator_id>[,<generator_id>]` to
