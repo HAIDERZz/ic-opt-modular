@@ -504,9 +504,9 @@ def _generate_one_family(
     from ic_opt.em.pcell._pcell_core import max_opening
     from ic_opt.em.pcell.drc_audit import (
         audit_gds,
+        expected_conductors,
         fixture_exemptions,
         product_scope_record,
-        require_layers_from_config,
     )
     from ic_opt.em.pcell.generator_plugin import (
         PLUGIN_GENERATORS,
@@ -530,7 +530,7 @@ def _generate_one_family(
         report = audit_gds(geometry.gds_path, profile_id)
         record = product_scope_record(
             report,
-            require_layers_from_config(family, config.model_dump()),
+            expected_conductors(generator, config),
             ignore_findings=fixture_exemptions(profile),
         )
     except Exception as exc:

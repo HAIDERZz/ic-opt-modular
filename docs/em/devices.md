@@ -186,3 +186,13 @@ Ports: `P1, N1, P2, N2` (+ `CTP` / `CTS`, upward or downward)
 | `ct_secondary_metal` | str or None |  | none |
 
 Retired names (refused with the replacement): `top_metal` → `metal`, `opening_p_um` → `primary_opening_um`, `opening_s_um` → `secondary_opening_um`, `lead_p_um` → `primary_lead_length_um`, `lead_s_um` → `secondary_lead_length_um`
+
+## A generator of your own (`plugin:`)
+
+A device can name a generator from its own plugin file: `plugin: /abs/path/devices.py`, a module that exports
+`PLUGIN_GENERATORS = {generator_id: instance}` of `ic_opt.em.pcell.PassiveDeviceGenerator` subclasses. The pcell
+stage validates the device's config with the generator's `config_model` (passing `process_profile` and `port_order`
+along with the device's fields), calls `generate`, and runs the same DRC gate as for the families above: the GDS is
+audited against the config's `process_profile`, and every conductor the generator's `expected_conductors(config)`
+lists must be drawn (the six families declare theirs the same way). A generator that declares none fails every
+build unless its config sets `drc_check: false`.

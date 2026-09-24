@@ -115,7 +115,7 @@ class Pcell:
             outdir.mkdir(parents=True, exist_ok=True)
             try:
                 result = generator.generate(model, outdir=outdir, gds_name=f"{device.id}.gds")
-                _audit(device, model, result.gds_path)
+                _audit(device, generator, model, result.gds_path)
             except (ValueError, OSError, RuntimeError) as exc:
                 raise StageFailure(f"device {device.id}: {type(exc).__name__}: {exc}") from exc
             ports = read_emx_ports(result.emx_ports_path)
@@ -132,21 +132,24 @@ class Pcell:
         return geometry
 
 
-def _audit(device: Device, model, gds_path: Path) -> None:
-    """em-opt's product-scope DRC gate: every conductor the config names must be drawn, no rule violation except
-    max_width on the profile's fixture conductor (the ground fixture, ``drc_audit.fixture_exemptions``)."""
+def _audit(device: Device, generator, model, gds_path: Path) -> None:
+    """em-opt's product-scope DRC gate: every conductor the generator declares for the config must be drawn
+    (``PassiveDeviceGenerator.expected_conductors``: the built-in families and plugin generators alike), no rule
+    violation except max_width on the profile's fixture conductor (the ground fixture, ``drc_audit.fixture_exemptions``)."""
     if getattr(model, "drc_check", True) is False:
         return
     from ic_opt.em.pcell.drc_audit import (
         audit_gds,
+        expected_conductors,
         fixture_exemptions,
         product_scope_record,
-        require_layers_from_config,
     )
 
-    expected = require_layers_from_config(device.generator, model.model_dump())
-    record = product_scope_record(audit_gds(gds_path, model.process_profile), expected,
-                                  ignore_findings=fixture_exemptions(model.process_profile))
+    profile = getattr(model, "process_profile", None)
+    if profile is None:
+        raise ValueError(f"generator {device.generator!r}: its config has no process_profile field, the profile the DRC gate audits against")
+    expected = expected_conductors(generator, model)
+    record = product_scope_record(audit_gds(gds_path, profile), expected, ignore_findings=fixture_exemptions(profile))
     if record["outcome"] == "missing_layer":
         raise StageFailure(f"device {device.id}: DRC audit found missing product layers {record['missing']}")
     if record["outcome"] != "pass":

@@ -549,27 +549,48 @@ _EXPECTED_RECIPES = {
 
 
 def require_layers_from_config(generator_id: str, config: dict) -> list[str]:
-    """The FULL expected conductor recipe for this generator id, from the
+    """The FULL expected conductor recipe of a built-in generator id, from the
     ``_EXPECTED_RECIPES`` table above -- winding metals from the config's
     metal fields PLUS the implicit crossunder conductors the pcell draws on
     the real stack levels below (xfm_ms: under multi_metal; xfm_balun:
-    under balun_metal).
+    under balun_metal). The six built-in generators declare their
+    ``PassiveDeviceGenerator.expected_conductors`` with it.
     Names are canonicalized ("ap" -> AP, "10" -> M10). Fails closed
     (ValueError) for a generator id without a recipe: a default coverage
     requirement nobody modeled must not silently degrade to *_metal-only --
-    the caller must supply the expected layers explicitly instead."""
+    any other generator declares its own (``expected_conductors`` below)."""
     recipe = _EXPECTED_RECIPES.get(generator_id)
     if recipe is None:
         raise ValueError(
             f"no expected-conductor recipe for generator {generator_id!r} "
-            f"(known: {sorted(_EXPECTED_RECIPES)}); supply the expected "
-            "conductors explicitly")
-    out: list[str] = []
+            f"(built-in: {sorted(_EXPECTED_RECIPES)}); a plugin generator "
+            "declares its own (PassiveDeviceGenerator.expected_conductors)")
     with _stack.use_stack(config.get("process_profile")):
-        for metal in recipe(config):
-            name = canonical_conductor(metal)
-            if name not in out:
-                out.append(name)
+        return _canonical_names(recipe(config))
+
+
+def expected_conductors(generator, config) -> list[str]:
+    """The product DRC gate's coverage requirement for one build: the conductors ``generator`` declares for ``config``
+    (``PassiveDeviceGenerator.expected_conductors``, asked with the config's profile stack active), canonicalized
+    there. The same call for the six built-ins and for any plugin generator (T16 R-15). Fails closed (ValueError) when
+    the generator declares none: a GDS whose metals nobody named cannot be judged complete."""
+    with _stack.use_stack(getattr(config, "process_profile", None)):
+        declared = generator.expected_conductors(config)
+        if not declared:
+            raise ValueError(
+                f"generator {generator.generator_id!r} declares no expected conductors "
+                "(PassiveDeviceGenerator.expected_conductors), so the DRC gate cannot judge its GDS; "
+                "declare them in the generator, or set drc_check: false in the device's fixed fields")
+        return _canonical_names(declared)
+
+
+def _canonical_names(metals) -> list[str]:
+    """``canonical_conductor`` of each, first occurrence kept, on the active stack."""
+    out: list[str] = []
+    for metal in metals:
+        name = canonical_conductor(metal)
+        if name not in out:
+            out.append(name)
     return out
 
 

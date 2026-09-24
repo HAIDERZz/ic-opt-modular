@@ -1070,9 +1070,16 @@ def translate_config(generator_id: str, config: dict) -> dict:
 
 
 class _CleanPortGenerator(PassiveDeviceGenerator):
-    """The six built-in families share the package's geometry generation."""
+    """The six built-in families share the package's geometry generation, and declare the conductors they draw
+    through the same ``expected_conductors`` a plugin generator implements: each family's recipe in
+    ``drc_audit._EXPECTED_RECIPES`` (windings, the crossunders one or two real levels down, tap stacks)."""
 
     geometry_version = GEOMETRY_VERSION
+
+    def expected_conductors(self, config):
+        from ic_opt.em.pcell.drc_audit import require_layers_from_config
+
+        return require_layers_from_config(self.generator_id, config.model_dump())
 
 
 class CleanPortIndSymGenerator(_CleanPortGenerator):

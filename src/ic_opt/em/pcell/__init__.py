@@ -26,6 +26,7 @@ __all__ = [
     "Violation",
     "audit_gds",
     "canonical_conductor",
+    "expected_conductors",
     "get_generator",
     "product_scope_record",
     "require_layers_from_config",
@@ -34,7 +35,8 @@ __all__ = [
 
 # drc_audit imports klayout.db at module scope; keep it lazy so klayout-less
 # environments can still resolve generators (PEP 562).
-_DRC_AUDIT_NAMES = frozenset(("Report", "Violation", "audit_gds", "canonical_conductor", "product_scope_record", "require_layers_from_config"))
+_DRC_AUDIT_NAMES = frozenset(("Report", "Violation", "audit_gds", "canonical_conductor", "expected_conductors", "product_scope_record",
+                              "require_layers_from_config"))
 
 
 def __getattr__(name: str):
