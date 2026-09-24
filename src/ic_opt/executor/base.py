@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Protocol
+
+CSH_HOOKS = (".csh", ".cshrc", ".tcsh", ".tcshrc")    # environment files csh sources; any other name is sourced by sh
 
 
 @dataclass(frozen=True)
@@ -43,20 +45,31 @@ class CommandTimeout(ExecutorError):
     """A command or transfer exceeded its deadline."""
 
 
+def hook_shell(path: str) -> str:
+    """The shell that sources an environment file: ``csh`` when its name ends in .csh, .cshrc, .tcsh or .tcshrc
+    (``~/.cshrc`` included, any case), else ``sh``."""
+    return "csh" if PurePosixPath(path).name.lower().endswith(CSH_HOOKS) else "sh"
+
+
 def shell_program(command: str, *, cwd: str | None = None, cshrc: str | None = None) -> list[str]:
     """Turn a command line into an argv that runs it in the right environment.
 
-    With ``cshrc`` the Cadence environment is sourced in ``csh``; otherwise
-    POSIX ``sh`` runs the command. ``cwd`` is entered inside that shell so
-    it works identically for local and SSH execution. Either shell is the
-    simulation host's: ``SshExecutor`` hands this argv to ``ssh``, and only
+    ``cshrc`` is the environment file on the simulation host. It keeps the name of the site.yaml key (and of
+    ``--cshrc`` / ``IC_OPT_CADENCE_CSHRC``) but need not be a csh file: a csh file (``hook_shell``) is sourced in
+    ``csh`` and the command runs there, any other file is sourced by POSIX ``sh`` (``. FILE``) and the command runs in
+    that ``sh``.
+    Without one POSIX ``sh`` runs the command. ``cwd`` is entered inside that shell so it works identically for local
+    and SSH execution. Either shell is the simulation host's: ``SshExecutor`` hands this argv to ``ssh``, and only
     ``LocalExecutor`` (Linux / macOS) starts it on the controller.
     """
-    if cshrc:
+    if cshrc and hook_shell(cshrc) == "csh":
         script = f"source {shlex.quote(cshrc)}; "
         script += f"cd {shlex.quote(cwd)}; " if cwd else ""
         return ["csh", "-fc", script + command]
-    script = f"cd {shlex.quote(cwd)} && " if cwd else ""
+    # `.` looks a bare name up on PATH, csh's `source` in the working directory: name the file the way csh finds it.
+    # The file's status does not gate the command (`;`): an environment script may well end on a failed test.
+    script = f". {shlex.quote(cshrc if '/' in cshrc else './' + cshrc)}; " if cshrc else ""
+    script += f"cd {shlex.quote(cwd)} && " if cwd else ""
     return ["/bin/sh", "-c", script + command]
 
 

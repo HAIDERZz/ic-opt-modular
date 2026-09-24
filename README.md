@@ -31,9 +31,10 @@ ruff). The `turbo` strategy and `latin_hypercube` designs import TuRBO, which is
 in the checkout like OpenBox (`-e vendor/TuRBO` above); TuRBO is under Uber's non-commercial licence
 (`vendor/TuRBO/LICENSE.md`), which is why it is not copied into the package.
 
-Cadence tools come from a csh environment file **on the simulation host**:
-pass `--cshrc FILE`, set `IC_OPT_CADENCE_CSHRC`, or put `cshrc:` in that
-host's entry of `~/.ic-opt/site.yaml`. It is never guessed from the controller's disk.
+Cadence tools come from an environment file **on the simulation host**, csh or
+sh (see [Site envelope](#site-envelope)): pass `--cshrc FILE`, set
+`IC_OPT_CADENCE_CSHRC`, or put `cshrc:` in that host's entry of
+`~/.ic-opt/site.yaml`. It is never guessed from the controller's disk.
 Before the first run, write `~/.ic-opt/site.yaml` (see [Site envelope](#site-envelope)).
 
 ### Platforms
@@ -194,7 +195,17 @@ hosts:
     cshrc: /path/to/cadence_env.csh    # optional, like scratch_root, license_probe, transfer_timeout_s
 ```
 
-`env.doctor` prints the envelope (`jobs × threads / GB per job → total of
+`cshrc` names the host's environment file, whatever its shell (the key keeps
+its name): a file whose name ends in `.csh`, `.cshrc`, `.tcsh` or `.tcshrc`
+(`~/.cshrc` too) is sourced by `csh` and the tools run there; any other file,
+such as `cadence_env.sh`, is sourced by POSIX `sh` (`. FILE`) and the tools run
+in that `sh`. `--cshrc` and `IC_OPT_CADENCE_CSHRC` follow the same rule.
+
+`env.doctor` asks the host only for the tools the spec's pipeline runs:
+`spectre` and `ocean` (and, with `simulator.license_check`, the license query
+`license_probe`, else `lmstat -a`) when the spec has testbenches, and the
+spec's EMX binary (`em.binary`) when it has devices; a pure EM spec needs no
+Spectre on the host. It prints the envelope (`jobs × threads / GB per job → total of
 max_threads / max_memory_gb`) and fails a spec that asks for more; it also
 compares the entry with what the host reports (`nproc`, `MemTotal`) and warns,
 never blocks, when the entry is larger. `run.jobs` and the engine trim

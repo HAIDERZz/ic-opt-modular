@@ -5,6 +5,7 @@ from ic_opt.executor.base import (
     Executor,
     ExecutorError,
     TransportError,
+    hook_shell,
     shell_program,
 )
 from ic_opt.executor.local import LocalExecutor
@@ -19,5 +20,6 @@ __all__ = [
     "LocalExecutor",
     "SshExecutor",
     "TransportError",
+    "hook_shell",
     "shell_program",
 ]

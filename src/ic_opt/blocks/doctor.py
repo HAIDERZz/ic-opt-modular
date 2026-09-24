@@ -61,7 +61,12 @@ class DoctorReport:
 def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: RunStore | None = None,
            limits: HostLimits) -> DoctorReport:
     """``limits`` is the executor host's site.yaml entry (``run.limits``): the envelope checks compare against it,
-    and the machine check compares it with what the host reports (advisory)."""
+    and the machine check compares it with what the host reports (advisory).
+
+    The host is asked for the tools of the pipeline the spec runs, and no others: testbenches (the Spectre chain, alone
+    or behind EM devices) need ``spectre`` and ``ocean`` and, with ``simulator.license_check``, the license probe;
+    devices need the spec's EMX binary (``em.binary``). A pure EM spec (devices, no testbenches) asks nothing of
+    Spectre, so a host without it passes."""
     report = DoctorReport()
     add = report.checks.append
 
@@ -71,20 +76,8 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
         add(Check("executor", False, str(exc)))
         return report
 
-    tools = executor.run("which spectre ocean", cshrc=cshrc, timeout_s=120)
-    found = tools.stdout.strip().replace("\n", ", ")
-    add(Check("tools", tools.ok, found if tools.ok else "spectre/ocean not on PATH" + (f" (found: {found})" if found else "")))
-
-    if spec.simulator.license_check:      # the legacy rule: spectre -V answers and the license server lists features
-        version = executor.run("spectre -V", cshrc=cshrc, timeout_s=300)
-        probe = executor.run(limits.license_probe or "lmstat -a", cshrc=cshrc, timeout_s=300)   # lmstat-format output
-        features = {m.group(1): (int(m.group(2)), int(m.group(3))) for line in probe.stdout.splitlines()
-                    if (m := _LMSTAT_RE.match(line.strip()))}
-        spectre = ", ".join(f"{k} {used}/{issued}" for k, (issued, used) in features.items() if k.lower().startswith("spectre"))
-        head = (version.stdout or version.stderr).strip().splitlines()[:1]
-        add(Check("license", version.ok and probe.ok and bool(features),
-                  f"{head[0] if head else 'spectre -V failed'}; lmstat {len(features)} features" + (f" ({spectre})" if spectre else "")
-                  if version.ok and probe.ok else (probe.stderr.strip() or version.stderr.strip() or "spectre -V / lmstat failed")))
+    if spec.testbenches:                  # the Spectre / OCEAN chain, alone or behind EM devices
+        report.checks += _spectre_checks(spec, executor, cshrc, limits)
 
     for tb in spec.testbenches:
         path = f"{tb.maestro_point_root}/netlist/input.scs"
@@ -93,12 +86,12 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
     add(_envelope_check(spec, limits, executor.host))
     add(_machine_check(executor, limits))
 
-    if spec.devices:
-        for device in spec.devices:
-            add(_device_check(device))
-    if spec.em is not None:
-        emx = executor.run("which emx", cshrc=cshrc, timeout_s=120)
-        add(Check("emx", emx.ok, emx.stdout.strip() if emx.ok else "emx not on PATH"))
+    for device in spec.devices:
+        add(_device_check(device))
+    if spec.devices and spec.em is not None:       # the EMX stages: the spec's binary, which may be a path or another name
+        binary = spec.em.binary
+        emx = executor.run(f"which {shlex.quote(binary)}", cshrc=cshrc, timeout_s=120)
+        add(Check("emx", emx.ok, emx.stdout.strip() if emx.ok else f"{binary} not on PATH"))
         add(Check("em:process_file", executor.exists(spec.em.process_file), spec.em.process_file))
         add(_stack_check(spec, executor, cshrc))
         slots = limits.slots(spec.em.threads, spec.em.memory_gb)
@@ -112,6 +105,25 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
         add(Check("budget", used < spec.budget.max_simulations, f"{used}/{spec.budget.max_simulations} simulations used"))
         store.log_step("doctor", "ok" if report.ok else "fail", checks=[(c.name, c.ok) for c in report.checks])
     return report
+
+
+def _spectre_checks(spec: Spec, executor: Executor, cshrc: str | None, limits: HostLimits) -> list[Check]:
+    """``spectre`` and ``ocean`` on PATH and, with ``simulator.license_check``, the legacy rule: ``spectre -V`` answers
+    and the license server (the host's ``license_probe``, lmstat-format output) lists features."""
+    tools = executor.run("which spectre ocean", cshrc=cshrc, timeout_s=120)
+    found = tools.stdout.strip().replace("\n", ", ")
+    checks = [Check("tools", tools.ok, found if tools.ok else "spectre/ocean not on PATH" + (f" (found: {found})" if found else ""))]
+    if spec.simulator.license_check:
+        version = executor.run("spectre -V", cshrc=cshrc, timeout_s=300)
+        probe = executor.run(limits.license_probe or "lmstat -a", cshrc=cshrc, timeout_s=300)
+        features = {m.group(1): (int(m.group(2)), int(m.group(3))) for line in probe.stdout.splitlines()
+                    if (m := _LMSTAT_RE.match(line.strip()))}
+        spectre = ", ".join(f"{k} {used}/{issued}" for k, (issued, used) in features.items() if k.lower().startswith("spectre"))
+        head = (version.stdout or version.stderr).strip().splitlines()[:1]
+        checks.append(Check("license", version.ok and probe.ok and bool(features),
+                            f"{head[0] if head else 'spectre -V failed'}; lmstat {len(features)} features" + (f" ({spectre})" if spectre else "")
+                            if version.ok and probe.ok else (probe.stderr.strip() or version.stderr.strip() or "spectre -V / lmstat failed")))
+    return checks
 
 
 def _job(spec: Spec) -> tuple[int, float]:

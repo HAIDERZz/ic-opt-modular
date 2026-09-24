@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -13,6 +14,7 @@ from ic_opt.executor import (
     LocalExecutor,
     SshExecutor,
     TransportError,
+    hook_shell,
     shell_program,
 )
 
@@ -21,6 +23,46 @@ def test_shell_program_wraps_cwd_and_cshrc():
     assert shell_program("spectre x.scs") == ["/bin/sh", "-c", "spectre x.scs"]
     assert shell_program("ls", cwd="/w d") == ["/bin/sh", "-c", "cd '/w d' && ls"]
     assert shell_program("ls", cwd="/w", cshrc="/e/c.csh") == ["csh", "-fc", "source /e/c.csh; cd /w; ls"]
+
+
+# -- the environment file (site.yaml `cshrc`): csh or sh by its name (R-18) -------------------------
+
+
+@pytest.mark.parametrize(("path", "shell"), [
+    ("/e/cadence.csh", "csh"), ("/home/me/.cshrc", "csh"), ("/e/cadence.cshrc", "csh"), ("/e/setup.tcsh", "csh"),
+    ("/home/me/.tcshrc", "csh"), ("/e/SETUP.CSH", "csh"),
+    ("/e/cadence.sh", "sh"), ("/e/cadence.bash", "sh"), ("/e/cadence_env", "sh"), ("/e/csh.sh", "sh"), ("/e/cshrc", "sh"),
+])
+def test_the_environment_file_picks_its_shell_by_its_name(path, shell):
+    assert hook_shell(path) == shell
+
+
+def test_shell_program_sources_an_sh_environment_file_in_sh():
+    """Any file that is not a csh file is sourced by POSIX sh with `.`, and the command runs in that sh. A bare name is
+    made relative (`.` would look it up on PATH, where csh's `source` reads the working directory); the file's own exit
+    status does not stop the command."""
+    assert shell_program("ls", cwd="/w", cshrc="/e/env.sh") == ["/bin/sh", "-c", ". /e/env.sh; cd /w && ls"]
+    assert shell_program("ls", cshrc="/e/my env") == ["/bin/sh", "-c", ". '/e/my env'; ls"]
+    assert shell_program("ls", cshrc="env.sh") == ["/bin/sh", "-c", ". ./env.sh; ls"]
+
+
+def test_an_sh_environment_file_sets_up_the_command_on_this_host(tmp_path):
+    hook = tmp_path / "cadence env.sh"
+    hook.write_text('IC_OPT_HOOK="from sh"\nexport IC_OPT_HOOK\ntest -n ""\n', encoding="utf-8")     # ends on a failed test
+    ex = LocalExecutor(tmp_path / "scratch")
+    work = ex.scratch("obs_0001")
+    result = ex.run('echo "$IC_OPT_HOOK"; pwd', cwd=work, cshrc=str(hook))
+    assert result.ok and result.stdout.splitlines() == ["from sh", work]
+
+
+@pytest.mark.skipif(shutil.which("csh") is None, reason="csh is not installed here")
+def test_a_csh_environment_file_sets_up_the_command_on_this_host(tmp_path):
+    hook = tmp_path / "cadence.cshrc"
+    hook.write_text("setenv IC_OPT_HOOK from_csh\n", encoding="utf-8")
+    ex = LocalExecutor(tmp_path / "scratch")
+    work = ex.scratch("obs_0001")
+    result = ex.run("echo $IC_OPT_HOOK; pwd", cwd=work, cshrc=str(hook))
+    assert result.ok and result.stdout.splitlines() == ["from_csh", work]
 
 
 # -- local ----------------------------------------------------------------------
@@ -91,6 +133,12 @@ def test_ssh_run_builds_batchmode_argv_and_wraps_cshrc():
     argv = fake.calls[0]
     assert argv[:4] == ["ssh", "-o", "BatchMode=yes", "lab"]
     assert argv[4] == "exec csh -fc 'source /r/env.csh; cd /r/obs; spectre input.scs'"
+
+
+def test_ssh_run_sources_an_sh_environment_file_in_sh():
+    fake = FakeSsh()
+    SshExecutor("lab", "/tmp/icopt", execute=fake).run("spectre input.scs", cwd="/r/obs", cshrc="/r/cadence.sh")
+    assert fake.calls[0][4] == "exec /bin/sh -c '. /r/cadence.sh; cd /r/obs && spectre input.scs'"
 
 
 def test_ssh_exit_code_contract():

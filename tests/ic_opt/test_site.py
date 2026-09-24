@@ -274,6 +274,17 @@ def test_doctor_notes_a_failed_probe_and_passes_a_fitting_entry(tmp_path):
     assert fits.ok and fits.detail == "local: 8 cores / 31.3 GB; the entry fits"
 
 
+def test_doctor_keeps_the_spectre_checks_for_a_spec_with_testbenches(tmp_path):
+    """R-18: testbenches run Spectre and OCEAN, so the doctor still asks the host for both and, with license_check, for
+    the license; a host without Spectre fails there. Without devices it asks for no EMX."""
+    spec, limits = spectre_spec(tmp_path, license_check=True), HostLimits(max_threads=16, max_memory_gb=16)
+    checks = {c.name: c for c in _doctor(tmp_path, spec, limits, tools={"ocean", "lmstat"}).checks}
+    assert not checks["tools"].ok and checks["tools"].detail == "spectre/ocean not on PATH (found: /cad/bin/ocean)"
+    assert not checks["license"].ok and checks["license"].detail == "spectre: Command not found." and "emx" not in checks
+    full = {c.name: c for c in _doctor(tmp_path, spec, limits).checks}
+    assert full["tools"].ok and full["license"].ok and full["export:tb"].ok
+
+
 def test_doctor_envelope_counts_threads_and_memory_of_the_heaviest_job(tmp_path):
     spectre = next(c for c in _doctor(tmp_path, spectre_spec(tmp_path, parallel_jobs=5), HostLimits(max_threads=16, max_memory_gb=8)).checks
                    if c.name == "envelope")

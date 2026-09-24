@@ -95,6 +95,16 @@ def test_the_em_circuit_spectre_takes_the_license_queue_wait_from_the_spec(tmp_p
     assert argv[argv.index("+lqtimeout") + 1] == "1200"
 
 
+def test_doctor_asks_an_em_circuit_host_for_spectre_and_emx(tmp_path):
+    """R-18: EM devices bound into testbenches run both chains: Spectre, OCEAN and the license, and the EMX binary."""
+    from ic_opt.blocks.doctor import doctor
+
+    host = FakeSpectreExecutor(tmp_path / "sims")
+    checks = {c.name: c for c in doctor(em_circuit_spec(tmp_path), host, limits=FAKE_HOST).checks}
+    assert checks["tools"].ok and checks["license"].ok and checks["emx"].detail == "/cad/bin/emx"
+    assert {"which spectre ocean", "spectre -V", "lmstat -a", "which emx"} <= set(host.commands)
+
+
 def test_binding_failures_are_child_failures(tmp_path):
     spec = em_circuit_spec(tmp_path)
     store = RunStore(tmp_path / "proj")

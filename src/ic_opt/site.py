@@ -50,7 +50,7 @@ class HostLimits:
 
     max_threads: int
     max_memory_gb: float
-    cshrc: str | None = None                  # the Cadence environment file on that host
+    cshrc: str | None = None                  # the Cadence environment file on that host (csh or sh: executor.hook_shell)
     scratch_root: str | None = None           # where SSH runs keep their working directories
     license_probe: str | None = None          # the license query env.doctor runs there
     transfer_timeout_s: int | None = None     # scp / ssh probe timeout on that host

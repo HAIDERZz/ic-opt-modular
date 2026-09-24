@@ -87,7 +87,8 @@ def run(
     params: Annotated[list[str] | None, typer.Argument(help="recipe parameters as key=value")] = None,
     plan: Annotated[bool, typer.Option("--plan", help="print what would run; start no simulation")] = False,
     ssh_profile: Annotated[str | None, typer.Option("--ssh-profile", help="run simulations on this OpenSSH host alias")] = None,
-    cshrc: Annotated[str | None, typer.Option("--cshrc", help="Cadence environment csh file")] = None,
+    cshrc: Annotated[str | None, typer.Option("--cshrc", help="Cadence environment file on the simulation host: "
+                                              "*.csh / *.cshrc / *.tcsh / *.tcshrc are sourced by csh, others by sh")] = None,
 ) -> None:
     """Run a recipe (``--plan`` first: it is the only approval point)."""
     main = recipe_module.load_recipe(recipe)

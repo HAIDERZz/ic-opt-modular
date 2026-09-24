@@ -72,12 +72,15 @@ class FakeSpectreExecutor(LocalExecutor):
     Waveform exports requested by the probe script are written as CSV unless
     ``nil_waveforms`` names them (OCEAN returned nil). ``machine`` is the host's
     size as ``nproc`` / ``/proc/meminfo`` report it (None: the probe fails).
+    ``tools`` names the tools on the host's PATH (None: every one): ``which``
+    finds only those, and running one that is missing answers 127.
     """
 
     def __init__(self, scratch_root: Path, metric_fn=None, *, fail_spectre=None, fail_ocean=None, nil_waveforms=(),
-                 snp_fn=None, fail_emx=None, machine=(FAKE_HOST.max_threads, FAKE_HOST.max_memory_gb)) -> None:
+                 snp_fn=None, fail_emx=None, machine=(FAKE_HOST.max_threads, FAKE_HOST.max_memory_gb), tools=None) -> None:
         super().__init__(scratch_root)
         self.machine = machine
+        self.tools = None if tools is None else set(tools)
         self.metric_fn = metric_fn or (lambda p, tb, c: {})
         self.fail_spectre = fail_spectre or (lambda tb, corner: False)
         self.fail_ocean = fail_ocean or (lambda tb, corner: False)
@@ -90,8 +93,11 @@ class FakeSpectreExecutor(LocalExecutor):
     def run(self, command, *, cwd=None, timeout_s=None, cshrc=None) -> CommandResult:
         self.commands.append(command)
         argv = shlex.split(command)
-        if argv[0] == "which":                      # doctor: the fake host has the Cadence tools
-            return CommandResult(0, "\n".join(f"/cad/bin/{tool}" for tool in argv[1:]) + "\n", "", argv, 0.01)
+        if argv[0] == "which":                      # doctor: the fake host has the Cadence tools (``tools``: only those)
+            found = [tool for tool in argv[1:] if self._installed(tool)]
+            return CommandResult(0 if len(found) == len(argv) - 1 else 1, "".join(f"/cad/bin/{tool}\n" for tool in found), "", argv, 0.01)
+        if argv[0] in ("spectre", "ocean", "emx", "lmstat") and not self._installed(argv[0]):
+            return CommandResult(127, "", f"{argv[0]}: Command not found.\n", argv, 0.01)
         if argv[-1] == "nproc" or argv == ["cat", "/proc/meminfo"]:    # doctor's machine probe: the fake host's size
             if self.machine is None:
                 return CommandResult(127, "", f"{argv[-1]}: not found", argv, 0.01)
@@ -142,6 +148,9 @@ class FakeSpectreExecutor(LocalExecutor):
                 if line.startswith("; waveform export: ") and (name := line.split(": ", 1)[1]) not in self.nil_waveforms:
                     (work / "metrics" / "waveforms" / f"{name}.csv").write_text("freq,value\n1e9,1.0\n2e9,1.5\n")
         return CommandResult(0, "", "", argv, 0.01)
+
+    def _installed(self, tool: str) -> bool:
+        return self.tools is None or tool in self.tools
 
 
 def age_store(project: Path, spec: Spec, executor) -> None:

@@ -20,7 +20,7 @@ from ic_opt.space import Point
 from ic_opt.spec import EmSettings, Spec
 from ic_opt.stages.em_chain import Geometry, Pcell, emx_stages
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, synthetic_snp
+from tests.ic_opt.fakes import DEMO_PROC, FAKE_HOST, FakeSpectreExecutor, synthetic_snp
 from tests.ic_opt.test_em_pcell import demo_spec
 
 pytest.importorskip("klayout.db")
@@ -240,3 +240,26 @@ def test_doctor_checks_the_em_sections(tmp_path):
     missing = spec.model_copy(update={"devices": [spec.devices[0].model_copy(update={"profile": "nope"})]})
     bad = {c.name: c for c in doctor(missing, FakeSpectreExecutor(store.root / "sims"), limits=FAKE_HOST).checks}
     assert not bad["device:ind"].ok and "unsupported process rule profile: nope" in bad["device:ind"].detail
+
+
+def test_doctor_asks_a_pure_em_host_for_its_emx_binary_and_nothing_of_spectre(tmp_path):
+    """R-18: devices without testbenches run pcell -> emx -> measure. The doctor looks for the spec's EMX binary and
+    probes nothing of Spectre -- no `which spectre ocean`, no `spectre -V`, no license query, although the simulator
+    section keeps its license_check default -- so a host with EMX and no Spectre passes."""
+    from ic_opt.blocks.doctor import doctor
+
+    proc = tmp_path / "demo.proc"
+    proc.write_text(DEMO_PROC)
+    spec = em_only_spec(process_file=str(proc), binary="emx_2024")
+    assert not spec.testbenches and spec.simulator.license_check
+    host = FakeSpectreExecutor(tmp_path / "sims", tools={"emx_2024"})
+    report = doctor(spec, host, limits=FAKE_HOST)
+    checks = {c.name: c for c in report.checks}
+    assert report.ok, str(report)
+    assert "tools" not in checks and "license" not in checks and checks["emx"].detail == "/cad/bin/emx_2024"
+    assert "which emx_2024" in host.commands
+    assert not [c for c in host.commands if c.split()[0] in ("spectre", "ocean", "lmstat") or c.startswith("which spectre")]
+
+    bare = FakeSpectreExecutor(tmp_path / "sims", tools=())                   # the binary is not there either
+    emx = next(c for c in doctor(spec, bare, limits=FAKE_HOST).checks if c.name == "emx")
+    assert not emx.ok and emx.detail == "emx_2024 not on PATH"
