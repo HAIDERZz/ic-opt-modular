@@ -1,0 +1,517 @@
+{
+ "stratum": "ind_sym_ap",
+ "signed_off": 5,
+ "ok": 5,
+ "coverage": 0.8478260869565217,
+ "median_abs_z": 0.6823607843668928,
+ "points": [
+  {
+   "obs_id": "obs_0001",
+   "part": "ind_sym_ap_nt1",
+   "params": {
+    "outer_diameter_um": "118",
+    "width_um": "9.9",
+    "spacing_um": "2",
+    "turns": "1"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 1.9464466217602406e-10,
+     "predicted": 1.9447107564741926e-10,
+     "lo": 1.943109388442075e-10,
+     "hi": 1.9463134442362184e-10,
+     "status": "predicted",
+     "z": 2.529232952821605,
+     "inside": false
+    },
+    "Lp_res": {
+     "measured": 1.7912931541686088e-10,
+     "predicted": 1.7870431356351055e-10,
+     "lo": 1.7819531470284977e-10,
+     "hi": 1.7921476633355491e-10,
+     "status": "predicted",
+     "z": 1.9510877792026131,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 18.91397488357759,
+     "predicted": 18.884843130772456,
+     "lo": 18.716889300819847,
+     "hi": 19.054304074890375,
+     "status": "predicted",
+     "z": 0.3776062570741382,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 198799045367.25565,
+     "predicted": 198805682714.21097,
+     "lo": 198754162591.9339,
+     "hi": 198857216191.29266,
+     "status": "predicted",
+     "z": -0.265101743300744,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 1.8152210558748717e-10,
+     "predicted": 1.8143440385876338e-10,
+     "lo": 1.8128799915470298e-10,
+     "hi": 1.8158092679644913e-10,
+     "status": "predicted",
+     "z": 1.6681277593318151,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 1.7780757244512408e-10,
+     "predicted": 1.7774737106769966e-10,
+     "lo": 1.776251273153169e-10,
+     "hi": 1.7786969894970542e-10,
+     "status": "predicted",
+     "z": 1.2900859708049182,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": 1.8624527219252935e-10,
+     "predicted": 1.8618035553257272e-10,
+     "lo": 1.8605014107027222e-10,
+     "hi": 1.8631066113055362e-10,
+     "status": "predicted",
+     "z": 1.4757381690643583,
+     "inside": true
+    },
+    "Qp@10": {
+     "measured": 6.424331508195938,
+     "predicted": 6.429896341666802,
+     "lo": 6.425739905841489,
+     "hi": 6.434055466047678,
+     "status": "predicted",
+     "z": -2.7853728513919576,
+     "inside": false
+    },
+    "Qp@28": {
+     "measured": 11.869108059474907,
+     "predicted": 11.887718299510086,
+     "lo": 11.868937465001286,
+     "hi": 11.906528851906092,
+     "status": "predicted",
+     "z": -2.0241221288255042,
+     "inside": true
+    },
+    "Qp@60": {
+     "measured": 17.219588579063178,
+     "predicted": 17.223257554545917,
+     "lo": 17.180921069183857,
+     "hi": 17.265698363650902,
+     "status": "predicted",
+     "z": -0.1731298483360988,
+     "inside": true
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0002",
+   "part": "ind_sym_ap_nt1",
+   "params": {
+    "outer_diameter_um": "117",
+    "width_um": "9.4",
+    "spacing_um": "2",
+    "turns": "1"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 1.961584358078085e-10,
+     "predicted": 1.9608247738582342e-10,
+     "lo": 1.9591272396692143e-10,
+     "hi": 1.9625237789176829e-10,
+     "status": "predicted",
+     "z": 1.0442917222116932,
+     "inside": true
+    },
+    "Lp_res": {
+     "measured": 1.8081605596546335e-10,
+     "predicted": 1.7993643664145637e-10,
+     "lo": 1.7920237224481412e-10,
+     "hi": 1.8067350797674386e-10,
+     "status": "predicted",
+     "z": 2.7948068358979827,
+     "inside": false
+    },
+    "Qp_peak": {
+     "measured": 18.850400253539505,
+     "predicted": 18.826127286325782,
+     "lo": 18.66756455830665,
+     "hi": 18.98603684984873,
+     "status": "predicted",
+     "z": 0.3333820496730254,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 200075000713.0356,
+     "predicted": 200054639203.6337,
+     "lo": 199993241640.3467,
+     "hi": 200116055615.8615,
+     "status": "predicted",
+     "z": 0.6823607843668928,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 1.8312031498027313e-10,
+     "predicted": 1.8306438617782222e-10,
+     "lo": 1.828978231222254e-10,
+     "hi": 1.8323110092057978e-10,
+     "status": "predicted",
+     "z": 0.9350810816594667,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 1.793159280384607e-10,
+     "predicted": 1.792841239442513e-10,
+     "lo": 1.7914081191211265e-10,
+     "hi": 1.794275506255218e-10,
+     "status": "predicted",
+     "z": 0.5813665477764067,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": 1.8764318967041653e-10,
+     "predicted": 1.876111772539942e-10,
+     "lo": 1.874503522848519e-10,
+     "hi": 1.8777214020458269e-10,
+     "status": "predicted",
+     "z": 0.5892257341673551,
+     "inside": true
+    },
+    "Qp@10": {
+     "measured": 6.335488592496141,
+     "predicted": 6.343421654256805,
+     "lo": 6.337937818214005,
+     "hi": 6.3489102351328,
+     "status": "predicted",
+     "z": -3.0098506124130147,
+     "inside": false
+    },
+    "Qp@28": {
+     "measured": 11.76271469578026,
+     "predicted": 11.763026055234517,
+     "lo": 11.744412374510983,
+     "hi": 11.781669236719695,
+     "status": "predicted",
+     "z": -0.03414243183299803,
+     "inside": true
+    },
+    "Qp@60": {
+     "measured": 17.07245118882294,
+     "predicted": 17.086194659993506,
+     "lo": 17.04560911757588,
+     "hi": 17.1268768364617,
+     "status": "predicted",
+     "z": -0.6767269780409404,
+     "inside": true
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0003",
+   "part": "ind_sym_ap",
+   "params": {
+    "outer_diameter_um": "120",
+    "width_um": "9.1",
+    "spacing_um": "4",
+    "turns": "2"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.914556771194146e-10,
+     "predicted": 4.913906914589857e-10,
+     "lo": 4.911840536966643e-10,
+     "hi": 4.915974161523964e-10,
+     "status": "predicted",
+     "z": 0.7342169308143839,
+     "inside": true
+    },
+    "Lp_res": {
+     "measured": 4.664054854957305e-10,
+     "predicted": 4.668510199189977e-10,
+     "lo": 4.657579532561193e-10,
+     "hi": 4.679466518515e-10,
+     "status": "predicted",
+     "z": -0.9542693078298143,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 14.56247474651564,
+     "predicted": 14.57054142469671,
+     "lo": 14.540116512645895,
+     "hi": 14.601030000286432,
+     "status": "predicted",
+     "z": -0.5797856586582323,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 73498863507.99158,
+     "predicted": 73492622648.70168,
+     "lo": 73248892678.44087,
+     "hi": 73737163611.40526,
+     "status": "predicted",
+     "z": 0.0526065538552947,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 4.639319656536485e-10,
+     "predicted": 4.639319856280227e-10,
+     "lo": 4.637175813481196e-10,
+     "hi": 4.64146489039805e-10,
+     "status": "predicted",
+     "z": -0.00025953490739319147,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 5.095452240985106e-10,
+     "predicted": 5.095820010654842e-10,
+     "lo": 5.093254856833573e-10,
+     "hi": 5.098386456383609e-10,
+     "status": "predicted",
+     "z": -0.3756908804861143,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 9.155361572904154,
+     "predicted": 9.173259319173573,
+     "lo": 9.16925852681853,
+     "hi": 9.17726185718116,
+     "status": "predicted",
+     "z": -9.312928740230072,
+     "inside": false
+    },
+    "Qp@28": {
+     "measured": 14.262331601621165,
+     "predicted": 14.243917296728904,
+     "lo": 14.191731151267627,
+     "hi": 14.296295342230358,
+     "status": "predicted",
+     "z": 0.7189943701683571,
+     "inside": true
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0004",
+   "part": "ind_sym_ap",
+   "params": {
+    "outer_diameter_um": "119",
+    "width_um": "9.3",
+    "spacing_um": "3.4",
+    "turns": "2"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.865777005934788e-10,
+     "predicted": 4.864163663818531e-10,
+     "lo": 4.861594398032091e-10,
+     "hi": 4.866734287416039e-10,
+     "status": "predicted",
+     "z": 1.4657749496049988,
+     "inside": true
+    },
+    "Lp_res": {
+     "measured": 4.6208095949780687e-10,
+     "predicted": 4.6235942426678733e-10,
+     "lo": 4.599603554374463e-10,
+     "hi": 4.6477100619900757e-10,
+     "status": "predicted",
+     "z": -0.2713108349675436,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 14.471588852875787,
+     "predicted": 14.529587019043323,
+     "lo": 14.498792131660995,
+     "hi": 14.560447313604422,
+     "status": "predicted",
+     "z": -4.125521762607276,
+     "inside": false
+    },
+    "SRF_p": {
+     "measured": 72052288038.37383,
+     "predicted": 72113553015.0186,
+     "lo": 71875885781.60483,
+     "hi": 72352006126.93982,
+     "status": "predicted",
+     "z": -0.5298523202560964,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 4.593075577319009e-10,
+     "predicted": 4.591792525647211e-10,
+     "lo": 4.588653379664914e-10,
+     "hi": 4.5949338191522524e-10,
+     "status": "predicted",
+     "z": 1.1383606723078652,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 5.073680285437917e-10,
+     "predicted": 5.076389294847469e-10,
+     "lo": 5.031232953224187e-10,
+     "hi": 5.121950923844197e-10,
+     "status": "predicted",
+     "z": -0.15657797904201878,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 9.168389351613236,
+     "predicted": 9.208338711054452,
+     "lo": 9.196926539568063,
+     "hi": 9.219765043538809,
+     "status": "predicted",
+     "z": -7.293243324241844,
+     "inside": false
+    },
+    "Qp@28": {
+     "measured": 14.203780540300302,
+     "predicted": 14.224168216059654,
+     "lo": 14.130317414527353,
+     "hi": 14.318642356239623,
+     "status": "predicted",
+     "z": -0.4425957242748129,
+     "inside": true
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0005",
+   "part": "ind_sym_ap",
+   "params": {
+    "outer_diameter_um": "95",
+    "width_um": "9.5",
+    "spacing_um": "3.7",
+    "turns": "2"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.176698807142439e-10,
+     "predicted": 3.176685752299945e-10,
+     "lo": 3.171994444147106e-10,
+     "hi": 3.181383998791603e-10,
+     "status": "predicted",
+     "z": 0.006493704144805412,
+     "inside": true
+    },
+    "Lp_res": {
+     "measured": 2.972733566802719e-10,
+     "predicted": 2.963998992957183e-10,
+     "lo": 2.94681781898331e-10,
+     "hi": 2.9812803403239345e-10,
+     "status": "predicted",
+     "z": 1.1858395558170198,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 15.721043990584638,
+     "predicted": 15.753475815891067,
+     "lo": 15.712015028759225,
+     "hi": 15.795046009541837,
+     "status": "predicted",
+     "z": -1.711373465803783,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 103187641541.38008,
+     "predicted": 103259253327.74786,
+     "lo": 102886517335.69438,
+     "hi": 103633339663.10553,
+     "status": "predicted",
+     "z": -0.3948142076726319,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 2.967974756474424e-10,
+     "predicted": 2.9681414313777624e-10,
+     "lo": 2.962640349747966e-10,
+     "hi": 2.97365272751068e-10,
+     "status": "predicted",
+     "z": -0.08435055829631437,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 3.0432943243282857e-10,
+     "predicted": 3.047662013111678e-10,
+     "lo": 3.019416190590849e-10,
+     "hi": 3.0761720676692714e-10,
+     "status": "predicted",
+     "z": -0.40369216303292554,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": 4.026678513175821e-10,
+     "predicted": 4.0089177590048546e-10,
+     "lo": 3.85121597374391e-10,
+     "hi": 4.17307720679214e-10,
+     "status": "predicted",
+     "z": 0.3262263434224796,
+     "inside": true
+    },
+    "Qp@10": {
+     "measured": 7.736951831222725,
+     "predicted": 7.755701970892943,
+     "lo": 7.7352712519593325,
+     "hi": 7.776186652287927,
+     "status": "predicted",
+     "z": -1.908878808650283,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 13.359948918794352,
+     "predicted": 13.362248365532292,
+     "lo": 13.267457828085536,
+     "hi": 13.45771614244013,
+     "status": "predicted",
+     "z": -0.049380273243928366,
+     "inside": true
+    },
+    "Qp@60": {
+     "measured": 15.27285872897286,
+     "predicted": 15.434335256229138,
+     "lo": 14.824331515309126,
+     "hi": 16.069439930945197,
+     "status": "predicted",
+     "z": -0.521628981970152,
+     "inside": true
+    }
+   }
+  }
+ ],
+ "adopted": []
+}

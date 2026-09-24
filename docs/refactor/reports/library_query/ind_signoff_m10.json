@@ -1,0 +1,481 @@
+{
+ "stratum": "ind_sym_m10",
+ "signed_off": 5,
+ "ok": 5,
+ "coverage": 0.9642857142857143,
+ "median_abs_z": 0.4653866313970751,
+ "points": [
+  {
+   "obs_id": "obs_0001",
+   "part": "ind_sym_m10",
+   "params": {
+    "outer_diameter_um": "143",
+    "width_um": "9.9",
+    "spacing_um": "3.9",
+    "turns": "3"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 1.0090069865169979e-09,
+     "predicted": 1.0080373015243856e-09,
+     "lo": 1.0029416606879942e-09,
+     "hi": 1.0131588317584871e-09,
+     "status": "predicted",
+     "z": 0.5153304032901422,
+     "inside": true
+    },
+    "Lp_res": {
+     "measured": 9.788938433844532e-10,
+     "predicted": 9.763604888537122e-10,
+     "lo": 9.71474691815833e-10,
+     "hi": 9.81270857826297e-10,
+     "status": "predicted",
+     "z": 1.0940898513514365,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 11.383566010598523,
+     "predicted": 11.395857589083613,
+     "lo": 11.360223730825766,
+     "hi": 11.43160322083153,
+     "status": "predicted",
+     "z": -0.7830089972656276,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 36388459211.671425,
+     "predicted": 36354541653.24471,
+     "lo": 35963068029.90338,
+     "hi": 36750276637.091896,
+     "status": "predicted",
+     "z": 0.1944865910224893,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 1.0041078421761284e-09,
+     "predicted": 1.0035553839446085e-09,
+     "lo": 9.985586673089017e-10,
+     "hi": 1.0085771037954045e-09,
+     "status": "predicted",
+     "z": 0.2717883483993272,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 2.0692078784364076e-09,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 10.14036127650983,
+     "predicted": 10.158758996195349,
+     "lo": 10.127695648399122,
+     "hi": 10.189917620509535,
+     "status": "predicted",
+     "z": -1.2739738551786912,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 6.894680691199883,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0002",
+   "part": "ind_sym_m10",
+   "params": {
+    "outer_diameter_um": "137",
+    "width_um": "9.4",
+    "spacing_um": "3.3",
+    "turns": "3"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 9.98293134276263e-10,
+     "predicted": 9.972002189986705e-10,
+     "lo": 9.908453017495227e-10,
+     "hi": 1.0035958943491815e-09,
+     "status": "predicted",
+     "z": 0.4653866313970751,
+     "inside": true
+    },
+    "Lp_res": {
+     "measured": 9.685504497222535e-10,
+     "predicted": 9.66286834677537e-10,
+     "lo": 9.602856803465237e-10,
+     "hi": 9.723254922787141e-10,
+     "status": "predicted",
+     "z": 0.7955209866675188,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 11.443600047490055,
+     "predicted": 11.467945386560116,
+     "lo": 11.42831753969915,
+     "hi": 11.507710643520287,
+     "status": "predicted",
+     "z": -1.3950597511667207,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 36587788879.698235,
+     "predicted": 36650145756.52574,
+     "lo": 36263288744.344864,
+     "hi": 37041129761.95672,
+     "status": "predicted",
+     "z": -0.36234337686264073,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 9.928316404037448e-10,
+     "predicted": 9.919610969939343e-10,
+     "lo": 9.857024362167773e-10,
+     "hi": 9.982594967767835e-10,
+     "status": "predicted",
+     "z": 0.34163620473113776,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 2.010666910859675e-09,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 10.058424983018227,
+     "predicted": 10.08061466273153,
+     "lo": 10.035468400391952,
+     "hi": 10.125964023214806,
+     "status": "predicted",
+     "z": -1.0566943925424341,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 7.262380136527046,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0003",
+   "part": "ind_sym_m10",
+   "params": {
+    "outer_diameter_um": "152",
+    "width_um": "6.9",
+    "spacing_um": "3.9",
+    "turns": "4"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 1.9661147625932555e-09,
+     "predicted": 1.9659394868994425e-09,
+     "lo": 1.9595443205650755e-09,
+     "hi": 1.972355524490466e-09,
+     "status": "predicted",
+     "z": 0.07432002704209585,
+     "inside": true
+    },
+    "Lp_res": {
+     "measured": 1.9445299020684483e-09,
+     "predicted": 1.9442697521105566e-09,
+     "lo": 1.936891643091409e-09,
+     "hi": 1.9516759662087327e-09,
+     "status": "predicted",
+     "z": 0.07453640837008607,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 9.401236894591138,
+     "predicted": 9.423265121759211,
+     "lo": 9.393932280681865,
+     "hi": 9.452689555530645,
+     "status": "predicted",
+     "z": -1.7057847084708462,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 22519973017.827522,
+     "predicted": 22632319225.82439,
+     "lo": 22091624740.045296,
+     "hi": 23186247257.365376,
+     "status": "predicted",
+     "z": -0.4646922765854187,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 2.2321115448727683e-09,
+     "predicted": 2.231904678650177e-09,
+     "lo": 2.2163525933483513e-09,
+     "hi": 2.2475658925076138e-09,
+     "status": "predicted",
+     "z": 0.032672500005809575,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 9.401236894591138,
+     "predicted": 9.419459573005138,
+     "lo": 9.340175574715213,
+     "hi": 9.499416572817847,
+     "status": "predicted",
+     "z": -0.49309315580064134,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0004",
+   "part": "ind_sym_m10",
+   "params": {
+    "outer_diameter_um": "140",
+    "width_um": "5.4",
+    "spacing_um": "3.9",
+    "turns": "4"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 1.968322360935702e-09,
+     "predicted": 1.9685973857265833e-09,
+     "lo": 1.957861829723368e-09,
+     "hi": 1.9793918080711047e-09,
+     "status": "predicted",
+     "z": -0.06939903829603924,
+     "inside": true
+    },
+    "Lp_res": {
+     "measured": 1.951108420881189e-09,
+     "predicted": 1.954617582761526e-09,
+     "lo": 1.943473222648275e-09,
+     "hi": 1.9658258474147967e-09,
+     "status": "predicted",
+     "z": -0.6656432571456355,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 9.400975411142099,
+     "predicted": 9.423398049622486,
+     "lo": 9.39319268115977,
+     "hi": 9.453700548455561,
+     "status": "predicted",
+     "z": -1.6861271690674295,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 24239737391.378098,
+     "predicted": 24172934944.699036,
+     "lo": 23592116802.92634,
+     "hi": 24768052342.304955,
+     "status": "predicted",
+     "z": 0.25621302856230166,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 2.1907267498564438e-09,
+     "predicted": 2.195282205063085e-09,
+     "lo": 2.171607406956375e-09,
+     "hi": 2.219215105100926e-09,
+     "status": "predicted",
+     "z": -0.4722404082715653,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 9.296862746078201,
+     "predicted": 9.30427706723939,
+     "lo": 9.202290381939546,
+     "hi": 9.407394045493133,
+     "status": "predicted",
+     "z": -0.1556775259690915,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0005",
+   "part": "ind_sym_m10",
+   "params": {
+    "outer_diameter_um": "200",
+    "width_um": "7.8",
+    "spacing_um": "3.8",
+    "turns": "5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.925195506218882e-09,
+     "predicted": 3.926999056033829e-09,
+     "lo": 3.903430748639284e-09,
+     "hi": 3.950709665200639e-09,
+     "status": "predicted",
+     "z": -0.20727918707943244,
+     "inside": true
+    },
+    "Lp_res": {
+     "measured": 3.901017633309132e-09,
+     "predicted": 3.904012431428723e-09,
+     "lo": 3.8776173453153715e-09,
+     "hi": 3.930587189879205e-09,
+     "status": "predicted",
+     "z": -0.2395978782014325,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 7.58423791430443,
+     "predicted": 7.613520792025415,
+     "lo": 7.5921337012127905,
+     "hi": 7.634968130414207,
+     "status": "predicted",
+     "z": -3.112829783052227,
+     "inside": false
+    },
+    "SRF_p": {
+     "measured": 12178504801.519579,
+     "predicted": 12094542877.760342,
+     "lo": 11551642580.800549,
+     "hi": 12662958224.236029,
+     "status": "predicted",
+     "z": 0.34012882383320636,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Lp@28": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@28": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  }
+ ],
+ "adopted": []
+}

@@ -29,13 +29,15 @@ def key(family: str, pair: str, od_p: float, od_s: float, w_p: float, w_s: float
 
 
 def grid_index(root: Path) -> dict[tuple, dict]:
-    grid = json.loads((root / "xfm_grid.json").read_text())
+    """Every grid under the root (the production xfm_grid.json and later densification grids), keyed by geometry."""
     out = {}
-    for family, fam in grid["families"].items():
-        for p in fam["points"]:
-            if p["status"] == "ok":
-                cs = round(p["offset"] * (p["od_p"] + p["od_s"]) / 4, 2)
-                out[key(family, p["pair"], p["od_p"], p["od_s"], p["w_p"], p["w_s"], cs, p["nt_s"], p["s_s"])] = {**p, "family": family}
+    for path in sorted(root.glob("xfm_grid*.json")):
+        grid = json.loads(path.read_text())
+        for family, fam in grid["families"].items():
+            for p in fam["points"]:
+                if p["status"] == "ok":
+                    cs = round(p["offset"] * (p["od_p"] + p["od_s"]) / 4, 2)
+                    out[key(family, p["pair"], p["od_p"], p["od_s"], p["w_p"], p["w_s"], cs, p["nt_s"], p["s_s"])] = {**p, "family": family}
     return out
 
 

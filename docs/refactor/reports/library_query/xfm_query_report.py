@@ -266,7 +266,7 @@ figcaption {{ font-size:12.5px; color:var(--muted); margin-top:6px; }}
 <h2>结论</h2>
 <div class="finding ok"><b>可用。</b>{usable_text()}逆向推荐在留出真值上首选全部命中，推荐出的几何都能实造、通过产品 DRC 审计。</div>
 <div class="finding"><b>已修：变压器的 SRF 改用系统 SRF。</b>SRF_p（初级 Im(Z) 的第一个零点，次级开路）会在次级反射过来的谐振与初级自身谐振之间跳变：反射下陷是否越过零只差约 20 Ω，几何几乎相同的两个点 SRF_p 可差 60 GHz（见第 4 节图）。测量内核新增标量 <code>SRF</code>（各驱动中最低的谐振；电感即 SRF_p，电感库复核不变），耦合对的锚定曲线一律按它截断，推荐隐含的 SRF 下限也用它（5ab7add）。SRF_p 的留出最大误差 {srf_p_max()}，系统 SRF {srf_max()}。</div>
-<div class="finding"><b>已修：Q 峰只在系统 SRF 以下取。</b>多匝次级在扫频带内谐振，谐振后初级的 Q 曲线会在带边重新抬高：ms 分层 69% 的行"0–150 GHz 内 Q 最大值"落在谐振之后。查询库改为只在系统 SRF 以下找峰（eae6b94；电感和 bs 几乎不受影响），ms_ap 的 Qp_peak 留出误差中位 3.6% → {qpeak_ms()}、最大 82% → {qpeak_ms_max()}。测量内核自带的 <code>Qp_peak</code>（EM 优化指标用，与 em-opt 口径一致）未改，是否同步改由用户决定。</div>
+<div class="finding"><b>已修：Q 峰只在系统 SRF 以下取。</b>多匝次级在扫频带内谐振，谐振后初级的 Q 曲线会在带边重新抬高：ms 分层 69% 的行"0–150 GHz 内 Q 最大值"落在谐振之后。查询库改为只在系统 SRF 以下找峰（eae6b94；电感和 bs 几乎不受影响），ms_ap 的 Qp_peak 留出误差中位 3.6% → {qpeak_ms()}、最大 82% → {qpeak_ms_max()}。测量内核自带的 <code>Qp_peak</code>（EM 优化指标）也已同步改为系统 SRF 以下取峰（5d4d38d，用户拍板）：变压器的 Q 峰与 em-opt 历史库的全扫频最大值从此按设计不同，电感不变。</div>
 <div class="finding ok"><b>k 的无量纲映射在新库上重验通过。</b>以平均外径（对数）、外径比、线宽/外径、中心偏移/平均半径（ms 另加匝距/外径与匝数）为特征，bs 的 k 中位误差约减半，ms 的约降到恒等映射的四分之一（第 3 节）。库清单里 k 列都用它。</div>
 <div class="finding"><b>留意：ms 的高频锚定量数据少、误差大。</b>多匝器件谐振低，28 / 60 GHz 锚定列只剩约 440 / 80 行可用，留出中位误差 1.4–5.8%，跨组覆盖最低约 87%。ms 查询以低频量（Lp_lf、Ls_lf、k_lf）和 10 GHz 锚定为主；若要 28 / 60 GHz 的精度，需要在高频可用区定向加密采样（待决定）。bs 的 60 GHz 锚定 Lp / Ls 覆盖约 92%，也略低于名义 95%。</div>
 

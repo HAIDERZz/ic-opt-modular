@@ -88,7 +88,7 @@ def main() -> None:
     if args.plan:
         return
     args.root.mkdir(parents=True, exist_ok=True)
-    shutil.copy(args.grid, args.root / "xfm_grid.json")
+    shutil.copy(args.grid, args.root / args.grid.name)          # the production grid was xfm_grid.json; later batches keep their own names
     for name, runs in todo:
         store = RunStore(args.root / name)
         (store.root / "spec.json").write_text(runs[0][1].model_dump_json(indent=1))
