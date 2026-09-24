@@ -1,8 +1,16 @@
 """T13 gates on the real library (set IC_OPT_LIBRARY to a library root with library.yaml): the ported kernels
 reproduce the T13.0 verification (docs/refactor/reports/library_query/ind_query_verify.json) on the same rows,
-seeds and splits. G1: forward accuracy and 2-sigma coverage per quantity, SRF by GP, the domain-guard table."""
+seeds and splits. G1: forward accuracy and 2-sigma coverage per quantity, SRF by GP, the domain-guard table.
+
+The reference was re-baselined on 2026-09-24 with the same protocol (ind_dataset.py + ind_query_verify.py) after the
+ten T13.6 sign-off designs were adopted into the library (1038 -> 1048 rows): the seeded splits and the inverse
+queries change with the rows, so the 2026-09-23 numbers (kept as ind_query_verify_20260923_1038rows.json, the page
+IND_QUERY_VERIFY_CN.html) no longer reproduce exactly; the re-baselined numbers stay in the same band (medians
+0.03-0.43 %, coverage 0.85-0.96). The adopted designs lie off the sweep lattice, so the midpoint check pairs only
+lattice values (those with at least five rows)."""
 from __future__ import annotations
 
+import collections
 import itertools
 import json
 import os
@@ -55,7 +63,9 @@ def test_g1_guard_accepts_the_library_and_rejects_what_it_must(stratum):
     for row in ds.rows:
         assert guard.check(row.coords).ok
     have = {tuple(r.coords[d] for d in ds.dims) for r in ds.rows}
-    ods, ws = sorted({r.coords[od] for r in ds.rows}), sorted({r.coords[w] for r in ds.rows})
+    lattice = 5                                          # a sweep level has many rows; an adopted sign-off design (T13.6) has one
+    ods = sorted(v for v, n in collections.Counter(r.coords[od] for r in ds.rows).items() if n >= lattice)
+    ws = sorted(v for v, n in collections.Counter(r.coords[w] for r in ds.rows).items() if n >= lattice)
     mids = 0
     for (a, b), (c, e), sp, turns in itertools.product(itertools.pairwise(ods), itertools.pairwise(ws), (2.0, 3.0, 4.0), (1, 2, 3, 4, 5)):
         if turns == 1 and sp != 2.0:
