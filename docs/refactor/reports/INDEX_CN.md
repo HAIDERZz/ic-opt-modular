@@ -7,7 +7,7 @@
 
 | 页面 | 生成脚本 | 数据 | artifact | 备注 |
 |---|---|---|---|---|
-| `IND_QUERY_VERIFY_CN.html` | `ind_query_report.py` | `ind_query_verify.json`（`ind_dataset.py` + `ind_query_verify.py`；09-23 的旧基线保留为 `ind_query_verify_20260923_1038rows.json`） | [LzQW9GC3berWR45jMzhgtn](https://claude.ai/artifact/LzQW9GC3berWR45jMzhgtn) | 页面与 artifact 是 09-23 版（1038 行）；数据已于 09-24 按回流后 1048 行重做基线，页面待重生成 |
+| `IND_QUERY_VERIFY_CN.html` | `ind_query_report.py` | `ind_query_verify.json`（`ind_dataset.py` + `ind_query_verify.py`；09-23 的旧基线保留为 `ind_query_verify_20260923_1038rows.json`） | [LzQW9GC3berWR45jMzhgtn](https://claude.ai/artifact/LzQW9GC3berWR45jMzhgtn) v2 | 2026-09-25 按回流后的 1048 行重生成（cbbe008） |
 | `T13_PLAN_CN.html` | `t13_plan_page.py` | `../T13_LIBRARY_MODULE_PLAN_CN.md` + `arch/t13-library-module.architecture.html` + `arch/t13-dev-plan.workflow.html` | [9Kd6syDGfn56CXnXGo2qqJ](https://claude.ai/artifact/9Kd6syDGfn56CXnXGo2qqJ) | T13 方案页 |
 | `XFM_QUERY_VERIFY_CN.html` | `xfm_query_report.py` | `xfm_query_verify_{bs,ms}_{ap,m10}.json`（`xfm_query_verify.py`） | [6MKZJ2QPf25CYocfPTJNZm](https://claude.ai/artifact/6MKZJ2QPf25CYocfPTJNZm) v3 | ms 两表为高频加密后的重验 |
 | `IND_SIGNOFF_N28_CN.html` | `ind_signoff_report.py` | `ind_signoff_{ap,m10}.json`（`lib_signoff` 报告；候选由 `ind_signoff_candidates.py` 挑选） | [6hBxsFKhvUo3vFMZfufryg](https://claude.ai/artifact/6hBxsFKhvUo3vFMZfufryg) v3 | 电感 10 点真实复核，已回流 |
