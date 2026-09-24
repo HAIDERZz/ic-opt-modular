@@ -14,6 +14,15 @@ legacy flow. A stage that fails -- a ``StageFailure``, or a command past its
 deadline (``CommandTimeout``) -- fails its child, or every child of the point
 for a point-level stage, as ``failed:<stage>``; the other points run on.
 
+Interrupts. Ctrl-C reaches the running commands through the executors' signal
+forwarding (``process_group``), which counts it before anything else; the
+KeyboardInterrupt comes to the thread waiting for the points. From then on no
+job starts a further stage, child or command (``Interrupted``): the points still
+queued never start, a running point whose command got the interrupt is not
+recorded -- its failure is not its own, and it is simulated again next time --
+while one that had finished is. The step log says which were recorded,
+interrupted and never started, and the KeyboardInterrupt goes on.
+
 Identity. The problem is ``Spec.fingerprint()``: the spec without how it is run
 (resources, timeouts, retention, license check, budget), so a project moved to
 a smaller machine or given a bigger budget keeps reusing its observations. An
@@ -36,7 +45,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ic_opt.eval.stage import Stage, StageContext, StageFailure, pipeline_fingerprint
-from ic_opt.executor import CommandTimeout, Executor
+from ic_opt.executor import CommandTimeout, Executor, process_group
 from ic_opt.observation import ChildResult, Observation, Observations
 from ic_opt.sim.corner import aggregate
 from ic_opt.site import EnvelopeError, HostLimits
@@ -49,6 +58,11 @@ class BudgetExceeded(RuntimeError):
     pass
 
 
+class Interrupted(KeyboardInterrupt):
+    """A job stopped because its run was interrupted (see "Interrupts" above): it starts no further stage or child and
+    records nothing. A KeyboardInterrupt, so nothing on the way takes it for an ordinary failure."""
+
+
 @dataclass
 class Job:
     obs_id: str
@@ -56,6 +70,8 @@ class Job:
     observation: Observation | None = None
     reused: bool = False
     seconds: float = 0.0
+    started: bool = False                 # a worker took it up
+    recorded: bool = False                # its observation is in the store
 
 
 @dataclass(frozen=True)
@@ -165,13 +181,22 @@ def run(
             next_index += 1
 
         append_lock = threading.Lock()
+        stop = threading.Event()                          # set when this thread is interrupted (see "Interrupts" above)
+        interrupts = process_group.interrupts()
+
+        def stopping() -> bool:
+            return stop.is_set() or process_group.interrupts() != interrupts
 
         def evaluate_job(job: Job) -> Job:
             if job.reused:
                 return job
+            _unless_stopping(stopping, job.obs_id)        # taken from the queue after the interrupt: it never starts
+            job.started = True
             started = time.monotonic()
             started_at = utc_now()
-            results, cache = _run_point(spec, point_stages, child_stages, job, children, executor, store, cshrc)
+            results, cache = _run_point(spec, point_stages, child_stages, job, children, executor, store, cshrc, stopping)
+            if stopping() and any(r.status != "ok" for r in results.values()):
+                raise Interrupted(f"{job.obs_id}: interrupted")      # its commands got the interrupt: not the point's own failure
             agg = aggregate(spec, results)
             job.observation = Observation(
                 obs_id=job.obs_id, params=job.point.params, origin=job.point.origin, children=results,
@@ -184,11 +209,20 @@ def run(
             job.seconds = time.monotonic() - started
             with append_lock:
                 store.append(job.observation)
+                job.recorded = True
             _retain(spec, job, results, executor, store)
             return job
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            jobs = list(pool.map(evaluate_job, jobs))
+            try:
+                jobs = list(pool.map(evaluate_job, jobs))
+            except KeyboardInterrupt:                     # Ctrl-C (or a job that saw it first): start nothing more
+                stop.set()
+                try:
+                    pool.shutdown(wait=True, cancel_futures=True)   # the queued points never start; the running ones end
+                finally:
+                    _log_interrupted(store, step, jobs, workers)
+                raise
 
     store.log_step(
         step, "ok", points=len(points), new=sum(not j.reused for j in jobs), reused=sum(j.reused for j in jobs),
@@ -198,11 +232,30 @@ def run(
     return Observations(j.observation for j in jobs)
 
 
-def _run_stages(stages: list[Stage], value, ctx: StageContext):
+def _log_interrupted(store: RunStore, step: str, jobs: list[Job], workers: int) -> None:
+    """The step log of an interrupted run: the new points recorded before the interrupt, those that were running and are
+    not recorded (their commands got it), and those that never started."""
+    new = [j for j in jobs if not j.reused]
+    done = [j for j in new if j.recorded]
+    store.log_step(
+        step, "interrupted", points=len(jobs), reused=len(jobs) - len(new), recorded=[j.obs_id for j in done],
+        interrupted=[j.obs_id for j in new if j.started and not j.recorded], not_started=[j.obs_id for j in new if not j.started],
+        simulations=sum(simulations(j.observation) for j in done), workers=workers, seconds=round(sum(j.seconds for j in done), 1),
+    )
+
+
+def _unless_stopping(stopping, where: str) -> None:
+    if stopping is not None and stopping():
+        raise Interrupted(f"interrupted before {where}")
+
+
+def _run_stages(stages: list[Stage], value, ctx: StageContext, stopping=None):
     """Run stages in order; a StageFailure comes back tagged with the stage that raised it. So does a command that outlived
     its deadline (``CommandTimeout``, its process group already killed by the executor): a job that hangs fails its point
-    as ``failed:<stage>``, with the timeout and its deadline as the issue, and the other points run on."""
+    as ``failed:<stage>``, with the timeout and its deadline as the issue, and the other points run on. Once ``stopping()``
+    says the run was interrupted, no further stage starts (``Interrupted``)."""
     for stage in stages:
+        _unless_stopping(stopping, f"{ctx.obs_id} {stage.name}")
         try:
             value = _run_cached(stage, value, ctx) if stage.level == "point" else stage.run(value, ctx)
         except StageFailure as failure:
@@ -236,19 +289,20 @@ def _run_cached(stage: Stage, value, ctx: StageContext):
     return out
 
 
-def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child], executor, store, cshrc):
+def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child], executor, store, cshrc, stopping=None):
     point_dir = store.root / "sims" / job.obs_id
     point_dir.mkdir(parents=True, exist_ok=True)
     ctx = StageContext(spec=spec, executor=executor, store=store, obs_id=job.obs_id, workdir=point_dir,
                        remote_dir=executor.scratch(job.obs_id), cshrc=cshrc, point=job.point)
     try:
-        point_output = _run_stages(point_stages, job.point, ctx)
+        point_output = _run_stages(point_stages, job.point, ctx, stopping)
     except StageFailure as failure:
         failed = {c.key: ChildResult(unit=c.unit, corner=c.corner, status=f"failed:{failure.stage}", issues=failure.issues) for c in children}
         return failed, dict(ctx.cache)
 
     results: dict[str, ChildResult] = {}
     for child in children:
+        _unless_stopping(stopping, f"{job.obs_id} {child.key}")     # before the child's scratch directory, too
         chain = [s for s in child_stages if getattr(s, "unit", "testbench") == child.unit_kind]
         workdir = store.sim_dir(job.obs_id, child.unit, child.corner)
         cctx = StageContext(spec=spec, executor=executor, store=store, obs_id=job.obs_id, workdir=workdir,
@@ -256,7 +310,7 @@ def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child]
                             unit=child.unit, corner=child.corner, cshrc=cshrc, point=job.point)
         started = time.monotonic()
         try:
-            result = _run_stages(chain, point_output, cctx)
+            result = _run_stages(chain, point_output, cctx, stopping)
         except StageFailure as failure:
             result = ChildResult(unit=child.unit, corner=child.corner, status=f"failed:{failure.stage}", issues=failure.issues)
         result.seconds = round(time.monotonic() - started, 3)

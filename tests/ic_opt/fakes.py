@@ -2,24 +2,43 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import os
 import shlex
+import signal
 from pathlib import Path
 
 import pytest
 
-from ic_opt.executor import CommandResult, LocalExecutor
+from ic_opt.executor import CommandResult, LocalExecutor, process_group
 from ic_opt.site import HostLimits
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 
 needs_turbo = pytest.mark.skipif(any(importlib.util.find_spec(name) is None for name in ("turbo", "torch")),
                                  reason='turbo strategy needs TuRBO and torch: uv pip install -e ".[turbo]" -e vendor/TuRBO')
+posix_only = pytest.mark.skipif(os.name == "nt", reason="the local executor runs commands on Linux / macOS only")
 
 # The fake host's site.yaml entry: room for every test pipeline's heaviest stage several times over (tests about the
 # envelope itself build their own HostLimits). The fake host reports exactly this size to env.doctor's machine probe.
 FAKE_HOST = HostLimits(max_threads=96, max_memory_gb=384)
 HANG_S = 120            # how long a hanging fake tool sleeps: far past any deadline a test sets, never waited out
+
+
+@contextlib.contextmanager
+def forwarded_signals():
+    """``process_group.forward_signals`` installed afresh, as an executor installs it, and the handlers it replaced put
+    back afterwards: inside, a SIGINT to this process is what a Ctrl-C at the terminal does (POSIX)."""
+    saved = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGHUP)}
+    forwarded, process_group._forwarded = process_group._forwarded, set()
+    try:
+        process_group.forward_signals()
+        yield
+    finally:
+        for s, handler in saved.items():
+            signal.signal(s, handler)
+        process_group._forwarded = forwarded
 
 
 def minimal_spec(**overrides) -> dict:

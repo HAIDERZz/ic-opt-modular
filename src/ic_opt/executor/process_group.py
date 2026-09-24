@@ -12,7 +12,8 @@ A group of its own is also out of the terminal's reach: Ctrl-C and a hangup go t
 group, which the commands have left. ``forward_signals`` passes them on -- SIGINT and SIGHUP on POSIX, Ctrl-C as
 Ctrl-Break on Windows -- to every command still running, then lets Python react as it did before, so an interrupted run
 ends its commands as it did when they shared its group. The executors install it once, from the main thread (the only
-thread that may set a signal handler).
+thread that may set a signal handler). Every signal it passes on is counted (``interrupts``) before anything else
+happens, so the threads of a run can tell at once that the user interrupted it and start nothing more.
 """
 
 from __future__ import annotations
@@ -29,6 +30,13 @@ _CTRL_BREAK = getattr(signal, "CTRL_BREAK_EVENT", 1)                   # the one
 _running: set[subprocess.Popen] = set()          # the commands started here and not yet reaped
 _lock = threading.RLock()                         # re-entrant: a forwarded signal can arrive while the main thread holds it
 _forwarded: set[int] = set()                      # the signals forward_signals has taken over
+_interrupts = 0                                   # the signals passed on so far (only the main thread's handler writes it)
+
+
+def interrupts() -> int:
+    """How many interrupts and hangups ``forward_signals`` has passed on so far. A caller notes the count when its work
+    starts; a different count later means the user interrupted it (the evaluation engine then stops its jobs)."""
+    return _interrupts
 
 
 def run(argv: list[str], *, timeout: float | None = None, input: str | bytes | None = None,
@@ -99,8 +107,10 @@ def forward_signals() -> None:
 
 
 def _forwarder(previous):
-    """A handler that signals the commands' groups first, then does what ``previous`` did."""
+    """A handler that counts the signal (``interrupts``), signals the commands' groups, then does what ``previous`` did."""
     def forward(signum, frame):
+        global _interrupts
+        _interrupts += 1                             # first: a thread whose command dies of it already sees the count moved
         signal_groups(signum)
         if callable(previous):
             previous(signum, frame)                  # SIGINT: Python's KeyboardInterrupt

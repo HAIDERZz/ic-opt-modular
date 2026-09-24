@@ -1,4 +1,6 @@
 import json
+import signal
+import threading
 import time
 from pathlib import Path
 
@@ -9,12 +11,21 @@ from ic_opt import migrate_store
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
 from ic_opt.eval.engine import BudgetExceeded
+from ic_opt.executor import CommandResult, process_group
 from ic_opt.observation import ChildResult
 from ic_opt.sim.corner import aggregate
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FAKE_HOST, HANG_S, FakeSpectreExecutor, make_spec, minimal_spec
+from tests.ic_opt.fakes import (
+    FAKE_HOST,
+    HANG_S,
+    FakeSpectreExecutor,
+    forwarded_signals,
+    make_spec,
+    minimal_spec,
+    posix_only,
+)
 
 TEMPLATE = "simulator lang=spectre\ninclude \"/p/top.scs\" section=tt\nparameters temperature=27 F={{F}} W={{W}}\ntran tran stop=10n\n"
 
@@ -122,6 +133,82 @@ def test_a_command_past_its_deadline_fails_its_point_and_the_run_goes_on(tmp_pat
     assert [o.status for o in RunStore(tmp_path).observations()] == ["ok", "failed:spectre", "ok"]
     step = json.loads((store.root / "steps.jsonl").read_text().splitlines()[-1])
     assert (step["status"], step["new"], step["simulations"]) == ("ok", 3, 3)
+
+
+# -- N-11: an interrupt stops the run: nothing queued starts, nothing interrupted is recorded as failed --------------------
+
+TWO_CORNERS = [{"id": "tt", "model_section": "tt"}, {"id": "ss", "model_section": "ss"}]
+
+
+def interrupted_step(store: RunStore) -> dict:
+    step = json.loads((store.root / "steps.jsonl").read_text().splitlines()[-1])
+    assert step["step"] == "evaluate" and step["status"] == "interrupted"
+    return {k: step[k] for k in ("points", "reused", "recorded", "interrupted", "not_started", "simulations")}
+
+
+@posix_only
+@pytest.mark.parametrize("hung", ["obs_0001", "obs_0002"])
+def test_ctrl_c_stops_the_run_the_queued_points_never_start(tmp_path, hung):
+    """N-11, a Ctrl-C at the terminal: SIGINT while the hung point's first corner simulates (a real sleep on the fake host,
+    one point at a time). The forwarded signal kills that command; the point starts no second corner and is not recorded
+    (its failure is the interrupt's); the points still queued never start; a point that had finished stays recorded; the
+    step log says which is which; the KeyboardInterrupt comes at once instead of after the queue."""
+    spec = make_spec(simulator={**minimal_spec()["simulator"], "parallel_jobs": 1, "timeout_s": 60}, corners=TWO_CORNERS)
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 8.0},
+                             hang=lambda tool, cwd: tool == "spectre" and hung in cwd.parts)
+    main = threading.main_thread().ident
+
+    def ctrl_c_once_it_hangs():
+        deadline = time.monotonic() + 20
+        while not (ex.hung and process_group._running) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        signal.pthread_kill(main, signal.SIGINT)                   # what the terminal's Ctrl-C does to the main thread
+
+    points = [Point({"F": f, "W": "0.6u"}, "user") for f in ("20", "22", "24", "26")]
+    with forwarded_signals():
+        threading.Thread(target=ctrl_c_once_it_hangs, daemon=True).start()
+        started = time.monotonic()
+        with pytest.raises(KeyboardInterrupt):
+            evaluate(spec, points, ex, store, deck=deck_for(spec), limits=FAKE_HOST)
+    assert time.monotonic() - started < 15 and not process_group._running            # the hung command was killed and reaped
+    done = ["obs_0001"] if hung == "obs_0002" else []
+    queued = [f"obs_{i:04d}" for i in range(int(hung[4:]) + 1, 5)]
+    assert [o.obs_id for o in RunStore(tmp_path).observations()] == done
+    assert sum(c.startswith("spectre") for c in ex.commands) == 2 * len(done) + 1       # the hung point's ss corner never ran
+    assert not (store.root / "sims" / hung / "tb" / "ss").exists()
+    assert not any((store.root / "sims" / obs).exists() for obs in queued)
+    assert interrupted_step(store) == {"points": 4, "reused": 0, "recorded": done, "interrupted": [hung], "not_started": queued,
+                                       "simulations": 2 * len(done)}
+
+
+def test_a_job_that_sees_the_forwarded_interrupt_first_stops_the_run(tmp_path, monkeypatch):
+    """N-11, without a signal: the forwarder counts an interrupt before it kills the commands, so a job whose command died
+    of it sees the count moved even before the main thread's KeyboardInterrupt. Here the first corner's command is killed
+    that way (the count moves, the command fails): the job starts no further corner and is not recorded, the queued
+    points never start, and the run ends as interrupted."""
+    spec = make_spec(simulator={**minimal_spec()["simulator"], "parallel_jobs": 1}, corners=TWO_CORNERS)
+    store = RunStore(tmp_path)
+
+    class Interrupting(FakeSpectreExecutor):
+        def run(self, command, *, cwd=None, timeout_s=None, cshrc=None):
+            if command.startswith("spectre"):
+                self.commands.append(command)
+                monkeypatch.setattr(process_group, "_interrupts", process_group.interrupts() + 1)   # as forward_signals does
+                return CommandResult(-2, "", "killed by SIGINT", ["spectre"], 0.01)
+            return super().run(command, cwd=cwd, timeout_s=timeout_s, cshrc=cshrc)
+
+    ex = Interrupting(store.root / "sims", lambda p, tb, c: {"NF": 8.0})
+    with pytest.raises(KeyboardInterrupt):
+        evaluate(spec, [Point({"F": f, "W": "0.6u"}, "user") for f in ("20", "22", "24")], ex, store, deck=deck_for(spec),
+                 limits=FAKE_HOST)
+    assert sum(c.startswith("spectre") for c in ex.commands) == 1 and not store.observations()
+    assert interrupted_step(store) == {"points": 3, "reused": 0, "recorded": [], "interrupted": ["obs_0001"],
+                                       "not_started": ["obs_0002", "obs_0003"], "simulations": 0}
+
+    again = evaluate(spec, [Point({"F": "20", "W": "0.6u"}, "user")], FakeSpectreExecutor(store.root / "sims",
+                     lambda p, tb, c: {"NF": 8.0}), RunStore(tmp_path), deck=deck_for(spec), limits=FAKE_HOST)
+    assert [(o.obs_id, o.status) for o in again] == [("obs_0002", "ok")]      # simulated afresh; obs_0001's directory is not reused
 
 
 def test_reuse_budget_and_rerun_is_continuation(tmp_path):

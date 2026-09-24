@@ -54,7 +54,11 @@ job and not only its shell: locally the group is killed; on an SSH host the
 command runs under `setsid` and, once the local `ssh` is killed, one more `ssh`
 sends its group SIGTERM (SIGKILL after a few seconds) and the timeout's message
 says how that went. Ctrl-C and a terminal hangup are passed on to the running
-commands, as when they shared ic-opt's process group.
+commands, as when they shared ic-opt's process group; an SSH host's command that
+Ctrl-C cut off gets the same extra `ssh` as a timed-out one. After Ctrl-C,
+`sim.evaluate` starts no further point, stage or command: a point it interrupted
+is not recorded (it is simulated again when the recipe runs again), and
+`.icopt/steps.jsonl` lists the points recorded, interrupted and never started.
 
 ## Use
 

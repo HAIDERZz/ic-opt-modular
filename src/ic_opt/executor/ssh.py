@@ -22,7 +22,9 @@ scratch root without one), and deletes that record when it ends. When the
 timeout passes, the local ``ssh`` is killed with its process group
 (``process_group``), then one more ``ssh HOST`` sends the remote group SIGTERM,
 SIGKILL if it is still there after a grace, and the ``CommandTimeout`` says how
-that went. Killing the client alone leaves the remote job running.
+that went. Killing the client alone leaves the remote job running. A Ctrl-C
+that ``process_group`` forwarded to the client (``interrupts`` moved while it
+ran) ends the remote group the same way, and the error or result says so.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
 from ic_opt.executor import process_group
@@ -117,14 +120,22 @@ class SshExecutor:
             return self._run_argv(self._ssh_argv("exec " + program), timeout_s=None, label=command)
         record = str(PurePosixPath(cwd or self.scratch_root) / f".ic-opt-pgid-{uuid.uuid4().hex[:12]}")
         script = in_own_session(program, record, make_dir=cwd is None)
+        interrupts = process_group.interrupts()
         try:
-            return self._run_argv(self._ssh_argv("exec /bin/sh -c " + shlex.quote(script)), timeout_s=timeout_s, label=command)
+            result = self._run_argv(self._ssh_argv("exec /bin/sh -c " + shlex.quote(script)), timeout_s=timeout_s, label=command)
         except CommandTimeout as exc:
             raise CommandTimeout(f"{exc}; {self._end_group(record)}") from exc
+        except TransportError as exc:            # ssh exits 255 when a forwarded Ctrl-C reaches it ("Killed by signal 2.")
+            if process_group.interrupts() == interrupts:
+                raise
+            raise TransportError(f"{exc}; interrupted: {self._end_group(record)}") from exc
+        if result.returncode < 0 and process_group.interrupts() != interrupts:   # the client died of the signal itself
+            return replace(result, stderr=f"{result.stderr}\ninterrupted: {self._end_group(record)}".lstrip())
+        return result
 
     def _end_group(self, record: str) -> str:
-        """After a timeout, the local client already killed: one ssh that ends the remote command's process group
-        (``end_group_script``), best-effort. What happened, for the timeout's message."""
+        """After a timeout or an interrupt, the local client already gone: one ssh that ends the remote command's process
+        group (``end_group_script``), best-effort. What happened, for the message."""
         try:
             done = self._sh(end_group_script(record), timeout_s=self.transfer_timeout_s, label=f"end the group recorded in {record}")
         except ExecutorError as exc:

@@ -26,6 +26,7 @@ from ic_opt.executor import (
     process_group,
     shell_program,
 )
+from tests.ic_opt.fakes import forwarded_signals, posix_only
 
 
 def test_shell_program_wraps_cwd_and_cshrc():
@@ -205,7 +206,6 @@ def test_ssh_scratch_resolves_tilde_once_even_from_parallel_jobs():
 
 # -- a timeout ends the whole job, not its first process (N-2) ------------------------------------------------------------
 
-posix_only = pytest.mark.skipif(os.name == "nt", reason="the local executor runs commands on Linux / macOS only")
 JOB = 'sleep 300 &\necho $! > "$1"\nwait\n'        # the job's shell starts a child that would run for minutes
 
 
@@ -263,14 +263,10 @@ def running_job(pid_file: Path, seconds: float = 10.0) -> int:
 
 
 @pytest.fixture
-def forwarding(monkeypatch):
+def forwarding():
     """process_group.forward_signals installed afresh for the test; the handlers it replaced are put back afterwards."""
-    saved = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGHUP)}
-    monkeypatch.setattr(process_group, "_forwarded", set())
-    process_group.forward_signals()
-    yield
-    for s, handler in saved.items():
-        signal.signal(s, handler)
+    with forwarded_signals():
+        yield
 
 
 @posix_only
@@ -343,12 +339,16 @@ def test_ctrl_c_is_passed_on_to_a_job_that_another_thread_waits_for(tmp_path, fo
 
 
 def test_a_forwarded_signal_reaches_the_groups_then_does_what_it_did_before(monkeypatch):
-    """SIGINT's handler (Python's KeyboardInterrupt) is called after the groups got the signal; SIGHUP's default ends the
-    process, so the forwarder restores the default and raises the signal again (patched here: the test process lives)."""
+    """The forwarder counts the signal first (``interrupts``: a job whose command it kills already sees the count moved),
+    then signals the groups, then calls SIGINT's handler (Python's KeyboardInterrupt); SIGHUP's default ends the process,
+    so the forwarder restores the default and raises the signal again (patched here: the test process lives)."""
     calls: list = []
-    monkeypatch.setattr(process_group, "signal_groups", lambda signum: calls.append(("groups", signum)))
+    before = process_group.interrupts()
+    monkeypatch.setattr(process_group, "_interrupts", before)                       # put back afterwards
+    monkeypatch.setattr(process_group, "signal_groups", lambda signum: calls.append(("groups", signum, process_group.interrupts())))
     process_group._forwarder(lambda signum, frame: calls.append(("previous", signum)))(signal.SIGINT, None)
-    assert calls == [("groups", signal.SIGINT), ("previous", signal.SIGINT)]
+    assert calls == [("groups", signal.SIGINT, before + 1), ("previous", signal.SIGINT)] and process_group.interrupts() == before + 1
+    monkeypatch.setattr(process_group, "signal_groups", lambda signum: calls.append(("groups", signum)))
     calls.clear()
     monkeypatch.setattr(process_group.signal, "signal", lambda signum, handler: calls.append(("set", signum, handler)))
     monkeypatch.setattr(process_group.os, "kill", lambda pid, signum: calls.append(("kill", pid, signum)))
@@ -472,6 +472,44 @@ def test_a_timed_out_ssh_command_ends_its_remote_group_with_one_more_ssh(monkeyp
     assert str(timed_out.value) == ('timed out after 600s: emx ind.gds; its process group on lab was not ended: SSH transport failed '
                                     f'for profile "lab" (end the group recorded in {record}): ssh: connect to host lab: Connection refused')
     assert len(calls) == 2                                                         # one cleanup attempt, never a retry loop
+
+
+def test_a_ctrl_c_that_reaches_the_ssh_client_ends_its_remote_group_too(monkeypatch):
+    """N-11: a Ctrl-C forwarded to the ssh client (the interrupt count moves while it runs) makes ssh exit 255, "Killed by
+    signal 2." -- while the remote command, the leader of a session of its own, would run on with no deadline at all. One
+    more ssh ends its group as after a timeout, and the error says so; a client killed outright (a negative status) gets
+    the same. A transport failure without an interrupt is left as it was: no cleanup ssh."""
+    monkeypatch.setattr(ssh_module.uuid, "uuid4", lambda: uuid.UUID(int=0xABC))
+    monkeypatch.setattr(process_group, "_interrupts", process_group.interrupts())     # put back afterwards
+    record = "/r/obs_0001/em/ind/.ic-opt-pgid-000000000000"
+    ended = "on lab: process group 4242 ended on SIGTERM"
+
+    def host(client: subprocess.CompletedProcess, *, interrupted: bool):
+        calls: list = []
+
+        def execute(argv, **kwargs):
+            calls.append(list(argv))
+            if len(calls) > 1:                                                     # the cleanup ssh
+                return subprocess.CompletedProcess(argv, 0, stdout="process group 4242 ended on SIGTERM\n", stderr="")
+            if interrupted:
+                process_group._interrupts += 1                                     # forward_signals counted a Ctrl-C
+            return client
+        return calls, SshExecutor("lab", "/tmp/icopt", execute=execute)
+
+    calls, ex = host(subprocess.CompletedProcess([], 255, stdout="", stderr="Killed by signal 2."), interrupted=True)
+    with pytest.raises(TransportError) as err:
+        ex.run("emx ind.gds", cwd="/r/obs_0001/em/ind", timeout_s=600)
+    assert str(err.value) == f'SSH transport failed for profile "lab" (emx ind.gds): Killed by signal 2.; interrupted: {ended}'
+    assert len(calls) == 2 and shlex.split(calls[1][4]) == ["exec", "/bin/sh", "-c", ssh_module.end_group_script(record)]
+
+    calls, ex = host(subprocess.CompletedProcess([], -2, stdout="", stderr=""), interrupted=True)
+    killed = ex.run("emx ind.gds", cwd="/r/obs_0001/em/ind", timeout_s=600)
+    assert (killed.returncode, killed.stderr, len(calls)) == (-2, f"interrupted: {ended}", 2)
+
+    calls, ex = host(subprocess.CompletedProcess([], 255, stdout="", stderr="Connection reset by peer"), interrupted=False)
+    with pytest.raises(TransportError, match="Connection reset by peer$"):
+        ex.run("emx ind.gds", cwd="/r/obs_0001/em/ind", timeout_s=600)
+    assert len(calls) == 1
 
 
 @pytest.mark.skipif(shutil.which("setsid") is None or os.name == "nt", reason="needs setsid (util-linux), as a Linux host has")
