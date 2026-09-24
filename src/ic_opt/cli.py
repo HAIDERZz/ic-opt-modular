@@ -191,15 +191,16 @@ def call(
     cshrc: Annotated[str | None, typer.Option("--cshrc")] = None,
 ) -> None:
     """Call one block; spec / executor / store / observations are filled in from the project (a library root fills in the library,
-    a process profile directory -- one holding rule.yaml -- the profile, and with --ssh-profile that host's executor, through
-    which em.validate_profile reads proc=). A report that failed (``ok`` false) exits 1."""
+    opened with the call's cache_dir= if any; a process profile directory -- one holding rule.yaml -- the profile, and with
+    --ssh-profile that host's executor, through which em.validate_profile reads proc=). A report that failed (``ok`` false)
+    exits 1."""
     if name not in blocks.REGISTRY:
         typer.echo(f"unknown block {name!r}; run `ic-opt blocks`", err=True)
         raise typer.Exit(code=2)
     fn = blocks.REGISTRY[name].fn
     kwargs = _params(params or [])
     if library_manifest.is_library(project):                        # a library root: library blocks get the library, not a run
-        provided: dict[str, object] = {"library": library_query.Library(project)}
+        provided: dict[str, object] = {"library": library_query.Library(project, cache_dir=kwargs.get("cache_dir"))}
     elif (project / "rule.yaml").is_file():                          # a process profile directory
         provided = {"profile_dir": project}
         if ssh_profile:                                              # the site .proc lives on that host (ADR-0001)
@@ -215,7 +216,7 @@ def call(
     args = {p: provided[p] for p in inspect.signature(fn).parameters if p in provided and p not in kwargs}
     try:
         result = fn(**args, **kwargs)
-    except (ValueError, FileNotFoundError) as exc:
+    except (ValueError, FileNotFoundError, PermissionError) as exc:  # PermissionError: e.g. a cache_dir= that cannot be written
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(_render(result))

@@ -410,7 +410,7 @@ def _evidence(row: dataset.Row, dims: list[str], names: list[str], distance: flo
 
 def _notes(library: query.Library, names: list[str], info: dict, sel: Selection, n: int, top: int, budget: int,
            informs: dict[str, np.ndarray]) -> list[str]:
-    notes = []
+    notes = library.notes
     if info["in_bounds"] < info["distinct"]:
         notes.append(f"{info['distinct'] - info['in_bounds']} of {info['distinct']} pool points fell outside the bounds once "
                      "snapped to the manifest steps or held at their turns level's value, and were dropped")

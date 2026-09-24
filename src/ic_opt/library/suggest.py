@@ -352,8 +352,8 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
     ranges = library.ranges(stratum)
     measured_ranked = [i for i in s["ranked"] if row_of[i] >= 0]
     predicted_ranked = [i for i in s["ranked"] if row_of[i] < 0]
-    notes = [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
-             for t in goals if t not in parse_targets(targets)]
+    notes = library.notes + [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
+                             for t in goals if t not in parse_targets(targets)]
 
     def entry(i: int, **extra) -> dict:
         params = dict(zip(ds.dims, (float(v) for v in x[i])))

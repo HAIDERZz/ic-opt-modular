@@ -72,8 +72,8 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     names = sorted({t.quantity for t in goals} | ({obj[1]} if obj else set()) | ({trend[0]} if trend else set()))
     _check(ds, stated, names, by + ([trend[1]] if trend else []), levels_per_dim, max_points)
     explicit = _explicit_steps(library, stratum, steps)
-    notes = [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
-             for t in goals if t not in stated]
+    notes = library.notes + [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
+                             for t in goals if t not in stated]
     blas, budget = query.blas_threads(library.limits, threads), suggest.predict_budget(library.limits)
     with threadpool_limits(limits=blas, user_api="blas"):
         models = library.models(stratum, names, workers=workers, threads=threads)

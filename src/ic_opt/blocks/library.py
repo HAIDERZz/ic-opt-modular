@@ -4,7 +4,12 @@ The library computes on the machine running ic-opt. A library given as a directo
 its model fits and predictions from site.yaml's ``hosts.local``, read when something has to be fitted or
 predicted in bulk -- never the executor host's entry; a recipe passes ``Library(root, limits=...)`` to size
 it from its own ``run.site.host("local")``. ``rel_sigma_max`` is the confidence ceiling on sigma / mu
-(domain criterion 4)."""
+(domain criterion 4).
+
+Every block takes ``cache_dir``: the directory for the library's cache files (datasets, calibrations, models).
+Without it they go to the library's own ``.cache``, or, when that cannot be written, to
+``~/.cache/ic-opt/<key>/`` (``ic_opt.library.cache``), and the answer's ``notes`` say so; the files already in
+the library's own ``.cache`` are read either way."""
 
 from __future__ import annotations
 
@@ -12,12 +17,20 @@ import json
 import math
 from pathlib import Path
 
+from ic_opt.library import cache as _cache
 from ic_opt.library import domain as _domain
 from ic_opt.library import query as _query
 
 
-def _lib(library: _query.Library | str | Path) -> _query.Library:
-    return library if isinstance(library, _query.Library) else _query.Library(library)
+def _lib(library: _query.Library | str | Path, cache_dir: str | Path | None = None) -> _query.Library:
+    """The library to answer from: a directory opened with ``cache_dir``, or a Library as it is. A Library whose cache lives
+    in another directory than an explicit ``cache_dir`` is refused: it was opened with its own."""
+    if not isinstance(library, _query.Library):
+        return _query.Library(library, cache_dir=cache_dir)
+    if cache_dir is not None and not _cache.same(library.cache.directory, cache_dir):
+        raise ValueError(f"cache_dir={cache_dir} is not the cache directory of the library given ({library.cache.directory}); "
+                         "open it with Library(root, cache_dir=...)")
+    return library
 
 
 def _names(value: str | list[str] | None) -> list[str] | None:
@@ -48,47 +61,51 @@ def _strict_json(value: object) -> object:
     return value
 
 
-def load(library: _query.Library | str | Path, stratum: str | None = None) -> dict:
-    """Build (or read from cache) each stratum's dataset and report its integrity evidence."""
-    return _query.load(_lib(library), stratum)
+def load(library: _query.Library | str | Path, stratum: str | None = None, cache_dir: str | None = None) -> dict:
+    """Build (or read from cache) each stratum's dataset and report its integrity evidence (and the library's ``notes``).
+    ``cache_dir`` holds the library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``)."""
+    return _query.load(_lib(library, cache_dir), stratum)
 
 
-def coverage(library: _query.Library | str | Path, stratum: str) -> dict:
-    """Rows per part and turns level, the achieved range of every dim, usable rows and value range per quantity."""
-    return _query.coverage(_lib(library), stratum)
+def coverage(library: _query.Library | str | Path, stratum: str, cache_dir: str | None = None) -> dict:
+    """Rows per part and turns level, the achieved range of every dim, usable rows and value range per quantity.
+    ``cache_dir`` holds the library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``)."""
+    return _query.coverage(_lib(library, cache_dir), stratum)
 
 
 def query(library: _query.Library | str | Path, stratum: str, params: dict, quantities: str | list[str] | None = None, k: float = 2.0,
-          rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX) -> dict:
+          rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX, cache_dir: str | None = None) -> dict:
     """Measured values at an exact library point; elsewhere mu with calibrated k-sigma bounds, the domain verdict and nearest measured rows.
 
     ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns). A
-    prediction with sigma / mu above ``rel_sigma_max`` is reported as ``uncertain``.
+    prediction with sigma / mu above ``rel_sigma_max`` is reported as ``uncertain``. ``cache_dir`` holds the library's cache
+    files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).
     """
-    return _query.query(_lib(library), stratum, params, _names(quantities), k=float(k), rel_sigma_max=float(rel_sigma_max))
+    return _query.query(_lib(library, cache_dir), stratum, params, _names(quantities), k=float(k), rel_sigma_max=float(rel_sigma_max))
 
 
 def suggest(library: _query.Library | str | Path, stratum: str, targets: dict, objective: str | None = None, n: int = 5,
             pool_size: int = 8192, seed: int = 0, k: float = 2.0, verify_build: bool = True,
-            rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX) -> dict:
+            rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX, cache_dir: str | None = None) -> dict:
     """Designs that meet ``targets`` with margin: measured ones first (exact), then predicted candidates built and audited.
 
     ``targets`` maps quantities to ``{"min": v}``, ``{"max": v}`` or ``{"target": v, "tol": rel}`` (JSON on the command
     line); ``objective`` is ``max:<quantity>`` or ``min:<quantity>``. Anchored targets add SRF >= srf_margin x f0
     (library.yaml; 1.25 unless set) unless SRF is already constrained. A candidate with sigma / mu above
-    ``rel_sigma_max`` for any quantity is dropped.
+    ``rel_sigma_max`` for any quantity is dropped. ``cache_dir`` holds the library's cache files (default: its own
+    ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).
     """
     from ic_opt.library import suggest as _suggest
 
-    return _strict_json(_suggest.suggest(_lib(library), stratum, targets, objective, n=int(n), pool_size=int(pool_size), seed=int(seed),
-                                         k=float(k), rel_sigma_max=float(rel_sigma_max), verify_build=bool(verify_build)))
+    return _strict_json(_suggest.suggest(_lib(library, cache_dir), stratum, targets, objective, n=int(n), pool_size=int(pool_size),
+                                         seed=int(seed), k=float(k), rel_sigma_max=float(rel_sigma_max), verify_build=bool(verify_build)))
 
 
 def region(library: _query.Library | str | Path, stratum: str, targets: dict, objective: str | None = None, steps: dict | None = None,
            levels_per_dim: int = 20, max_points: int = 2_000_000, pool_size: int = 32768, seed: int = 0, k: float = 2.0,
            group_by: str | list[str] | None = None, trend: str | None = None, n: int = 8, verify_build: bool = False,
            sample_size: int = 5000, threads: int | None = None, workers: int | None = None,
-           rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX) -> dict:
+           rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX, cache_dir: str | None = None) -> dict:
     """The part of the geometry space whose predictions meet ``targets``: sweep ranges, not ``lib.suggest``'s best few points.
 
     Two levels: ``robust`` -- the calibrated k-sigma interval lies inside every window (``lib.suggest``'s test; centre a
@@ -102,8 +119,9 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
     ``Qp_peak:width_um``, or ``k@<f>:center_spacing_um`` for a transformer): that quantity along that dim over the points
     meeting every other target. A point with sigma / mu above ``rel_sigma_max`` is not confident and joins neither
     level. ``threads`` caps BLAS and ``workers`` the processes fitting uncached models, both within site.yaml's
-    hosts.local (above it they are refused; by default they follow from it). The answer is strict JSON, every non-finite
-    number null: ``targets[].upper`` is null except for windows.
+    hosts.local (above it they are refused; by default they follow from it). ``cache_dir`` holds the library's cache
+    files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name). The answer
+    is strict JSON, every non-finite number null: ``targets[].upper`` is null except for windows.
     """
     from ic_opt.library import region as _region
 
@@ -111,7 +129,7 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
         if value is not None and not isinstance(value, dict):
             raise ValueError(f"{name}: expected a JSON object, got {value!r}")
     return _strict_json(_region.region(
-        _lib(library), stratum, targets, objective, steps=steps, levels_per_dim=int(levels_per_dim), max_points=int(max_points),
+        _lib(library, cache_dir), stratum, targets, objective, steps=steps, levels_per_dim=int(levels_per_dim), max_points=int(max_points),
         pool_size=int(pool_size), seed=int(seed), k=float(k), rel_sigma_max=float(rel_sigma_max), group_by=_names(group_by),
         trend=_trend(trend), n=int(n), verify_build=bool(verify_build), sample_size=int(sample_size),
         threads=None if threads is None else int(threads), workers=None if workers is None else int(workers)))
@@ -120,7 +138,7 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
 def densify(library: _query.Library | str | Path, stratum: str, n: int, quantities: str | list[str] | None = None,
             bounds: dict | None = None, score: str = "ceiling", pool_size: int = 65536, top: int = 4000, seed: int = 0,
             k: float = 2.0, threads: int | None = None, workers: int | None = None, out: str | None = None,
-            rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX) -> dict:
+            rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX, cache_dir: str | None = None) -> dict:
     """Where to simulate next: ``n`` new geometries whose simulation lowers the models' uncertainty the most over the
     sampled domain, whatever the targets.
 
@@ -140,15 +158,16 @@ def densify(library: _query.Library | str | Path, stratum: str, n: int, quantiti
     prediction with its calibrated ``k``-sigma interval and the three nearest measured rows; ``bounds`` echoes the
     effective bounds ({} without) and ``pool`` counts what they keep. ``out`` writes the answer to that file, which
     ``ic-opt run lib_signoff PROJECT library=... candidates=<file> top=<n> --plan`` takes as it is. ``threads`` and
-    ``workers`` cap BLAS and the fitting processes within site.yaml's hosts.local, as in ``lib.region``. The answer is
-    strict JSON, every non-finite number null.
+    ``workers`` cap BLAS and the fitting processes within site.yaml's hosts.local, as in ``lib.region``. ``cache_dir``
+    holds the library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's
+    ``notes`` name). The answer is strict JSON, every non-finite number null.
     """
     from ic_opt.library import densify as _densify
 
     if bounds is not None and not isinstance(bounds, dict):
         raise ValueError(f"bounds: expected a JSON object, got {bounds!r}")
     answer = _strict_json(_densify.densify(
-        _lib(library), stratum, _names(quantities), n=int(n), pool_size=int(pool_size), top=int(top), seed=int(seed), k=float(k),
+        _lib(library, cache_dir), stratum, _names(quantities), n=int(n), pool_size=int(pool_size), top=int(top), seed=int(seed), k=float(k),
         rel_sigma_max=float(rel_sigma_max), score=str(score), bounds=bounds, threads=None if threads is None else int(threads),
         workers=None if workers is None else int(workers)))
     if out:

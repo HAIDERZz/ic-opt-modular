@@ -6,11 +6,16 @@ positive quantity, the T13.0 choice) with a domain guard over the same rows, wid
 interval by the calibration factor derived from held-out residuals, and floors its sigma at the held-out
 median relative error (both cached next to the dataset).
 
-Fitted models are cached on disk too (``.cache/model-<stratum>-<quantity>-<key>.pkl``), keyed by the data,
+Fitted models are cached on disk too (``model-<stratum>-<quantity>-<key>.pkl``), keyed by the data,
 the settings, the calibration, the gp code and the scikit-learn version, so a new process loads a model
 instead of refitting it: the GP hyperparameter optimisation is sequential, takes ~2 min per quantity on a
 1300-row stratum on the reference host and does not get faster with more BLAS threads. For the same reason
 ``Library.models`` fits the quantities that are not cached yet in parallel processes.
+
+Every cache file -- dataset, calibration, model -- goes to one directory, ``Library.cache`` (``cache.locate``): the
+library's own ``.cache``, the ``cache_dir`` it was opened with, or, when its own cannot be written, a directory under
+``~/.cache/ic-opt/``; the files in its own ``.cache`` are read in every case. ``Library.notes`` says where the files go
+when that is not the library's own ``.cache``, and every answer below carries it in its ``notes``.
 
 The library computes on the machine running ic-opt, within that machine's limits and nothing else: the
 ``limits`` a library is given, else site.yaml's ``hosts.local``, read the first time a model has to be fitted
@@ -47,7 +52,7 @@ import sklearn
 from threadpoolctl import threadpool_limits
 
 from ic_opt import site
-from ic_opt.library import dataset, domain, gp, manifest
+from ic_opt.library import cache, dataset, domain, gp, manifest
 
 UNITS = {"L": "H", "Q": "1", "SRF": "Hz", "k": "1"}
 ABOVE_SWEEP_VOTES = 3                                # of the 5 nearest measured rows
@@ -75,13 +80,21 @@ class Model:
 
 
 class Library:
-    def __init__(self, root: str | Path, *, calibrate: bool = True, limits: site.HostLimits | None = None):
+    def __init__(self, root: str | Path, *, calibrate: bool = True, limits: site.HostLimits | None = None,
+                 cache_dir: str | Path | None = None):
         self.root = Path(root)
         self.manifest = manifest.load(self.root)
         self.calibrate = calibrate
+        self.cache = cache.locate(self.root, cache_dir)  # where datasets, calibrations and models are cached
         self._limits = limits
         self._datasets: dict[str, dataset.Dataset] = {}
         self._models: dict[tuple[str, str], Model] = {}
+
+    @property
+    def notes(self) -> list[str]:
+        """What every answer from this library says in its ``notes``: where the cache files go when the library's own
+        ``.cache`` cannot be written (``cache.locate``'s fallback); nothing otherwise."""
+        return [self.cache.note] if self.cache.note else []
 
     @property
     def limits(self) -> site.HostLimits:
@@ -97,7 +110,7 @@ class Library:
 
     def dataset(self, stratum: str) -> dataset.Dataset:
         if stratum not in self._datasets:
-            self._datasets[stratum] = dataset.build(self.root, stratum, library=self.manifest)
+            self._datasets[stratum] = dataset.build(self.root, stratum, library=self.manifest, cache_dir=self.cache)
         return self._datasets[stratum]
 
     def ranges(self, stratum: str) -> dict[str, tuple[float, float]]:
@@ -139,12 +152,13 @@ class Library:
                                      workers=workers, threads=threads)
             if n > 1:
                 with ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("spawn")) as pool:
-                    jobs = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, per_worker) for q in missing]
+                    jobs = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, per_worker, self.cache.directory)
+                            for q in missing]
                     for job in jobs:
                         job.result()                     # a failed fit raises here, with the worker's exception
                 unread = [q for q in missing if not self._load(stratum, q)]
                 if unread:
-                    raise RuntimeError(f"{stratum}: the workers fitted {unread} but their cache files under {self.root / '.cache'} do not load")
+                    raise RuntimeError(f"{stratum}: the workers fitted {unread} but their cache files under {self.cache.directory} do not load")
             else:
                 with threadpool_limits(limits=per_worker):
                     for q in missing:
@@ -158,7 +172,8 @@ class Library:
             return True
         ds, rows, x, y, settings = self._fit_inputs(stratum, quantity)
         calibration = self._calibration(ds, quantity, x, y, settings, compute=False)
-        model = None if calibration is None else _load_model(self._model_path(ds, quantity, settings, calibration), ds.dims)
+        path = None if calibration is None else self.cache.find(self._model_name(ds, quantity, settings, calibration))
+        model = None if path is None else _load_model(path, ds.dims)
         if model is None:
             return False
         self._keep(stratum, quantity, ds, rows, x, settings, model, calibration)
@@ -170,7 +185,7 @@ class Library:
         ds, rows, x, y, settings = self._fit_inputs(stratum, quantity)
         calibration = self._calibration(ds, quantity, x, y, settings)
         model = gp.StratumGP(**settings, k_scale=calibration["k_scale"], sigma_floor_rel=calibration.get("median_rel", 0.0)).fit(x, y)
-        _save_model(self._model_path(ds, quantity, settings, calibration), model)
+        _save_model(self.cache.target(self._model_name(ds, quantity, settings, calibration)), model)
         self._keep(stratum, quantity, ds, rows, x, settings, model, calibration)
 
     def _keep(self, stratum: str, quantity: str, ds: dataset.Dataset, rows: list[dataset.Row], x: np.ndarray, settings: dict,
@@ -193,9 +208,9 @@ class Library:
                     "feature_map": feature_map}
         return ds, rows, x, y, settings
 
-    def _model_path(self, ds: dataset.Dataset, quantity: str, settings: dict, calibration: dict) -> Path:
-        """The cache file of a fitted model: keyed by the data, the settings, the calibration (k_scale and the sigma floor are
-        part of the model), the gp code and the scikit-learn version the pickle belongs to."""
+    def _model_name(self, ds: dataset.Dataset, quantity: str, settings: dict, calibration: dict) -> str:
+        """The cache file name of a fitted model: keyed by the data, the settings, the calibration (k_scale and the sigma floor
+        are part of the model), the gp code and the scikit-learn version the pickle belongs to."""
         h = hashlib.sha256()
         h.update(f"v{MODEL_CACHE_VERSION}".encode())
         h.update(ds.key.encode())
@@ -203,35 +218,41 @@ class Library:
         h.update(json.dumps(calibration, sort_keys=True).encode())
         h.update(hashlib.sha256(inspect.getsource(gp).encode()).digest())
         h.update(sklearn.__version__.encode())
-        return self.root / ".cache" / f"model-{ds.stratum}-{quantity.replace('@', '_at_')}-{h.hexdigest()[:20]}.pkl"
+        return f"model-{ds.stratum}-{_file_part(quantity)}-{h.hexdigest()[:20]}.pkl"
 
     def _model_file(self, stratum: str, quantity: str) -> Path | None:
-        """The model's cache file if it exists. Never while the calibration is not cached: the key needs it, and computing it
-        takes the five hold-out fits that are the work ``models`` hands to its workers."""
+        """The model's cache file if it exists (``Cache.find``: the cache directory, then the library's own ``.cache``). Never
+        while the calibration is not cached: the key needs it, and computing it takes the five hold-out fits that are the
+        work ``models`` hands to its workers."""
         ds, _rows, x, y, settings = self._fit_inputs(stratum, quantity)
         calibration = self._calibration(ds, quantity, x, y, settings, compute=False)
         if calibration is None:
             return None
-        path = self._model_path(ds, quantity, settings, calibration)
-        return path if path.is_file() else None
+        return self.cache.find(self._model_name(ds, quantity, settings, calibration))
 
     def _calibration(self, ds: dataset.Dataset, quantity: str, x, y, settings: dict, *, compute: bool = True) -> dict | None:
         if not self.calibrate:
             return {"k_scale": 1.0, "source": "off"}
-        path = self.root / ".cache" / f"calibration-{ds.stratum}-{quantity.replace('@', '_at_')}-{ds.key}.json"
-        if path.is_file():
-            return json.loads(path.read_text(encoding="utf-8"))
+        name = f"calibration-{ds.stratum}-{_file_part(quantity)}-{ds.key}.json"
+        found = self.cache.find(name)
+        if found is not None:
+            return json.loads(found.read_text(encoding="utf-8"))
         if not compute:
             return None
         report = gp.holdout(x, y, **settings)
         out = {"k_scale": gp.calibration_scale(report), "median_rel": report["median_rel"],
                "coverage_2sigma_before": report["coverage_2sigma"], "n_scored": report["n_scored"], "source": "holdout 5x20%",
                "sigma_floor": "median held-out relative error"}
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path = self.cache.target(name)
         with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp", delete=False, encoding="utf-8") as f:
             f.write(json.dumps(out))
         os.replace(f.name, path)                         # a reader sees the old file or the whole new one
         return out
+
+
+def _file_part(quantity: str) -> str:
+    """A quantity as it appears in cache file names: ``Lp@28`` -> ``Lp_at_28``."""
+    return quantity.replace("@", "_at_")
 
 
 def _load_model(path: Path, dims: list[str]) -> gp.StratumGP | None:
@@ -254,14 +275,14 @@ def _save_model(path: Path, model: gp.StratumGP) -> None:
     os.replace(f.name, path)
 
 
-def _fit_in_worker(root: Path, calibrate: bool, stratum: str, quantity: str, threads: int) -> str:
+def _fit_in_worker(root: Path, calibrate: bool, stratum: str, quantity: str, threads: int, cache_dir: Path | None = None) -> str:
     """One ``Library.models`` worker process: fit a quantity with BLAS capped at ``threads``; the fit writes the calibration
-    and model caches, and only the name goes back (the parent loads the model from its cache file). The worker is spawned,
-    so these arguments are all it has: it opens the library itself (the parent sized the work, so it needs no limits), and
-    the cap reaches every BLAS / OpenMP pool the fit uses because importing this module has loaded numpy, scipy and
-    scikit-learn before it is set."""
+    and model caches (into ``cache_dir``, the parent's cache directory), and only the name goes back (the parent loads the
+    model from its cache file). The worker is spawned, so these arguments are all it has: it opens the library itself (the
+    parent sized the work, so it needs no limits), and the cap reaches every BLAS / OpenMP pool the fit uses because
+    importing this module has loaded numpy, scipy and scikit-learn before it is set."""
     with threadpool_limits(limits=threads):
-        lib = Library(root, calibrate=calibrate)
+        lib = Library(root, calibrate=calibrate, cache_dir=cache_dir)
         if not lib._load(stratum, quantity):             # another process may have written it meanwhile
             lib._fit(stratum, quantity)
     return quantity
@@ -350,7 +371,8 @@ def _thread_budget(limits: site.HostLimits, threads: int) -> int:
 
 def query(library: Library, stratum: str, params: dict, quantities: list[str] | None = None, *, k: float = 2.0,
           rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX) -> dict:
-    """Measured values at an exact library point, else per-quantity predictions with calibrated k-sigma bounds and domain verdicts."""
+    """Measured values at an exact library point, else per-quantity predictions with calibrated k-sigma bounds and domain verdicts;
+    ``notes`` carries the library's (``Library.notes``)."""
     ds = library.dataset(stratum)
     missing = [d for d in ds.dims if d not in params]
     if missing:
@@ -361,7 +383,7 @@ def query(library: Library, stratum: str, params: dict, quantities: list[str] | 
     if unknown:
         raise ValueError(f"{stratum} has no quantities {unknown}; columns {ds.columns}")
     row = ds.find(coords)
-    out: dict = {"stratum": stratum, "params": coords, "measured": None, "quantities": {}}
+    out: dict = {"stratum": stratum, "params": coords, "measured": None, "quantities": {}, "notes": library.notes}
     if row is not None:
         out["measured"] = {"part": row.part, "obs_id": row.obs_id}
         for q in wanted:
@@ -419,7 +441,8 @@ def _evidence(row: dataset.Row, q: str, dims: list[str], distance: float | None 
 
 
 def coverage(library: Library, stratum: str) -> dict:
-    """What the stratum covers: rows per part and turns level, the achieved range of every dim, usable rows and value range per quantity."""
+    """What the stratum covers: rows per part and turns level, the achieved range of every dim, usable rows and value range per
+    quantity; ``notes`` carries the library's."""
     ds = library.dataset(stratum)
     x = ds.matrix()
     out = {"stratum": stratum, "rows": len(ds.rows), "parts": {}, "generations": ds.generations, "excluded": ds.excluded,
@@ -435,10 +458,12 @@ def coverage(library: Library, stratum: str) -> dict:
         v = ds.values(q, ds.usable(q))
         out["quantities"][q] = {"rows": len(v), "min": float(v.min()) if len(v) else None, "max": float(v.max()) if len(v) else None,
                                 "unit": unit(q)}
+    out["notes"] = library.notes
     return out
 
 
 def load(library: Library, stratum: str | None = None) -> dict:
-    """Dataset summaries (rows, cache state, integrity evidence) for one stratum or all of them."""
+    """Dataset summaries (rows, cache state, integrity evidence, the library's notes) for one stratum or all of them."""
     names = [stratum] if stratum else library.strata()
-    return {name: {"cache": library.dataset(name).cache, **dataset.check(library.dataset(name))} for name in names}
+    return {name: {"cache": library.dataset(name).cache, **dataset.check(library.dataset(name)), "notes": library.notes}
+            for name in names}

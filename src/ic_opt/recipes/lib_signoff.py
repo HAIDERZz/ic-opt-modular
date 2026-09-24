@@ -1,7 +1,7 @@
 """Built-in recipe: lib_signoff -- run library candidates through real EMX, compare with the predictions, optionally adopt them.
 
 ``ic-opt run lib_signoff PROJECT library=<root> candidates=<json> [stratum=...] [top=10] [adopt=false] [threads=N memory_gb=G]
-[process_file=/abs/path.proc] --plan``
+[process_file=/abs/path.proc] [cache_dir=DIR] --plan``
 
 ``candidates`` is a ``lib_design`` report (``leaders``), a ``lib.suggest`` or ``lib.densify`` answer (``candidates``) or a
 list of parameter dicts. Each candidate is simulated with the spec of the stratum part that holds its turns level
@@ -16,7 +16,8 @@ approval point. ``threads`` / ``memory_gb`` replace the part's EMX thread count 
 soft: give the candidates' real peak); they are not physics, so the generation stays the library's.
 ``process_file`` replaces the path of the part's EMX process file with where it lives on this run's simulation
 host: the generation follows the file's content (hashed there), so the same file under another path signs off
-into the library's generation, and a different file does not.
+into the library's generation, and a different file does not. ``cache_dir`` is where the library's cache files
+go (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which a note names).
 """
 
 from __future__ import annotations
@@ -77,11 +78,13 @@ def _signoff_em(em: EmSettings, threads: int | None, memory_gb: float | None, pr
 
 
 def main(run: Run, *, library: str, candidates: str, stratum: str | None = None, top: int = 10, adopt: bool = False, k: float = 2.0,
-         threads: int | None = None, memory_gb: float | None = None, process_file: str | None = None) -> None:
-    lib = query.Library(library, limits=run.site.host("local"))     # the library computes on the controller
+         threads: int | None = None, memory_gb: float | None = None, process_file: str | None = None, cache_dir: str | None = None) -> None:
+    lib = query.Library(library, limits=run.site.host("local"), cache_dir=cache_dir)     # the library computes on the controller
     name = stratum or (lib.strata()[0] if len(lib.strata()) == 1 else None)
     if name is None:
         raise ValueError(f"library has strata {lib.strata()}; name one with stratum=")
+    for note in lib.notes:
+        run.note(f"lib_signoff: {note}")
     ds = lib.dataset(name)
     stratum_def = lib.manifest.strata[name]
     parts = [p.store for p in stratum_def.parts]

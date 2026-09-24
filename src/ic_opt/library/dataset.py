@@ -11,9 +11,10 @@ None in that column only. Each row also carries the integrity evidence ``check``
 singular value of S over frequency (passivity) and whether the stored quantities.json reproduces under
 the definition the run measured with (the part spec's).
 
-Built datasets are cached under ``<library>/.cache/`` keyed by what they are made of -- the rows each part
-keeps and leaves out, the parts' devices, the quantity definitions and the measure code -- so a query does not
-re-read thousands of sNp files. The key ignores how the rows are stamped: restamping their fingerprints
+Built datasets are cached in the library's cache (``cache.locate``: ``<library>/.cache/`` unless another
+directory is given or that one cannot be written) keyed by what they are made of -- the rows each part keeps and
+leaves out, the parts' devices, the quantity definitions and the measure code -- so a query does not re-read
+thousands of sNp files. The key ignores how the rows are stamped: restamping their fingerprints
 (``ic-opt migrate-store``) keeps it, and with it the calibration and model caches built on it.
 """
 
@@ -23,7 +24,9 @@ import collections
 import hashlib
 import inspect
 import json
+import os
 import re
+import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -31,6 +34,7 @@ import numpy as np
 
 from ic_opt.em import measure, touchstone
 from ic_opt.library import manifest
+from ic_opt.library.cache import Cache, locate
 from ic_opt.observation import Observation
 from ic_opt.spec import Device, Spec
 
@@ -85,8 +89,10 @@ class Dataset:
         return next((r for r in self.rows if tuple(round(r.coords[d], 9) for d in self.dims) == key), None)
 
 
-def build(root: str | Path, name: str, *, library: manifest.Library | None = None, cache: bool = True) -> Dataset:
-    """The dataset of stratum ``name`` of the library at ``root`` (cached unless ``cache=False``)."""
+def build(root: str | Path, name: str, *, library: manifest.Library | None = None, cache: bool = True,
+          cache_dir: Cache | str | Path | None = None) -> Dataset:
+    """The dataset of stratum ``name`` of the library at ``root``, cached unless ``cache=False``: in ``cache_dir`` (a
+    ``Cache``, or a directory for ``cache.locate``; default: the library's own ``.cache`` when it can be written)."""
     root = Path(root)
     lib = library or manifest.load(root)
     if name not in lib.strata:
@@ -95,8 +101,10 @@ def build(root: str | Path, name: str, *, library: manifest.Library | None = Non
     parts = [_select(root, name, part) for part in stratum.parts]
     generations = {p.store: p.generation for p in parts if p.generation is not None}
     key = _cache_key(stratum, parts)
-    cached = root / ".cache" / f"dataset-{name}-{key}.json"
-    if cache and cached.is_file():
+    file = f"dataset-{name}-{key}.json"
+    store = (cache_dir if isinstance(cache_dir, Cache) else locate(root, cache_dir)) if cache else None
+    cached = store.find(file) if store else None
+    if cached is not None:
         return _load(cached, stratum, name, "hit", key, generations)
 
     columns = stratum.columns()
@@ -113,12 +121,13 @@ def build(root: str | Path, name: str, *, library: manifest.Library | None = Non
             except (measure.MeasureError, touchstone.TouchstoneError, OSError) as exc:
                 excluded[f"measure: {type(exc).__name__}"] += 1
     ds = Dataset(name, list(stratum.dims), stratum.nt_dim, columns, rows, generations, dict(excluded), "miss" if cache else "off", key)
-    if cache:
-        cached.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cached.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"version": DATASET_VERSION, "generations": generations, "excluded": dict(excluded),
-                                   "rows": [asdict(r) for r in rows]}), encoding="utf-8")
-        tmp.replace(cached)
+    if store is not None:                            # a writer's own temporary file, renamed over: a reader sees none or all of it
+        target = store.target(file)
+        with tempfile.NamedTemporaryFile("w", dir=target.parent, prefix=f".{target.stem}.", suffix=".tmp", delete=False,
+                                         encoding="utf-8") as f:
+            f.write(json.dumps({"version": DATASET_VERSION, "generations": generations, "excluded": dict(excluded),
+                                "rows": [asdict(r) for r in rows]}))
+        os.replace(f.name, target)
     return ds
 
 

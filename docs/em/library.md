@@ -12,7 +12,7 @@ from is an `ok` observation with its sNp on disk.
   library.yaml                   # strata, parts, dims, quantities
   ind_sym_top/                   # a part: spec.yaml + .icopt/ (observations.jsonl, sims/<obs>/em/<device>/*.sNp)
   ind_sym_top_nt1/               # another part of the same stratum (e.g. single turns, swept further)
-  .cache/                        # datasets, calibration and fitted models, keyed by content; safe to delete
+  .cache/                        # datasets, calibration and fitted models, keyed by content; safe to delete (see Cache)
 ```
 
 The blocks take the library root as their directory: `ic-opt call lib.<name>
@@ -192,7 +192,7 @@ and max along one dim over the points meeting every other target;
 meet every target; and a `points_sample` to plot. The per-dim ranges are
 projections. The dims are correlated (a width leaves a short stretch of
 diameters), so take a sweep from the `group_by` rows, not from the ranges
-alone. Fitted models are cached under `.cache/`; the uncached ones are
+alone. Fitted models are cached (see [Cache](#cache)); the uncached ones are
 fitted in parallel processes sized from `hosts.local` (see
 [Compute](#compute)). `workers` and `threads` cap the fitting processes and
 the BLAS threads; a value above what that entry allows is refused.
@@ -306,8 +306,8 @@ entry `hosts.local` of `~/.ic-opt/site.yaml` (`max_threads`,
 `max_memory_gb`) and nothing else: no core count is read from the machine
 and no machine size is built in. The entry is read when a model has to be
 fitted or a batch predicted. Datasets, coverage, measured rows and models
-already cached in `.cache/` need no entry; without one, a fit is refused with
-the entry to add. `lib_design` and `lib_signoff` fit on the same entry
+already cached (see [Cache](#cache)) need no entry; without one, a fit is
+refused with the entry to add. `lib_design` and `lib_signoff` fit on the same entry
 (`run.site.host("local")`), never on the simulation host's; `lib_design` fits
 every model it needs once, before the search starts.
 
@@ -338,6 +338,29 @@ workers of 2 threads and chunks of about 94 400 rows; from 56 threads and
 the whole entry. A second command on the same machine, such as a local EMX
 sweep, needs its own share: lower `hosts.local` or set `OMP_NUM_THREADS`
 (or `OPENBLAS_NUM_THREADS` / `MKL_NUM_THREADS`) for one of them.
+
+## Cache
+
+Datasets, calibrations and fitted models are cached as files named after
+what they are made of: the rows, the quantity definitions, the model
+settings and the code. A file that no longer matches is never read, and
+deleting the directory only costs the time to compute it again. By default
+the files go to the library's own `.cache/`. Every `lib.*` block,
+`lib_design` and `lib_signoff` take `cache_dir=` to put them in another
+directory, for example on a local disk:
+
+```bash
+ic-opt call lib.coverage <library root> stratum=<stratum> cache_dir=<directory>
+```
+
+When the library's own `.cache/` cannot be written (a library root shared
+read-only, or a `.cache/` that another user owns), the files go to
+`~/.cache/ic-opt/<key>/` instead, `<key>` being the first 16 hex digits of
+the SHA-256 of the library root's resolved path. Every answer then says so
+in its `notes` (`lib.load` in each stratum's entry). In both cases the files
+already in the library's own `.cache/` are still read: a library its owner
+has queried answers another user at once, and only what the owner never
+computed is computed again, into that user's directory.
 
 ## A new process
 
