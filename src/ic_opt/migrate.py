@@ -20,14 +20,20 @@ from ic_opt.spec import Spec
 _SECTION_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$", re.MULTILINE)
 _YAML_BLOCK_RE = re.compile(r"```yaml\s*\n(?P<body>.*?)\n```", re.DOTALL)
 
-# What 0.1 / em-opt ran with when a requirement left a resource out. A spec states every resource field (T15), so a
-# migration writes these out and MIGRATION.md lists each one it had to fill: they are the old tools' choices, not a
-# statement about the machine the migrated project will run on.
+# What 0.1 / em-opt ran with when a requirement left a resource out, or could not state it at all. A spec states every
+# resource field (T15), so a migration writes these out and MIGRATION.md lists each one it had to fill: they are the old
+# tools' choices, not a statement about the machine the migrated project will run on. Written out, the migrated project
+# runs as the old one did instead of silently changing behaviour.
 LEGACY_DEFAULTS: dict[str, int | float] = {
     "simulator.threads_per_run": 10,
+    "simulator.license_queue_timeout_s": 900,   # 0.1 passed +lqtimeout 900 to every Spectre run; no requirement could set it
     "em.threads": 4,                    # em-opt max_cpu_per_job (EMX --parallel)
     "em.memory_gb": 32.0,               # EMX --max-memory
     "em.timeout_s": 3600,               # em-opt enforced no EMX timeout; 0.2.0 defaulted to 3600 s
+}
+# What MIGRATION.md says next to a filled field whose value needs more than "the 0.1 default".
+LEGACY_NOTES: dict[str, str] = {
+    "simulator.license_queue_timeout_s": "0.1 always passed +lqtimeout 900; remove the line to use Spectre's own wait",
 }
 
 
@@ -227,6 +233,7 @@ def _simulator(spectre: dict[str, Any], filled: dict[str, int | float]) -> dict[
         "parallel_jobs": spectre["parallel_jobs"],
         "timeout_s": spectre["timeout_s"],
         "license_check": spectre.get("require_license_check", True),
+        "license_queue_timeout_s": _given_or_legacy(None, "simulator.license_queue_timeout_s", filled),   # 0.1's fixed wait
         "keep_failed_runs": spectre.get("keep_failed_runs", True),
         "keep_successful_runs": spectre.get("keep_successful_runs", True),
     }
@@ -275,7 +282,7 @@ def recipe_note(hints: dict[str, Any], new_project: Path) -> str:
     if filled:
         lines += ["", ("The requirement did not set these resource fields; spec.yaml carries the 0.1 defaults for them. Review each one "
                        "for your machines (ic-opt itself has no resource defaults):"), ""]
-        lines += [f"    {field}: {value}" for field, value in filled.items()]
+        lines += [f"    {field}: {value}" + (f"   # {LEGACY_NOTES[field]}" if field in LEGACY_NOTES else "") for field, value in filled.items()]
     lines += ["", ("Resources (simulator.parallel_jobs, threads_per_run, timeout_s; em.threads, memory_gb, timeout_s) must fit the "
                    "simulation host's entry in ~/.ic-opt/site.yaml: hosts.local, or hosts.<profile> with --ssh-profile."),
               "", "Preview first: add `--plan`. Remote: add `--ssh-profile PROFILE`."]

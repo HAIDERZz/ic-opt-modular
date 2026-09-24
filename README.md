@@ -87,7 +87,8 @@ leaves one out is refused with the field's name. `simulator.license_queue_timeou
 is optional: how many seconds Spectre waits in its license queue, passed as
 `+lqtimeout`; left out, the flag is not passed and Spectre waits as it does by
 itself. Like `timeout_s`, it says how the problem is run, so it is not part of
-the spec's fingerprint.
+the spec's fingerprint. `ic-opt migrate` writes `900` into a spec it converts from
+a 0.1 project, which passed `+lqtimeout 900` to every Spectre run.
 
 ### Recipes
 
@@ -289,7 +290,10 @@ step: its NEW_PROJECT is PROJECT. `--doctor` is now `ic-opt doctor NEW_PROJECT`,
 `--continue N` a re-run with `budget=` set to the points done plus N,
 `--dry-orchestration` is `--plan` and `--cadence-cshrc F` is `--cshrc F`. MIGRATION.md
 also lists every resource value it filled in from the 0.1 defaults: review those for
-your machines before the first run.
+your machines before the first run. One is always there,
+`simulator.license_queue_timeout_s: 900`: 0.1 always passed `+lqtimeout 900`, and
+the converted project keeps that wait until you remove the line (Spectre then
+uses its own). A `spec.yaml` 0.2 wrote is not changed.
 
 ## Development
 

@@ -188,6 +188,22 @@ def test_migrate_store_restamps_the_rows_0_2_0_wrote_and_the_engine_reuses_them(
     assert (step["reused"], step["new"], step["simulations"]) == (3, 0, 0)
 
 
+def test_a_0_2_spec_without_the_license_queue_wait_stays_without_it(tmp_path):
+    """N-12: only ``ic-opt migrate`` (a 0.1 requirement -> spec.yaml) writes 0.1's +lqtimeout 900 out. A spec.yaml 0.2 wrote
+    without the field keeps it unset: migrate-store does not rewrite the file, and its runs pass no +lqtimeout."""
+    proj = project(tmp_path)
+    before = (proj / "spec.yaml").read_bytes()
+    assert b"license_queue_timeout_s" not in before
+    migrate_store.migrate(proj)
+    assert (proj / "spec.yaml").read_bytes() == before
+    spec = load_spec(proj / "spec.yaml")
+    assert spec.simulator.license_queue_timeout_s is None
+    host = fake_host(proj)
+    evaluate(spec, [Point({"F": "22", "W": "0.6u"}, "user")], host, RunStore(proj), deck=deck(spec), limits=FAKE_HOST)
+    spectre = [c for c in host.commands if c.startswith("spectre")]
+    assert len(spectre) == 1 and "+lqtimeout" not in spectre[0]
+
+
 def test_rows_it_cannot_place_stay_as_they_are_and_are_reported(tmp_path):
     """A row of another spec keeps both stamps, its 0.2.0 pipeline stamp too. A 0.2.0 row of this
     spec from a stage list a recipe assembled itself (other names, another hash) gets the problem

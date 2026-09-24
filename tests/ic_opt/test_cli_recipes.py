@@ -13,9 +13,11 @@ from typer.testing import CliRunner
 from ic_opt import __version__, blocks, cli, recipe
 from ic_opt import site as site_module
 from ic_opt.cli import app
+from ic_opt.deck import Deck
 from ic_opt.recipes import coarse_to_fine, fix_run, optimize, signoff
 from ic_opt.site import HostLimits, Site
 from ic_opt.spec import load_spec
+from ic_opt.stages import spectre_pipeline
 from ic_opt.store import RunStore
 from tests.ic_opt.fakes import FakeSpectreExecutor, minimal_spec, needs_turbo
 from tests.ic_opt.test_blocks import maestro_export
@@ -204,7 +206,14 @@ def test_migrate_every_legacy_template(tmp_path, template):
     assert len(TEMPLATES) == 11
     written = yaml.safe_load((new / "spec.yaml").read_text())["simulator"]              # resource fields are written, not defaulted
     assert {"threads_per_run", "parallel_jobs", "timeout_s"} <= set(written) and "~/.ic-opt/site.yaml" in note
-    assert "0.1 defaults" not in note                                                     # every template states threads_per_run
+    # N-12: 0.1 passed +lqtimeout 900 to every Spectre run, so the migrated spec says so -- and it is the one value MIGRATION.md
+    # lists as filled in, every template stating threads_per_run
+    assert written["license_queue_timeout_s"] == 900 and spec.simulator.license_queue_timeout_s == 900
+    argv = spectre_pipeline(spec, Deck())[1].argv()
+    assert argv[argv.index("+lqtimeout") + 1] == "900"
+    filled = note.split("(ic-opt itself has no resource defaults):\n\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    wait = "0.1 always passed +lqtimeout 900; remove the line to use Spectre's own wait"
+    assert filled == [f"    simulator.license_queue_timeout_s: 900   # {wait}"]
 
 
 EM_SECTIONS = """
