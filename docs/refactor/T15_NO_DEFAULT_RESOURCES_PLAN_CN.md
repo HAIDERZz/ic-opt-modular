@@ -1,6 +1,6 @@
 # T15：资源由用户指定、去掉开发环境假设
 
-状态：第 7 节已拍板（2026-09-24）：D1 EMX 超时也由用户指定（必填）；D2 是；D3 是；D4 是；D5 是。subagent 思考强度改为 extra。T15.1/2/4/5/6 已并行派发，T15.3 在 T15.1 合入后，T15.7 最后，T15.8 由 Claude 验收。
+状态：第 7 节已拍板（2026-09-24）：D1 EMX 超时也由用户指定（必填）；D2 是；D3 是；D4 是；D5 是。subagent 思考强度改为 extra。T15.1–T15.6 与 TuRBO (b) 已合入 main（见第 8 节），T15.7 文档清理进行中；T15.8 已完成的验收记在第 8 节。
 
 ## 0. 一句话
 
@@ -161,3 +161,26 @@ T15.7 最后。
 - D4 本轮范围：A 类 10 条 + B 类"M1"与 3 GHz 两条（T15.1–T15.7）；审查其余 B/C 类（RV 过孔名、AP=11 校验器、σ/μ 可配、
   缓存目录、license 探测、5 nm 网格、非均匀频率表、四端口极性、冒烟线宽）列入 T16。建议：是。
 - D5 变压器格点间不准的普遍解法（按不确定度全域自适应补点的 `lib.densify`；L@f = 低频电感 × 谐振因子建模）列入 T16。建议：是。
+
+## 8. 交付与验收记录（2026-09-24 夜 – 09-25 凌晨）
+
+| 任务 | 提交 | 交付要点 | 复核 |
+|---|---|---|---|
+| T15.6 | b721144 | 夹具金属 DRC 豁免取 `profile.fixture_conductor`；`low_freq_max_hz`（spec 与 manifest 可设，默认 3 GHz，`"relative"` = min(3 GHz, SRF/10) 可选，因 OCEAN 一致性有 26/72 器件 SRF < 30 GHz）；缺低频样本只置空 | 109 绿；黄金 GDS 不变 |
+| T15.5 | cc7aba2 | scikit-learn / threadpoolctl 入 `dependencies`；README 安装两步；`scripts/check_clean_install.sh` 两套干净环境 PASS；`test_packaging.py` | TuRBO 为 Uber 非商业许可，未拷入包 |
+| T15.1 | 43e4888 | `site.yaml` v2 按主机、`HostLimits` 无默认值；`threads_per_run`、`em.threads/memory_gb/timeout_s` 必填；`EnvelopeError` 逐阶段拒绝、`slots` 无下限；doctor 打印上限并探测 `nproc`/MemTotal 只告警；CLI 退出码 2；migrate 显式写出 0.1 默认值 | 非 pcell 204 绿 + pcell 277 绿；46 个新测试；我修了一处 T15.6 测试的 `limits` 夹具 |
+| T15.4 | 1325348 | `_lock.py`（fcntl / msvcrt）、`spawn` 工作进程、Windows 路径/编码/换行修正、平台说明入 README 与 ADR | spawn 副作用：从 stdin 喂的脚本不能触发拟合，须用带 `__main__` 保护的文件（T15.7 写入文档） |
+| T15.2 | 5c2eadd | `Spec.problem()`/新指纹 + 旧指纹兼容；`physics_key(proc_sha256)` 去路径；`Emx.resolve_identity`；`ic-opt migrate-store`（重写两种指纹、搬 EMX 缓存键、备份、幂等）；`lib_signoff process_file=`；数据集缓存键改按行内容 | 234 绿；随后 ba5c40c：`opt.optimize` 也接受旧指纹、`em.binary` 出问题身份 |
+| T15.3 | fe87509 | `Library(limits=hosts.local)`、`fit_plan`（并行数 = min(缺模型数, max_threads//2, max_memory_gb//单次拟合内存, Windows 61)）、每进程 BLAS = 预算均分且不超显式 `OMP_NUM_THREADS`、预测分块 = 10% 内存预算、`Predict` 预拟合 + `rel_sigma_max`、`lib_design` 传 limits | 254 绿；随后 9982bab：单次拟合超 `max_memory_gb` 拒绝、校准 JSON 原子写、`lib_signoff` 传 limits |
+| TuRBO (b) | 51f74a0 | `-e vendor/TuRBO` 安装、正常导入、去 `sys.path` 插入；`turbo.egg-info` 不再跟踪；干净环境检查 A/B 均 PASS | 用户 09-24 23:57 拍板 b |
+
+**T15.8 验收（在迁移后的 N28 库上）**
+- 本机 `~/.ic-opt/site.yaml` 按用户上限写 `hosts.local: {max_threads: 128, max_memory_gb: 256, cshrc: …}`（T15.1 之后没有它什么都不能启动，这是设计）。
+- `ic-opt migrate-store` 先 `--dry-run` 后实跑 8 个部件（各留 `observations.jsonl.bak-20260924T1534*`）：每个部件代际一对一（如 xfm_bs_ap `bdc60a7…` → `0b3c6da…` x1576），EMX 缓存条目全部搬到新键；`lib.load`：六张表行数不变（516/532/1576/1576/2440/2370）、`excluded {}`。
+- 数据集缓存键公式变了（改按行内容），首次查询重建数据集并重新校准：两张单圈变压器表 40 GHz 六个模型各 6 分钟（6 进程并行）。
+- C5：G1/G2 门 6/6；全量非 pcell 套件 235 绿（后续合入后 254 绿）。
+- C3 回归：40 GHz 区域答案（`reports/library_query/region_acceptance_40g_t15.json`）AP 稳健 50 / 均值 4312、范围逐项相同；M10 稳健 23 相同、均值 3738 对 3739（一格贴窗边；重拟合的 BLAS 线程数不同带来 ~1e-6 相对差异，T14.1 记录过）、范围相同；热跑 33 / 35 s。
+- C3（干净环境安装）：由 `scripts/check_clean_install.sh` 验证（T15.5、TuRBO b 各跑一次，PASS）。
+- 未在真机验证：Windows / macOS 控制端（锁与 spawn 的 Windows 分支只以打桩测试）。
+
+**列入 T16（审查 B/C 类其余项与新发现）**：RV 过孔名（行 13）、配置校验器 AP=11（行 14）、第三方生成器的 DRC 门（15）、EMX/Spectre 默认与 license 等待（16–18）、SSH 超时入 site.yaml（19）、库缓存目录可指定（20）、σ/μ 上限按列（21）、`relax` 参数（22）、5 nm 网格入 profile（23）、非均匀频率表（24）、四端口极性告警（25）、冒烟线宽夹取（26）；`OPENBLAS/MKL_NUM_THREADS` 也算显式上限；`process_file` 路径是否出问题身份；超时整组杀进程；`validate_profile` 经 SSH 读 `.proc`；`lib_design` 首次并行校准的跨进程竞争；变压器格点间不准的普遍解法（`lib.densify` 按不确定度全域补点、L@f = L_lf × 谐振因子建模）；TuRBO 长期替代（c/d）。
