@@ -21,7 +21,7 @@ from ic_opt import migrate_store
 from ic_opt.cli import app
 from ic_opt.library import dataset, gp
 from ic_opt.library import query as q
-from ic_opt.site import HostLimits, SiteError
+from ic_opt.site import EnvelopeError, HostLimits, SiteError
 from ic_opt.spec import load_spec
 from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, age_store
 from tests.ic_opt.library_fixtures import (
@@ -246,7 +246,8 @@ def test_coverage_and_load(library):
 
 
 def test_fit_plan_sizes_workers_and_threads_from_the_limits(monkeypatch):
-    """The rule: workers = min(models, max_threads // 2, max_memory_gb // GB per fit), at least one; BLAS threads per worker
+    """The rule: workers = min(models, max_threads // 2, max_memory_gb // GB per fit), at least one (a fit above the memory
+    entry is refused); BLAS threads per worker
     = the thread budget shared out, never above OMP_NUM_THREADS. A 1300-row stratum over 4 dims with 28 columns to fit
     (the N28 inductor strata): 3 x 1300^2 x 6 x 8 bytes = 0.23 GB per fit, rounded up to 0.3."""
     monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
@@ -257,7 +258,8 @@ def test_fit_plan_sizes_workers_and_threads_from_the_limits(monkeypatch):
     assert q.fit_plan(LAPTOP, 1, 1300, 4) == (1, 8)                    # one model: fitted here with the whole budget
     assert q.fit_plan(LAPTOP, 28, 4000, 5) == (4, 2)                   # 16 // 2.6 = 6 workers would fit the memory
     assert q.fit_plan(HostLimits(max_threads=8, max_memory_gb=6), 28, 4000, 5) == (2, 4)     # the memory binds: 6 // 2.6
-    assert q.fit_plan(HostLimits(max_threads=8, max_memory_gb=2), 28, 4000, 5) == (1, 8)     # one fit larger than the memory: alone
+    with pytest.raises(EnvelopeError, match="above max_memory_gb 2"):                       # one fit larger than the memory: refused
+        q.fit_plan(HostLimits(max_threads=8, max_memory_gb=2), 28, 4000, 5)
     assert q.fit_plan(HostLimits(max_threads=1, max_memory_gb=16), 28, 1300, 4) == (1, 1)
     assert q.fit_plan(LAPTOP, 28, 1300, 4, workers=2, threads=4) == (2, 2)   # explicit caps within the limits are honoured
     assert q.fit_plan(LAPTOP, 3, 1300, 4, workers=4) == (3, 2)         # never more workers than models to fit
@@ -441,3 +443,10 @@ def test_migrate_store_keeps_the_library_caches(tmp_path, monkeypatch):
     ds = lib.dataset("ind_demo")
     assert fits == [] and sorted(p.name for p in (root / ".cache").iterdir()) == caches
     assert ds.cache == "hit" and set(ds.generations.values()) == set(renamed.values())
+
+
+def test_a_fit_bigger_than_the_memory_entry_is_refused():
+    """Like an oversized simulation job: a model the controller cannot hold is refused, not fitted alone."""
+    with pytest.raises(EnvelopeError, match="max_memory_gb"):
+        q.fit_plan(HostLimits(max_threads=8, max_memory_gb=1.0), 1, 20000, 5)          # ~3 x 20000^2 x 7 x 8 B = 67 GB
+    assert q.fit_plan(HostLimits(max_threads=8, max_memory_gb=64.0), 1, 2000, 5)[0] == 1

@@ -78,7 +78,7 @@ def _signoff_em(em: EmSettings, threads: int | None, memory_gb: float | None, pr
 
 def main(run: Run, *, library: str, candidates: str, stratum: str | None = None, top: int = 10, adopt: bool = False, k: float = 2.0,
          threads: int | None = None, memory_gb: float | None = None, process_file: str | None = None) -> None:
-    lib = query.Library(library)
+    lib = query.Library(library, limits=run.site.host("local"))     # the library computes on the controller
     name = stratum or (lib.strata()[0] if len(lib.strata()) == 1 else None)
     if name is None:
         raise ValueError(f"library has strata {lib.strata()}; name one with stratum=")

@@ -226,7 +226,9 @@ class Library:
                "coverage_2sigma_before": report["coverage_2sigma"], "n_scored": report["n_scored"], "source": "holdout 5x20%",
                "sigma_floor": "median held-out relative error"}
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(out), encoding="utf-8")
+        with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp", delete=False, encoding="utf-8") as f:
+            f.write(json.dumps(out))
+        os.replace(f.name, path)                         # a reader sees the old file or the whole new one
         return out
 
 
@@ -298,7 +300,7 @@ def fit_plan(limits: site.HostLimits, missing: int, rows: int, dims: int, *, wor
 
     - workers: one per model, at most max_threads // THREADS_PER_FIT (a fit keeps about two cores busy whatever BLAS
       gets), max_memory_gb // ``fit_memory_gb`` of the largest model and, on Windows, the WINDOWS_MAX_WORKERS processes
-      ProcessPoolExecutor allows; at least one (a model too big for the memory still fits alone);
+      ProcessPoolExecutor allows; at least one -- but a single fit bigger than max_memory_gb is refused (EnvelopeError);
     - BLAS threads per worker: the thread budget (``threads``, else max_threads) shared out, at least one each, never
       more than an explicit OMP_NUM_THREADS.
 
@@ -308,6 +310,9 @@ def fit_plan(limits: site.HostLimits, missing: int, rows: int, dims: int, *, wor
     budget = limits.max_threads if threads is None else _thread_budget(limits, threads)
     per_fit = fit_memory_gb(rows, dims)
     machine = "of this machine (site.yaml hosts.local)"
+    if per_fit > limits.max_memory_gb:                   # like the engine: a job the host cannot hold is refused, not run alone
+        raise site.EnvelopeError(f"fitting a model of {rows} rows over {dims} dims needs about {per_fit:g} GB, above max_memory_gb "
+                                 f"{limits.max_memory_gb:g} {machine}: raise the entry or reduce the rows")
     bounds = [(max(1, limits.max_threads // THREADS_PER_FIT),
                f"max_threads {limits.max_threads} {machine} // {THREADS_PER_FIT}, a fit keeping about {THREADS_PER_FIT} cores busy"),
               (max(1, int(limits.max_memory_gb // per_fit)),
