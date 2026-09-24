@@ -72,7 +72,12 @@ def size() -> int:
 
 def index(metal) -> int:
     """Name or spelling -> stack position. Raises ValueError for a token that is no conductor of the stack."""
-    names = _ACTIVE.get()
+    return position_in(_ACTIVE.get(), metal)
+
+
+def position_in(names: tuple[str, ...] | None, metal) -> int:
+    """``index`` on the given stack (``names`` bottom first; None: the reference convention) instead of the active one:
+    for callers that judge a metal against a profile without building on it (the generator configs, T16 R-14)."""
     token = str(metal).strip()
     if names is not None:
         folded = {n.upper(): i for i, n in enumerate(names, 1)}
@@ -95,8 +100,12 @@ def name(position: int) -> str:
     """Stack position -> conductor name. Outside the active stack the answer is a name no profile defines
     ("M<n>"), so a caller probing above the top or below the bottom finds nothing, exactly as with the fixed
     convention's missing layers."""
+    return name_in(_ACTIVE.get(), position)
+
+
+def name_in(names: tuple[str, ...] | None, position: int) -> str:
+    """``name`` on the given stack (None: the reference convention) instead of the active one."""
     i = int(position)
-    names = _ACTIVE.get()
     if names is not None:
         return names[i - 1] if 1 <= i <= len(names) else f"M{i}"
     return "AP" if i == REFERENCE_SIZE else f"M{i}"

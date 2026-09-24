@@ -24,12 +24,14 @@ from pydantic import (
     ConfigDict,
     Field,
     StrictBool,
+    ValidationInfo,
     field_validator,
     model_serializer,
     model_validator,
 )
 
 from ic_opt.em.pcell import GEOMETRY_VERSION
+from ic_opt.em.pcell import stack as _stack
 from ic_opt.em.pcell.base import (
     GeometryGenerationResult,
     PassiveDeviceGenerator,
@@ -40,74 +42,104 @@ from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
 
 _PORT_NAME_RE = re.compile(r"[A-Za-z0-9_]+")
 
+_CONFIG_STACKS: dict[tuple, tuple[str, ...] | None] = {}
+_CONFIG_STACKS_LOCK = threading.Lock()
 
-def _metal_stack_index_or_none(value: str) -> int | None:
-    """Best-effort metal-stack index, ONLY for the M1-adjacency checks below
-    (mirrors pcell_inductor_port_clean.py's own _metal_index digit-parsing
-    convention: "1"/"M1"/"m1" -> 1, "AP"/"ap" -> 11, so M1 and AP spellings
-    are recognized without needing the full pcell/rule-profile machinery at
-    validation time -- that module is loaded lazily via _clean_port() only
-    when actually generating geometry, and this file must not force that
-    load, and its klayout dependency, just to validate a config). Returns
-    None for anything this convention doesn't parse as a plain digit string;
-    such a value is left to the pcell's own generate()-time validation.
-    """
-    token = value.strip()
-    if token.upper() == "AP":
-        return 11
-    digits = token[1:] if token[:1] in ("m", "M") else token
+
+def _config_stack(profile_id) -> tuple[str, ...] | None:
+    """The metal stack (bottom first) a config's metals are judged on: its profile's, or None -- the reference
+    convention -- when no profile of that id loads (the pcell then refuses the profile with its own message).
+    Memoized on the profile file's path and stamp, so one validation's checks read the YAML once, not per field."""
+    from ic_opt.em.pcell.process_rules import _profile_path, get_process_rule_profile
+
+    if not isinstance(profile_id, str):
+        return None
     try:
-        return int(digits)
+        path = _profile_path(profile_id)
+        stamp = path.stat()
+    except (ValueError, OSError):
+        return None
+    key = (profile_id, str(path), stamp.st_mtime_ns, stamp.st_size)
+    with _CONFIG_STACKS_LOCK:
+        if key in _CONFIG_STACKS:
+            return _CONFIG_STACKS[key]
+    try:
+        names = tuple(get_process_rule_profile(profile_id).metal_stack)
+    except Exception:
+        names = None
+    with _CONFIG_STACKS_LOCK:
+        _CONFIG_STACKS[key] = names
+    return names
+
+
+def _metal_position(value, profile_id) -> int | None:
+    """Stack position of a config's metal, read the way the pcell reads it (``ic_opt.em.pcell.stack``): on the
+    profile's stack by name ("AP", "RDL", "M6"; "6" the sixth metal), without a loadable profile by the reference
+    convention ("M<n>"/"<n>" -> n, "AP" -> 11). None for a spelling that names no metal -- left to the name check
+    (``_metals_are_profile_conductors``) or the pcell's own guard. Every adjacency rule below works on these
+    positions, so a 6-metal + AP profile has AP at 7 and a profile whose metals are not called M<n> is judged
+    like any other (T16 R-14)."""
+    if value is None:
+        return None
+    try:
+        return _stack.position_in(_config_stack(profile_id), value)
     except ValueError:
         return None
 
 
-def _forbid_m1_metal(value: str) -> str:
-    """Reject M1 as a product-metal choice. M1 is exclusively occupied by
-    every clean-port generator's mandatory ground-fixture ring/stub
+def _metal_label(position: int, profile_id) -> str:
+    """The conductor at ``position`` on the config's stack, for messages ("M1" in the reference convention)."""
+    return _stack.name_in(_config_stack(profile_id), position)
+
+
+def _forbid_m1_metal(value: str, profile_id) -> str:
+    """Reject the bottom metal (M1, or whatever the profile calls it) as a product-metal choice. It is exclusively
+    occupied by every clean-port generator's mandatory ground-fixture ring/stub
     (add_ground_fixture(), independent of any device parameter) -- a
     product winding/crossunder placed on the same layer would share one
     merged GDS region with that fixture, which the per-layer DRC audit
     (em_candidate_preparation.py) cannot then reliably separate from
     genuine product geometry. Forbidding M1 here removes the ambiguity at
     its source instead of trying to filter it out after the fact."""
-    if _metal_stack_index_or_none(value) == 1:
+    if _metal_position(value, profile_id) == 1:
         raise ValueError(
-            f"metal {value!r} resolves to M1, which is reserved for the "
+            f"metal {value!r} resolves to {_metal_label(1, profile_id)}, which is reserved for the "
             "ground fixture and is not a valid product-metal choice"
         )
     return value
 
 
-def _forbid_m1_and_m2_metal(value: str) -> str:
+def _forbid_m1_and_m2_metal(value: str, profile_id) -> str:
     """Like ``_forbid_m1_metal``, but ALSO rejects M2: this generator draws
     its crossunder/crossover one stack level below this field's own metal
     (see _EXPECTED_RECIPES's _xfm_ms_recipe/_xfm_balun_recipe in
     geometry/drc_audit.py), so an M2 winding would put that implicit,
     unconfigurable crossunder on M1 just the same."""
-    index = _metal_stack_index_or_none(value)
+    index = _metal_position(value, profile_id)
     if index in (1, 2):
+        fixture = _metal_label(1, profile_id)
         raise ValueError(
-            f"metal {value!r} resolves to M{index}, which would place this "
-            "device's implicit crossunder on M1 (one stack level below); M1 "
+            f"metal {value!r} resolves to {_metal_label(index, profile_id)}, which would place this "
+            f"device's implicit crossunder on {fixture} (one stack level below); {fixture} "
             "is reserved for the ground fixture and is not a valid "
             "product-metal choice (directly or via the derived crossunder)"
         )
     return value
 
 
-def _forbid_m1_through_m3_metal(value: str) -> str:
+def _forbid_m1_through_m3_metal(value: str, profile_id) -> str:
     """Like ``_forbid_m1_and_m2_metal``, but ALSO rejects M3: xfm_il draws
     its crossunder leg2 TWO stack levels below this field's own metal
     (ticket 02d's dual-layer legs -- see ``_xfm_il_recipe`` in
     geometry/drc_audit.py), so an M3 metal would put that implicit
     leg2 on M1 just the same as M1/M2 would directly."""
-    index = _metal_stack_index_or_none(value)
+    index = _metal_position(value, profile_id)
     if index in (1, 2, 3):
+        fixture = _metal_label(1, profile_id)
         raise ValueError(
-            f"metal {value!r} resolves to M{index}, which would place this "
-            "device's implicit crossunder leg2 on M1 (two stack levels "
-            "below); M1 is reserved for the ground fixture and is not a "
+            f"metal {value!r} resolves to {_metal_label(index, profile_id)}, which would place this "
+            f"device's implicit crossunder leg2 on {fixture} (two stack levels "
+            f"below); {fixture} is reserved for the ground fixture and is not a "
             "valid product-metal choice (directly or via the derived "
             "two-layer crossunder)"
         )
@@ -193,11 +225,9 @@ class _CleanPortDeviceConfigBase(BaseModel):
         """Every metal the config names is a metal of its profile's stack, by name: "AP", "M9", or "9" for M9. The
         pcell reads digits as stack positions internally (T13.11), so a "10" on a stack without M10 has to be
         refused here rather than land on whatever the tenth metal is."""
-        if not _profile_known(self.process_profile):
+        stack = _config_stack(self.process_profile)
+        if stack is None:
             return self
-        from ic_opt.em.pcell.process_rules import get_process_rule_profile
-
-        stack = get_process_rule_profile(self.process_profile).metal_stack
         names = {name.upper() for name in stack}
         for field_name in METAL_FIELDS:
             value = getattr(self, field_name, None)
@@ -249,8 +279,8 @@ class _CleanPortInductorConfigBase(_CleanPortDeviceConfigBase):
 
     @field_validator("metal")
     @classmethod
-    def _metals_not_m1(cls, value: str) -> str:
-        return _forbid_m1_metal(value)
+    def _metals_not_m1(cls, value: str, info: ValidationInfo) -> str:
+        return _forbid_m1_metal(value, info.data.get("process_profile"))
 
 
 #: The inductor's fixed semantic base, the same shape ``_XFM_PORTS`` gives
@@ -284,10 +314,10 @@ class CleanPortIndSymConfig(_CleanPortInductorConfigBase):
 
     @field_validator("ct_metal")
     @classmethod
-    def _ct_metal_not_m1(cls, value: str | None) -> str | None:
+    def _ct_metal_not_m1(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        return _forbid_m1_metal(value)
+        return _forbid_m1_metal(value, info.data.get("process_profile"))
 
     @model_validator(mode="after")
     def _ct_contract(self) -> CleanPortIndSymConfig:
@@ -309,10 +339,11 @@ class CleanPortIndSymConfig(_CleanPortInductorConfigBase):
         # crosses y=0 exactly where the CT lead (drawn on ct_metal) runs.
         # Keep the same conservative two-level tap contract for turns==1;
         # relaxing the public CT contract is outside the direct-ring fix.
-        # Unparseable metal spellings fall through to the pcell's own
-        # generate()-time guard, per _metal_stack_index_or_none's contract.
-        top = _metal_stack_index_or_none(self.metal)
-        ct = _metal_stack_index_or_none(self.ct_metal)
+        # Levels are positions on the profile's stack (_metal_position);
+        # spellings that name no metal fall through to the name check and
+        # the pcell's own generate()-time guard.
+        top = _metal_position(self.metal, self.process_profile)
+        ct = _metal_position(self.ct_metal, self.process_profile)
         if top is not None and ct is not None and ct >= top - 1:
             raise ValueError(
                 f"ct_metal {self.ct_metal!r} must sit at least two "
@@ -373,10 +404,10 @@ class CleanPortXfmBsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
     @field_validator("ct_primary_metal", "ct_secondary_metal")
     @classmethod
-    def _ct_metals_not_m1(cls, value: str | None) -> str | None:
+    def _ct_metals_not_m1(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        return _forbid_m1_metal(value)
+        return _forbid_m1_metal(value, info.data.get("process_profile"))
 
     @model_validator(mode="after")
     def _center_spacing_keeps_overlap(self) -> CleanPortXfmBsConfig:
@@ -408,8 +439,8 @@ class CleanPortXfmBsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
                  "secondary")):
             if ct is None:
                 continue
-            c = _metal_stack_index_or_none(ct)
-            h = _metal_stack_index_or_none(host)
+            c = _metal_position(ct, self.process_profile)
+            h = _metal_position(host, self.process_profile)
             if c is not None and h is not None and c >= h:
                 raise ValueError(
                     f"ct_{label}_metal {ct!r} must sit below "
@@ -419,8 +450,8 @@ class CleanPortXfmBsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
     @field_validator("primary_metal", "secondary_metal")
     @classmethod
-    def _metals_not_m1(cls, value: str) -> str:
-        return _forbid_m1_metal(value)
+    def _metals_not_m1(cls, value: str, info: ValidationInfo) -> str:
+        return _forbid_m1_metal(value, info.data.get("process_profile"))
 
 
 class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
@@ -459,20 +490,20 @@ class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
     @field_validator("primary_metal")
     @classmethod
-    def _primary_metal_not_m1(cls, value: str) -> str:
-        return _forbid_m1_metal(value)
+    def _primary_metal_not_m1(cls, value: str, info: ValidationInfo) -> str:
+        return _forbid_m1_metal(value, info.data.get("process_profile"))
 
     @field_validator("secondary_metal")
     @classmethod
-    def _secondary_metal_not_m1_or_m2(cls, value: str) -> str:
-        return _forbid_m1_and_m2_metal(value)
+    def _secondary_metal_not_m1_or_m2(cls, value: str, info: ValidationInfo) -> str:
+        return _forbid_m1_and_m2_metal(value, info.data.get("process_profile"))
 
     @field_validator("ct_primary_metal", "ct_secondary_metal")
     @classmethod
-    def _ct_metals_not_m1(cls, value: str | None) -> str | None:
+    def _ct_metals_not_m1(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        return _forbid_m1_metal(value)
+        return _forbid_m1_metal(value, info.data.get("process_profile"))
 
     @model_validator(mode="after")
     def _center_spacing_keeps_overlap(self) -> CleanPortXfmMsConfig:
@@ -495,17 +526,17 @@ class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
         # so it obeys the same N1 adjacency rule as the inductor: at least
         # two levels below secondary_metal (the crossunder occupies
         # secondary_metal-1 and crosses the CT lead path at y=0).
-        ct_p = _metal_stack_index_or_none(self.ct_primary_metal) \
+        ct_p = _metal_position(self.ct_primary_metal, self.process_profile) \
             if self.ct_primary_metal is not None else None
-        primary = _metal_stack_index_or_none(self.primary_metal)
+        primary = _metal_position(self.primary_metal, self.process_profile)
         if ct_p is not None and primary is not None and ct_p >= primary:
             raise ValueError(
                 f"ct_primary_metal {self.ct_primary_metal!r} must sit "
                 f"below primary_metal {self.primary_metal!r} (the tap stack "
                 "drops from the winding plane)")
-        ct_s = _metal_stack_index_or_none(self.ct_secondary_metal) \
+        ct_s = _metal_position(self.ct_secondary_metal, self.process_profile) \
             if self.ct_secondary_metal is not None else None
-        secondary = _metal_stack_index_or_none(self.secondary_metal)
+        secondary = _metal_position(self.secondary_metal, self.process_profile)
         if ct_s is not None and secondary is not None and ct_s >= secondary - 1:
             raise ValueError(
                 f"ct_secondary_metal {self.ct_secondary_metal!r} must sit "
@@ -537,15 +568,15 @@ class CleanPortXfmBalunConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBas
 
     @field_validator("metal")
     @classmethod
-    def _metal_not_m1_or_m2(cls, value: str) -> str:
-        return _forbid_m1_and_m2_metal(value)
+    def _metal_not_m1_or_m2(cls, value: str, info: ValidationInfo) -> str:
+        return _forbid_m1_and_m2_metal(value, info.data.get("process_profile"))
 
     @field_validator("ct_primary_metal", "ct_secondary_metal")
     @classmethod
-    def _ct_metals_not_m1(cls, value: str | None) -> str | None:
+    def _ct_metals_not_m1(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        return _forbid_m1_metal(value)
+        return _forbid_m1_metal(value, info.data.get("process_profile"))
 
     @model_validator(mode="after")
     def _ct_below_balun_plane(self) -> CleanPortXfmBalunConfig:
@@ -556,8 +587,8 @@ class CleanPortXfmBalunConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBas
                           (self.ct_secondary_metal, "secondary")):
             if ct is None:
                 continue
-            c = _metal_stack_index_or_none(ct)
-            h = _metal_stack_index_or_none(self.metal)
+            c = _metal_position(ct, self.process_profile)
+            h = _metal_position(self.metal, self.process_profile)
             if c is not None and h is not None and c >= h:
                 raise ValueError(
                     f"ct_{label}_metal {ct!r} must sit below metal "
@@ -623,13 +654,13 @@ class CleanPortXfmTwConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
     @field_validator("metal")
     @classmethod
-    def _metal_not_m1_or_m2(cls, value: str) -> str:
+    def _metal_not_m1_or_m2(cls, value: str, info: ValidationInfo) -> str:
         # The dive legs at every ring boundary land on metal-1
         # implicitly -- there is no separate config field for the dive
         # layer (same situation as xfm_ms's secondary_metal / xfm_balun's
         # metal): M2 would put that implicit dive layer on M1 even
         # though M1 was never named directly.
-        return _forbid_m1_and_m2_metal(value)
+        return _forbid_m1_and_m2_metal(value, info.data.get("process_profile"))
 
     @field_validator("ring_count")
     @classmethod
@@ -706,34 +737,32 @@ class CleanPortXfmIlConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
     @field_validator("metal")
     @classmethod
-    def _metal_not_m1_through_m3(cls, value: str) -> str:
+    def _metal_not_m1_through_m3(cls, value: str, info: ValidationInfo) -> str:
         # leg2 lands TWO stack levels below metal (ticket 02d) -- no
         # separate config field for it, same situation as xfm_tw's dive
         # layer / xfm_ms's multi_metal crossunder.
-        return _forbid_m1_through_m3_metal(value)
+        return _forbid_m1_through_m3_metal(value, info.data.get("process_profile"))
 
     @field_validator("ct_primary_metal", "ct_secondary_metal")
     @classmethod
-    def _ct_metals_not_m1(cls, value: str | None) -> str | None:
+    def _ct_metals_not_m1(cls, value: str | None, info: ValidationInfo) -> str | None:
         if value is None:
             return None
-        return _forbid_m1_metal(value)
+        return _forbid_m1_metal(value, info.data.get("process_profile"))
 
     @model_validator(mode="after")
     def _ct_metal_direction_and_floor(self) -> CleanPortXfmIlConfig:
-        top = _metal_stack_index_or_none(self.metal)
-        # The floor is the real leg2 conductor (pcell _il_ct_adjacency_guard):
-        # on a stack with gaps (n65_1p9m has no M10) that is NOT top-2, so
-        # read the profile when one is named (port contract follow-up
-        # 2026-09-22); the pure numeric floor stays the reference-mode rule.
-        leg2 = None if top is None else top - 2
-        if top is not None and _profile_known(self.process_profile):
-            leg2 = _real_leg2_index(self.metal, self.process_profile)
+        top = _metal_position(self.metal, self.process_profile)
+        # The floor is the real leg2 conductor (pcell _il_ct_adjacency_guard),
+        # two positions down: positions are the profile's own stack (T13.11),
+        # so on a stack without M10 AP-2 is already the real M8 (port contract
+        # follow-up 2026-09-22); the reference convention counts the same way.
+        leg2 = None if top is None or top < 3 else top - 2
         for ct, label in ((self.ct_primary_metal, "primary"),
                           (self.ct_secondary_metal, "secondary")):
             if ct is None:
                 continue
-            c = _metal_stack_index_or_none(ct)
+            c = _metal_position(ct, self.process_profile)
             if top is None or c is None:
                 continue
             if c == top:
@@ -752,28 +781,6 @@ class CleanPortXfmIlConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
                     f"below metal-3, or an upward metal above "
                     f"{self.metal!r} instead")
         return self
-
-
-def _profile_known(profile_id: str) -> bool:
-    """Whether a rule profile of this id can be loaded (config validation
-    must not fail on a profile the pcell will reject with its own message)."""
-    from ic_opt.em.pcell.process_rules import get_process_rule_profile
-    try:
-        get_process_rule_profile(profile_id)
-    except Exception:
-        return False
-    return True
-
-
-def _real_leg2_index(top_metal: str, profile_id: str) -> int | None:
-    """Stack index of the conductor two real levels below ``top_metal`` in
-    the profile, or None when the stack is not deep enough (the pcell then
-    fails closed by itself)."""
-    from ic_opt.em.pcell.process_rules import get_process_rule_profile
-    conductors = get_process_rule_profile(profile_id).layer_catalog.conductors
-    below = [i for i in range(1, _metal_stack_index_or_none(top_metal))
-             if (("AP" if i == 11 else f"M{i}") in conductors)]
-    return below[-2] if len(below) >= 2 else None
 
 
 def _auto_stub_widths(config) -> dict[str, float]:

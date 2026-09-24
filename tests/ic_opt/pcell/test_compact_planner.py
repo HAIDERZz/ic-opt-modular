@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import itertools
 import math
 import time
@@ -71,6 +72,14 @@ def test_balanced_pair_search_equals_the_exhaustive_scan(od, w, s):
 def test_tight_spacing_cases_plan_in_tens_of_milliseconds():
     ctx = process_rule_context("demo_6m")
     for od, w, s in ((120.0, 3.0, 2.0), (200.0, 4.0, 2.0)):
-        start = time.perf_counter()
-        ind.ind_sym(OD=od, W=w, OPENING=8.0, LEAD=20.0, S=s, NT=2, TOP_ME="6", BTM_ME="5", process=ctx)
-        assert time.perf_counter() - start < 0.15                     # was 0.3-0.5 s: thousands of rendered candidates
+        # Time the planner, not the collector: in a full test run a generation-2 collection of everything the earlier
+        # tests left behind (~150 ms) can fall inside this window, depending only on how much they allocated.
+        gc.collect()
+        gc.disable()
+        try:
+            start = time.perf_counter()
+            ind.ind_sym(OD=od, W=w, OPENING=8.0, LEAD=20.0, S=s, NT=2, TOP_ME="6", BTM_ME="5", process=ctx)
+            elapsed = time.perf_counter() - start
+        finally:
+            gc.enable()
+        assert elapsed < 0.15                                          # was 0.3-0.5 s: thousands of rendered candidates
