@@ -6,6 +6,12 @@ positive quantity, the T13.0 choice) with a domain guard over the same rows, wid
 interval by the calibration factor derived from held-out residuals, and floors its sigma at the held-out
 median relative error (both cached next to the dataset).
 
+Fitted models are cached on disk too (``.cache/model-<stratum>-<quantity>-<key>.pkl``), keyed by the data,
+the settings, the calibration, the gp code and the scikit-learn version, so a new process loads a model
+instead of refitting it: the GP hyperparameter optimisation is sequential, takes ~2 min per quantity on a
+1300-row stratum and does not get faster with more BLAS threads. For the same reason ``Library.models``
+fits the quantities that are not cached yet in parallel processes.
+
 ``query`` answers a geometry: a measured row at exactly those coordinates is returned as measured;
 otherwise each quantity is either predicted (mu with calibrated bounds, plus the three nearest measured
 rows as evidence), out of domain (the guard's criterion, reason, nearest rows and the clamped point), or
@@ -16,16 +22,25 @@ sweep, the point's resonance is reported as above the sweep instead of extrapola
 
 from __future__ import annotations
 
+import hashlib
+import inspect
 import json
+import multiprocessing
+import os
+import pickle
+import tempfile
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import sklearn
 
 from ic_opt.library import dataset, domain, gp, manifest
 
 UNITS = {"L": "H", "Q": "1", "SRF": "Hz", "k": "1"}
 ABOVE_SWEEP_VOTES = 3                                # of the 5 nearest measured rows
+MODEL_CACHE_VERSION = 1                              # bump when a fit changes outside gp.py and the settings (e.g. how x, y are prepared)
 
 
 def unit(quantity: str) -> str:
@@ -71,29 +86,78 @@ class Library:
     def model(self, stratum: str, quantity: str) -> Model:
         key = (stratum, quantity)
         if key not in self._models:
-            ds = self.dataset(stratum)
-            if quantity not in ds.columns:
-                raise ValueError(f"{stratum} has no quantity {quantity!r}; columns {ds.columns}")
-            rows = ds.usable(quantity)
-            x, y = ds.matrix(rows), ds.values(quantity, rows)
-            if quantity.startswith("SRF"):
-                y = y / 1e9                                  # GHz keeps the log-GP numerically tame; mapped back on output
-            feature_map = self.manifest.strata[stratum].quantities[quantity.split("@")[0]].feature_map
-            settings = {"dims": ds.dims, "ranges": self.ranges(stratum), "log_target": bool((y > 0).all()),
-                        "nt_mode": "per_nt" if ds.nt_dim and not feature_map else "joint", "kernel": "matern52", "nt_dim": ds.nt_dim,
-                        "feature_map": feature_map}
+            ds, rows, x, y, settings = self._fit_inputs(stratum, quantity)
             calibration = self._calibration(ds, quantity, x, y, settings)
-            model = gp.StratumGP(**settings, k_scale=calibration["k_scale"], sigma_floor_rel=calibration.get("median_rel", 0.0)).fit(x, y)
+            path = self._model_path(ds, quantity, settings, calibration)
+            model = _load_model(path, ds.dims)
+            if model is None:                            # not cached yet, or the file is unusable: fit and (over)write it
+                model = gp.StratumGP(**settings, k_scale=calibration["k_scale"], sigma_floor_rel=calibration.get("median_rel", 0.0)).fit(x, y)
+                _save_model(path, model)
             guard = domain.DomainGuard(x, ds.dims, settings["ranges"], nt_dim=ds.nt_dim, ids=list(range(len(rows))))
             self._models[key] = Model(stratum, quantity, rows, model, guard, calibration)
         return self._models[key]
 
-    def _calibration(self, ds: dataset.Dataset, quantity: str, x, y, settings: dict) -> dict:
+    def models(self, stratum: str, quantities: list[str], *, workers: int | None = None, threads: int | None = None) -> dict[str, Model]:
+        """``model`` for several quantities, in the order asked. The ones without a cache file are fitted first in up to
+        ``workers`` forked processes (default one per missing quantity, at most 6): each fit is a sequential optimisation,
+        so processes, not BLAS threads, are what runs several at once. Each worker caps BLAS at ``threads // workers``
+        (``threads`` defaults to $OMP_NUM_THREADS, else 8), writes the calibration and model caches and returns only the
+        quantity's name; every model is then loaded here from its cache file, so no fitted model crosses a pipe."""
+        missing = [q for q in dict.fromkeys(quantities) if (stratum, q) not in self._models and self._model_file(stratum, q) is None]
+        workers = min(6 if workers is None else workers, len(missing))
+        threads = int(os.environ.get("OMP_NUM_THREADS", "8")) if threads is None else threads
+        if workers > 1:
+            with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("fork")) as pool:
+                jobs = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, max(1, threads // workers)) for q in missing]
+                for job in jobs:
+                    job.result()                         # a failed fit raises here, with the worker's exception
+        return {q: self.model(stratum, q) for q in quantities}
+
+    def _fit_inputs(self, stratum: str, quantity: str) -> tuple[dataset.Dataset, list[dataset.Row], np.ndarray, np.ndarray, dict]:
+        """What a fit of ``quantity`` needs: the dataset, the usable rows, x, y and the StratumGP settings."""
+        ds = self.dataset(stratum)
+        if quantity not in ds.columns:
+            raise ValueError(f"{stratum} has no quantity {quantity!r}; columns {ds.columns}")
+        rows = ds.usable(quantity)
+        x, y = ds.matrix(rows), ds.values(quantity, rows)
+        if quantity.startswith("SRF"):
+            y = y / 1e9                                  # GHz keeps the log-GP numerically tame; mapped back on output
+        feature_map = self.manifest.strata[stratum].quantities[quantity.split("@")[0]].feature_map
+        settings = {"dims": ds.dims, "ranges": self.ranges(stratum), "log_target": bool((y > 0).all()),
+                    "nt_mode": "per_nt" if ds.nt_dim and not feature_map else "joint", "kernel": "matern52", "nt_dim": ds.nt_dim,
+                    "feature_map": feature_map}
+        return ds, rows, x, y, settings
+
+    def _model_path(self, ds: dataset.Dataset, quantity: str, settings: dict, calibration: dict) -> Path:
+        """The cache file of a fitted model: keyed by the data, the settings, the calibration (k_scale and the sigma floor are
+        part of the model), the gp code and the scikit-learn version the pickle belongs to."""
+        h = hashlib.sha256()
+        h.update(f"v{MODEL_CACHE_VERSION}".encode())
+        h.update(ds.key.encode())
+        h.update(json.dumps(settings, sort_keys=True).encode())
+        h.update(json.dumps(calibration, sort_keys=True).encode())
+        h.update(hashlib.sha256(inspect.getsource(gp).encode()).digest())
+        h.update(sklearn.__version__.encode())
+        return self.root / ".cache" / f"model-{ds.stratum}-{quantity.replace('@', '_at_')}-{h.hexdigest()[:20]}.pkl"
+
+    def _model_file(self, stratum: str, quantity: str) -> Path | None:
+        """The model's cache file if it exists. Never while the calibration is not cached: the key needs it, and computing it
+        takes the five hold-out fits that are the work ``models`` hands to its workers."""
+        ds, _rows, x, y, settings = self._fit_inputs(stratum, quantity)
+        calibration = self._calibration(ds, quantity, x, y, settings, compute=False)
+        if calibration is None:
+            return None
+        path = self._model_path(ds, quantity, settings, calibration)
+        return path if path.is_file() else None
+
+    def _calibration(self, ds: dataset.Dataset, quantity: str, x, y, settings: dict, *, compute: bool = True) -> dict | None:
         if not self.calibrate:
             return {"k_scale": 1.0, "source": "off"}
         path = self.root / ".cache" / f"calibration-{ds.stratum}-{quantity.replace('@', '_at_')}-{ds.key}.json"
         if path.is_file():
             return json.loads(path.read_text(encoding="utf-8"))
+        if not compute:
+            return None
         report = gp.holdout(x, y, **settings)
         out = {"k_scale": gp.calibration_scale(report), "median_rel": report["median_rel"],
                "coverage_2sigma_before": report["coverage_2sigma"], "n_scored": report["n_scored"], "source": "holdout 5x20%",
@@ -101,6 +165,36 @@ class Library:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(out), encoding="utf-8")
         return out
+
+
+def _load_model(path: Path, dims: list[str]) -> gp.StratumGP | None:
+    """The cached model, or None: a missing file, one that does not unpickle, or anything but a StratumGP over these dims
+    means refit and overwrite -- a bad cache file costs a fit, never an error."""
+    try:
+        with path.open("rb") as f:
+            model = pickle.load(f)
+    except Exception:  # noqa: BLE001 -- missing, truncated, garbage, pickled by other code: unpickling can raise almost anything
+        return None
+    return model if isinstance(model, gp.StratumGP) and model.dims == list(dims) else None
+
+
+def _save_model(path: Path, model: gp.StratumGP) -> None:
+    """Pickle to a sibling temporary file, then rename it over ``path``: a reader sees the old file or the whole new one, and
+    writers of the same model at once (the engine's threads, other processes) each have their own temporary file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("wb", dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp", delete=False) as f:
+        pickle.dump(model, f, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(f.name, path)
+
+
+def _fit_in_worker(root: Path, calibrate: bool, stratum: str, quantity: str, threads: int) -> str:
+    """One ``Library.models`` worker process: fit a quantity with BLAS capped at ``threads``; the fit writes the calibration
+    and model caches, and only the name goes back (the parent loads the model from its cache file)."""
+    from threadpoolctl import threadpool_limits
+
+    with threadpool_limits(limits=threads):
+        Library(root, calibrate=calibrate).model(stratum, quantity)
+    return quantity
 
 
 def query(library: Library, stratum: str, params: dict, quantities: list[str] | None = None, *, k: float = 2.0,
