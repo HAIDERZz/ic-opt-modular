@@ -101,16 +101,23 @@ class Library:
 
     def models(self, stratum: str, quantities: list[str], *, workers: int | None = None, threads: int | None = None) -> dict[str, Model]:
         """``model`` for several quantities, in the order asked. The ones without a cache file are fitted first in up to
-        ``workers`` forked processes (default one per missing quantity, at most FIT_WORKERS = half the cores): each fit is a sequential
+        ``workers`` worker processes (default one per missing quantity, at most FIT_WORKERS = half the cores): each fit is a sequential
         optimisation that no amount of BLAS threads speeds up, so processes are what runs several at once. Each worker caps
         BLAS at ``threads // workers`` (``threads`` defaults to $OMP_NUM_THREADS or 8, and to at least two per worker), writes
         the calibration and model caches and returns only the quantity's name; every model is then loaded here from its
-        cache file, so no fitted model crosses a pipe."""
+        cache file, so no fitted model crosses a pipe.
+
+        The workers are spawned on every platform: spawn is the only start method on Windows and the default on macOS, and
+        Linux uses it too so that all three behave alike. A spawned worker is a fresh interpreter that knows nothing of this
+        process but ``_fit_in_worker``'s arguments; starting one re-imports ic_opt, numpy, scipy and scikit-learn, about
+        0.5 s on the reference host (Linux, Python 3.11: 0.43 s for one worker, 0.46 s for four started together), against
+        minutes per fit. Every worker also imports the main module of the program, so a script that gets here (directly or
+        through ``lib.region`` / ``lib_signoff``) keeps its top-level work under ``if __name__ == "__main__":``."""
         missing = [q for q in dict.fromkeys(quantities) if (stratum, q) not in self._models and self._model_file(stratum, q) is None]
         workers = min(FIT_WORKERS if workers is None else workers, len(missing))
         threads = max(int(os.environ.get("OMP_NUM_THREADS", "8")), 2 * workers) if threads is None else threads
         if workers > 1:
-            with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("fork")) as pool:
+            with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn")) as pool:
                 jobs = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, max(1, threads // workers)) for q in missing]
                 for job in jobs:
                     job.result()                         # a failed fit raises here, with the worker's exception
@@ -192,7 +199,9 @@ def _save_model(path: Path, model: gp.StratumGP) -> None:
 
 def _fit_in_worker(root: Path, calibrate: bool, stratum: str, quantity: str, threads: int) -> str:
     """One ``Library.models`` worker process: fit a quantity with BLAS capped at ``threads``; the fit writes the calibration
-    and model caches, and only the name goes back (the parent loads the model from its cache file)."""
+    and model caches, and only the name goes back (the parent loads the model from its cache file). The worker is spawned,
+    so these arguments are all it has: it opens the library itself, and the limit reaches every BLAS / OpenMP pool the fit
+    uses because importing this module has loaded numpy, scipy and scikit-learn before it is set."""
     from threadpoolctl import threadpool_limits
 
     with threadpool_limits(limits=threads):

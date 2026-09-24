@@ -48,7 +48,9 @@ def shell_program(command: str, *, cwd: str | None = None, cshrc: str | None = N
 
     With ``cshrc`` the Cadence environment is sourced in ``csh``; otherwise
     POSIX ``sh`` runs the command. ``cwd`` is entered inside that shell so
-    it works identically for local and SSH execution.
+    it works identically for local and SSH execution. Either shell is the
+    simulation host's: ``SshExecutor`` hands this argv to ``ssh``, and only
+    ``LocalExecutor`` (Linux / macOS) starts it on the controller.
     """
     if cshrc:
         script = f"source {shlex.quote(cshrc)}; "

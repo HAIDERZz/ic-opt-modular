@@ -3,21 +3,23 @@
 - ``observations.jsonl`` — the fact table, one Observation per line, append only
 - ``steps.jsonl``        — one line per block call (name, args digest, outcome)
 - ``decks/``, ``sims/``, ``cache/``, ``reports/`` — artifacts, all rebuildable
-- ``lock``               — one writer per project
+- ``lock``               — one writer per project (``fcntl`` or ``msvcrt``: the controller may be Windows)
 """
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
-from collections.abc import Iterator
-from contextlib import contextmanager
+import os
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ic_opt._lock import exclusive_lock
 from ic_opt.observation import Observation, Observations
+
+_WINDOWS = os.name == "nt"                                           # reserves ':' in file names
 
 
 def utc_now() -> str:
@@ -85,7 +87,9 @@ class RunStore:
         return self.root / "decks" / fingerprint
 
     def cache_dir(self, stage: str, fingerprint: str) -> Path:
-        path = self.root / "cache" / stage / fingerprint
+        """``cache/<stage>/<fingerprint>``; on Windows, which reserves ':' in file names, an EMX stage's ``emx:<device>``
+        is ``emx-<device>`` (no built-in stage name or device id contains '-')."""
+        path = self.root / "cache" / (stage.replace(":", "-") if _WINDOWS else stage) / fingerprint
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -104,14 +108,7 @@ class RunStore:
 
     # -- lock --------------------------------------------------------------
 
-    @contextmanager
-    def lock(self) -> Iterator[None]:
-        with (self.root / "lock").open("w") as handle:
-            try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
-                raise RuntimeError(f"project is locked by another run: {self.root / 'lock'}") from exc
-            try:
-                yield
-            finally:
-                fcntl.flock(handle, fcntl.LOCK_UN)
+    def lock(self) -> AbstractContextManager[None]:
+        """One writer per project: ``with store.lock():`` holds it, or raises ``LockHeld`` (a RuntimeError, "project is
+        locked by another run: ...") at once while another run holds it."""
+        return exclusive_lock(self.root / "lock", what="project")

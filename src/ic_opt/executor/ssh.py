@@ -7,6 +7,13 @@ Exit-code contract (from the legacy RemoteSshRunner, ADR-0001):
 
 Files are uploaded to a temporary name and ``mv``-ed into place so a partial
 transfer never masquerades as a complete file. Directories move as tar streams.
+
+The controller may be Linux, macOS or Windows 10+: it needs the OpenSSH client
+(``ssh``, ``scp``) and ``tar`` (which packs and unpacks the directory streams
+locally), and all three platforms have them. Everything past ``ssh`` runs on
+the Linux host under its ``/bin/sh`` or ``csh``; remote paths are POSIX strings
+(``PurePosixPath``), never a local ``Path``, and remote output is decoded as
+UTF-8 whatever the controller's locale.
 """
 
 from __future__ import annotations
@@ -72,7 +79,7 @@ class SshExecutor:
     ) -> CommandResult:
         started = time.monotonic()
         try:
-            done = self._execute(argv, input=input_text, text=True, capture_output=True, timeout=timeout_s)
+            done = self._execute(argv, input=input_text, encoding="utf-8", errors="replace", capture_output=True, timeout=timeout_s)
         except subprocess.TimeoutExpired as exc:
             raise CommandTimeout(f"timed out after {timeout_s}s: {label}") from exc
         result = CommandResult(done.returncode, done.stdout or "", done.stderr or "", argv, time.monotonic() - started)

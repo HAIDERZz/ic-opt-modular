@@ -1,9 +1,11 @@
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
+import ic_opt.executor.local as local_executor
 from ic_opt.executor import (
     CommandTimeout,
     CommandUnavailable,
@@ -41,6 +43,28 @@ def test_local_executor_runs_copies_and_probes(tmp_path):
 
     with pytest.raises(CommandTimeout):
         ex.run("sleep 5", timeout_s=1)
+
+
+def test_local_executor_refuses_commands_on_windows(tmp_path, monkeypatch):
+    """Windows has neither /bin/sh nor csh: a command there is an executor error that says what to do (the doctor reports
+    it) instead of a FileNotFoundError from subprocess; the file operations need no shell."""
+    monkeypatch.setattr(local_executor, "_WINDOWS", True)
+    ex = LocalExecutor(tmp_path / "scratch")
+    with pytest.raises(ExecutorError, match="--ssh-profile"):
+        ex.run("true")
+    assert ex.exists(ex.scratch("obs_0001"))
+
+
+def test_output_is_utf8_whatever_the_controller_locale(tmp_path):
+    """The simulation host writes UTF-8: neither executor decodes it with the controller's locale (cp1252 or cp936 on a
+    Windows controller), and a stray byte becomes U+FFFD instead of an exception."""
+    remote = "import sys; sys.stdout.buffer.write('µ ✓ 中'.encode() + bytes([255]))"
+
+    def ssh(argv, **kwargs):                            # stands in for ssh: the remote bytes, decoded as run() asks
+        return subprocess.run([sys.executable, "-c", remote], check=False, **kwargs)
+
+    assert SshExecutor("lab", "/tmp/icopt", execute=ssh).run("anything").stdout == "µ ✓ 中\ufffd"
+    assert LocalExecutor(tmp_path).run("printf 'µ ✓ 中\\377'").stdout == "µ ✓ 中\ufffd"
 
 
 # -- ssh ----------------------------------------------------------------------

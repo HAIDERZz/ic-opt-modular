@@ -1,5 +1,6 @@
 import pytest
 
+from ic_opt import store as store_module
 from ic_opt.observation import ChildResult, Observation
 from ic_opt.store import RunStore
 
@@ -38,3 +39,13 @@ def test_lock_is_exclusive(tmp_path):
         pass
     with RunStore(tmp_path).lock():
         pass
+
+
+def test_cache_dirs_avoid_the_colon_windows_reserves(tmp_path, monkeypatch):
+    """EMX stages are named emx:<device>; Windows reserves ':' in file names, so a Windows controller caches under emx-<device>."""
+    store = RunStore(tmp_path)
+    assert store.relative(store.cache_dir("emx:ind", "f0")) == ".icopt/cache/emx:ind/f0"          # Linux / macOS: unchanged
+    monkeypatch.setattr(store_module, "_WINDOWS", True)
+    windows = store.cache_dir("emx:ind", "f0")
+    assert store.relative(windows) == ".icopt/cache/emx-ind/f0" and windows.parent.is_dir()
+    assert store.relative(store.cache_dir("pcell", "f0")) == ".icopt/cache/pcell/f0"

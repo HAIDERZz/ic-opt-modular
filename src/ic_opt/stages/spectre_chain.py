@@ -87,7 +87,7 @@ class Spectre:
     def run(self, netlist: Netlist, ctx: StageContext) -> RawSim:
         local = ctx.workdir / "netlist"
         local.mkdir(parents=True, exist_ok=True)
-        (local / "input.scs").write_text(netlist.text, encoding="utf-8")
+        (local / "input.scs").write_text(netlist.text, encoding="utf-8", newline="\n")      # for the Linux host, from any controller
         ctx.executor.put(local, f"{ctx.remote_dir}/netlist")
         command = " ".join(shlex.quote(a) for a in self.argv())
         for attempt in (1, 2):                    # one retry on the transient "can't create server socket" failure (legacy rule)
@@ -123,7 +123,7 @@ class Ocean:
         script = ocean_kernel.replay_script(
             metrics, waveforms, psf_dir="psf", scalars_file="metrics/ocean_scalars.tsv", waveform_dir="metrics/waveforms"
         )
-        (local / "probe.ocn").write_text(script, encoding="utf-8")
+        (local / "probe.ocn").write_text(script, encoding="utf-8", newline="\n")
         ctx.executor.put(local, f"{ctx.remote_dir}/metrics")
 
         attempts = 0

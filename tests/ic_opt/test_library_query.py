@@ -1,10 +1,12 @@
 """T13.3: lib.query / lib.coverage / lib.load on a synthetic library, and `ic-opt call` on a library root.
-T14.1: fitted models cached on disk, and Library.models fitting the uncached ones in parallel processes."""
+T14.1: fitted models cached on disk, and Library.models fitting the uncached ones in parallel processes.
+T15.4: those processes are spawned (Windows / macOS / Linux alike): fresh interpreters that inherit nothing."""
 from __future__ import annotations
 
 import json
-import os
+import multiprocessing
 import shutil
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -135,19 +137,25 @@ def test_a_new_cache_version_never_reads_old_pickles(library, monkeypatch):
     assert fits == ["per_nt"] and new is not None and new != old and old.is_file()
 
 
-def test_models_fits_the_uncached_quantities_in_parallel_processes(library, tmp_path, monkeypatch):
+def fit_here(self, x, y):
+    """StratumGP.fit in this process while Library.models runs: only its workers may fit, and they are spawned."""
+    raise AssertionError("a fit ran in the calling process, or in a worker that inherited its state (fork, not spawn)")
+
+
+def test_models_fits_the_uncached_quantities_in_spawned_processes(library, tmp_path, monkeypatch):
     """Nothing cached: two worker processes calibrate, fit and write the caches, this process only loads them, and the models
-    answer as sequential model() calls do. Both sides fit on one BLAS thread: OpenBLAS rounds differently with one thread
-    than with several, which moves this library's fits by up to 2e-6."""
+    answer as sequential model() calls do. The workers are spawned: fresh interpreters, so this process's patched fit, which
+    forked workers would inherit, never reaches them. Both sides fit on one BLAS thread: OpenBLAS rounds differently with
+    one thread than with several, which moves this library's fits by up to 2e-6."""
     names = ["Qp_peak", "SRF_p"]
     sequential = fresh_copy(library, tmp_path / "sequential")
     with threadpool_limits(limits=1):
         reference = q.Library(sequential)
         expected = {name: reference.model("ind_demo", name) for name in names}
     parallel = fresh_copy(library, tmp_path / "parallel")
-    fits = count_fits(monkeypatch)                                                  # this process only: the workers fit in theirs
+    monkeypatch.setattr(gp.StratumGP, "fit", fit_here)
     got = q.Library(parallel).models("ind_demo", names, workers=2, threads=2)
-    assert list(got) == names and fits == []
+    assert list(got) == names
     stems = sorted(p.name.rsplit("-", 1)[0] for p in (parallel / ".cache").glob("*-ind_demo-*"))
     assert stems == ["calibration-ind_demo-Qp_peak", "calibration-ind_demo-SRF_p", "dataset-ind_demo", "model-ind_demo-Qp_peak",
                      "model-ind_demo-SRF_p"]
@@ -157,18 +165,51 @@ def test_models_fits_the_uncached_quantities_in_parallel_processes(library, tmp_
             np.testing.assert_allclose(mine, theirs, rtol=1e-12)
 
 
+def fit_in_a_failing_worker(*args):
+    """A Library.models worker whose fits all fail: StratumGP.fit is broken inside the spawned process only."""
+    def fit(self, x, y):
+        raise np.linalg.LinAlgError("not positive definite")
+
+    gp.StratumGP.fit = fit
+    return q._fit_in_worker(*args)
+
+
 def test_models_raises_a_failed_fit_from_its_worker(library, tmp_path, monkeypatch):
-    """The fit fails only in the worker processes: had their error been dropped, this process would have fitted without one."""
-    parent, original = os.getpid(), gp.StratumGP.fit
+    """The fit fails only in the worker processes: had their error been dropped, this process -- whose fit works -- would
+    have fitted without one. The error arrives with the worker's own traceback."""
+    monkeypatch.setattr(q, "_fit_in_worker", fit_in_a_failing_worker)             # what models() hands its workers
+    with pytest.raises(np.linalg.LinAlgError, match="not positive definite") as failed:
+        q.Library(fresh_copy(library, tmp_path / "lib")).models("ind_demo", ["Lp_lf", "SRF_p"], workers=2)
+    assert ", in _fit_in_worker\n" in str(failed.value.__cause__)                  # concurrent.futures' remote traceback
+
+
+def fit_recording_blas(root: Path, quantity: str, threads: int) -> list[tuple[str, int]]:
+    """In a spawned process: _fit_in_worker with every fit noting the size of each BLAS / OpenMP pool as it starts."""
+    from threadpoolctl import threadpool_info
+
+    seen: list[tuple[str, int]] = []
+    original = gp.StratumGP.fit
 
     def fit(self, x, y):
-        if os.getpid() != parent:
-            raise np.linalg.LinAlgError("not positive definite")
+        seen.extend((pool["internal_api"], pool["num_threads"]) for pool in threadpool_info())
         return original(self, x, y)
 
-    monkeypatch.setattr(gp.StratumGP, "fit", fit)                                   # the forked workers inherit it
-    with pytest.raises(np.linalg.LinAlgError, match="not positive definite"):
-        q.Library(fresh_copy(library, tmp_path / "lib")).models("ind_demo", ["Lp_lf", "SRF_p"], workers=2)
+    gp.StratumGP.fit = fit
+    q._fit_in_worker(root, True, "ind_demo", quantity, threads)
+    return seen
+
+
+def test_a_spawned_worker_fits_with_every_blas_pool_capped(library, tmp_path, monkeypatch):
+    """_fit_in_worker in a fresh interpreter, as Library.models starts it: its arguments are all it needs, and every fit (the
+    five hold-out fits of the calibration, then the model) runs with each BLAS / OpenMP pool at ``threads``."""
+    monkeypatch.setenv("OMP_NUM_THREADS", "3")                  # the worker's pools start at 3, so a missing cap would show
+    for name in ("OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "MKL_NUM_THREADS"):
+        monkeypatch.delenv(name, raising=False)
+    root = fresh_copy(library, tmp_path / "lib")
+    with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn")) as pool:
+        seen = pool.submit(fit_recording_blas, root, "Lp_lf", 1).result()
+    assert len(seen) >= 6 and {api for api, _ in seen} >= {"openblas", "openmp"} and {n for _, n in seen} == {1}
+    assert len(list((root / ".cache").glob("model-ind_demo-Lp_lf-*.pkl"))) == 1
 
 
 def test_coverage_and_load(library):

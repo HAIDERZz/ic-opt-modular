@@ -40,7 +40,7 @@ class Deck:
             if bundle.resolve() != dst.resolve():
                 shutil.rmtree(dst, ignore_errors=True)
                 shutil.copytree(bundle, dst, symlinks=False)
-        (target / "source.txt").write_text("".join(f"{tb}\t{src}\n" for tb, src in sorted(self.source.items())))
+        (target / "source.txt").write_text("".join(f"{tb}\t{src}\n" for tb, src in sorted(self.source.items())), encoding="utf-8")
         return target
 
     @classmethod
@@ -55,7 +55,7 @@ class Deck:
             )
         source = path / "source.txt"
         if source.exists():
-            for line in source.read_text().splitlines():
+            for line in source.read_text(encoding="utf-8").splitlines():
                 tb, _, src = line.partition("\t")
                 deck.source[tb] = src
         return deck

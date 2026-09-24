@@ -1,13 +1,21 @@
-"""LocalExecutor: run on this machine; put/get are plain copies."""
+"""LocalExecutor: run on this machine; put/get are plain copies.
+
+This machine is then both the controller and the simulation host. Commands run under ``/bin/sh`` or ``csh``
+(``shell_program``), so running them needs Linux or macOS; a Windows controller simulates on a Linux host through
+``SshExecutor`` (``--ssh-profile``). ``put``, ``get``, ``exists`` and ``scratch`` are file operations and work anywhere.
+"""
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
 from pathlib import Path
 
-from ic_opt.executor.base import CommandResult, CommandTimeout, shell_program
+from ic_opt.executor.base import CommandResult, CommandTimeout, ExecutorError, shell_program
+
+_WINDOWS = os.name == "nt"                                           # no /bin/sh, no csh
 
 
 class LocalExecutor:
@@ -24,10 +32,13 @@ class LocalExecutor:
         timeout_s: int | None = None,
         cshrc: str | None = None,
     ) -> CommandResult:
+        if _WINDOWS:
+            raise ExecutorError(f"cannot run {command!r} on this machine: commands need /bin/sh or csh, which Windows does not have; "
+                                "simulate on a Linux host with --ssh-profile")
         argv = shell_program(command, cwd=cwd, cshrc=cshrc)
         started = time.monotonic()
         try:
-            done = subprocess.run(argv, text=True, capture_output=True, timeout=timeout_s, check=False)
+            done = subprocess.run(argv, encoding="utf-8", errors="replace", capture_output=True, timeout=timeout_s, check=False)
         except subprocess.TimeoutExpired as exc:
             raise CommandTimeout(f"timed out after {timeout_s}s: {command}") from exc
         return CommandResult(done.returncode, done.stdout, done.stderr, argv, time.monotonic() - started)

@@ -1,6 +1,6 @@
 # 0001: Remote mode treats filesystem separation as mandatory
 
-- **Status**: Accepted (2026-08-07); enforcement and acceptance rewritten for 0.2 (2026-09-22)
+- **Status**: Accepted (2026-08-07); enforcement and acceptance rewritten for 0.2 (2026-09-22); platforms note (2026-09-24)
 
 ## Context
 
@@ -16,6 +16,15 @@ failed on the first genuinely isolated host.
 In 0.2 the project (`spec.yaml`, `.icopt/`) is owned by the controller; the
 remote host owns only the Maestro exports (`maestro_point_root`), the Cadence
 installation and cshrc, and the simulation scratch (`~/.ic-opt/scratch/<project>/`).
+
+**Platforms.** The simulation host is Linux. The controller may be Linux, macOS
+or Windows 10+ (the personal PC is usually Windows or macOS), so nothing on its
+side of the seam may assume POSIX: it needs only Python, the OpenSSH client and
+`tar`; remote paths are strings / `PurePosixPath`, never a local `Path`; the
+project lock is `fcntl` or `msvcrt`, and library fits run in spawned processes.
+`csh`, `sh`, `test -e`, `sha256sum` and the Cadence tools run on the host,
+through `Executor.run`. `LocalExecutor` (controller and host in one) runs its
+commands under `/bin/sh` or `csh` and is Linux / macOS only.
 
 ## Decision
 

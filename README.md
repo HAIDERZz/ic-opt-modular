@@ -35,6 +35,18 @@ pass `--cshrc FILE`, set `IC_OPT_CADENCE_CSHRC`, or put `cshrc:` in that
 host's entry of `~/.ic-opt/site.yaml`. It is never guessed from the controller's disk.
 Before the first run, write `~/.ic-opt/site.yaml` (see [Site envelope](#site-envelope)).
 
+### Platforms
+
+The simulation host is Linux: Spectre, OCEAN and EMX run there under `csh` /
+`sh`, reached through the executor. The controller (the machine that runs
+`ic-opt` and holds the project) can be Linux, macOS or Windows 10+. With
+`--ssh-profile` it needs the OpenSSH client (`ssh`, `scp`; on Windows the
+built-in "OpenSSH Client" feature) and `tar` (built into Windows 10+ and macOS).
+Simulating on the controller itself (no `--ssh-profile`: `LocalExecutor`)
+needs Linux or macOS. The device library (`lib.*`, `lib_design`) runs on all
+three; it fits models in spawned worker processes, so a script that calls it
+keeps its top-level work under `if __name__ == "__main__":`.
+
 ## Use
 
 ```bash
@@ -138,11 +150,12 @@ ic-opt call em.validate_profile PROFILE_DIR proc=SITE.proc generate=true    # br
 Building, querying and growing a library: [docs/em/library.md](docs/em/library.md); writing a
 process profile: [skills/author-process-rule/SKILL.md](skills/author-process-rule/SKILL.md).
 
-Every EMX run is cached under `.icopt/cache/emx:<device>/` by GDS bytes, port
-order, physics settings and the process file's content hash. `ic-opt migrate`
-converts em-opt's `em_opt_requirement.md` (Geometry Generator / EM Devices /
-EMX Settings / Nport Bindings). The private process profiles never enter the
-repository. Install with `uv pip install -e ".[em]"` (klayout).
+Every EMX run is cached under `.icopt/cache/emx:<device>/` (`emx-<device>` on
+Windows) by GDS bytes, port order, physics settings and the process file's
+content hash. `ic-opt migrate` converts em-opt's `em_opt_requirement.md`
+(Geometry Generator / EM Devices / EMX Settings / Nport Bindings). The private
+process profiles never enter the repository. Install with
+`uv pip install -e ".[em]"` (klayout).
 
 ### Site envelope
 
