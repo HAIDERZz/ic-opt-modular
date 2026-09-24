@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
+from pydantic import ValidationError
 
 from ic_opt import __version__, blocks
 from ic_opt import migrate as migrate_module
@@ -24,8 +26,10 @@ from ic_opt import recipe as recipe_module
 from ic_opt.blocks.doctor import plan_line
 from ic_opt.library import manifest as library_manifest
 from ic_opt.library import query as library_query
+from ic_opt.site import EnvelopeError, SiteError
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__)
+_RESOURCE_FIELDS = ("parallel_jobs", "threads_per_run", "timeout_s", "threads", "memory_gb")
 
 
 def _params(pairs: list[str]) -> dict[str, object]:
@@ -42,11 +46,26 @@ def _params(pairs: list[str]) -> dict[str, object]:
 
 
 def _run(project: Path, ssh_profile: str | None, cshrc: str | None) -> recipe_module.Run:
+    """The project's Run. An invalid spec.yaml, a missing site.yaml or host entry exits 2 with the reason, no traceback."""
     try:
         return recipe_module.load_run(project, ssh_profile=ssh_profile, cshrc=cshrc)
-    except (OSError, ValueError) as exc:
+    except ValidationError as exc:
+        typer.echo(f"error: {_spec_problems(project / 'spec.yaml', exc)}", err=True)
+        raise typer.Exit(code=2) from exc
+    except (OSError, ValueError, yaml.YAMLError) as exc:              # SiteError is a ValueError
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
+
+
+def _spec_problems(path: Path, exc: ValidationError) -> str:
+    """Pydantic's findings as one paragraph (``field.path: message``); a missing resource field also says why."""
+    errors = exc.errors()
+    text = f"{path} is not a valid spec: " + "; ".join(
+        f"{'.'.join(str(p) for p in e['loc']) or 'spec'}: {e['msg']}" for e in errors) + "."
+    if any(e["type"] == "missing" and e["loc"] and e["loc"][-1] in _RESOURCE_FIELDS for e in errors):
+        text += (" Resource fields have no defaults: simulator.parallel_jobs / threads_per_run / timeout_s and em.threads /"
+                 " memory_gb / timeout_s are yours to set for your machines, within their ~/.ic-opt/site.yaml entries.")
+    return text
 
 
 def _print_version(value: bool) -> None:
@@ -73,11 +92,14 @@ def run(
     main = recipe_module.load_recipe(recipe)
     ctx = _run(project, ssh_profile, cshrc)
     kwargs = _params(params or [])
-    typer.echo(f"recipe {recipe}  spec {ctx.spec.project} ({ctx.spec.fingerprint()})  {plan_line(ctx.spec, ctx.executor, ctx.site)}")
+    typer.echo(f"recipe {recipe}  spec {ctx.spec.project} ({ctx.spec.fingerprint()})  {plan_line(ctx.spec, ctx.executor, ctx.limits)}")
     typer.echo(f"params {kwargs}  cshrc {ctx.cshrc or '-'}  observations {len(ctx.store.observations())}")
     token = recipe_module.PLAN_MODE.set(plan)
     try:
         main(ctx, **kwargs)
+    except (SiteError, EnvelopeError) as exc:           # a job too big for its host is refused before it starts, --plan too
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
     finally:
         recipe_module.PLAN_MODE.reset(token)
 
@@ -107,7 +129,7 @@ def doctor(
 ) -> None:
     """Check that the spec can run here (tools, license, exports, envelope, budget)."""
     ctx = _run(project, ssh_profile, cshrc)
-    report = blocks.doctor(ctx.spec, ctx.executor, cshrc=ctx.cshrc, store=ctx.store, site=ctx.site)
+    report = blocks.doctor(ctx.spec, ctx.executor, cshrc=ctx.cshrc, store=ctx.store, limits=ctx.limits)
     typer.echo(str(report))
     raise typer.Exit(code=0 if report.ok else 1)
 
@@ -145,7 +167,8 @@ def call(
         provided = {"profile_dir": project}
     else:
         ctx = _run(project, ssh_profile, cshrc)
-        provided = {"spec": ctx.spec, "executor": ctx.executor, "store": ctx.store, "observations": ctx.store.observations(), "cshrc": ctx.cshrc}
+        provided = {"spec": ctx.spec, "executor": ctx.executor, "store": ctx.store, "observations": ctx.store.observations(), "cshrc": ctx.cshrc,
+                    "limits": ctx.limits}
     args = {p: provided[p] for p in inspect.signature(fn).parameters if p in provided and p not in kwargs}
     try:
         result = fn(**args, **kwargs)

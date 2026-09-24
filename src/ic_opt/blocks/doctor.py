@@ -1,4 +1,4 @@
-"""env.doctor — is this spec runnable on this executor, inside the site envelope?"""
+"""env.doctor — is this spec runnable on this executor, inside the executor host's site.yaml entry?"""
 
 from __future__ import annotations
 
@@ -6,14 +6,17 @@ import re
 import shlex
 from dataclasses import dataclass, field
 
-from ic_opt import site as site_module
 from ic_opt.executor import Executor, ExecutorError
+from ic_opt.site import HostLimits
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 
 _LMSTAT_RE = re.compile(
     r"^Users of\s+(\S+):\s+\(Total\s+(?:of\s+)?(\d+)\s+licenses?\s+issued;\s*(?:Total\s+(?:of\s+))?(\d+)\s+licenses?\s+in use\)"
 )
+_MEMTOTAL_RE = re.compile(r"^MemTotal:\s+(\d+)\s+kB", re.MULTILINE)
+_NPROC = "env -u OMP_NUM_THREADS -u OMP_THREAD_LIMIT nproc"     # GNU nproc reports OMP_NUM_THREADS when it is set
+_TAGS = {"fail": "FAIL", "warn": "WARN", "note": "note"}
 
 
 @dataclass
@@ -21,6 +24,15 @@ class Check:
     name: str
     ok: bool
     detail: str = ""
+    level: str = "fail"          # what a result that is not ok means: "fail" blocks; "warn" and "note" only inform
+
+    @property
+    def blocking(self) -> bool:
+        return not self.ok and self.level == "fail"
+
+    @property
+    def tag(self) -> str:
+        return "ok" if self.ok else _TAGS[self.level]
 
 
 @dataclass
@@ -29,7 +41,7 @@ class DoctorReport:
 
     @property
     def ok(self) -> bool:
-        return all(c.ok for c in self.checks)
+        return not any(c.blocking for c in self.checks)
 
     def require_pass(self) -> DoctorReport:
         """Print the checks and raise on any failure — except in plan mode, where the preview must go on."""
@@ -37,18 +49,19 @@ class DoctorReport:
 
         plan = PLAN_MODE.get()
         print("\n".join(f"[{'plan' if plan else 'doctor'}] {line}" for line in str(self).splitlines()))
-        failed = [c for c in self.checks if not c.ok]
+        failed = [c for c in self.checks if c.blocking]
         if failed and not plan:
             raise RuntimeError("doctor failed: " + "; ".join(f"{c.name}: {c.detail}" for c in failed))
         return self
 
     def __str__(self) -> str:
-        return "\n".join(f"[{'ok' if c.ok else 'FAIL'}] {c.name}: {c.detail}" for c in self.checks)
+        return "\n".join(f"[{c.tag}] {c.name}: {c.detail}" for c in self.checks)
 
 
 def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: RunStore | None = None,
-           site: site_module.Site | None = None) -> DoctorReport:
-    site = site or site_module.load()
+           limits: HostLimits) -> DoctorReport:
+    """``limits`` is the executor host's site.yaml entry (``run.limits``): the envelope checks compare against it,
+    and the machine check compares it with what the host reports (advisory)."""
     report = DoctorReport()
     add = report.checks.append
 
@@ -64,7 +77,7 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
 
     if spec.simulator.license_check:      # the legacy rule: spectre -V answers and the license server lists features
         version = executor.run("spectre -V", cshrc=cshrc, timeout_s=300)
-        probe = executor.run("lmstat -a", cshrc=cshrc, timeout_s=300)
+        probe = executor.run(limits.license_probe or "lmstat -a", cshrc=cshrc, timeout_s=300)   # lmstat-format output
         features = {m.group(1): (int(m.group(2)), int(m.group(3))) for line in probe.stdout.splitlines()
                     if (m := _LMSTAT_RE.match(line.strip()))}
         spectre = ", ".join(f"{k} {used}/{issued}" for k, (issued, used) in features.items() if k.lower().startswith("spectre"))
@@ -77,9 +90,8 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
         path = f"{tb.maestro_point_root}/netlist/input.scs"
         add(Check(f"export:{tb.id}", executor.exists(path), path))
 
-    threads = spec.simulator.parallel_jobs * spec.simulator.threads_per_run
-    add(Check("envelope", threads <= site.max_threads,
-              f"{spec.simulator.parallel_jobs} jobs × {spec.simulator.threads_per_run} threads = {threads} ≤ {site.max_threads}"))
+    add(_envelope_check(spec, limits, executor.host))
+    add(_machine_check(executor, limits))
 
     if spec.devices:
         for device in spec.devices:
@@ -89,9 +101,9 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
         add(Check("emx", emx.ok, emx.stdout.strip() if emx.ok else "emx not on PATH"))
         add(Check("em:process_file", executor.exists(spec.em.process_file), spec.em.process_file))
         add(_stack_check(spec, executor, cshrc))
-        slots = site.slots(spec.em.threads, spec.em.memory_gb)
-        add(Check("em:envelope", spec.em.threads <= site.max_threads and spec.em.memory_gb <= site.max_memory_gb,
-                  f"{spec.em.threads} threads / {spec.em.memory_gb:g} GB per EMX → {slots} concurrent within {site.max_threads} threads / {site.max_memory_gb:g} GB"))
+        slots = limits.slots(spec.em.threads, spec.em.memory_gb)
+        add(Check("em:envelope", spec.em.threads <= limits.max_threads and spec.em.memory_gb <= limits.max_memory_gb,
+                  f"{spec.em.threads} threads / {spec.em.memory_gb:g} GB per EMX → {slots} concurrent within {limits.max_threads} threads / {limits.max_memory_gb:g} GB"))
 
     if store is not None:
         from ic_opt.eval.engine import simulations
@@ -100,6 +112,44 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
         add(Check("budget", used < spec.budget.max_simulations, f"{used}/{spec.budget.max_simulations} simulations used"))
         store.log_step("doctor", "ok" if report.ok else "fail", checks=[(c.name, c.ok) for c in report.checks])
     return report
+
+
+def _job(spec: Spec) -> tuple[int, float]:
+    """One concurrent job of the spec's pipeline, sized as the engine sizes it: its heaviest Spectre / EMX run."""
+    runs = [(spec.simulator.threads_per_run, 0.0)] if spec.testbenches else []
+    if spec.devices and spec.em is not None:
+        runs.append((spec.em.threads, spec.em.memory_gb))
+    return max((t for t, _ in runs), default=1), max((m for _, m in runs), default=0.0)
+
+
+def _envelope_check(spec: Spec, limits: HostLimits, host: str) -> Check:
+    """What the spec asks for at once -- parallel_jobs of its heaviest job -- against the host's entry; beyond it fails."""
+    jobs = spec.simulator.parallel_jobs
+    threads, memory = _job(spec)
+    return Check("envelope", jobs * threads <= limits.max_threads and jobs * memory <= limits.max_memory_gb,
+                 f"{jobs} jobs × {threads} threads / {memory:g} GB per job → {jobs * threads} threads / {jobs * memory:g} GB "
+                 f"of {limits.max_threads} / {limits.max_memory_gb:g} (max_threads / max_memory_gb of {host})")
+
+
+def _machine_check(executor: Executor, limits: HostLimits) -> Check:
+    """D2: the entry against what the host reports (``nproc``, ``MemTotal``). Advisory only: an entry may describe a
+    share of a machine, and a probe cannot see every cgroup or queue policy, so the user's numbers stay the rule."""
+    try:
+        cores = executor.run(_NPROC, timeout_s=60)
+        meminfo = executor.run("cat /proc/meminfo", timeout_s=60)
+    except ExecutorError as exc:
+        return Check("machine", False, f"not probed on {executor.host} ({exc}); limits taken as written", level="note")
+    count = int(cores.stdout.strip()) if cores.ok and cores.stdout.strip().isdigit() else None
+    match = _MEMTOTAL_RE.search(meminfo.stdout) if meminfo.ok else None
+    if count is None or match is None:
+        return Check("machine", False, f"nproc / MemTotal not readable on {executor.host}; limits taken as written", level="note")
+    memory = int(match.group(1)) / 1024**2
+    over = [f"max_threads {limits.max_threads} > {count} cores (nproc)"] if limits.max_threads > count else []
+    over += [f"max_memory_gb {limits.max_memory_gb:g} > {memory:.1f} GB (MemTotal)"] if limits.max_memory_gb > memory else []
+    if over:
+        return Check("machine", False, f"{executor.host}: {'; '.join(over)} -- the entry allows more than the machine has",
+                     level="warn")
+    return Check("machine", True, f"{executor.host}: {count} cores / {memory:.1f} GB; the entry fits")
 
 
 def _stack_check(spec: Spec, executor: Executor, cshrc: str | None) -> Check:
@@ -135,10 +185,9 @@ def _device_check(device) -> Check:
     return Check(f"device:{device.id}", True, f"{generator.generator_id} on {device.profile}")
 
 
-def plan_line(spec: Spec, executor: Executor, site: site_module.Site | None = None) -> str:
-    """One line for --plan: where and how hard this spec will hit the machine."""
-    site = site or site_module.load()
+def plan_line(spec: Spec, executor: Executor, limits: HostLimits) -> str:
+    """One line for --plan: where and how hard this spec will hit the machine, against that host's entry."""
     sim = spec.simulator
     return (f"host={executor.host} jobs={sim.parallel_jobs} threads/job={sim.threads_per_run} "
-            f"peak_threads={sim.parallel_jobs * sim.threads_per_run} (site max {site.max_threads}) "
+            f"peak_threads={sim.parallel_jobs * sim.threads_per_run} (max_threads {limits.max_threads}) "
             f"budget={spec.budget.max_simulations} sims, preset={shlex.quote(sim.preset)}")

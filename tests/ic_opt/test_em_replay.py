@@ -26,7 +26,7 @@ from ic_opt.em import nport
 from ic_opt.migrate import spec_from_requirement
 from ic_opt.space import Point
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor
+from tests.ic_opt.fakes import FakeSpectreExecutor, host_for
 
 pytest.importorskip("klayout.db")
 
@@ -107,7 +107,7 @@ def test_em_circuit_pipeline_matches_recorded_run(tmp_path, project):
     deck = import_netlists(spec, executor, store)
     spec.budget.max_simulations = 10_000
     points = [Point(row["parameters"], "replay") for row in rows]
-    observations = evaluate(spec, points, executor, store, deck=deck, parallel_jobs=4)
+    observations = evaluate(spec, points, executor, store, deck=deck, parallel_jobs=4, limits=host_for(spec, 4))
 
     mismatches = []
     for row, obs in zip(rows, observations, strict=True):

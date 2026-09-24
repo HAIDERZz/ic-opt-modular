@@ -18,13 +18,13 @@ from ic_opt.space import Point
 from ic_opt.spec import EmSettings, Spec
 from ic_opt.stages.em_chain import Geometry, Pcell, emx_stages
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor, synthetic_snp
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, synthetic_snp
 from tests.ic_opt.test_em_pcell import demo_spec
 
 pytest.importorskip("klayout.db")
 
 EM = {"process_file": "/site/n28.proc", "frequencies": {"start_hz": 0, "stop_hz": 200e9, "step_hz": 1e9}, "three_d_metals": ["M6", "M5"],
-      "via_separation_um": 0.5, "memory_gb": 64}
+      "via_separation_um": 0.5, "threads": 4, "memory_gb": 64, "timeout_s": 600}
 
 
 class Passthrough:
@@ -82,7 +82,7 @@ def test_emx_stage_runs_per_device_and_the_engine_caches_it(tmp_path):
     pipeline = [Pcell(spec), *emx_stages(spec), Passthrough()]
     assert [s.name for s in pipeline] == ["pcell", "emx:ind", "peek"] and pipeline[1].resources == Resources(threads=4, memory_gb=64.0)
     points = [Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user"), Point({"outer_diameter_um": "100", "width_um": "5.5", "F": "1"}, "user")]
-    obs = engine.run(spec, pipeline, points, ex, store, parallel_jobs=1)
+    obs = engine.run(spec, pipeline, points, ex, store, parallel_jobs=1, limits=FAKE_HOST)
     assert [o.status for o in obs] == ["ok", "ok"] and ex.emx_runs == 2 and obs[0].metrics["n"] == 2.0
     assert obs[0].cache == {"emx:ind": "miss"}
     cmd = (store.root / "sims" / "obs_0001" / "em" / "ind" / "emx.cmd").read_text()
@@ -90,7 +90,8 @@ def test_emx_stage_runs_per_device_and_the_engine_caches_it(tmp_path):
     assert "-p p01=P1:G01 -p p02=N1:G02" in cmd
     assert (store.root / "sims" / "obs_0001" / "em" / "ind" / "ind.s2p").exists() and (store.root / "sims" / "obs_0001" / "em" / "ind" / "emx.log").exists()
 
-    again = engine.run(spec, pipeline, [Point({"outer_diameter_um": "100", "width_um": "5", "F": "2"}, "user")], ex, store, step="again")
+    again = engine.run(spec, pipeline, [Point({"outer_diameter_um": "100", "width_um": "5", "F": "2"}, "user")], ex, store, step="again",
+                       limits=FAKE_HOST)
     assert again[0].cache == {"emx:ind": "hit"} and ex.emx_runs == 2 and again[0].metrics == obs[0].metrics
     assert (store.root / "sims" / "obs_0003" / "em" / "ind" / "ind.s2p").read_bytes() == (store.root / "sims" / "obs_0001" / "em" / "ind" / "ind.s2p").read_bytes()
 
@@ -99,11 +100,13 @@ def test_emx_failure_and_bad_output_are_stage_failures(tmp_path):
     spec = em_only_spec()
     store = RunStore(tmp_path)
     failing = FakeSpectreExecutor(store.root / "sims", fail_emx=lambda device: True)
-    obs = engine.run(spec, [Pcell(spec), *emx_stages(spec), Passthrough()], [Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")], failing, store)
+    obs = engine.run(spec, [Pcell(spec), *emx_stages(spec), Passthrough()], [Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")], failing, store,
+                     limits=FAKE_HOST)
     assert obs[0].status == "failed:emx:ind" and "emx exited 3" in obs[0].issues[0] and (store.root / "sims" / "obs_0001" / "em" / "ind" / "emx.stderr").read_text().startswith("emx: license")
 
     bad = FakeSpectreExecutor(store.root / "sims", snp_fn=lambda argv, n, z0: "# Hz S RI R 50\n1e9 0 0 0 0 0 0 0 0\n")   # no EMX header line
-    obs = engine.run(spec, [Pcell(spec), *emx_stages(spec), Passthrough()], [Point({"outer_diameter_um": "110", "width_um": "5", "F": "1"}, "user")], bad, store)
+    obs = engine.run(spec, [Pcell(spec), *emx_stages(spec), Passthrough()], [Point({"outer_diameter_um": "110", "width_um": "5", "F": "1"}, "user")], bad, store,
+                     limits=FAKE_HOST)
     assert obs[0].status == "failed:emx:ind" and any("EMX command line" in i for i in obs[0].issues)
 
 
@@ -154,7 +157,7 @@ def test_argv_matches_recorded_emx_manifests(manifest):
     em = EmSettings(binary=c["binary"], process_file=c["process_file"], mode=c["mode"], frequencies=freqs, accuracy=c["accuracy"] if c["accuracy"] else (grid or None),
                     three_d_metals=c["three_d_metals"], via_separation_um=c["via_separation_um"], via_inductance=c["via_inductance"], via_sidewalls=c["via_sidewalls"],
                     modes=c["modes"], s_impedance=c["s_impedance"], threads=c["parallel"], memory_gb=memory, simultaneous_frequencies=simultaneous,
-                    verbose=c["verbose"], extra_args=extra)
+                    verbose=c["verbose"], extra_args=extra, timeout_s=c.get("timeout_s") or 3600)    # not on the command line
     ports = [EmxPort(p["name"], p["signal"], p["reference"]) for p in c["ports"]]
     ours = emx.argv(em, gds_file=c["gds_file"], top_cell=c["top_cell"], s_file=c["s_file"], log_file=c["log_file"], ports=ports)
     assert sorted(ours) == sorted(m["argv"])
@@ -163,12 +166,13 @@ def test_argv_matches_recorded_emx_manifests(manifest):
 
 def test_doctor_checks_the_em_sections(tmp_path):
     from ic_opt.blocks.doctor import doctor
-    from ic_opt.site import Site
+    from ic_opt.site import HostLimits
 
     spec = em_only_spec()
     store = RunStore(tmp_path)
-    report = doctor(spec, FakeSpectreExecutor(store.root / "sims"), store=store, site=Site(max_threads=128, max_memory_gb=128))
+    report = doctor(spec, FakeSpectreExecutor(store.root / "sims"), store=store, limits=HostLimits(max_threads=128, max_memory_gb=128))
     names = {c.name: c for c in report.checks}
+    assert names["envelope"].ok and names["envelope"].detail.startswith("2 jobs × 4 threads / 64 GB per job → 8 threads / 128 GB of 128 / 128")
     assert names["device:ind"].ok and names["device:ind"].detail == "clean_port_ind_sym on demo_6m"
     assert names["emx"].ok and names["emx"].detail == "/cad/bin/emx"
     assert not names["em:process_file"].ok                       # /site/n28.proc does not exist on the fake host
@@ -176,5 +180,5 @@ def test_doctor_checks_the_em_sections(tmp_path):
     assert names["em:envelope"].ok and names["em:envelope"].detail.startswith("4 threads / 64 GB per EMX → 2 concurrent")
 
     missing = spec.model_copy(update={"devices": [spec.devices[0].model_copy(update={"profile": "nope"})]})
-    bad = {c.name: c for c in doctor(missing, FakeSpectreExecutor(store.root / "sims"), site=Site()).checks}
+    bad = {c.name: c for c in doctor(missing, FakeSpectreExecutor(store.root / "sims"), limits=FAKE_HOST).checks}
     assert not bad["device:ind"].ok and "unsupported process rule profile: nope" in bad["device:ind"].detail

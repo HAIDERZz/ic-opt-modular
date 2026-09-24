@@ -1,4 +1,4 @@
-"""T9.1: the engine's generic EM-ready extensions — device child chain, both chains at once, point-stage cache, site slots — and the spec's EM sections."""
+"""T9.1: the engine's generic EM-ready extensions — device child chain, both chains at once, point-stage cache, host slots — and the spec's EM sections."""
 
 from __future__ import annotations
 
@@ -12,11 +12,13 @@ from ic_opt.eval import engine
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
 from ic_opt.executor import LocalExecutor
 from ic_opt.observation import ChildResult
-from ic_opt.site import Site
+from ic_opt.site import EnvelopeError, HostLimits
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import minimal_spec
+from tests.ic_opt.fakes import FAKE_HOST, minimal_spec
+
+EM_RESOURCES = {"threads": 4, "memory_gb": 32, "timeout_s": 600}      # required in every em section
 
 # -- a tiny fake EM pipeline: build (point, cached) -> measure (device child) ------------
 
@@ -102,7 +104,7 @@ def em_spec(*, testbenches=True, corners=()) -> Spec:
 
 def run(spec, pipeline, points, tmp_path, **kw):
     store = RunStore(tmp_path)
-    return engine.run(spec, pipeline, points, LocalExecutor(store.root / "sims"), store, **kw), store
+    return engine.run(spec, pipeline, points, LocalExecutor(store.root / "sims"), store, **{"limits": FAKE_HOST, **kw}), store
 
 
 # -- engine ---------------------------------------------------------------------------
@@ -164,14 +166,29 @@ def test_point_stage_cache_hits_across_points_and_survives_processes(tmp_path):
     assert uncached.runs == 1
 
 
-def test_workers_are_capped_by_the_site_envelope_of_the_heaviest_stage():
+def test_workers_are_capped_by_the_host_entry_of_the_heaviest_stage():
     spec = em_spec()
     pipeline = [Build(), Measure(), CircuitChild()]              # threads: circuit 10; memory: build 32 GB
-    assert engine.workers_for(spec, pipeline, 10, None) == 10
-    assert engine.workers_for(spec, pipeline, 10, Site(max_threads=128, max_memory_gb=128)) == 4     # memory-bound: 128/32
-    assert engine.workers_for(spec, pipeline, 10, Site(max_threads=40, max_memory_gb=1024)) == 4     # thread-bound: 40/10
-    assert engine.workers_for(spec, pipeline, 10, Site(max_threads=8, max_memory_gb=1024)) == 1      # never below one worker
-    assert engine.workers_for(spec, [CircuitChild()], 3, Site(max_threads=128)) == 3
+    assert engine.workers_for(spec, pipeline, 10, HostLimits(max_threads=128, max_memory_gb=128)) == 4     # memory-bound: 128/32
+    assert engine.workers_for(spec, pipeline, 10, HostLimits(max_threads=40, max_memory_gb=1024)) == 4     # thread-bound: 40/10
+    assert engine.workers_for(spec, [CircuitChild()], 3, HostLimits(max_threads=128, max_memory_gb=1)) == 3
+
+
+def test_a_stage_bigger_than_the_host_is_refused_not_run_alone():
+    spec = em_spec()
+    pipeline = [Build(), Measure(), CircuitChild()]
+    with pytest.raises(EnvelopeError, match="stage circuit needs 10 threads / 0 GB but the executor host allows max_threads 8 / max_memory_gb 1024"):
+        engine.workers_for(spec, pipeline, 10, HostLimits(max_threads=8, max_memory_gb=1024))     # was: one worker anyway
+    with pytest.raises(EnvelopeError, match="stage build needs 4 threads / 32 GB .* max_memory_gb 16"):
+        engine.workers_for(spec, pipeline, 10, HostLimits(max_threads=128, max_memory_gb=16))
+
+
+def test_the_engine_refuses_before_anything_runs(tmp_path):
+    build = Build()
+    with pytest.raises(EnvelopeError, match="stage build"):
+        run(em_spec(testbenches=False), [build, Measure()], [Point({"d.od": "30", "F": "20"}, "user")], tmp_path,
+            limits=HostLimits(max_threads=64, max_memory_gb=16))
+    assert build.runs == 0 and RunStore(tmp_path).observations() == []
 
 
 def test_children_of_follows_the_pipeline_not_the_spec(tmp_path):
@@ -227,10 +244,10 @@ def test_spec_rejects_bad_em_sections():
     bad = dict(base); bad["testbenches"] = []; bad["devices"] = []
     with pytest.raises(ValueError, match="at least one testbench or one device"):
         Spec.model_validate(bad)
-    bad = dict(base); bad["em"] = {"process_file": "relative.proc", "frequencies": [1e9]}
+    bad = dict(base); bad["em"] = {"process_file": "relative.proc", "frequencies": [1e9], **EM_RESOURCES}
     with pytest.raises(ValueError, match="absolute"):
         Spec.model_validate(bad)
-    bad = dict(base); bad["em"] = {"process_file": "/p/x.proc", "frequencies": [1e9], "extra_args": ["--max-memory=1G"]}
+    bad = dict(base); bad["em"] = {"process_file": "/p/x.proc", "frequencies": [1e9], "extra_args": ["--max-memory=1G"], **EM_RESOURCES}
     with pytest.raises(ValueError, match="dedicated field"):
         Spec.model_validate(bad)
 
@@ -241,7 +258,8 @@ def test_default_topology_and_em_settings():
     d = spec.model_dump(mode="json")
     d["devices"][0]["ports"] = ["P1", "N1", "P2", "N2", "CTP"]
     d["devices"][0]["topology"] = None
-    d["em"] = {"process_file": "/site/n28.proc", "frequencies": {"start_hz": 0, "stop_hz": 200e9, "step_hz": 1e9}, "three_d_metals": ["M9", "M8"]}
+    d["em"] = {"process_file": "/site/n28.proc", "frequencies": {"start_hz": 0, "stop_hz": 200e9, "step_hz": 1e9}, "three_d_metals": ["M9", "M8"],
+               **EM_RESOURCES}
     four = Spec.model_validate(d)
     assert four.device("d").topology.drives == [("P1", "N1"), ("N2", "P2")] and four.device("d").topology.grounded == ["CTP"]
     assert four.em.threads == 4 and four.em.memory_gb == 32.0 and four.em.simultaneous_frequencies == 0 and four.em.accuracy == "standard"

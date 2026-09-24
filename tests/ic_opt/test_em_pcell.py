@@ -16,7 +16,7 @@ from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.stages.em_chain import Geometry, Pcell, device_config, snp_order
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import minimal_spec
+from tests.ic_opt.fakes import FAKE_HOST, minimal_spec
 
 klayout = pytest.importorskip("klayout.db")
 
@@ -119,7 +119,7 @@ def test_pcell_runs_through_the_engine_with_a_device_child(tmp_path):
     store = RunStore(tmp_path)
     obs = engine.run(spec, [Pcell(spec), Size()], [Point({"outer_diameter_um": "100", "width_um": "5"}, "user"),
                                                    Point({"outer_diameter_um": "100", "width_um": "-1"}, "user")],
-                     LocalExecutor(store.root / "sims"), store)
+                     LocalExecutor(store.root / "sims"), store, limits=FAKE_HOST)
     assert obs[0].status == "ok" and obs[0].metrics["bytes"] > 1000 and obs[0].children["ind/nominal"].status == "ok"
     assert obs[1].status == "failed:pcell" and "invalid generator config" in obs[1].issues[0]
 

@@ -24,7 +24,7 @@ def main(run: Run, *, library: str, stratum: str | None = None, budget: int = 20
     pipeline = stage.surrogate_pipeline(run.spec, lib, strata, k=float(k))
     run.note(f"lib_design: {', '.join(f'{d} -> {s}' for d, s in strata.items())} ({library})")
     found = b.optimize(run.spec, run.executor, run.store, budget=int(budget), batch=int(batch), strategy=strategy, pipeline=pipeline,
-                       step="lib_design", seed=int(seed), parallel_jobs=run.jobs, site=run.site)
+                       step="lib_design", seed=int(seed), parallel_jobs=run.jobs, limits=run.limits)
     if run.plan:
         return
     leaders = b.best(run.spec, found, int(top))

@@ -11,10 +11,11 @@ from ic_opt.blocks.evaluate import evaluate
 from ic_opt.eval.stage import pipeline_fingerprint
 from ic_opt.library import query, stage
 from ic_opt.recipe import PLAN_MODE, load_recipe, load_run
+from ic_opt.site import Site
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor
 from tests.ic_opt.library_fixtures import build_library, params, truth
 from tests.ic_opt.test_library import part_spec
 
@@ -49,7 +50,8 @@ def test_predict_fills_device_metrics_from_the_library(library, tmp_path):
     store = RunStore(tmp_path)
     ex = FakeSpectreExecutor(store.root / "sims")
     obs = evaluate(spec, [Point({"outer_diameter_um": "150", "width_um": "5", "spacing_um": "3", "turns": "2"}, "user"),
-                          Point({"outer_diameter_um": "155", "width_um": "4.5", "spacing_um": "2.5", "turns": "2"}, "user")], ex, store, pipeline=pipeline)
+                          Point({"outer_diameter_um": "155", "width_um": "4.5", "spacing_um": "2.5", "turns": "2"}, "user")], ex, store, pipeline=pipeline,
+                   limits=FAKE_HOST)
     measured, predicted = obs
     assert ex.emx_runs == 0 and {o.status for o in obs} == {"ok"}
     assert measured.metrics["L"] == lib.dataset("ind_demo").find(params(150, 5, 3, 2)).values["Lp_lf"]
@@ -67,14 +69,15 @@ def test_predict_refuses_what_the_library_cannot_vouch_for(library, tmp_path):
     spec = Spec.model_validate(d)
     store = RunStore(tmp_path)
     obs = evaluate(spec, [Point({"outer_diameter_um": "250", "width_um": "5", "spacing_um": "3", "turns": "2"}, "user")],
-                   FakeSpectreExecutor(store.root / "sims"), store, pipeline=stage.surrogate_pipeline(spec, lib))
+                   FakeSpectreExecutor(store.root / "sims"), store, pipeline=stage.surrogate_pipeline(spec, lib), limits=FAKE_HOST)
     assert obs[0].status == "failed:predict" and any("out_of_domain" in i and "outside the measured range" in i for i in obs[0].issues)
     other_metal = design_spec("m5", metal="5")
     with pytest.raises(ValueError, match="0 strata match"):
         stage.match_stratum(lib, other_metal.devices[0])
     wrong = RunStore(tmp_path / "wrong")
     obs = evaluate(other_metal, [Point({"outer_diameter_um": "150", "width_um": "5", "spacing_um": "3", "turns": "2"}, "user")],
-                   FakeSpectreExecutor(wrong.root / "sims"), wrong, pipeline=stage.surrogate_pipeline(other_metal, lib, {"ind": "ind_demo"}))
+                   FakeSpectreExecutor(wrong.root / "sims"), wrong, pipeline=stage.surrogate_pipeline(other_metal, lib, {"ind": "ind_demo"}),
+                   limits=FAKE_HOST)
     assert obs[0].status == "failed:predict" and "is not stratum ind_demo's device" in " ".join(obs[0].issues)
 
 
@@ -82,7 +85,7 @@ def test_lib_design_recipe_optimizes_on_predictions_and_reports_leaders(library,
     project = tmp_path / "design"
     project.mkdir()
     (project / "spec.yaml").write_text(yaml.safe_dump(design_spec("design").model_dump(mode="json")), encoding="utf-8")
-    run = load_run(project)
+    run = load_run(project, site=Site({"local": FAKE_HOST}))
     main = load_recipe("lib_design")
     token = PLAN_MODE.set(True)
     try:

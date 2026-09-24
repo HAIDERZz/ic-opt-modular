@@ -20,7 +20,7 @@ def minimal(**overrides) -> dict:
         "metrics": [{"name": "NF", "unit": "dB", "expression": 'value(getData("NF"))'}],
         "constraints": [{"metric": "NF", "op": "lt", "value": "9 dB"}],
         "objective": {"direction": "minimize", "expression": "NF"},
-        "simulator": {"parallel_jobs": 2, "timeout_s": 60},
+        "simulator": {"parallel_jobs": 2, "threads_per_run": 2, "timeout_s": 60},
         "budget": {"max_simulations": 10},
     }
     base.update(overrides)

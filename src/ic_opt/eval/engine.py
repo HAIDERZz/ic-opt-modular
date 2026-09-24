@@ -7,8 +7,10 @@ the point-level stages once (a stage with a fingerprint is served from
 child-level chains — the testbench chain for every testbench × corner, the
 device chain for every device — (5) aggregates the children under the corner
 policy, (6) appends one Observation, (7) applies the retention policy to raw
-simulation directories. Points run in parallel, capped by the site envelope
-for the heaviest stage; a point's children run serially, like the legacy flow.
+simulation directories. Points run in parallel, capped by the executor host's
+site.yaml entry for the heaviest stage (a stage bigger than the whole entry is
+refused before anything starts); a point's children run serially, like the
+legacy flow.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from ic_opt.eval.stage import Stage, StageContext, StageFailure, pipeline_finger
 from ic_opt.executor import Executor
 from ic_opt.observation import ChildResult, Observation, Observations
 from ic_opt.sim.corner import aggregate
-from ic_opt.site import Site
+from ic_opt.site import EnvelopeError, HostLimits
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore, utc_now
@@ -83,14 +85,22 @@ def simulations(observation: Observation) -> int:
     return len(observation.children) + sum(1 for v in observation.cache.values() if v == "miss")
 
 
-def workers_for(spec: Spec, pipeline: list[Stage], parallel_jobs: int | None, site: Site | None) -> int:
-    """Concurrent points: the requested parallelism, capped by what the site allows for the heaviest stage."""
+def workers_for(spec: Spec, pipeline: list[Stage], parallel_jobs: int | None, limits: HostLimits) -> int:
+    """Concurrent points: the requested parallelism, capped by what the executor host allows for the heaviest stage.
+
+    A stage that alone needs more threads or memory than the host's entry is refused here -- also under
+    ``--plan`` -- instead of running one at a time past the limit the user wrote down (audit row 2)."""
+    for stage in pipeline:
+        need = stage.resources
+        if need.threads > limits.max_threads or need.memory_gb > limits.max_memory_gb:
+            raise EnvelopeError(
+                f"stage {stage.name} needs {need.threads} threads / {need.memory_gb:g} GB but the executor host allows "
+                f"max_threads {limits.max_threads} / max_memory_gb {limits.max_memory_gb:g} (site.yaml); lower the "
+                "stage's threads / memory in spec.yaml or raise that host's entry")
     wanted = max(1, parallel_jobs or spec.simulator.parallel_jobs)
-    if site is None:
-        return wanted
     threads = max([s.resources.threads for s in pipeline] + [1])
     memory = max([s.resources.memory_gb for s in pipeline] + [0.0])
-    return min(wanted, site.slots(threads, memory))
+    return min(wanted, limits.slots(threads, memory))
 
 
 def run(
@@ -104,7 +114,7 @@ def run(
     step: str = "evaluate",
     cshrc: str | None = None,
     parallel_jobs: int | None = None,
-    site: Site | None = None,
+    limits: HostLimits,
 ) -> Observations:
     point_stages = [s for s in pipeline if s.level == "point"]
     child_stages = [s for s in pipeline if s.level == "child"]
@@ -118,7 +128,7 @@ def run(
     children_wanted = {c.key for c in children}
     child_sims = child_simulates(pipeline)
     sims_per_point = (len(children) if child_sims else 0) + point_runs(pipeline)         # worst case: every cacheable point stage misses
-    workers = workers_for(spec, pipeline, parallel_jobs, site)
+    workers = workers_for(spec, pipeline, parallel_jobs, limits)
 
     with store.lock():
         existing = store.observations()

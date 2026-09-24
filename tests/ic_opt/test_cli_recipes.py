@@ -10,9 +10,10 @@ import yaml
 from typer.testing import CliRunner
 
 from ic_opt import __version__, blocks, recipe
+from ic_opt import site as site_module
 from ic_opt.cli import app
 from ic_opt.recipes import coarse_to_fine, fix_run, optimize, signoff
-from ic_opt.site import Site
+from ic_opt.site import HostLimits, Site
 from ic_opt.spec import load_spec
 from ic_opt.store import RunStore
 from tests.ic_opt.fakes import FakeSpectreExecutor, minimal_spec, needs_turbo
@@ -20,6 +21,16 @@ from tests.ic_opt.test_blocks import maestro_export
 
 TEMPLATES = sorted((Path(__file__).parent / "fixtures" / "legacy").glob("opt_requirement*.md"))
 runner = CliRunner()
+SITE = Site({"local": HostLimits(max_threads=16, max_memory_gb=64)})
+
+
+@pytest.fixture(autouse=True)
+def site_file(tmp_path: Path, monkeypatch) -> Path:
+    """The CLI in these tests reads this site.yaml (SITE's local entry), never the developer's own."""
+    path = tmp_path / "site.yaml"
+    path.write_text("hosts:\n  local: {max_threads: 16, max_memory_gb: 64}\n", encoding="utf-8")
+    monkeypatch.setattr(site_module, "SITE_FILE", path)
+    return path
 
 
 def project(tmp_path: Path, *, corners=(), metrics=None, export_params="F=20 W=0.6u", waveform_metrics=True) -> Path:
@@ -41,7 +52,7 @@ def project(tmp_path: Path, *, corners=(), metrics=None, export_params="F=20 W=0
 def fake_run(root: Path, metric_fn=lambda p, tb, c: {"NF": 5.0 + int(p["F"]) / 10}, **fake_kwargs) -> recipe.Run:
     spec = load_spec(root / "spec.yaml")
     store = RunStore(root)
-    return recipe.Run(root, spec, store, FakeSpectreExecutor(store.root / "sims", metric_fn, **fake_kwargs), None, Site(max_threads=16))
+    return recipe.Run(root, spec, store, FakeSpectreExecutor(store.root / "sims", metric_fn, **fake_kwargs), None, SITE, SITE.host("local"))
 
 
 # -- CLI ----------------------------------------------------------------------------
@@ -100,13 +111,16 @@ def test_optimize_recipe_end_to_end(tmp_path, capsys):
     assert (run.store.reports_dir() / "report.md").exists()
     printed = capsys.readouterr().out
     assert "[doctor] [ok] tools: /cad/bin/spectre, /cad/bin/ocean" in printed and "[doctor] [ok] license: spectre version 23.1.0.242.isr4 64bit; lmstat 1 features (spectre 2/10)" in printed
+    assert ("[doctor] [ok] envelope: 2 jobs × 4 threads / 0 GB per job → 8 threads / 0 GB of 16 / 64 "
+            "(max_threads / max_memory_gb of local)") in printed
+    assert "[doctor] [ok] machine: local: 96 cores / 384.0 GB; the entry fits" in printed
     assert "[run] report:" in printed
-    assert run.jobs == 2                                       # spec parallel_jobs 2, site 16/4 = 4 slots
+    assert run.jobs == 2                                       # spec parallel_jobs 2, host 16/4 = 4 slots
 
 
 def test_optimize_recipe_stops_when_doctor_fails(tmp_path):
     run = fake_run(project(tmp_path))
-    run.spec.simulator.parallel_jobs = 8                       # 8 × 4 threads > site max 16
+    run.spec.simulator.parallel_jobs = 8                       # 8 × 4 threads > the host's max 16
     with pytest.raises(RuntimeError, match="envelope"):
         optimize.main(run, strategy="random", budget=2)
     assert not run.store.observations()
@@ -153,7 +167,8 @@ def test_user_recipe_file_composes_blocks(tmp_path):
         "from ic_opt import blocks as b\n"
         "def main(run, *, per_dim=2):\n"
         "    deck = b.import_netlists(run.spec, run.executor, run.store)\n"
-        "    obs = b.evaluate(run.spec, b.points_grid(run.spec, per_dim=per_dim), run.executor, run.store, deck=deck, step='sweep')\n"
+        "    obs = b.evaluate(run.spec, b.points_grid(run.spec, per_dim=per_dim), run.executor, run.store, deck=deck, step='sweep',\n"
+        "                     limits=run.limits)\n"
         "    run.note(f'best {b.best(run.spec, obs)[0].params}')\n"
     )
     main = recipe.load_recipe(str(recipe_file))
@@ -186,6 +201,45 @@ def test_migrate_every_legacy_template(tmp_path, template):
     else:
         assert f"ic-opt run optimize {new} strategy=" in note and spec.metrics and spec.objective is not None
     assert len(TEMPLATES) == 11
+    written = yaml.safe_load((new / "spec.yaml").read_text())["simulator"]              # resource fields are written, not defaulted
+    assert {"threads_per_run", "parallel_jobs", "timeout_s"} <= set(written) and "~/.ic-opt/site.yaml" in note
+    assert "0.1 defaults" not in note                                                     # every template states threads_per_run
+
+
+EM_SECTIONS = """
+## Geometry Generator
+
+```yaml
+generator:
+  id: clean_port_ind_sym
+  port_order: [P1, N1]
+  process_profile: demo_6m
+  fixed_parameters: {turns: 1}
+  parameters: []
+```
+
+## EMX Settings
+
+```yaml
+process_file: /site/demo.proc
+sweep: {enabled: true, start_hz: 0, stop_hz: 1.0e11, step_hz: 1.0e9}
+max_parallel_jobs: 2
+```
+"""
+
+
+def test_migrate_writes_the_old_emx_resources_and_names_them_for_review(tmp_path):
+    old = tmp_path / "old"
+    old.mkdir()
+    (old / "opt_requirement.md").write_text((TEMPLATES[0].parent / "opt_requirement.turbo.md").read_text() + EM_SECTIONS)
+    new = tmp_path / "new"
+    assert runner.invoke(app, ["migrate", str(old), str(new)]).exit_code == 0
+    em = yaml.safe_load((new / "spec.yaml").read_text())["em"]
+    assert (em["threads"], em["memory_gb"], em["timeout_s"]) == (4, 32.0, 3600)          # the 0.1 values, explicit in the file
+    note = (new / "MIGRATION.md").read_text()
+    assert "carries the 0.1 defaults" in note and "    em.threads: 4\n" in note and "    em.memory_gb: 32.0\n" in note
+    assert "    em.timeout_s: 3600\n" in note and "simulator.threads_per_run:" not in note   # the requirement set that one
+    assert load_spec(new / "spec.yaml").simulator.parallel_jobs == 2                       # min(Spectre 8, EMX max_parallel_jobs 2)
 
 
 # -- 0.1 shim -----------------------------------------------------------------------

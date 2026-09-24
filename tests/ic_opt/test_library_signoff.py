@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 from ic_opt.recipe import PLAN_MODE, Run, load_recipe
-from ic_opt.site import Site
+from ic_opt.site import HostLimits, Site
 from ic_opt.store import RunStore
 from tests.ic_opt.fakes import FakeSpectreExecutor
 from tests.ic_opt.library_fixtures import build_library, rlc_touchstone, truth
@@ -31,7 +31,8 @@ def make_run(tmp_path: Path, name: str) -> tuple[Run, FakeSpectreExecutor]:
     (project / "spec.yaml").write_text(yaml.safe_dump(spec.model_dump(mode="json")), encoding="utf-8")
     store = RunStore(project)
     ex = FakeSpectreExecutor(store.root / "sims", snp_fn=library_physics)
-    return Run(project, spec, store, ex, None, Site(max_threads=16, max_memory_gb=64)), ex
+    site = Site({"local": HostLimits(max_threads=16, max_memory_gb=64)})
+    return Run(project, spec, store, ex, None, site, site.host("local")), ex
 
 
 def test_lib_signoff_compares_real_measurements_with_predictions_and_adopts(tmp_path):

@@ -9,7 +9,7 @@ from ic_opt.deck import Deck
 from ic_opt.observation import ChildResult, Observation
 from ic_opt.store import RunStore
 from ic_opt.suggesters.turbo import _active_start, _batches
-from tests.ic_opt.fakes import FakeSpectreExecutor, make_spec, needs_turbo
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec, needs_turbo
 
 TEMPLATE = "simulator lang=spectre\nparameters temperature=27 F={{F}} W={{W}}\ntran tran stop=10n\n"
 
@@ -30,7 +30,7 @@ def project(tmp_path, **spec_overrides):
 @pytest.mark.parametrize("strategy", ["sobol", pytest.param("turbo", marks=needs_turbo), "openbox_gp_eic"])
 def test_optimize_finds_the_bowl_and_never_repeats_a_point(tmp_path, strategy):
     spec, store, ex, deck = project(tmp_path)
-    obs = optimize(spec, ex, store, deck=deck, strategy=strategy, budget=12, batch=4, seed=1)
+    obs = optimize(spec, ex, store, deck=deck, strategy=strategy, budget=12, batch=4, seed=1, limits=FAKE_HOST)
 
     assert len(obs) == 12 and len({o.key for o in obs}) == 12
     assert all(o.origin.startswith("suggest:") for o in obs)
@@ -41,13 +41,13 @@ def test_optimize_finds_the_bowl_and_never_repeats_a_point(tmp_path, strategy):
 @needs_turbo
 def test_rerun_with_bigger_budget_continues_instead_of_restarting(tmp_path):
     spec, store, ex, deck = project(tmp_path)
-    first = optimize(spec, ex, store, deck=deck, strategy="turbo", budget=6, batch=3, seed=2)
+    first = optimize(spec, ex, store, deck=deck, strategy="turbo", budget=6, batch=3, seed=2, limits=FAKE_HOST)
     sims_after_first = sum(c.startswith("spectre") for c in ex.commands)
-    again = optimize(spec, ex, store, deck=deck, strategy="turbo", budget=6, batch=3, seed=2)
+    again = optimize(spec, ex, store, deck=deck, strategy="turbo", budget=6, batch=3, seed=2, limits=FAKE_HOST)
     assert [o.obs_id for o in again] == [o.obs_id for o in first]
     assert sum(c.startswith("spectre") for c in ex.commands) == sims_after_first     # nothing re-simulated
 
-    more = optimize(spec, ex, store, deck=deck, strategy="turbo", budget=9, batch=3, seed=2)
+    more = optimize(spec, ex, store, deck=deck, strategy="turbo", budget=9, batch=3, seed=2, limits=FAKE_HOST)
     assert len(more) == 9 and more[:6] == first
     assert sum(c.startswith("spectre") for c in ex.commands) == 9
 
@@ -66,7 +66,7 @@ def test_turbo_batches_and_restart_bookkeeping():
 
 def test_suggest_dedupes_against_history_and_initial(tmp_path):
     spec, store, ex, deck = project(tmp_path)
-    seen = optimize(spec, ex, store, deck=deck, strategy="sobol", budget=4, batch=4, seed=0)
+    seen = optimize(spec, ex, store, deck=deck, strategy="sobol", budget=4, batch=4, seed=0, limits=FAKE_HOST)
     points = suggest(spec, seen, 5, strategy="sobol", seed=0)
     assert len(points) == 5 and not ({p.key for p in points} & seen.keys())
 

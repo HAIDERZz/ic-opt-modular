@@ -14,7 +14,7 @@ from ic_opt.em import nport
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor
 from tests.ic_opt.test_blocks import maestro_export
 from tests.ic_opt.test_em_pcell import demo_spec
 
@@ -46,7 +46,8 @@ def em_circuit_spec(tmp_path: Path, *, corners=()) -> Spec:
     d["variables"] = [{"name": "ind.od", "kind": "continuous_step", "lower": "80", "upper": "120", "step": "10"},
                       {"name": "ind.w", "kind": "continuous_step", "lower": "3", "upper": "6", "step": "0.5"},
                       {"name": "F", "kind": "integer", "lower": "20", "upper": "30", "step": "2"}]
-    d["em"] = {"process_file": "/site/n28.proc", "frequencies": {"start_hz": 0, "stop_hz": 200e9, "step_hz": 1e9}, "three_d_metals": ["M6", "M5"]}
+    d["em"] = {"process_file": "/site/n28.proc", "frequencies": {"start_hz": 0, "stop_hz": 200e9, "step_hz": 1e9}, "three_d_metals": ["M6", "M5"],
+               "threads": 4, "memory_gb": 32, "timeout_s": 600}
     d["bindings"] = [{"testbench": "tb", "instance": "NPORT0", "device": "ind", "terminals": ["P1", "N1"]}]
     d["metrics"] = [{"name": "NF", "unit": "dB", "expression": "nf()", "testbench": "tb"}]
     d["constraints"] = [{"metric": "NF", "op": "lt", "value": "9"}]
@@ -66,14 +67,14 @@ def test_em_circuit_pipeline_binds_the_snp_and_runs_spectre(tmp_path):
     assert [s.name for s in pipeline] == ["pcell", "emx:ind", "bind_nport", "spectre", "ocean", "extract"]
 
     points = [Point({"ind.od": "100", "ind.w": "5", "F": "20"}, "user"), Point({"ind.od": "100", "ind.w": "5", "F": "22"}, "user")]
-    obs = evaluate(spec, points, ex, store, deck=deck, parallel_jobs=1)
+    obs = evaluate(spec, points, ex, store, deck=deck, parallel_jobs=1, limits=FAKE_HOST)
     assert [o.status for o in obs] == ["ok", "ok"] and set(obs[0].children) == {"tb/tt", "tb/ss"}
     assert obs[0].metrics["NF"] == pytest.approx(8.2) and obs[1].metrics["NF"] == pytest.approx(8.22)   # worst case: ss
     assert ex.emx_runs == 1 and obs[1].cache == {"emx:ind": "hit"}                   # same geometry, EMX cached across points
     steps = [json.loads(line) for line in (store.root / "steps.jsonl").read_text().splitlines()]
     assert steps[-1]["simulations"] == 5                                              # 2 points × 2 testbench sims + 1 EMX run (the hit is free)
     from ic_opt.blocks.evaluate import plan_shape
-    assert plan_shape(spec, pipeline, "all", ex, 4, None).startswith("(1 EMX runs + 2 testbench sims) = 3 simulations per point")
+    assert plan_shape(spec, pipeline, "all", ex, 4, FAKE_HOST).startswith("(1 EMX runs + 2 testbench sims) = 3 simulations per point")
     netlist = (store.root / "sims" / "obs_0001" / "tb" / "tt" / "netlist" / "input.scs").read_text()
     assert 'file="models/ind.s2p" interp=bbspice' in netlist and "parameters temperature=27 F=20" in netlist
     assert (store.root / "sims" / "obs_0001" / "tb" / "tt" / "netlist" / "models" / "ind.s2p").read_text().startswith("! Touchstone")
@@ -85,7 +86,7 @@ def test_binding_failures_are_child_failures(tmp_path):
     store = RunStore(tmp_path / "proj")
     ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 7.0})
     deck = Deck(templates={("tb", None): NETLIST.replace("NPORT0", "NPORTX").replace("F=20", "F={{F}}")})
-    obs = evaluate(spec, [Point({"ind.od": "100", "ind.w": "5", "F": "20"}, "user")], ex, store, deck=deck)
+    obs = evaluate(spec, [Point({"ind.od": "100", "ind.w": "5", "F": "20"}, "user")], ex, store, deck=deck, limits=FAKE_HOST)
     assert obs[0].status == "failed:bind_nport" and "expected exactly one nport instance NPORT0" in obs[0].issues[0]
 
 
@@ -98,7 +99,7 @@ def test_two_devices_bound_into_two_testbenches(tmp_path):
     d["testbenches"] = [{"id": "tb_a", "maestro_point_root": str(export_a), "virtuoso_library": "l", "cell": "c", "test_name": "t"},
                         {"id": "tb_b", "maestro_point_root": str(export_b), "virtuoso_library": "l", "cell": "c", "test_name": "t"}]
     d["variables"].append({"name": "F", "kind": "integer", "lower": "20", "upper": "30", "step": "2"})
-    d["em"] = {"process_file": "/site/n28.proc", "frequencies": [4e10], "three_d_metals": ["M6", "M5"]}
+    d["em"] = {"process_file": "/site/n28.proc", "frequencies": [4e10], "three_d_metals": ["M6", "M5"], "threads": 4, "memory_gb": 32, "timeout_s": 600}
     d["bindings"] = [{"testbench": "tb_a", "instance": "NPORT0", "device": "xfm", "terminals": ["P1", "N1", "P2", "N2"]},
                      {"testbench": "tb_b", "instance": "NPORT0", "device": "ind", "terminals": ["P1", "N1"]},
                      {"testbench": "tb_b", "instance": "NPORT1", "device": "xfm", "terminals": ["P1", "N1", "P2", "N2"]}]
@@ -109,7 +110,7 @@ def test_two_devices_bound_into_two_testbenches(tmp_path):
     ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"A": 1.0} if tb == "tb_a" else {"B": 2.0})
     deck = import_netlists(spec, ex, store)
     obs = evaluate(spec, [Point({"ind.outer_diameter_um": "90", "ind.width_um": "4", "xfm.primary_width_um": "6", "xfm.secondary_width_um": "5", "F": "20"}, "user")],
-                   ex, store, deck=deck)
+                   ex, store, deck=deck, limits=FAKE_HOST)
     assert obs[0].status == "ok" and obs[0].metrics == {"A": 1.0, "B": 2.0} and ex.emx_runs == 2
     tb_b = (store.root / "sims" / "obs_0001" / "tb_b" / "nominal" / "netlist")
     assert 'file="models/ind.s2p"' in (tb_b / "input.scs").read_text() and 'file="models/xfm.s4p"' in (tb_b / "input.scs").read_text()

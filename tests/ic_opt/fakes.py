@@ -9,9 +9,14 @@ from pathlib import Path
 import pytest
 
 from ic_opt.executor import CommandResult, LocalExecutor
+from ic_opt.site import HostLimits
 from ic_opt.spec import Spec
 
 needs_turbo = pytest.mark.skipif(importlib.util.find_spec("torch") is None, reason="turbo strategy needs the [turbo] extra (torch)")
+
+# The fake host's site.yaml entry: room for every test pipeline's heaviest stage several times over (tests about the
+# envelope itself build their own HostLimits). The fake host reports exactly this size to env.doctor's machine probe.
+FAKE_HOST = HostLimits(max_threads=96, max_memory_gb=384)
 
 
 def minimal_spec(**overrides) -> dict:
@@ -25,7 +30,7 @@ def minimal_spec(**overrides) -> dict:
         "metrics": [{"name": "NF", "unit": "dB", "expression": 'value(getData("NF"))'}],
         "constraints": [{"metric": "NF", "op": "lt", "value": "9 dB"}],
         "objective": {"direction": "minimize", "expression": "NF"},
-        "simulator": {"parallel_jobs": 2, "timeout_s": 60},
+        "simulator": {"parallel_jobs": 2, "threads_per_run": 2, "timeout_s": 60},
         "budget": {"max_simulations": 10},
     }
     base.update(overrides)
@@ -34,6 +39,12 @@ def minimal_spec(**overrides) -> dict:
 
 def make_spec(**overrides) -> Spec:
     return Spec.model_validate(minimal_spec(**overrides))
+
+
+def host_for(spec: Spec, jobs: int) -> HostLimits:
+    """A fake host entry that fits ``jobs`` of this spec's heaviest Spectre / EMX run at once (replays of recorded specs)."""
+    threads = max([spec.simulator.threads_per_run] + ([spec.em.threads] if spec.em else []))
+    return HostLimits(max_threads=jobs * threads, max_memory_gb=jobs * (spec.em.memory_gb if spec.em else 1.0))
 
 
 # An EMX .proc in demo_6m's stack: only the conductor lines matter to the stack check (thicknesses as in
@@ -57,12 +68,14 @@ class FakeSpectreExecutor(LocalExecutor):
     parameters so tests can make metrics depend on the point. Set ``fail_spectre``
     or ``fail_ocean`` to a predicate on (testbench, corner) to inject failures.
     Waveform exports requested by the probe script are written as CSV unless
-    ``nil_waveforms`` names them (OCEAN returned nil).
+    ``nil_waveforms`` names them (OCEAN returned nil). ``machine`` is the host's
+    size as ``nproc`` / ``/proc/meminfo`` report it (None: the probe fails).
     """
 
     def __init__(self, scratch_root: Path, metric_fn=None, *, fail_spectre=None, fail_ocean=None, nil_waveforms=(),
-                 snp_fn=None, fail_emx=None) -> None:
+                 snp_fn=None, fail_emx=None, machine=(FAKE_HOST.max_threads, FAKE_HOST.max_memory_gb)) -> None:
         super().__init__(scratch_root)
+        self.machine = machine
         self.metric_fn = metric_fn or (lambda p, tb, c: {})
         self.fail_spectre = fail_spectre or (lambda tb, corner: False)
         self.fail_ocean = fail_ocean or (lambda tb, corner: False)
@@ -77,6 +90,12 @@ class FakeSpectreExecutor(LocalExecutor):
         argv = shlex.split(command)
         if argv[0] == "which":                      # doctor: the fake host has the Cadence tools
             return CommandResult(0, "\n".join(f"/cad/bin/{tool}" for tool in argv[1:]) + "\n", "", argv, 0.01)
+        if argv[-1] == "nproc" or argv == ["cat", "/proc/meminfo"]:    # doctor's machine probe: the fake host's size
+            if self.machine is None:
+                return CommandResult(127, "", f"{argv[-1]}: not found", argv, 0.01)
+            cores, memory_gb = self.machine
+            out = f"{cores}\n" if argv[-1] == "nproc" else f"MemTotal:       {int(memory_gb * 1024**2)} kB\nMemFree:  1 kB\n"
+            return CommandResult(0, out, "", argv, 0.01)
         if argv[0] == "lmstat":
             return CommandResult(0, "Users of spectre:  (Total of 10 licenses issued;  Total of 2 licenses in use)\n", "", argv, 0.01)
         if argv[:2] == ["spectre", "-V"]:

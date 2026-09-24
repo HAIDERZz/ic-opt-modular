@@ -34,7 +34,7 @@ def test_chain_produces_child_result_from_point(tmp_path):
     assert child.status == "ok" and child.metrics == {"NF": 8.24} and child.unit == "tb"
     assert [c["label"] for c in ctx.trace] == ["spectre#1", "ocean#1"]
     assert (ctx.workdir / "netlist" / "input.scs").read_text().splitlines()[1] == "parameters temperature=27 F=24 W=0.8u"
-    assert executor.commands[0].startswith("spectre -64 input.scs +escchars +preset=ax +mt=10")
+    assert executor.commands[0].startswith("spectre -64 input.scs +escchars +preset=ax +mt=2")    # the fixture's threads_per_run
     assert (ctx.workdir / "metrics" / "probe.ocn").exists()
 
 

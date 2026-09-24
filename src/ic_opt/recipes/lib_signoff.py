@@ -92,7 +92,7 @@ def main(run: Run, *, library: str, candidates: str, stratum: str | None = None,
         spec = spec.model_copy(update={"project": f"{run.spec.project}_signoff_{part}",
                                        "em": spec.em.model_copy(update={k2: type(getattr(spec.em, k2))(v) for k2, v in resources.items()})})
         obs = b.evaluate(spec, pts, run.executor, run.store, pipeline=em_only_pipeline(spec), step=f"lib_signoff:{part}",
-                         cshrc=run.cshrc, parallel_jobs=run.jobs, site=run.site)
+                         cshrc=run.cshrc, parallel_jobs=run.jobs, limits=run.limits)
         done += [(part, o) for o in obs]
     if run.plan:
         return

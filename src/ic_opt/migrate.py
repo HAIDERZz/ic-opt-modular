@@ -20,6 +20,16 @@ from ic_opt.spec import Spec
 _SECTION_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$", re.MULTILINE)
 _YAML_BLOCK_RE = re.compile(r"```yaml\s*\n(?P<body>.*?)\n```", re.DOTALL)
 
+# What 0.1 / em-opt ran with when a requirement left a resource out. A spec states every resource field (T15), so a
+# migration writes these out and MIGRATION.md lists each one it had to fill: they are the old tools' choices, not a
+# statement about the machine the migrated project will run on.
+LEGACY_DEFAULTS: dict[str, int | float] = {
+    "simulator.threads_per_run": 10,
+    "em.threads": 4,                    # em-opt max_cpu_per_job (EMX --parallel)
+    "em.memory_gb": 32.0,               # EMX --max-memory
+    "em.timeout_s": 3600,               # em-opt enforced no EMX timeout; 0.2.0 defaulted to 3600 s
+}
+
 
 def read_requirement_sections(text: str) -> dict[str, Any]:
     """``## Title`` + fenced yaml -> {title: parsed yaml}; sections without yaml are skipped."""
@@ -34,7 +44,8 @@ def read_requirement_sections(text: str) -> dict[str, Any]:
 
 
 def spec_from_requirement(md_path: str | Path) -> tuple[Spec, dict[str, Any]]:
-    """Returns (spec, hints); hints carry the HOW sections for the recipe author."""
+    """Returns (spec, hints); hints carry the HOW sections for the recipe author, and under ``Resource Defaults``
+    the resource fields the requirement left out and the 0.1 values written for them."""
     s = read_requirement_sections(Path(md_path).read_text(encoding="utf-8"))
     project = s["Project"]
     source = s["Maestro Source"]
@@ -42,8 +53,9 @@ def spec_from_requirement(md_path: str | Path) -> tuple[Spec, dict[str, Any]]:
     corners_section = s.get("Process Corners") or {}
     optimizer = s.get("Optimizer Settings") or {}
     spectre = s["Spectre Settings"]
-    devices, em, bindings = _em_sections(s)
-    simulator = _simulator(spectre)
+    filled: dict[str, int | float] = {}
+    devices, em, bindings = _em_sections(s, filled)
+    simulator = _simulator(spectre, filled)
     if em is not None and "max_parallel_jobs" in s["EMX Settings"]:   # em-opt: candidate workers = min(batch, EMX jobs, Spectre jobs)
         simulator["parallel_jobs"] = min(simulator["parallel_jobs"], int(s["EMX Settings"]["max_parallel_jobs"]))
     payload = {
@@ -67,7 +79,16 @@ def spec_from_requirement(md_path: str | Path) -> tuple[Spec, dict[str, Any]]:
     }
     hints = {k: s[k] for k in ("Workflow", "Optimizer Settings", "Fixed Points", "Waveform Exports", "History Warm Start",
                                "Passive Diagnostic Constraints") if k in s}
+    if filled:
+        hints["Resource Defaults"] = filled
     return Spec.model_validate(payload), hints
+
+
+def _given_or_legacy(value: Any, field: str, filled: dict[str, int | float]) -> Any:
+    """The requirement's value, else the 0.1 default for ``field`` -- remembered in ``filled`` so MIGRATION.md names it."""
+    if value is None:
+        value = filled[field] = LEGACY_DEFAULTS[field]
+    return value
 
 
 # -- em-opt sections: Geometry Generator / EM Devices / EMX Settings / Nport Bindings ---------------------
@@ -98,12 +119,12 @@ def _device(device_id: str, generator: dict[str, Any], prefix: str | None) -> di
     }
 
 
-def _em_settings(emx: dict[str, Any]) -> dict[str, Any]:
+def _em_settings(emx: dict[str, Any], filled: dict[str, int | float]) -> dict[str, Any]:
     sweep = emx.get("sweep") or {}
     extra = list(emx.get("extra_args") or [])
     resource = {a.split("=", 1)[0]: a.split("=", 1)[1] for a in extra if a.startswith(("--max-memory", "--simultaneous-frequencies", "--parallel"))}
     grid = {k: emx[k] for k in ("edge_width_um", "max_splits", "thickness_um") if emx.get(k) is not None}
-    memory = emx.get("max_memory_gb") or float(resource.get("--max-memory", "32G").rstrip("G"))
+    memory = emx.get("max_memory_gb") or (float(resource["--max-memory"].rstrip("G")) if "--max-memory" in resource else None)
     simultaneous = emx.get("simultaneous_frequencies")
     if simultaneous is None and "--simultaneous-frequencies" in resource:
         simultaneous = int(resource["--simultaneous-frequencies"])
@@ -114,20 +135,21 @@ def _em_settings(emx: dict[str, Any]) -> dict[str, Any]:
         "accuracy": emx.get("accuracy") if emx.get("accuracy") else (grid or None),
         "three_d_metals": emx.get("three_d_metals") or [], "via_separation_um": emx.get("via_separation_um"),
         "via_inductance": emx.get("via_inductance") or [], "via_sidewalls": emx.get("via_sidewalls") or [], "modes": emx.get("modes") or [],
-        "s_impedance": emx.get("s_impedance", 50.0), "threads": emx.get("max_cpu_per_job", 4), "memory_gb": memory,
+        "s_impedance": emx.get("s_impedance", 50.0), "threads": _given_or_legacy(emx.get("max_cpu_per_job"), "em.threads", filled),
+        "memory_gb": _given_or_legacy(memory, "em.memory_gb", filled), "timeout_s": _given_or_legacy(emx.get("timeout_s"), "em.timeout_s", filled),
         "simultaneous_frequencies": simultaneous, "verbose": emx.get("verbose"),
         "extra_args": [a for a in extra if a.split("=", 1)[0] not in resource],
     }
 
 
-def _em_sections(s: dict[str, Any]) -> tuple[list[dict], dict | None, list[dict]]:
+def _em_sections(s: dict[str, Any], filled: dict[str, int | float]) -> tuple[list[dict], dict | None, list[dict]]:
     if "EM Devices" in s:
         devices = [_device(d["id"], d["geometry"]["generator"], d.get("parameter_prefix") or d["id"]) for d in s["EM Devices"]["devices"]]
     elif "Geometry Generator" in s:
         devices = [_device("device", s["Geometry Generator"]["generator"], None)]
     else:
         return [], None, []
-    em = _em_settings(s["EMX Settings"]) if "EMX Settings" in s else None
+    em = _em_settings(s["EMX Settings"], filled) if "EMX Settings" in s else None
     ports = {d["id"]: d["ports"] for d in devices}
     # em-opt ordered the sNp columns by the EMX port *names* (p01..); its bindings' terminal_order are circuit node names,
     # so the semantic terminal order is the device's port labels in that column order.
@@ -169,7 +191,7 @@ def spec_from_config_dir(config_dir: str | Path) -> Spec:
         ],
         "constraints": metrics.get("constraints", []),
         "objective": metrics.get("objective"),
-        "simulator": _simulator(spectre),
+        "simulator": _simulator(spectre, {}),
         "budget": {"max_simulations": _budget(optimizer, len(tb_list), len(corners.get("corners", [])))},
     }
     return Spec.model_validate(payload)
@@ -198,10 +220,10 @@ def _metric(m: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _simulator(spectre: dict[str, Any]) -> dict[str, Any]:
+def _simulator(spectre: dict[str, Any], filled: dict[str, int | float]) -> dict[str, Any]:
     return {
         "preset": spectre.get("preset", "ax"),
-        "threads_per_run": spectre.get("threads_per_run", 10),
+        "threads_per_run": _given_or_legacy(spectre.get("threads_per_run"), "simulator.threads_per_run", filled),
         "parallel_jobs": spectre["parallel_jobs"],
         "timeout_s": spectre["timeout_s"],
         "license_check": spectre.get("require_license_check", True),
@@ -239,7 +261,7 @@ def recipe_command(hints: dict[str, Any], new_project: Path) -> tuple[str, dict[
 
 
 def recipe_note(hints: dict[str, Any], new_project: Path) -> str:
-    """MIGRATION.md: which built-in recipe and parameters reproduce the old mode."""
+    """MIGRATION.md: which built-in recipe and parameters reproduce the old mode, and which resource values to review."""
     workflow = (hints.get("Workflow") or {}).get("mode", "optimize")
     recipe, params = recipe_command(hints, new_project)
     args = " ".join(f"{k}={v}" for k, v in params.items())
@@ -249,5 +271,12 @@ def recipe_note(hints: dict[str, Any], new_project: Path) -> str:
         lines += ["", "History warm start: pass those observations as `initial=` in a recipe (see coarse_to_fine.py)."]
     if hints.get("Passive Diagnostic Constraints"):
         lines += ["", "Passive Diagnostic Constraints were dropped: em-opt never evaluated them; declare device metrics (quantity + frequency_hz) and constraints instead."]
-    lines += ["", "Preview first: add `--plan`. Remote: add `--ssh-profile PROFILE`."]
+    filled = hints.get("Resource Defaults") or {}
+    if filled:
+        lines += ["", ("The requirement did not set these resource fields; spec.yaml carries the 0.1 defaults for them. Review each one "
+                       "for your machines (ic-opt itself has no resource defaults):"), ""]
+        lines += [f"    {field}: {value}" for field, value in filled.items()]
+    lines += ["", ("Resources (simulator.parallel_jobs, threads_per_run, timeout_s; em.threads, memory_gb, timeout_s) must fit the "
+                   "simulation host's entry in ~/.ic-opt/site.yaml: hosts.local, or hosts.<profile> with --ssh-profile."),
+              "", "Preview first: add `--plan`. Remote: add `--ssh-profile PROFILE`."]
     return "\n".join(lines) + "\n"

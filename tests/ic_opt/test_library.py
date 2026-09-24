@@ -13,7 +13,7 @@ from ic_opt.library import dataset, manifest
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor, minimal_spec, rlc_snp
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, minimal_spec, rlc_snp
 
 pytest.importorskip("klayout.db")
 
@@ -33,7 +33,8 @@ def part_spec(project: str, stop_ghz: float, *, topology: dict | None = None, **
                       {"name": "spacing_um", "kind": "continuous_step", "lower": "2", "upper": "4", "step": "0.1"},
                       {"name": "turns", "kind": "integer", "lower": "1", "upper": "3", "step": "1"}]
     d["em"] = {"process_file": "/site/demo.proc", "mode": "full_wave", "frequencies": {"start_hz": 0, "stop_hz": stop_ghz * 1e9, "step_hz": 1e9},
-               "three_d_metals": ["M6", "M5"], "via_separation_um": 0.5, "threads": 1, "memory_gb": 4, "simultaneous_frequencies": 0, **em}
+               "three_d_metals": ["M6", "M5"], "via_separation_um": 0.5, "threads": 1, "memory_gb": 4, "timeout_s": 600,
+               "simultaneous_frequencies": 0, **em}
     d["metrics"] = [{"name": "L", "unit": "H", "device": "ind", "quantity": "Lp_lf"}]
     d["objective"] = {"direction": "maximize", "expression": "L"}
     d["constraints"] = []
@@ -46,7 +47,7 @@ def run_part(root: Path, name: str, stop_ghz: float, points: list[dict], *, fail
     (root / name / "spec.yaml").write_text(yaml.safe_dump(spec.model_dump(mode="json")), encoding="utf-8")
     store = RunStore(root / name)
     ex = FakeSpectreExecutor(store.root / "sims", snp_fn=rlc_snp, fail_emx=fail_emx)
-    evaluate(spec, [Point({k: str(v) for k, v in p.items()}, "grid") for p in points], ex, store)
+    evaluate(spec, [Point({k: str(v) for k, v in p.items()}, "grid") for p in points], ex, store, limits=FAKE_HOST)
     return store
 
 

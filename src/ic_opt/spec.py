@@ -205,8 +205,10 @@ class Objective(Model):
 
 
 class Simulator(Model):
+    """Spectre resources are the user's to state (T15): no thread count, job count or timeout is assumed."""
+
     preset: Literal["cx", "ax", "mx", "lx", "vx"] = "ax"
-    threads_per_run: int = Field(default=10, ge=1)
+    threads_per_run: int = Field(ge=1)
     parallel_jobs: int = Field(ge=1)
     timeout_s: int = Field(gt=0)
     license_check: bool = True
@@ -300,7 +302,8 @@ class EmGrid(Model):
 
 
 class EmSettings(Model):
-    """EMX settings: one set per spec, applied to every device."""
+    """EMX settings: one set per spec, applied to every device. Threads, memory and timeout have no default:
+    what one EMX run may take is the user's statement about their machine (T15, D1)."""
 
     binary: str = "emx"
     process_file: str = Field(min_length=1)                   # on the executor host, absolute
@@ -313,10 +316,10 @@ class EmSettings(Model):
     via_sidewalls: list[str] = Field(default_factory=list)
     modes: list[str] = Field(default_factory=list)
     s_impedance: float = Field(default=50.0, gt=0)
-    threads: int = Field(default=4, ge=1)                     # --parallel
-    memory_gb: float = Field(default=32.0, gt=0)              # --max-memory
+    threads: int = Field(ge=1)                                # --parallel; required
+    memory_gb: float = Field(gt=0)                            # --max-memory; required
     simultaneous_frequencies: int | None = 0                  # explicit 0 after the 2026-07-09 incident
-    timeout_s: int = Field(default=3600, gt=0)
+    timeout_s: int = Field(gt=0)                              # required
     verbose: int | None = 2
     extra_args: list[str] = Field(default_factory=list)
 

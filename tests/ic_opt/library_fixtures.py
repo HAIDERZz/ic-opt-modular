@@ -118,7 +118,8 @@ def xfm_part_spec(project: str, stop_ghz: float = XFM_STOP_GHZ) -> Spec:
                       for name, lo, hi in (("primary_outer_diameter_um", "40", "260"), ("secondary_outer_diameter_um", "40", "260"),
                                            ("primary_width_um", "4", "10"), ("secondary_width_um", "4", "10"), ("center_spacing_um", "0", "130"))]
     d["em"] = {"process_file": "/site/demo.proc", "mode": "full_wave", "frequencies": {"start_hz": 0, "stop_hz": stop_ghz * 1e9, "step_hz": 1e9},
-               "three_d_metals": ["M6", "M5"], "via_separation_um": 0.5, "threads": 1, "memory_gb": 4, "simultaneous_frequencies": 0}
+               "three_d_metals": ["M6", "M5"], "via_separation_um": 0.5, "threads": 1, "memory_gb": 4, "timeout_s": 600,
+               "simultaneous_frequencies": 0}
     d["metrics"] = [{"name": "k", "unit": "1", "device": "xfm", "quantity": "k_lf"}]
     d["objective"] = {"direction": "maximize", "expression": "k"}
     d["constraints"] = []

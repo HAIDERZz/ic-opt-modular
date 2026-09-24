@@ -19,7 +19,7 @@ from ic_opt.deck import Deck
 from ic_opt.migrate import spec_from_config_dir, spec_from_requirement
 from ic_opt.space import Point, point_key
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor
+from tests.ic_opt.fakes import FakeSpectreExecutor, host_for
 
 # Recorded 0.1.10 project directories (config/ or opt_requirement.md + reports/optimizer_evaluations.jsonl),
 # colon-separated in IC_OPT_RECORDED_RUNS; the parity tests skip when none are available.
@@ -67,7 +67,7 @@ def test_engine_matches_recorded_run(tmp_path, recorded):
     ) + "\ntran tran stop=1n\n"
     deck = Deck(templates={(tb, c): template for tb in spec.testbench_ids for c in spec.corner_ids})
     points = [Point(row["parameters"], "replay") for row in rows]
-    observations = evaluate(spec, points, executor, store, deck=deck, parallel_jobs=8)
+    observations = evaluate(spec, points, executor, store, deck=deck, parallel_jobs=8, limits=host_for(spec, 8))
 
     mismatches = []
     for row, obs in zip(rows, observations, strict=True):

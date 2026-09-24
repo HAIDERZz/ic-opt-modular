@@ -18,7 +18,7 @@ from ic_opt.em import measure, touchstone
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor, synthetic_snp
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, synthetic_snp
 from tests.ic_opt.library_fixtures import rlc_touchstone, xfm_touchstone
 from tests.ic_opt.test_em_circuit import em_circuit_spec
 from tests.ic_opt.test_em_emx import em_only_spec
@@ -60,14 +60,14 @@ def test_measure_reads_the_quantities_the_spec_asks_for(tmp_path):
     ex = FakeSpectreExecutor(store.root / "sims")
     pipeline = default_pipeline(spec, None)
     assert [s.name for s in pipeline] == ["pcell", "emx:ind", "measure"]
-    obs = evaluate(spec, [Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")], ex, store)
+    obs = evaluate(spec, [Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")], ex, store, limits=FAKE_HOST)
     o = obs[0]
     assert o.status == "failed:measure" and o.issues == ["ind/nominal: metric SRF: SRF_p is None"]      # no resonance in a 3-point sweep
     assert o.children["ind/nominal"].metrics["Lp_5g"] == pytest.approx(2 * L * (1 - K), rel=1e-9)
 
     d["metrics"].pop()                                        # without SRF the point is fine
     spec = Spec.model_validate(d)
-    obs = evaluate(spec, [Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")], ex, store)
+    obs = evaluate(spec, [Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")], ex, store, limits=FAKE_HOST)
     assert obs[0].status == "ok" and obs[0].fom == pytest.approx(obs[0].metrics["Qpk"]) and obs[0].feasible
     assert json.loads((store.root / "sims" / "obs_0002" / "ind" / "nominal" / "quantities.json").read_text())["Lp_lf"] > 0
 
@@ -83,7 +83,7 @@ def test_em_circuit_with_device_metrics_runs_both_chains(tmp_path):
     deck = import_netlists(spec, ex, store)
     pipeline = default_pipeline(spec, deck)
     assert [s.name for s in pipeline] == ["pcell", "emx:ind", "bind_nport", "spectre", "ocean", "extract", "measure"]
-    obs = evaluate(spec, [Point({"ind.od": "100", "ind.w": "5", "F": "20"}, "user")], ex, store, deck=deck)
+    obs = evaluate(spec, [Point({"ind.od": "100", "ind.w": "5", "F": "20"}, "user")], ex, store, deck=deck, limits=FAKE_HOST)
     o = obs[0]
     assert set(o.children) == {"tb/tt", "tb/ss", "ind/nominal"} and o.status == "ok"
     assert o.metrics["NF"] == 8.0 and o.metrics["Qpk"] > 1 and o.feasible
@@ -197,7 +197,7 @@ def test_a_device_swept_only_above_the_low_frequency_band_is_not_a_failed_measur
     def run(d: dict, name: str):
         store = RunStore(tmp_path / name)
         ex = FakeSpectreExecutor(store.root / "sims", snp_fn=lambda argv, n_ports, z0: high)
-        (o,) = evaluate(Spec.model_validate(d), [point], ex, store)
+        (o,) = evaluate(Spec.model_validate(d), [point], ex, store, limits=FAKE_HOST)
         return o, json.loads((store.root / "sims" / o.obs_id / "ind" / "nominal" / "quantities.json").read_text())
 
     d = em_only_spec().model_dump(mode="json")

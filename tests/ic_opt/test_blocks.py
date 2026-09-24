@@ -14,10 +14,10 @@ from ic_opt.deck import Deck
 from ic_opt.executor import LocalExecutor
 from ic_opt.migrate import spec_from_config_dir
 from ic_opt.observation import Observation
-from ic_opt.site import Site
+from ic_opt.site import HostLimits
 from ic_opt.space import Point
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor, make_spec, minimal_spec
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec, minimal_spec
 
 RECORDED = Path(os.environ.get("IC_OPT_RECORDED_RUNS", "").split(":")[0] or "/nonexistent")   # first recorded 0.1.10 run
 
@@ -52,7 +52,7 @@ def test_import_netlists_builds_a_deck_with_corners_and_support_files(tmp_path):
 
     # the render stage carries the support files into every simulation directory
     ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 8.0})
-    obs = evaluate(spec, [Point({"F": "22", "W": "0.8u"}, "user")], ex, store, deck=deck)[0]
+    obs = evaluate(spec, [Point({"F": "22", "W": "0.8u"}, "user")], ex, store, deck=deck, limits=FAKE_HOST)[0]
     assert obs.status == "ok"
     assert (tmp_path / "proj" / obs.children["tb/tt"].sim_dir / "netlist" / ".modelFiles").exists()
 
@@ -71,10 +71,11 @@ def test_doctor_reports_each_check(tmp_path):
         simulator={"parallel_jobs": 20, "threads_per_run": 10, "timeout_s": 10, "license_check": False},
     )
     store = RunStore(tmp_path / "proj")
-    report = doctor(spec, LocalExecutor(store.root / "sims"), store=store, site=Site(max_threads=128))
+    report = doctor(spec, LocalExecutor(store.root / "sims"), store=store, limits=HostLimits(max_threads=128, max_memory_gb=256))
     names = {c.name: c for c in report.checks}
     assert names["executor"].ok and names["export:tb"].ok and names["budget"].ok
-    assert not names["envelope"].ok and "200 ≤ 128" in names["envelope"].detail
+    assert not names["envelope"].ok
+    assert names["envelope"].detail.startswith("20 jobs × 10 threads / 0 GB per job → 200 threads / 0 GB of 128 / 256")
     assert not report.ok
     with pytest.raises(RuntimeError, match=r"envelope: 20 jobs"):
         report.require_pass()
@@ -140,7 +141,7 @@ def test_report_with_corners_and_bottleneck_objective(tmp_path):
     store = RunStore(tmp_path)
     ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 8.0 + (0.6 if c == "ss" else 0) + int(p["F"]) / 100, "IIP3": 2.5 - int(p["F"]) / 20})
     deck = Deck(templates={("tb", c): "parameters F={{F}} W={{W}}\n" for c in ("tt", "ss")})
-    obs = evaluate(spec, points.grid(spec, per_dim=3), ex, store, deck=deck)
+    obs = evaluate(spec, points.grid(spec, per_dim=3), ex, store, deck=deck, limits=FAKE_HOST)
     md = analyze.report(spec, obs, store).read_text()
     assert "## Corners" in md and "- failures per corner: tt " in md and "ss " in md
     assert (store.reports_dir() / "bottleneck_weighted_score.png").exists()

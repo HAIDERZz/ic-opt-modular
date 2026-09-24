@@ -18,10 +18,10 @@ The user owns the design question; you own the mechanics and the evidence.
 
 ## Procedure
 
-1. **Spec.** New project: write `spec.yaml` from the user's testbenches (Maestro export roots must contain `netlist/input.scs`), variables with bounds and step, OCEAN metric expressions, constraints, objective. Old project (`opt_requirement.md`): `ic-opt migrate OLD NEW`, then read `NEW/MIGRATION.md` for the matching command. Ask before inventing bounds, metric formulas or constraints.
-2. **Environment.** `ic-opt doctor PROJECT [--ssh-profile P] [--cshrc F]` — tools, license, exports, site envelope, budget must all be `[ok]`. Cadence env file lives on the simulation host and is given explicitly: `--cshrc`, `IC_OPT_CADENCE_CSHRC` or `cshrc:` in `~/.ic-opt/site.yaml`.
+1. **Spec.** New project: write `spec.yaml` from the user's testbenches (Maestro export roots must contain `netlist/input.scs`), variables with bounds and step, OCEAN metric expressions, constraints, objective. Old project (`opt_requirement.md`): `ic-opt migrate OLD NEW`, then read `NEW/MIGRATION.md` for the matching command (it lists resource values filled with 0.1 defaults: confirm them with the user). Ask before inventing bounds, metric formulas or constraints — and never invent resources: `simulator.parallel_jobs` / `threads_per_run` / `timeout_s` and `em.threads` / `memory_gb` / `timeout_s` are required and come from the user.
+2. **Environment.** `ic-opt doctor PROJECT [--ssh-profile P] [--cshrc F]` — tools, license, exports, site envelope, budget must all be `[ok]` (`[WARN] machine` is advisory: the entry exceeds what the host reports). `~/.ic-opt/site.yaml` needs an entry for the simulation host (`local`, or the `--ssh-profile` name) with the user's `max_threads` and `max_memory_gb`; there are no defaults, and a missing file or entry refuses with the entry to add. Cadence env file lives on the simulation host and is given explicitly: `--cshrc`, `IC_OPT_CADENCE_CSHRC` or `cshrc:` in that host's entry.
 3. **Plan.** `ic-opt run RECIPE PROJECT [params] --plan`. Show the user the printed block sequence, simulation count, `jobs × threads` and host. This is the approval point — get a yes before dropping `--plan`.
-4. **Run.** Same command without `--plan`. Long runs: run in the background and read `steps.jsonl` / `observations.jsonl` for progress. Never exceed the site envelope (`~/.ic-opt/site.yaml`, default 128 threads / 128 GB); `run.jobs` already trims `parallel_jobs` to fit.
+4. **Run.** Same command without `--plan`. Long runs: run in the background and read `steps.jsonl` / `observations.jsonl` for progress. Never exceed the host's entry in `~/.ic-opt/site.yaml` (a job bigger than the host is refused, also under `--plan`); `run.jobs` already trims `parallel_jobs` to fit.
 5. **Read.** `reports/report.md`: Best observed, Top feasible candidates, Constraint margins, Parameter importance (SHAP), Corners, Space compression advisory; figures `feasible_convergence`, `constraint_margins`, `bottleneck_weighted_score`, `convergence`. Cross-check with `observations.jsonl` (`status`, `issues`, per-child `sim_dir`).
 6. **Advise.** Tie every recommendation to observations: which constraint binds (margins), which variables matter (importance), whether the search saturated (convergence), which corner fails (corners). Suggest the next recipe or spec change, not a vague "run more".
 
@@ -43,7 +43,7 @@ from ic_opt import blocks as b
 def main(run, *, n=12):
     deck = b.import_netlists(run.spec, run.executor, run.store)
     obs = b.evaluate(run.spec, b.points_sobol(run.spec, n), run.executor, run.store, deck=deck,
-                     step="screen", cshrc=run.cshrc, parallel_jobs=run.jobs)
+                     step="screen", cshrc=run.cshrc, parallel_jobs=run.jobs, limits=run.limits)
     run.note(f"report: {b.report(run.spec, obs, run.store)}")
 ```
 

@@ -31,8 +31,9 @@ ruff). The `turbo` strategy loads TuRBO from `vendor/TuRBO` in the checkout; TuR
 non-commercial licence (`vendor/TuRBO/LICENSE.md`).
 
 Cadence tools come from a csh environment file **on the simulation host**:
-pass `--cshrc FILE`, set `IC_OPT_CADENCE_CSHRC`, or put `cshrc:` in
-`~/.ic-opt/site.yaml`. It is never guessed from the controller's disk.
+pass `--cshrc FILE`, set `IC_OPT_CADENCE_CSHRC`, or put `cshrc:` in that
+host's entry of `~/.ic-opt/site.yaml`. It is never guessed from the controller's disk.
+Before the first run, write `~/.ic-opt/site.yaml` (see [Site envelope](#site-envelope)).
 
 ## Use
 
@@ -57,15 +58,17 @@ counts the observations its step already holds and stops at `budget`.
 `examples/spec.yaml` is a complete three-testbench, three-corner example. Sections:
 `testbenches` (Maestro export roots), `corners` + `corner_policy`, `variables`
 (grid: lower / upper / step), `metrics` (OCEAN expressions), `constraints`,
-`objective`, `simulator` (preset, threads_per_run, parallel_jobs, timeout,
-retention) and `budget.max_simulations`. A spec with no metrics is a valid
-waveform-only fix-run.
+`objective`, `simulator` (preset, retention, and the required `threads_per_run`,
+`parallel_jobs`, `timeout_s`) and `budget.max_simulations`. A spec with no metrics
+is a valid waveform-only fix-run. Resource fields have no defaults: a spec that
+leaves one out is refused with the field's name.
 
 ### Recipes
 
 A recipe is `main(run, **params)`; `run` carries the spec, the run store, the
-executor and the site limits. The built-ins (`optimize`, `fix_run`,
-`coarse_to_fine`, `signoff`) are 10–20 lines each and are the examples:
+executor and the executor host's limits (`run.limits`, its site.yaml entry). The
+built-ins (`optimize`, `fix_run`, `coarse_to_fine`, `signoff`) are 10–20 lines each
+and are the examples:
 
 ```python
 from ic_opt import blocks as b
@@ -73,7 +76,7 @@ from ic_opt import blocks as b
 def main(run, *, per_dim=3):
     deck = b.import_netlists(run.spec, run.executor, run.store)
     obs = b.evaluate(run.spec, b.points_grid(run.spec, per_dim=per_dim), run.executor, run.store,
-                     deck=deck, step="sweep", cshrc=run.cshrc, parallel_jobs=run.jobs)
+                     deck=deck, step="sweep", cshrc=run.cshrc, parallel_jobs=run.jobs, limits=run.limits)
     run.note(f"report: {b.report(run.spec, obs, run.store)}")
 ```
 
@@ -108,7 +111,9 @@ em:
   frequencies: {start_hz: 0, stop_hz: 200e9, step_hz: 1e9}
   accuracy: standard
   three_d_metals: [M10, AP]
-  threads: 4                            # --parallel;  memory_gb: 32 -> --max-memory; both bound the worker count
+  threads: 4                            # required (your value): --parallel
+  memory_gb: 32                         # required (your value): --max-memory; threads and memory bound the worker count
+  timeout_s: 3600                       # required (your value): one EMX run's limit
 bindings:
   - {testbench: lo_xfmr_tb, instance: NPORT0, device: xfmr_in, terminals: [P1, N1, P2, N2]}   # sNp columns follow this order
 metrics:
@@ -141,9 +146,30 @@ repository. Install with `uv pip install -e ".[em]"` (klayout).
 
 ### Site envelope
 
-`~/.ic-opt/site.yaml` caps what one machine may take (`max_threads: 128`,
-`max_memory_gb: 128` by default); `env.doctor` refuses specs beyond it and
-`run.jobs` trims concurrency to fit.
+`~/.ic-opt/site.yaml` states what each machine may give ic-opt, one entry per
+host: `local` (the machine running ic-opt, also the simulation host without
+`--ssh-profile`) and one per `--ssh-profile` name. `max_threads` and
+`max_memory_gb` are required and have no defaults: a missing file, host entry or
+field refuses to start, and so does a job bigger than its host.
+
+```yaml
+hosts:
+  local:
+    max_threads: 16                    # placeholder: write this machine's numbers
+    max_memory_gb: 32                  # placeholder
+  lab:                                 # --ssh-profile lab
+    max_threads: 128                   # placeholder
+    max_memory_gb: 256                 # placeholder
+    cshrc: /path/to/cadence_env.csh    # optional, like scratch_root, license_probe, transfer_timeout_s
+```
+
+`env.doctor` prints the envelope (`jobs × threads / GB per job → total of
+max_threads / max_memory_gb`) and fails a spec that asks for more; it also
+compares the entry with what the host reports (`nproc`, `MemTotal`) and warns,
+never blocks, when the entry is larger. `run.jobs` and the engine trim
+concurrency to fit; recipes pass `limits=run.limits` to `sim.evaluate` and
+`opt.optimize`. A flat 0.2.0 file (top-level `max_threads`) is read as
+`hosts.local`, with a note to move it under `hosts:`.
 
 ## Results
 

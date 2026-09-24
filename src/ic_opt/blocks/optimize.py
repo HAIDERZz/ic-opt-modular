@@ -18,7 +18,7 @@ from ic_opt.eval.stage import Stage
 from ic_opt.executor import Executor
 from ic_opt.observation import Observation, Observations
 from ic_opt.sim.ocean import WaveformExport
-from ic_opt.site import Site
+from ic_opt.site import HostLimits
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
@@ -80,11 +80,13 @@ def optimize(
     step: str = "optimize",
     cshrc: str | None = None,
     parallel_jobs: int | None = None,
-    site: Site | None = None,
+    limits: HostLimits,
     failure_penalty: float = 1e6,
     **strategy_kwargs,
 ) -> Observations:
-    """Run suggest ⇄ evaluate until this step holds ``budget`` observations. Re-running continues."""
+    """Run suggest ⇄ evaluate until this step holds ``budget`` observations. Re-running continues.
+
+    ``limits`` is the executor host's site.yaml entry (``run.limits``), passed on to every ``sim.evaluate``."""
     from ic_opt.blocks.evaluate import default_pipeline, plan_shape
     from ic_opt.recipe import PLAN_MODE
 
@@ -94,7 +96,7 @@ def optimize(
         shape = pipeline if pipeline is not None else default_pipeline(spec, deck or Deck(), waveforms)
         print(f"[plan] opt.optimize step={step!r} strategy={strategy}: {done}/{budget} points done, "
               f"up to {max(0, budget - done)} more in batches of {batch} × "
-              f"{plan_shape(spec, shape, corners, executor, parallel_jobs, site)} (spec budget {spec.budget.max_simulations})")
+              f"{plan_shape(spec, shape, corners, executor, parallel_jobs, limits)} (spec budget {spec.budget.max_simulations})")
         return Observations()
     while True:
         mine = Observations(o for o in store.observations() if o.spec_fingerprint == fp)
@@ -109,7 +111,7 @@ def optimize(
             break
         evaluate(
             spec, points, executor, store, deck=deck, pipeline=pipeline, corners=corners, waveforms=waveforms,
-            step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, site=site,
+            step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
         )
     return Observations(o for o in store.observations() if o.spec_fingerprint == fp and o.step == step)
 

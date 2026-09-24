@@ -31,7 +31,7 @@ from ic_opt import blocks as b
 
 def main(run, n: int = 200, seed: int = 0):
     points = b.points_sobol(run.spec, int(n), seed=int(seed))
-    b.evaluate(run.spec, points, run.executor, run.store, step="sweep", cshrc=run.cshrc, parallel_jobs=run.jobs, site=run.site)
+    b.evaluate(run.spec, points, run.executor, run.store, step="sweep", cshrc=run.cshrc, parallel_jobs=run.jobs, limits=run.limits)
 ```
 
 ```bash
