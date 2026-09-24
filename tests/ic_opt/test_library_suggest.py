@@ -12,7 +12,14 @@ from ic_opt.cli import app
 from ic_opt.library import query as q
 from ic_opt.library import suggest as s
 from ic_opt.site import HostLimits
-from tests.ic_opt.library_fixtures import LOCAL, build_library, params, truth, use_site
+from tests.ic_opt.library_fixtures import (
+    LOCAL,
+    build_library,
+    clear_thread_caps,
+    params,
+    truth,
+    use_site,
+)
 
 pytest.importorskip("klayout.db")
 
@@ -106,7 +113,7 @@ def test_the_prediction_budget_is_a_share_of_the_machines_memory(library, monkey
 
     monkeypatch.setattr(s, "predict_all", predict_all)
     monkeypatch.setattr(s, "threadpool_limits", limits)
-    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    clear_thread_caps(monkeypatch)
     small = HostLimits(max_threads=3, max_memory_gb=0.5)
     targets = {"Lp_lf": {"target": 1.2e-9, "tol": 0.05}}
     s.suggest(q.Library(library, limits=small), "ind_demo", targets, None, n=1, pool_size=256, verify_build=False)

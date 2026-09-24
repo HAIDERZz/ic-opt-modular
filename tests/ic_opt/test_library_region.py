@@ -21,6 +21,7 @@ from tests.ic_opt.library_fixtures import (
     XFM_DIMS,
     build_library,
     build_xfm_library,
+    clear_thread_caps,
     use_site,
 )
 
@@ -301,7 +302,7 @@ def test_region_takes_blas_threads_and_prediction_chunks_from_the_limits(lib, mo
     """BLAS: max_threads, or the explicit ``threads`` within it, never above OMP_NUM_THREADS; every prediction in chunks of
     PREDICT_MEMORY_SHARE of max_memory_gb."""
     blas, budgets = spy_sizing(monkeypatch)
-    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    clear_thread_caps(monkeypatch)
     six = HostLimits(max_threads=6, max_memory_gb=3)
     run(query.Library(lib.root, limits=six), PLAIN, steps=COARSE, n=1)
     assert blas == [(6, "blas")] and budgets and set(budgets) == {s.predict_budget(six)} == {int(0.3 * 1024**3)}
@@ -325,7 +326,7 @@ def test_the_command_line_sizes_the_library_from_the_site_files_local_entry(lib,
     """`ic-opt call` on a library root: the computation takes hosts.local of the site file the command line reads -- never
     another host's entry; without a local entry, a region is refused and a measured row still answers."""
     blas, budgets = spy_sizing(monkeypatch)
-    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    clear_thread_caps(monkeypatch)
     laptop = HostLimits(max_threads=3, max_memory_gb=5)
     use_site(monkeypatch, tmp_path / "site.yaml", local=laptop, lab=FAKE_HOST)
     args = ["call", "lib.region", str(lib.root), "stratum=xfm_demo", f"targets={json.dumps(PLAIN)}", f"steps={json.dumps(COARSE)}",

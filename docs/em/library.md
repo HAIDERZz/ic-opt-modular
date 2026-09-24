@@ -254,8 +254,9 @@ every model it needs once, before the search starts.
   threads, in chunks that keep each GP call within 10% of `max_memory_gb`
   (a call over m rows holds about 7 x m x training rows x 8 bytes).
 - `workers=` and `threads=` cap these numbers; a value above what the entry
-  allows is refused. An explicit `OMP_NUM_THREADS` only ever lowers the
-  threads of every process; it is never raised.
+  allows is refused. An explicit `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` or
+  `MKL_NUM_THREADS` (the smallest of those set) only ever lowers the threads
+  of every process; it is never raised.
 
 For example, a 1300-row inductor stratum over four dims with 28 columns to
 fit (0.3 GB per fit): an entry of 8 threads and 16 GB gives 4 workers of 2
@@ -264,7 +265,7 @@ workers of 2 threads and chunks of about 94 400 rows; from 56 threads and
 8.4 GB on, the 28 models are the bound, one worker each. Each command takes
 the whole entry. A second command on the same machine, such as a local EMX
 sweep, needs its own share: lower `hosts.local` or set `OMP_NUM_THREADS`
-for one of them.
+(or `OPENBLAS_NUM_THREADS` / `MKL_NUM_THREADS`) for one of them.
 
 ## A new process
 

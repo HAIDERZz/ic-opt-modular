@@ -29,6 +29,7 @@ from tests.ic_opt.library_fixtures import (
     STOP_GHZ,
     build_library,
     build_xfm_library,
+    clear_thread_caps,
     params,
     truth,
     use_site,
@@ -250,7 +251,7 @@ def test_fit_plan_sizes_workers_and_threads_from_the_limits(monkeypatch):
     entry is refused); BLAS threads per worker
     = the thread budget shared out, never above OMP_NUM_THREADS. A 1300-row stratum over 4 dims with 28 columns to fit
     (the N28 inductor strata): 3 x 1300^2 x 6 x 8 bytes = 0.23 GB per fit, rounded up to 0.3."""
-    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    clear_thread_caps(monkeypatch)
     monkeypatch.setattr(q, "sys", SimpleNamespace(platform="linux"))
     assert q.fit_memory_gb(1300, 4) == 0.3 and q.fit_memory_gb(4000, 5) == 2.6 and q.fit_memory_gb(10, 4) == 0.1
     assert q.fit_plan(LAPTOP, 28, 1300, 4) == (4, 2)                   # 8 // 2 workers, 8 // 4 threads each
@@ -275,6 +276,28 @@ def test_fit_plan_sizes_workers_and_threads_from_the_limits(monkeypatch):
     assert q.fit_plan(big, 200, 1300, 4)[0] == 61                      # ProcessPoolExecutor's limit on Windows
     with pytest.raises(ValueError, match="workers=62 exceeds 61: ProcessPoolExecutor's worker limit on Windows"):
         q.fit_plan(big, 200, 1300, 4, workers=62)
+
+
+@pytest.mark.parametrize(("env", "cap"), [
+    ({}, None),
+    ({"OMP_NUM_THREADS": "4"}, 4),
+    ({"OPENBLAS_NUM_THREADS": "3"}, 3),
+    ({"MKL_NUM_THREADS": "1"}, 1),
+    ({"OMP_NUM_THREADS": "6", "OPENBLAS_NUM_THREADS": "2", "MKL_NUM_THREADS": "5"}, 2),     # the smallest of those set
+    ({"OMP_NUM_THREADS": "4,2", "MKL_NUM_THREADS": "5"}, 4),                               # a nested list: its first value
+    ({"OMP_NUM_THREADS": "junk", "OPENBLAS_NUM_THREADS": "0", "MKL_NUM_THREADS": "3"}, 3),  # not a positive integer: not a cap
+    ({"OMP_NUM_THREADS": "", "OPENBLAS_NUM_THREADS": "-2", "MKL_NUM_THREADS": "x"}, None),
+])
+def test_openblas_and_mkl_thread_variables_cap_the_threads_too(monkeypatch, env, cap):
+    """N-1: OMP_NUM_THREADS, OPENBLAS_NUM_THREADS and MKL_NUM_THREADS each cap a pool the fits use, so the explicit cap is
+    the smallest of those set. It lowers the BLAS threads of fit_plan and blas_threads, never raises them."""
+    clear_thread_caps(monkeypatch)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    assert q.omp_cap() == cap
+    assert q.fit_plan(LAPTOP, 28, 1300, 4) == (4, 2 if cap is None else min(2, cap))    # 8 // 4 threads per worker
+    assert q.fit_plan(LAPTOP, 1, 1300, 4) == (1, 8 if cap is None else min(8, cap))     # one model: the whole budget
+    assert q.blas_threads(LAPTOP) == (8 if cap is None else min(8, cap))
 
 
 @pytest.mark.parametrize(("limits", "kwargs", "message"), [
@@ -319,13 +342,14 @@ def recording_pool(seen: dict):
 
 def test_models_hands_the_planned_workers_and_threads_to_spawned_processes(library, tmp_path, monkeypatch):
     """Four uncached columns on an 8-thread / 16 GB machine: 8 // 2 = four workers of two BLAS threads each; OMP_NUM_THREADS=1
-    lowers that to one; 0.25 GB of memory holds two 0.1 GB fits at once. Refused arguments fit nothing."""
+    (or MKL_NUM_THREADS=1, N-1) lowers that to one; 0.25 GB of memory holds two 0.1 GB fits at once. Refused arguments fit
+    nothing."""
     root = fresh_copy(library, tmp_path / "lib")
-    for limits, env, want in ((LAPTOP, None, (4, 2)), (LAPTOP, "1", (4, 1)), (HostLimits(max_threads=8, max_memory_gb=0.25), None, (2, 4))):
-        if env:
-            monkeypatch.setenv("OMP_NUM_THREADS", env)
-        else:
-            monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    for limits, env, want in ((LAPTOP, {}, (4, 2)), (LAPTOP, {"OMP_NUM_THREADS": "1"}, (4, 1)), (LAPTOP, {"MKL_NUM_THREADS": "1"}, (4, 1)),
+                              (HostLimits(max_threads=8, max_memory_gb=0.25), {}, (2, 4))):
+        clear_thread_caps(monkeypatch)
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
         seen: dict = {}
         monkeypatch.setattr(q, "ProcessPoolExecutor", recording_pool(seen))
         with pytest.raises(Handed):
@@ -351,7 +375,7 @@ def test_one_worker_fits_here_with_blas_capped_by_the_limits(library, tmp_path, 
 
     monkeypatch.setattr(gp.StratumGP, "fit", fit)
     monkeypatch.setattr(q, "ProcessPoolExecutor", lambda *a, **k: pytest.fail("one worker fits in this process"))
-    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    clear_thread_caps(monkeypatch)
     q.Library(fresh_copy(library, tmp_path / "a"), limits=HostLimits(max_threads=3, max_memory_gb=8)).models("ind_demo", ["Lp_lf", "Qp_peak"])
     assert len(pools) >= 12 and set().union(*pools) == {3}              # 5 hold-out fits + the model, per quantity (and per level)
     pools.clear()

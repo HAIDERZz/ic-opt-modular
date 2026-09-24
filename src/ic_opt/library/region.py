@@ -59,7 +59,7 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     dims to tabulate the mean set by; ``trend`` is ``(quantity, dim)``. ``threads`` (the BLAS threads of fitting and
     prediction) and ``workers`` (the fitting processes) are explicit caps within the library's limits, refused above
     them; by default both follow from the limits (``Library.models``, ``query.blas_threads``), and an explicit
-    OMP_NUM_THREADS lowers the threads."""
+    OMP_NUM_THREADS, OPENBLAS_NUM_THREADS or MKL_NUM_THREADS lowers the threads (``query.omp_cap``)."""
     marks = [time.perf_counter()]
     ds = library.dataset(stratum)
     stated = suggest.parse_targets(targets)

@@ -17,7 +17,8 @@ The library computes on the machine running ic-opt, within that machine's limits
 or a batch predicted (``Library.limits``; a missing file or entry raises ``SiteError``). Reading needs no
 limits: datasets, coverage, measured rows and models loaded from their cache files. ``fit_plan`` turns the
 limits into worker processes and BLAS threads per worker, ``blas_threads`` into the BLAS threads of work in
-this process; an explicit OMP_NUM_THREADS only ever lowers those threads.
+this process; an explicit OMP_NUM_THREADS, OPENBLAS_NUM_THREADS or MKL_NUM_THREADS (``omp_cap``: the smallest set)
+only ever lowers those threads.
 
 ``query`` answers a geometry: a measured row at exactly those coordinates is returned as measured;
 otherwise each quantity is either predicted (mu with calibrated bounds, plus the three nearest measured
@@ -55,6 +56,7 @@ THREADS_PER_FIT = 2                                  # a fit keeps ~1.5 cores bu
 FIT_PEAK_COPIES = 3                                  # a fit's peak memory in kernel-gradient arrays (fit_memory_gb)
 BYTES_PER_GB = 1024**3                               # GB as site.yaml means it (env.doctor reads MemTotal in these units)
 WINDOWS_MAX_WORKERS = 61                             # ProcessPoolExecutor refuses more worker processes on Windows
+THREAD_CAP_VARIABLES = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")   # explicit caps: omp_cap
 
 
 def unit(quantity: str) -> str:
@@ -279,15 +281,18 @@ def fit_memory_gb(rows: int, dims: int) -> float:
 
 
 def omp_cap() -> int | None:
-    """An explicit OMP_NUM_THREADS -- the first value of a nested list such as ``4,2`` -- or None when it is unset or not a
-    positive integer. No library process gets more threads than this: an explicit cap is lowered further, never raised."""
-    first = os.environ.get("OMP_NUM_THREADS", "").split(",")[0].strip()
-    return int(first) if first.isdigit() and int(first) > 0 else None
+    """The explicit thread cap: the smallest of OMP_NUM_THREADS, OPENBLAS_NUM_THREADS and MKL_NUM_THREADS that is set to a
+    positive integer (of a nested list such as ``4,2``, the first value), or None when none is. Each of them caps a BLAS /
+    OpenMP pool the fits use, so the smallest one is what the user allowed. No library process gets more threads than
+    this: an explicit cap is lowered further, never raised."""
+    caps = [int(first) for name in THREAD_CAP_VARIABLES
+            if (first := os.environ.get(name, "").split(",")[0].strip()).isdigit() and int(first) > 0]
+    return min(caps, default=None)
 
 
 def blas_threads(limits: site.HostLimits, threads: int | None = None) -> int:
     """BLAS threads for library work in this process (a region's predictions): ``threads``, an explicit cap within
-    max_threads, else max_threads; never more than an explicit OMP_NUM_THREADS."""
+    max_threads, else max_threads; never more than the explicit cap (``omp_cap``)."""
     budget = limits.max_threads if threads is None else _thread_budget(limits, threads)
     cap = omp_cap()
     return budget if cap is None else min(budget, cap)
@@ -302,7 +307,7 @@ def fit_plan(limits: site.HostLimits, missing: int, rows: int, dims: int, *, wor
       gets), max_memory_gb // ``fit_memory_gb`` of the largest model and, on Windows, the WINDOWS_MAX_WORKERS processes
       ProcessPoolExecutor allows; at least one -- but a single fit bigger than max_memory_gb is refused (EnvelopeError);
     - BLAS threads per worker: the thread budget (``threads``, else max_threads) shared out, at least one each, never
-      more than an explicit OMP_NUM_THREADS.
+      more than the explicit cap (``omp_cap``: OMP_NUM_THREADS, OPENBLAS_NUM_THREADS, MKL_NUM_THREADS).
 
     ``workers`` and ``threads`` are explicit caps: honoured up to these limits, refused above them with a ValueError that
     names the limit (``threads`` at most max_threads; ``workers`` within every bound above and, with ``threads``, at most

@@ -22,6 +22,14 @@ STOP_GHZ = 60
 LOCAL = HostLimits(max_threads=2, max_memory_gb=8)
 
 
+def clear_thread_caps(monkeypatch) -> None:
+    """No explicit BLAS thread cap in the test's environment (``query.omp_cap``), whatever the developer's shell exports."""
+    from ic_opt.library.query import THREAD_CAP_VARIABLES
+
+    for name in THREAD_CAP_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+
+
 def use_site(monkeypatch, path: Path, **hosts: HostLimits) -> Path:
     """Point ``site.SITE_FILE`` at ``path``, a site.yaml holding ``hosts`` (none: nothing is written, the file is missing).
     The command line and a Library without limits read this file, never the developer's own."""
