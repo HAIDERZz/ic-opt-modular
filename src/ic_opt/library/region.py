@@ -9,8 +9,11 @@ the real devices inside those windows form a region of the geometry space, and i
 1. targets as in ``suggest`` (``{min}``, ``{max}``, ``{min, max}``, ``{target, tol}``); anchored quantities add
    ``SRF >= srf_margin x f0``;
 2. a coarse pass over ``suggest``'s candidates (the library's rows and ``suggest.pool``'s Sobol points), against the
-   stated windows 10 % wider, brackets the region: the survivors' per-dim extent, padded by one grid step. The rows
-   anchor it on the faces and corners of the domain, where a Sobol pool is sparse;
+   stated windows ``relax`` wider (RELAX, 10 %, unless given; ``grid`` echoes it), brackets the region: the
+   survivors' per-dim extent, padded by one grid step. The rows anchor it on the faces and corners of the domain,
+   where a Sobol pool is sparse. How much wider the windows need to be depends on the models' sigma and on how
+   densely the pool covers the region: a wider ``relax`` brackets more generously, 0 brackets only the candidates
+   that already meet the windows;
 3. a grid inside the bracket on multiples of the manifest steps (automatically about ``levels_per_dim`` values per
    dim; every step multiplied by the smallest integer that keeps the grid under ``max_points``); turns go by
    integer level, and a dim fixed within a level stays at its value there (``suggest.pool``'s rule);
@@ -37,6 +40,7 @@ from __future__ import annotations
 import dataclasses
 import itertools
 import math
+import numbers
 import time
 
 import numpy as np
@@ -44,13 +48,13 @@ from threadpoolctl import threadpool_limits
 
 from ic_opt.library import dataset, query, suggest
 
-RELAX = 0.10                                         # the coarse pass widens every stated window by this fraction
+RELAX = 0.10                                         # the coarse pass widens every stated window by this fraction unless told otherwise
 STAGES = ("models", "coarse", "grid", "predict", "summarize")
 
 
 def region(library: query.Library, stratum: str, targets: dict, objective: str | None = None, *,
            steps: dict[str, float] | None = None, levels_per_dim: int = 20, max_points: int = 2_000_000,
-           pool_size: int = 32768, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None,
+           pool_size: int = 32768, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, relax: float = RELAX,
            group_by: list[str] | None = None, trend: tuple[str, str] | None = None, n: int = 8, min_spacing: float = 0.05,
            verify_build: bool = False, sample_size: int = 5000, threads: int | None = None,
            workers: int | None = None) -> dict:
@@ -58,7 +62,8 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
 
     ``steps`` gives grid steps for some or all continuous dims (multiples of the manifest steps); ``group_by`` names
     dims to tabulate the mean set by; ``trend`` is ``(quantity, dim)``; ``rel_sigma_max`` is every quantity's confidence
-    ceiling (None: each quantity's own, ``Library.rel_sigma_max``). ``threads`` (the BLAS threads of fitting and
+    ceiling (None: each quantity's own, ``Library.rel_sigma_max``); ``relax`` (a fraction, at least 0) widens the stated
+    windows of the coarse pass that brackets the grid. ``threads`` (the BLAS threads of fitting and
     prediction) and ``workers`` (the fitting processes) are explicit caps within the library's limits, refused above
     them; by default both follow from the limits (``Library.models``, ``query.blas_threads``), and an explicit
     OMP_NUM_THREADS, OPENBLAS_NUM_THREADS or MKL_NUM_THREADS lowers the threads (``query.omp_cap``)."""
@@ -72,7 +77,7 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     if trend is not None and len(trend) != 2:
         raise ValueError(f"trend is (quantity, dim), got {trend}")
     names = sorted({t.quantity for t in goals} | ({obj[1]} if obj else set()) | ({trend[0]} if trend else set()))
-    _check(ds, stated, names, by + ([trend[1]] if trend else []), levels_per_dim, max_points)
+    _check(ds, stated, names, by + ([trend[1]] if trend else []), levels_per_dim, max_points, relax)
     explicit = _explicit_steps(library, stratum, steps)
     notes = library.notes + [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
                              for t in goals if t not in stated]
@@ -80,14 +85,15 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     with threadpool_limits(limits=blas, user_api="blas"):
         models = library.models(stratum, names, workers=workers, threads=threads)
         marks.append(time.perf_counter())
-        survivors, pooled, confident, alone = _coarse(library, stratum, models, stated, goals, pool_size, seed, k, rel_sigma_max, budget)
+        survivors, pooled, confident, alone = _coarse(library, stratum, models, stated, goals, pool_size, seed, k, rel_sigma_max,
+                                                      relax, budget)
         marks.append(time.perf_counter())
         if len(survivors):
             x, grid, grid_notes = _grid(library, stratum, survivors, explicit, levels_per_dim, max_points)
             notes += grid_notes
         else:
             x, grid = np.empty((0, len(ds.dims))), {"steps": {}, "bracket": {}, "points": 0, "coarsened": 1}
-            notes.append(_empty_note(pooled, confident, alone))
+            notes.append(_empty_note(pooled, confident, alone, relax))
         x, floors = _inside(library, stratum, x, models)
         marks.append(time.perf_counter())
         ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, check_domain=True, chunk_bytes=budget)
@@ -110,7 +116,7 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
                          f"answer, so the region cannot contain them: {', '.join(missed[:3])}{' ...' if len(missed) > 3 else ''}")
         step = {**grid["steps"], **({ds.nt_dim: 1.0} if ds.nt_dim else {})}
         out = {"stratum": stratum, "targets": [dataclasses.asdict(t) for t in goals], "objective": objective,
-               "grid": {"steps": grid["steps"], "bracket": grid["bracket"], "points": grid["points"], "in_domain": len(x),
+               "grid": {"steps": grid["steps"], "bracket": grid["bracket"], "relax": relax, "points": grid["points"], "in_domain": len(x),
                         "confident": int(ok.sum()), "coarsened": grid["coarsened"], "auto_steps": not steps},
                "levels": {"robust": _level(x, robust, ds.dims), "mean": _level(x, mean, ds.dims)},
                "binding": binding, "edge": _edge(x, mean, ds, step), "group_by": _group_by(x, ds.dims, by, robust, mean, pred, obj),
@@ -125,7 +131,7 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
 # -- inputs -------------------------------------------------------------------------------------------------------------
 
 def _check(ds: dataset.Dataset, stated: list[suggest.Target], names: list[str], dims: list[str], levels_per_dim: int,
-           max_points: int) -> None:
+           max_points: int, relax: float) -> None:
     if not stated:
         raise ValueError("a region needs at least one target")
     unknown = [q for q in names if q not in ds.columns]
@@ -136,6 +142,8 @@ def _check(ds: dataset.Dataset, stated: list[suggest.Target], names: list[str], 
         raise ValueError(f"{ds.stratum} has no dims {stray}; dims {ds.dims}")
     if levels_per_dim < 1 or max_points < 1:
         raise ValueError(f"levels_per_dim and max_points must be positive, got {levels_per_dim} and {max_points}")
+    if isinstance(relax, bool) or not isinstance(relax, numbers.Real) or not math.isfinite(relax) or relax < 0:
+        raise ValueError(f"relax is the fraction the coarse pass widens every stated window by: a number >= 0, got {relax!r}")
 
 
 def _explicit_steps(library: query.Library, stratum: str, steps: dict | None) -> dict[str, float]:
@@ -158,20 +166,21 @@ def _explicit_steps(library: query.Library, stratum: str, steps: dict | None) ->
 
 # -- the coarse pass and the grid ---------------------------------------------------------------------------------------
 
-def _relaxed(t: suggest.Target) -> suggest.Target:
-    """``t`` RELAX wider: a bound moves out by that fraction of itself, a relative tolerance grows by it."""
+def _relaxed(t: suggest.Target, relax: float) -> suggest.Target:
+    """``t`` ``relax`` wider: a bound moves out by that fraction of itself, a relative tolerance grows by it."""
     if t.kind == "min":
-        return dataclasses.replace(t, value=t.value - RELAX * abs(t.value))
+        return dataclasses.replace(t, value=t.value - relax * abs(t.value))
     if t.kind == "max":
-        return dataclasses.replace(t, value=t.value + RELAX * abs(t.value))
+        return dataclasses.replace(t, value=t.value + relax * abs(t.value))
     if t.kind == "window":
-        return dataclasses.replace(t, value=t.value - RELAX * abs(t.value), upper=t.upper + RELAX * abs(t.upper))
-    return dataclasses.replace(t, tol=t.tol + RELAX)
+        return dataclasses.replace(t, value=t.value - relax * abs(t.value), upper=t.upper + relax * abs(t.upper))
+    return dataclasses.replace(t, tol=t.tol + relax)
 
 
 def _coarse(library: query.Library, stratum: str, models: dict, stated: list[suggest.Target], goals: list[suggest.Target],
-            pool_size: int, seed: int, k: float, rel_sigma_max: float | None, budget: int) -> tuple[np.ndarray, int, int, dict[str, int]]:
-    """The coarse candidates meeting every target at the mean level with the stated windows RELAX wider (the implied
+            pool_size: int, seed: int, k: float, rel_sigma_max: float | None, relax: float,
+            budget: int) -> tuple[np.ndarray, int, int, dict[str, int]]:
+    """The coarse candidates meeting every target at the mean level with the stated windows ``relax`` wider (the implied
     SRF as it is); the candidate count, the confident count, and the count meeting each relaxed target alone.
 
     The candidates are ``suggest``'s: the library's rows and the Sobol pool. The rows matter here: they sit on the
@@ -180,17 +189,18 @@ def _coarse(library: query.Library, stratum: str, models: dict, stated: list[sug
     x = np.unique(np.round(np.vstack([library.dataset(stratum).matrix(), suggest.pool(library, stratum, pool_size, seed)]), 9), axis=0)
     floors = {q: suggest.srf_floors(library, stratum, x, q) for q in models if q.startswith("SRF")}
     ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, chunk_bytes=budget)
-    loose = [_relaxed(t) if t in stated else t for t in goals]
+    loose = [_relaxed(t, relax) if t in stated else t for t in goals]
     alone = {t.quantity: int((ok & suggest.satisfy(pred, [t], "mean")).sum()) for t in loose}
     return x[ok & suggest.satisfy(pred, loose, "mean")], len(x), int(ok.sum()), alone
 
 
-def _empty_note(pooled: int, confident: int, alone: dict[str, int]) -> str:
+def _empty_note(pooled: int, confident: int, alone: dict[str, int], relax: float) -> str:
     if not confident:
         return f"none of the {pooled} coarse candidates (library rows and Sobol points) is inside the domain and confident"
     zero = [q for q, c in alone.items() if not c]
-    head = (f"no coarse candidate meets {', '.join(zero)} even with the stated windows {RELAX:.0%} wider" if zero else
-            f"every target alone is met by coarse candidates but never all together, even {RELAX:.0%} wider "
+    wider = f"{100 * relax:.4g}% wider (relax={relax:g})"
+    head = (f"no coarse candidate meets {', '.join(zero)} even with the stated windows {wider}" if zero else
+            f"every target alone is met by coarse candidates but never all together, even {wider} "
             f"(the tightest: {min(alone, key=alone.get)})")
     counts = ", ".join(f"{q} {c}" for q, c in alone.items())
     return f"{head}; {confident} of {pooled} candidates (library rows and Sobol points) are in domain and confident, and alone meet {counts}"

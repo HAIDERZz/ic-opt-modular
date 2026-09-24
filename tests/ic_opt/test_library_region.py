@@ -249,8 +249,9 @@ def test_the_block_answers_strict_json_and_parses_the_command_line_spellings(lib
     json.dumps(out, allow_nan=False)
     assert (seen["group_by"], seen["trend"], seen["max_points"], seen["workers"], seen["threads"]) == ([W_P, W_S], ("k@10", CS), 30000, 2, None)
     assert seen["rel_sigma_max"] is None                                             # each quantity's own ceiling (R-21)
-    library_blocks.region(lib, "xfm_demo", PLAIN, rel_sigma_max="0.3")
-    assert seen["rel_sigma_max"] == 0.3
+    assert seen["relax"] == region.RELAX == inspect.signature(library_blocks.region).parameters["relax"].default
+    library_blocks.region(lib, "xfm_demo", PLAIN, rel_sigma_max="0.3", relax="0.25")
+    assert seen["rel_sigma_max"] == 0.3 and seen["relax"] == 0.25
     for bad in ("k_lf", "k_lf:", f":{CS}", ["k_lf", CS]):
         with pytest.raises(ValueError, match="expected <quantity>:<dim>"):
             library_blocks.region(lib, "xfm_demo", PLAIN, trend=bad)
@@ -272,6 +273,33 @@ def test_call_lib_region_prints_json(lib, tmp_path, monkeypatch):
     assert body["grid"]["steps"] == {OD_P: 5, OD_S: 5, W_P: 1, W_S: 1, CS: 2}
     bad = CliRunner().invoke(app, ["call", "lib.region", str(lib.root), "stratum=xfm_demo", f"targets={json.dumps(PLAIN)}", "trend=k_lf"])
     assert bad.exit_code == 2 and "expected <quantity>:<dim>" in bad.output
+
+
+def test_relax_widens_the_coarse_pass_and_the_answer_echoes_it(lib, tmp_path, monkeypatch):
+    """R-22: ``relax`` is the fraction the coarse pass widens the stated windows by (RELAX, 0.10, unless given). On the same
+    steps a wider pass brackets at least the same box, so its grid and its mean set hold the narrower pass's; ``grid``
+    echoes the value, the empty-region note quotes it, and a negative or non-finite one is refused -- on the command
+    line too."""
+    tight, wide = (run(lib, PLAIN, steps=COARSE, n=1, relax=relax) for relax in (0.0, 0.5))
+    assert (tight["grid"]["relax"], wide["grid"]["relax"]) == (0.0, 0.5)
+    assert run(lib, PLAIN, steps=COARSE, n=1)["grid"]["relax"] == region.RELAX
+    for d in XFM_DIMS:
+        (t_lo, t_hi), (w_lo, w_hi) = tight["grid"]["bracket"][d], wide["grid"]["bracket"][d]
+        assert w_lo <= t_lo <= t_hi <= w_hi, d
+    assert wide["grid"]["points"] > tight["grid"]["points"] and wide["levels"]["mean"]["count"] >= tight["levels"]["mean"]["count"]
+    empty = run(lib, {"Lp_lf": {"min": 5e-9, "max": 6e-9}, "k_lf": {"min": 0.6}}, relax=0.5)
+    assert any("even with the stated windows 50% wider (relax=0.5)" in note for note in empty["notes"]), empty["notes"]
+    for bad in (-0.1, float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="relax is the fraction"):
+            run(lib, PLAIN, relax=bad)
+    use_site(monkeypatch, tmp_path / "site.yaml", local=LOCAL)
+    args = ["call", "lib.region", str(lib.root), "stratum=xfm_demo", f"targets={json.dumps(PLAIN)}", f"steps={json.dumps(COARSE)}",
+            "n=1", "pool_size=2048", "workers=1"]
+    out = CliRunner().invoke(app, [*args, "relax=0.3"])
+    assert out.exit_code == 0, out.output
+    assert json.loads(out.stdout)["grid"]["relax"] == 0.3
+    refused = CliRunner().invoke(app, [*args, "relax=-1"])
+    assert refused.exit_code == 2 and "relax is the fraction" in refused.output
 
 
 # -- T15.3: the work is sized by the library's limits -------------------------------------------------------------------

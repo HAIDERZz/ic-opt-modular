@@ -185,8 +185,13 @@ a sweep can be bounded by it. Targets are written as for `lib.suggest`. A
 point is `robust` when its whole calibrated interval lies inside every
 window (the `lib.suggest` test: centre a sweep there) and `mean` when its
 predicted value does (the optimistic envelope). A coarse
-pass over the library rows and a Sobol pool, with the stated windows 10%
-wider, brackets the region. Inside the bracket the grid lies on multiples
+pass over the library rows and a Sobol pool, with the stated windows
+`relax` wider (0.10, that is 10%, unless given), brackets the region. How
+much wider they need to be depends on the models' sigma and on how densely
+the pool covers the region. When the mean set runs up to the edge of
+`grid.bracket` in some dim while `edge` says it stops short of the
+library's coverage there, the bracket may have cut it off: raise `relax`.
+`grid` echoes the value. Inside the bracket the grid lies on multiples
 of the manifest `steps`, about 20 values per dim (turns by level), every
 step multiplied until the grid fits in `max_points` (2 million);
 `steps={...}` sets steps by hand, and `grid` says what was used.
