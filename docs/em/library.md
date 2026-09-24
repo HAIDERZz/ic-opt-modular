@@ -361,4 +361,6 @@ device per family through the generator and its DRC audit. The command
 exits 1 on any failed stage. The pcell finds the profile through
 `IC_OPT_PROFILE_DIRS`. The audit covers the generator's core rules only
 (width, space, maximum width, via enclosure, wide-parallel spacing, port
-connectivity). It is not foundry sign-off DRC.
+connectivity). Via enclosure is checked on every via of the metal stack,
+whatever the process calls it, unless the profile lists its own set in
+`layout_rules.audited_vias`. It is not foundry sign-off DRC.

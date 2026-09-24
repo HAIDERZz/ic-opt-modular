@@ -23,6 +23,7 @@ from ic_opt.em.pcell import stack as _stack
 from ic_opt.em.pcell.process_rules import (
     ProcessRuleProfile,
     get_process_rule_profile,
+    resolve_via,
 )
 from ic_opt.em.pcell.rule_adapter import (
     GeometryRuleAdapter,
@@ -278,11 +279,13 @@ def _audit_via_enclosure(
     layout: kdb.Layout, top: kdb.Cell, adapter: GeometryRuleAdapter,
     via_name: str, report: Report,
 ) -> None:
-    via = adapter.via(via_name)
-    cuts = _region_for(layout, top, via.drawing)
+    cuts = _region_for(layout, top, resolve_via(adapter.profile, via_name).drawing)
     if cuts.is_empty():
         return  # this device has no cuts on this via layer
 
+    # Cuts are drawn: the via's primitive rule must exist (adapter.via raises when the profile has none) and give the
+    # enclosure on both metals it joins -- anything less is an incomplete profile, and the audit fails closed.
+    via = adapter.via(via_name)
     lower_metal, upper_metal = via.lower_metal, via.upper_metal
     lower_enc = via.min_enclosure_um.get(lower_metal)
     upper_enc = via.min_enclosure_um.get(upper_metal)
@@ -314,17 +317,13 @@ def _audit_via_enclosure(
             detail="; ".join(detail_bits), boxes_um=tuple(boxes)))
 
 
-# Via classes whose cut-array legality (count/spacing/enclosure-in-window) is
-# enforced by the generator itself at generation time via
-# GeometryRuleAdapter.plan_passive_via_array (fail-closed there); RV is the
-# one via class this audit checks directly because it lands a top-metal body
-# through a single large redistribution via, the geometry class this audit
-# exists to police.
-_AUDITED_VIAS: tuple[str, ...] = ("RV",)
-
-
 def audit_gds(gds_path, profile_id: str) -> Report:
-    """Audit a built GDS against ``profile_id``'s rule profile."""
+    """Audit a built GDS against ``profile_id``'s rule profile.
+
+    Via enclosure is checked on the profile's ``audited_vias`` (``layout_rules.audited_vias``, by default every via of
+    the metal stack, whatever the process calls it -- T16 R-13); the generator also plans every via array inside its
+    enclosure window (``GeometryRuleAdapter.plan_passive_via_array``), and this re-checks the cuts as written. A listed
+    via the device does not draw is no finding; drawn cuts on a via whose rule is incomplete fail closed."""
     adapter = get_geometry_rule_adapter(profile_id)
 
     layout = kdb.Layout()
@@ -338,14 +337,7 @@ def audit_gds(gds_path, profile_id: str) -> Report:
     report = Report()
     _audit_metal_rules(layout, top, adapter, report)
     _audit_wide_parallel_spacing(layout, top, adapter, report)
-    for via_name in _AUDITED_VIAS:
-        if via_name not in adapter.profile.layer_catalog.vias:
-            # The ONE legitimate skip: this profile has no such via at all.
-            # Any other problem (missing primitive rule, missing enclosure
-            # side, unknown connected metal) is a MALFORMED profile and must
-            # fail closed -- _audit_via_enclosure raises and we don't
-            # swallow it.
-            continue
+    for via_name in adapter.profile.audited_vias:
         _audit_via_enclosure(layout, top, adapter, via_name, report)
     return report
 

@@ -223,6 +223,9 @@ class LayoutRules(BaseModel):
     metal_width_space: dict[str, MetalWidthSpaceRule]
     via_primitives: dict[str, ViaPrimitiveRule]
     passive_region: PassiveRegionRules
+    # The vias whose cut enclosure the DRC audit checks (``ProcessRuleProfile.audited_vias``); left out: every via of
+    # the metal stack. A list, empty included, is the author's explicit choice.
+    audited_vias: tuple[str, ...] | None = None
 
 
 class ProcessRuleProfile(BaseModel):
@@ -256,6 +259,18 @@ class ProcessRuleProfile(BaseModel):
     @property
     def fixture_conductor(self) -> str:
         return self.metal_stack[0]
+
+    @property
+    def audited_vias(self) -> tuple[str, ...]:
+        """The vias whose cut enclosure the DRC audit checks (``drc_audit.audit_gds``): ``layout_rules.audited_vias``
+        when the profile lists them, else every via of the metal stack -- the via joining each metal to the next,
+        bottom first -- so no via a device can draw is left out because of its name (T16 R-13)."""
+        declared = self.layout_rules.audited_vias
+        if declared is not None:
+            return tuple(declared)
+        stack = self.metal_stack
+        joins = {frozenset(via.connects): name for name, via in self.layer_catalog.vias.items()}
+        return tuple(joins[frozenset(pair)] for pair in zip(stack, stack[1:]))
 
     @model_validator(mode="after")
     def _coverage_matches_declared_rules(self) -> ProcessRuleProfile:
@@ -309,6 +324,29 @@ class ProcessRuleProfile(BaseModel):
     @model_validator(mode="after")
     def _metal_stack_is_a_via_chain(self) -> ProcessRuleProfile:
         _metal_chain(self)
+        return self
+
+    @model_validator(mode="after")
+    def _audited_vias_can_be_audited(self) -> ProcessRuleProfile:
+        """Every via ``layout_rules.audited_vias`` lists is a catalog via whose primitive rule gives the enclosure on
+        both metals it joins: the audit has a rule to apply to each, or the profile is refused here."""
+        declared = self.layout_rules.audited_vias
+        if declared is None:
+            return self
+        for i, name in enumerate(declared):
+            if name in declared[:i]:
+                raise ValueError(f"layout_rules.audited_vias lists {name} twice")
+            via = self.layer_catalog.vias.get(name)
+            if via is None:
+                raise ValueError(f"layout_rules.audited_vias names {name}, which is not in layer_catalog.vias")
+            primitive = self.layout_rules.via_primitives.get(name)
+            if primitive is None:
+                raise ValueError(f"layout_rules.audited_vias names {name}, which has no layout_rules.via_primitives "
+                                 "entry: the audit has no enclosure rule to apply")
+            missing = [c for c in via.connects if c not in primitive.min_enclosure_um]
+            if missing:
+                raise ValueError(f"layout_rules.audited_vias names {name}, whose via_primitives.{name}.min_enclosure_um "
+                                 f"has no entry for {missing}")
         return self
 
 

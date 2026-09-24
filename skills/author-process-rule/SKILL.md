@@ -103,6 +103,7 @@ encrypted blocks.
 | `emx_stack.via_models` | proc via statements | one entry per *modeled* via: `{via: <catalog via>, emx_effective_size_um}`; keys are model names -- pair-style keys like `M5_M6` are fine |
 | `layout_rules.metal_width_space` | deck `INTERNAL`/`EXTERNAL` width & space rules, or DRM tables | `min_width_um` / `max_width_um` / `min_space_um` per metal the devices can touch (every `M<n>` and AP); any bound the process does not define stays `null` |
 | `layout_rules.via_primitives` | deck via rules, or DRM | `cut_size_um: [x, y]`, `min_cut_space_um`, `min_enclosure_um` for BOTH connected metals |
+| `layout_rules.audited_vias` (optional) | (your choice) | the vias whose cut enclosure the DRC audit checks; leave it out to check every via of the metal stack |
 | `layout_rules.passive_region` | DRM passive/inductor chapter | marker name; per-via `via_array_rules` (`min_count`, `max_space_um`) for the vias devices actually use; conditional `wide_parallel_spacing` rules (`W>`, `L>`, `space>=`); cited `via_restrictions`/`metal_restrictions` |
 | `coverage` | (mirrors) | key lists that must equal the sections above -- write them last |
 
@@ -138,9 +139,12 @@ Naming rules with teeth:
   the stack: the metal named `M1`, or whatever
   `layer_catalog.ground_fixture_conductor` names. Device configs reject
   `M1` as a winding metal.
-- If the process has an AP/RDL redistribution via, name it `RV` in the
-  catalog: the DRC audit's direct enclosure check looks for that exact
-  name (`_AUDITED_VIAS`).
+- Via names are free (`VIA9`, `RV`, `VRDL`, ...): the DRC audit checks the
+  cut enclosure of every via of the metal stack by default, whatever it is
+  called. `layout_rules.audited_vias: [<via>, ...]` replaces that set when
+  you want a different one (an empty list turns the enclosure check off,
+  visibly); every via it names needs a `via_primitives` entry with the
+  enclosure on both metals it joins, or the loader refuses the profile.
 - Mark an aluminium-pad / redistribution top metal `class:
   aluminum_pad`: the generation smoke builds its canonical devices on the
   highest metal below it (the proven sweep territory).
@@ -299,6 +303,9 @@ layout_rules:
       cut_size_um: [0.5, 0.5]
       min_cut_space_um: 0.55
       min_enclosure_um: {M5: 0.1, M6: 0.1}
+  # audited_vias (optional): the vias the DRC audit checks for cut enclosure.
+  # Left out, as here, it is every via of the metal stack (VIA1..VIA5), under
+  # whatever names the process uses; a list replaces that set.
   passive_region:
     marker: PASSIVE
     passive_via_array_coverage:
@@ -388,6 +395,7 @@ Iterate fix -> re-run until `result: PASS`. Common errors:
 | `<layer>: drawing layer L/D is not in the define of <name> (...)` | the catalog `drawing` disagrees with the proc's layer map: recheck that layer map row, datatype included, against the proc's `define` |
 | `<layer>: <name> has no 'define <name> = ...'` | the proc uses the name but maps no GDS layer to it: pick the name the proc defines, or complete the proc |
 | `<layer>: pin layer L/D is not in the define of <name> (...)` | EMX finds port labels only on the layers the define names: take the pin pair the proc includes (recheck the layer map's pin / label datatype), or complete the proc |
+| `layout_rules.audited_vias names <via>, ...` | list only catalog vias whose `via_primitives` entry gives the enclosure on both metals, or leave the field out |
 | `[generation] FAIL ... min_width/min_space/via_enclosure` | a transcription slip (recheck the DRM number), or the process genuinely cannot host the canonical device -- confirm against the DRM before touching anything |
 | `[generation] FAIL ... PortError ... via array` | a via the devices need has no `via_array_rules` entry (it sat in `not_yet_modeled`) |
 

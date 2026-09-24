@@ -88,6 +88,9 @@ layout_rules:
       cut_size_um: [0.5, 0.5]
       min_cut_space_um: 0.55
       min_enclosure_um: {M5: 0.1, M6: 0.1}
+  # audited_vias (optional): the vias the DRC audit checks for cut enclosure.
+  # Left out, as here, it is every via of the metal stack (VIA1..VIA5), under
+  # whatever names the process uses; a list replaces that set.
   passive_region:
     marker: PASSIVE
     passive_via_array_coverage:
