@@ -120,7 +120,10 @@ level (at least 25 usable rows); (3) inside the level's convex hull over the
 dims that vary there; (4) sigma / mu at most 0.15. The model is a Matern 5/2
 GP per turns level on log targets. Bounds are mu +- k sigma (`k=2`) widened by
 a calibration factor from held-out residuals (`max(1, q95(|z|) / 2)`), so
-about 95% of held-out measurements fall inside.
+about 95% of held-out measurements fall inside; sigma is never reported below
+the quantity's held-out median relative error, because the GP is overconfident
+at the edge of the sampled box, where designs recommended for a maximum tend
+to sit.
 
 ## 5. Inverse questions: `lib.suggest`
 

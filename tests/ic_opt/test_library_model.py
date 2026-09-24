@@ -86,3 +86,20 @@ def test_guard_rejects_thin_levels_holes_and_degenerate_hulls():
     flat = domain.DomainGuard(x[:, :3], DIMS[:3], {d: RANGES[d] for d in DIMS[:3]})         # no turns dim: one global hull
     assert flat.check(dict(zip(DIMS[:3], x[0, :3]))).ok
     assert domain.sigma_ok([1.0, 1.0, 0.0], [0.1, 0.2, 0.1]).tolist() == [True, False, False]
+
+
+def test_sigma_is_floored_at_a_fraction_of_the_mean():
+    """The library floors each model's sigma at its held-out median relative error: an answer never claims to be more
+    certain than the model's typical error (the T13.6 sign-off found |z| 7-9 at 0.2-0.4 % error on box-edge designs)."""
+    rng = np.random.default_rng(3)
+    x = rng.uniform(0, 1, (60, 2))
+    y = np.exp(1 + x[:, 0] + 0.5 * x[:, 1])
+    ranges = {"a": (0.0, 1.0), "b": (0.0, 1.0)}
+    plain = gp.StratumGP(dims=["a", "b"], ranges=ranges, log_target=True, kernel="matern52").fit(x, y)
+    floored = gp.StratumGP(dims=["a", "b"], ranges=ranges, log_target=True, kernel="matern52", sigma_floor_rel=0.02).fit(x, y)
+    mu, sigma = plain.predict(x[:10])
+    mu_f, sigma_f = floored.predict(x[:10])
+    assert np.allclose(mu, mu_f) and (sigma < 0.02 * mu).any()                   # in-sample the GP is (over)confident
+    assert np.all(sigma_f >= 0.02 * np.abs(mu_f) - 1e-12) and np.all(sigma_f >= sigma)
+    _lo, hi = floored.predict_bounds(x[:10], 2.0)
+    assert np.all(hi / mu_f >= np.exp(2 * 0.02) - 1e-9)                          # the 2-sigma interval is at least +-2 x 2 %

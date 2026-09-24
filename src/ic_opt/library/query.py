@@ -2,8 +2,9 @@
 
 ``Library`` is the runtime handle on a library root: it builds each stratum's dataset once, fits one
 model per (stratum, quantity) on that quantity's usable rows (per_nt Matern 5/2, log target for every
-positive quantity, the T13.0 choice) with a domain guard over the same rows, and widens the model's
-2-sigma interval by the calibration factor derived from held-out residuals (cached next to the dataset).
+positive quantity, the T13.0 choice) with a domain guard over the same rows, widens the model's 2-sigma
+interval by the calibration factor derived from held-out residuals, and floors its sigma at the held-out
+median relative error (both cached next to the dataset).
 
 ``query`` answers a geometry: a measured row at exactly those coordinates is returned as measured;
 otherwise each quantity is either predicted (mu with calibrated bounds, plus the three nearest measured
@@ -82,7 +83,7 @@ class Library:
                         "nt_mode": "per_nt" if ds.nt_dim and not feature_map else "joint", "kernel": "matern52", "nt_dim": ds.nt_dim,
                         "feature_map": feature_map}
             calibration = self._calibration(ds, quantity, x, y, settings)
-            model = gp.StratumGP(**settings, k_scale=calibration["k_scale"]).fit(x, y)
+            model = gp.StratumGP(**settings, k_scale=calibration["k_scale"], sigma_floor_rel=calibration.get("median_rel", 0.0)).fit(x, y)
             guard = domain.DomainGuard(x, ds.dims, settings["ranges"], nt_dim=ds.nt_dim, ids=list(range(len(rows))))
             self._models[key] = Model(stratum, quantity, rows, model, guard, calibration)
         return self._models[key]
@@ -95,7 +96,8 @@ class Library:
             return json.loads(path.read_text(encoding="utf-8"))
         report = gp.holdout(x, y, **settings)
         out = {"k_scale": gp.calibration_scale(report), "median_rel": report["median_rel"],
-               "coverage_2sigma_before": report["coverage_2sigma"], "n_scored": report["n_scored"], "source": "holdout 5x20%"}
+               "coverage_2sigma_before": report["coverage_2sigma"], "n_scored": report["n_scored"], "source": "holdout 5x20%",
+               "sigma_floor": "median held-out relative error"}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(out), encoding="utf-8")
         return out

@@ -12,6 +12,11 @@ Changed after the T13.0 verification:
   says which rows the model can answer (the query layer reports those as domain criterion 2);
 - ``k_scale`` widens every interval; ``calibration_scale`` derives it from held-out residuals so the
   nominal 2-sigma interval covers 95% (never narrower than the GP's own);
+- ``sigma_floor_rel`` keeps the reported sigma from falling below that fraction of the mean: the GP is
+  overconfident at the edge of the sampled box (the T13.6 sign-off met errors of 0.2-0.4 % at |z| 7-9 on
+  designs recommended for maximum Q, which sit at the maximum width and spacing), so the query layer floors
+  sigma at the quantity's own held-out median relative error -- an answer never claims to be better than the
+  model's typical error;
 - the transformer dimensionless feature maps (T13.7) speak the primary / secondary vocabulary: coupling
   is nearly scale-invariant, so a model with ``feature_map`` sees mean-diameter scale, diameter ratio,
   widths (and the secondary's spacing) over their diameters, the centre offset over the mean radius and,
@@ -77,7 +82,7 @@ class StratumGP:
 
     def __init__(self, *, dims: list[str], ranges: dict[str, tuple[float, float]], log_target: bool = False,
                  nt_mode: str = "joint", kernel: str = "rbf", nt_dim: str | None = None, k_scale: float = 1.0,
-                 feature_map: str | None = None):
+                 feature_map: str | None = None, sigma_floor_rel: float = 0.0):
         if nt_mode not in NT_MODES:
             raise ValueError(f"unknown nt_mode {nt_mode!r}; expected one of {NT_MODES}")
         if kernel not in KERNELS:
@@ -92,7 +97,7 @@ class StratumGP:
             raise ValueError(f"per_nt needs an nt_dim among the dims {dims}")
         self.dims, self.ranges, self.log_target = list(dims), dict(ranges), log_target
         self.nt_mode, self.kernel, self.nt_dim, self.k_scale = nt_mode, kernel, nt_dim, k_scale
-        self.feature_map = feature_map
+        self.feature_map, self.sigma_floor_rel = feature_map, float(sigma_floor_rel)
         self._gp: GaussianProcessRegressor | None = None
         self._sub: dict[int, StratumGP] = {}
         self._nt_idx: int | None = None
@@ -137,7 +142,15 @@ class StratumGP:
         return np.array([abs(v - round(v)) <= 1e-9 and round(v) in self._sub for v in levels], dtype=bool)
 
     def predict(self, x) -> tuple[np.ndarray, np.ndarray]:
-        """(mu, sigma) in the target's units; NaN where ``available`` is False. For log targets sigma is the delta-method exp(mu_log)*sigma_log."""
+        """(mu, sigma) in the target's units; NaN where ``available`` is False. For log targets sigma is the delta-method
+        exp(mu_log)*sigma_log. sigma is never below ``sigma_floor_rel`` x |mu|."""
+        mu, sigma = self._predict(x)
+        if self.sigma_floor_rel > 0:
+            with np.errstate(invalid="ignore"):
+                sigma = np.maximum(sigma, self.sigma_floor_rel * np.abs(mu))
+        return mu, sigma
+
+    def _predict(self, x) -> tuple[np.ndarray, np.ndarray]:
         x = np.asarray(x, dtype=float)
         if x.ndim != 2 or x.shape[1] != len(self.dims):
             raise ValueError(f"expected [N, {len(self.dims)}] inputs")
@@ -149,7 +162,7 @@ class StratumGP:
             levels = np.round(x[:, self._nt_idx]).astype(int)
             for level in sorted(set(levels[ok].tolist())):
                 mask = ok & (levels == level)
-                mu[mask], sigma[mask] = self._sub[level].predict(np.delete(x[mask], self._nt_idx, axis=1))
+                mu[mask], sigma[mask] = self._sub[level]._predict(np.delete(x[mask], self._nt_idx, axis=1))
             return mu, sigma
         if self._gp is None:
             raise RuntimeError("fit() first")
