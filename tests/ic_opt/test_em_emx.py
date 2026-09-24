@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path
 
 import numpy as np
@@ -12,7 +13,8 @@ import pytest
 from ic_opt.em import emx, touchstone
 from ic_opt.em.pcell.base import EmxPort
 from ic_opt.eval import engine
-from ic_opt.eval.stage import Resources, StageFailure
+from ic_opt.eval.stage import Resources, StageFailure, pipeline_fingerprint
+from ic_opt.executor import CommandResult
 from ic_opt.observation import ChildResult
 from ic_opt.space import Point
 from ic_opt.spec import EmSettings, Spec
@@ -75,6 +77,62 @@ def test_fingerprint_ignores_scheduling_fields_but_sees_physics_and_the_process_
     assert key != emx.fingerprint(base, gds_sha256="g", ports=emx.numbered_ports(["N1", "P1"], {}), proc_sha256="p")
 
 
+class ProcHost(FakeSpectreExecutor):
+    """The fake host with its own process files, path -> sha256 (a path it does not hold is unreadable); counts the hashing."""
+
+    def __init__(self, scratch_root: Path, digests: dict[str, str]) -> None:
+        super().__init__(scratch_root)
+        self.digests, self.hashed = digests, 0
+
+    def run(self, command, *, cwd=None, timeout_s=None, cshrc=None):
+        argv = shlex.split(command)
+        if argv[0] != "sha256sum":
+            return super().run(command, cwd=cwd, timeout_s=timeout_s, cshrc=cshrc)
+        self.hashed += 1
+        if argv[1] not in self.digests:
+            return CommandResult(1, "", f"sha256sum: {argv[1]}: No such file or directory", argv, 0.01)
+        return CommandResult(0, f"{self.digests[argv[1]]}  {argv[1]}\n", "", argv, 0.01)
+
+
+def test_the_emx_identity_is_the_process_file_content_not_its_path(tmp_path):
+    here, there = EmSettings(**EM), EmSettings(**{**EM, "process_file": "/mnt/copy/n28.proc"})
+    same, edited = "a" * 64, "b" * 64
+    assert emx.physics_key(here, proc_sha256=same) == emx.physics_key(there, proc_sha256=same) != emx.physics_key(here, proc_sha256=edited)
+    assert not {"process_file", "binary", "threads", "memory_gb", "timeout_s", "verbose"} & set(emx.physics_key(here, proc_sha256=same))
+    ports = emx.numbered_ports(["P1", "N1"], {})
+    cache_key = emx.fingerprint(here, gds_sha256="g", ports=ports, proc_sha256=same)          # the cache key follows the same rule
+    assert cache_key == emx.fingerprint(there, gds_sha256="g", ports=ports, proc_sha256=same) != emx.fingerprint(here, gds_sha256="g", ports=ports, proc_sha256=edited)
+
+    host = ProcHost(tmp_path, {"/site/n28.proc": same, "/mnt/copy/n28.proc": same, "/site/n28_v2.proc": edited})
+    stages = emx_stages(em_only_spec())
+    with pytest.raises(RuntimeError, match="resolve_identity"):
+        pipeline_fingerprint(stages)                                        # no identity before the host was asked
+    stages[0].resolve_identity(host)
+    assert json.loads(stages[0].identity)["proc_sha256"] == same and "process_file" not in stages[0].identity
+
+    def generation(process_file: str) -> str:
+        spec = em_only_spec(process_file=process_file)
+        return pipeline_fingerprint([Pcell(spec), *emx_stages(spec)], host)
+
+    assert generation("/site/n28.proc") == generation("/mnt/copy/n28.proc") != generation("/site/n28_v2.proc")
+
+
+def test_the_engine_hashes_the_process_file_once_per_run_before_any_point(tmp_path):
+    spec = em_only_spec()
+    store = RunStore(tmp_path)
+    points = [Point({"outer_diameter_um": str(od), "width_um": "5", "F": "1"}, "user") for od in (100, 110, 120)]
+    host = ProcHost(store.root / "sims", {"/site/n28.proc": "a" * 64})
+    pipeline = [Pcell(spec), *emx_stages(spec), Passthrough()]
+    obs = engine.run(spec, pipeline, points, host, store, parallel_jobs=3, limits=FAKE_HOST)
+    assert host.hashed == 1 and host.emx_runs == 3 and {o.pipeline_fingerprint for o in obs} == {pipeline_fingerprint(pipeline)}
+
+    gone = ProcHost(store.root / "sims", {})                                # the process file is not on the host
+    with pytest.raises(StageFailure, match="process file unreadable on local: /site/n28.proc"):
+        engine.run(spec, [Pcell(spec), *emx_stages(spec), Passthrough()], [Point({"outer_diameter_um": "130", "width_um": "5", "F": "1"}, "user")],
+                   gone, store, limits=FAKE_HOST)
+    assert gone.emx_runs == 0 and len(RunStore(tmp_path).observations()) == 3        # nothing ran, nothing was recorded
+
+
 def test_emx_stage_runs_per_device_and_the_engine_caches_it(tmp_path):
     spec = em_only_spec()
     store = RunStore(tmp_path)
@@ -120,7 +178,7 @@ def test_touchstone_reader_round_trips_the_synthetic_file(tmp_path):
     assert touchstone.header_issues(path, expected_ports=2, z0=50.0) == []
     assert touchstone.header_issues(path, expected_ports=4, z0=75.0) == ["touchstone extension declares 2 ports, expected 4", "touchstone option line is not '# Hz S RI R 75'"]
     with pytest.raises(StageFailure):
-        emx.process_file_digest(EmSettings(**EM), _ctx_with(tmp_path, ok=False))
+        emx.process_file_digest(EmSettings(**EM), _ctx_with(tmp_path, ok=False).executor)
 
 
 def _ctx_with(tmp_path, *, ok):

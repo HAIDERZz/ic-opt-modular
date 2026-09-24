@@ -13,6 +13,7 @@ import json
 import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -30,6 +31,9 @@ from ic_opt.sim.ocean import WaveformExport
 from ic_opt.space import Point
 from ic_opt.spec import Device, Spec, VariableKind
 from ic_opt.stages.spectre_chain import Extract, Netlist, Ocean, Spectre, render_netlist
+
+if TYPE_CHECKING:
+    from ic_opt.executor import Executor
 
 
 @dataclass
@@ -151,7 +155,9 @@ def _audit(device: Device, model, gds_path: Path) -> None:
 
 
 class Emx:
-    """One EMX run per device: ``Geometry`` -> ``Geometry`` with ``sparams[device]`` filled; cached by the engine on geometry + physics + process file."""
+    """One EMX run per device: ``Geometry`` -> ``Geometry`` with ``sparams[device]`` filled; cached by the engine on geometry +
+    physics + the process file's content. The content is hashed on the executor host once, by ``resolve_identity`` (the
+    engine calls it before it forms the pipeline fingerprint); the identity and every point's cache key use that value."""
 
     name = "emx"
     level = "point"
@@ -164,18 +170,28 @@ class Emx:
         self.device = device
         self.name = f"emx:{device}"
         self.resources = Resources(threads=spec.em.threads, memory_gb=spec.em.memory_gb)
-        self.identity = json.dumps(emx_kernel.physics_key(spec.em), sort_keys=True, separators=(",", ":"))
-        self._proc_sha: str | None = None
+        self.proc_sha256: str | None = None          # the process file's sha256 on the executor host, once resolved
+
+    def resolve_identity(self, executor: Executor) -> None:
+        """Hash the process file on the executor host, once: the identity carries its content, not its path."""
+        if self.proc_sha256 is None:
+            self.proc_sha256 = emx_kernel.process_file_digest(self.em, executor)
+
+    @property
+    def identity(self) -> str:
+        """EMX physics + the process file's content: with the pcell's geometry generation, what a library generation is."""
+        if self.proc_sha256 is None:
+            raise RuntimeError(f"{self.name}: the identity carries the process file's content; call resolve_identity(executor) first")
+        return json.dumps(emx_kernel.physics_key(self.em, proc_sha256=self.proc_sha256), sort_keys=True, separators=(",", ":"))
 
     def ports(self, geometry: Geometry) -> list[EmxPort]:
         g = geometry.devices[self.device]
         return emx_kernel.numbered_ports(g.snp_order, {p.signal: p.reference for p in g.ports})
 
     def fingerprint(self, geometry: Geometry, ctx: StageContext) -> str:
-        if self._proc_sha is None:          # once per stage: sha256 of the process file on the executor host
-            self._proc_sha = emx_kernel.process_file_digest(self.em, ctx)
+        self.resolve_identity(ctx.executor)          # already done when the engine formed the pipeline fingerprint
         g = geometry.devices[self.device]
-        return emx_kernel.fingerprint(self.em, gds_sha256=g.gds_sha256, ports=self.ports(geometry), proc_sha256=self._proc_sha)
+        return emx_kernel.fingerprint(self.em, gds_sha256=g.gds_sha256, ports=self.ports(geometry), proc_sha256=self.proc_sha256)
 
     def run(self, geometry: Geometry, ctx: StageContext) -> Geometry:
         g = geometry.devices[self.device]

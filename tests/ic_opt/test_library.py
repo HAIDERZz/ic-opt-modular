@@ -1,19 +1,21 @@
 """T13.1: the library manifest and the stratum dataset, on a small demo_6m library built through the real em_only chain."""
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
 import pytest
 import yaml
 
+from ic_opt import migrate_store
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.em import measure, touchstone
 from ic_opt.library import dataset, manifest
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, minimal_spec, rlc_snp
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, age_store, minimal_spec, rlc_snp
 
 pytest.importorskip("klayout.db")
 
@@ -197,3 +199,36 @@ def test_the_manifest_low_frequency_limit_wins_over_the_part_spec(tmp_path):
         with pytest.raises(ValueError, match="low_freq_max_hz"):
             manifest.Stratum.model_validate({"generator": "g", "dims": ["a"], "parts": [{"store": "a"}], "quantities": {"Lp_lf": {}},
                                              "low_freq_max_hz": bad})
+
+
+def test_migrate_store_carries_a_part_store_across_the_identity_change(tmp_path):
+    """A part store as a version before T15.2 left it -- legacy stamps, EMX cache under path-keyed entries, a manifest pinning
+    its generation: one migration restamps it, moves the cache, repoints the pin and keeps the dataset; the engine then
+    reuses its rows and its EMX cache again."""
+    run_part(tmp_path, "ind_nt2", 30, NT2)
+    project, spec = tmp_path / "ind_nt2", part_spec("ind_nt2", 30)
+    host = FakeSpectreExecutor(tmp_path / "host", snp_fn=rlc_snp)
+    age_store(project, spec, host)
+    old, new = migrate_store.migrate(project, host, dry_run=True).pipelines["em_only"]
+    write_manifest(tmp_path, parts=({"store": "ind_nt2", "pipeline_fingerprint": old},))
+    before = dataset.build(tmp_path, "ind_demo", cache=False)
+    cache = project / ".icopt" / "cache" / "emx:ind"
+    legacy_entries = {p.name for p in cache.iterdir()}
+
+    report = migrate_store.migrate(project, host)
+    assert before.generations == {"ind_nt2": old} and len(before.rows) == 4
+    assert (report.restamped, report.spec_rows, report.pipeline_rows, len(report.cache_moves)) == (4, 4, 4, 4)
+    assert len(legacy_entries) == 4 and not legacy_entries & {p.name for p in cache.iterdir()} and len(list(cache.iterdir())) == 4
+    assert [(m.name, part, o, n) for m, part, o, n in report.pins] == [("library.yaml", "ind_nt2", old, new)]
+    after = dataset.build(tmp_path, "ind_demo", cache=False)
+    assert after.generations == {"ind_nt2": new} and after.excluded == before.excluded
+    assert [asdict(r) for r in after.rows] == [asdict(r) for r in before.rows]
+    assert not migrate_store.migrate(project, host).changed
+
+    points = [Point({k: str(v) for k, v in p.items()}, "grid") for p in NT2]
+    evaluate(spec, points, host, RunStore(project), limits=FAKE_HOST)                   # the same problem: its rows are reused
+    d = spec.model_dump(mode="json")
+    wider = Spec.model_validate({**d, "budget": {"max_simulations": 100},
+                                 "metrics": [*d["metrics"], {"name": "Q", "unit": "1", "device": "ind", "quantity": "Qp_peak"}]})
+    fresh = evaluate(wider, points, host, RunStore(project), limits=FAKE_HOST)          # another problem on the same geometry
+    assert host.emx_runs == 0 and [o.cache for o in fresh] == [{"emx:ind": "hit"}] * 4 and all(o.status == "ok" for o in fresh)

@@ -142,6 +142,36 @@ class FakeSpectreExecutor(LocalExecutor):
         return CommandResult(0, "", "", argv, 0.01)
 
 
+def age_store(project: Path, spec: Spec, executor) -> None:
+    """Leave a store as a version before T15.2 would have: the spec's legacy fingerprint, the em_only pipeline's legacy
+    fingerprint (EM specs) and the EMX cache under legacy keys. The legacy formulas are pinned against that code's own
+    values in test_engine and test_em_engine."""
+    import json
+
+    from ic_opt import migrate_store
+    from ic_opt.em import emx
+    from ic_opt.eval.stage import pipeline_fingerprint
+    from ic_opt.stages.em_chain import Emx, em_only_pipeline
+    from ic_opt.store import RunStore
+
+    stamps = {"spec_fingerprint": spec._legacy_fingerprint()}
+    stages = em_only_pipeline(spec) if spec.devices else []
+    if stages:
+        pipeline_fingerprint(stages, executor)                  # resolves the process file digest
+        stamps["pipeline_fingerprint"] = migrate_store.legacy_pipeline_fingerprint(stages)
+    store = RunStore(project)
+    rows = [o.model_copy(update=stamps) for o in store.observations()]
+    store.observations_path.write_text("".join(o.model_dump_json() + "\n" for o in rows), encoding="utf-8")
+    for stage in [s for s in stages if isinstance(s, Emx)]:
+        for geometry in sorted((store.root / "sims").glob("*/em/geometry.json")):
+            g = json.loads(geometry.read_text(encoding="utf-8"))[stage.device]
+            key = {"gds_sha256": g["gds_sha256"], "proc_sha256": stage.proc_sha256,
+                   "ports": emx.numbered_ports(g["snp_order"], {p["signal"]: p["reference"] for p in g["ports"]})}
+            entry = store.root / "cache" / stage.name / emx.fingerprint(stage.em, **key)
+            if entry.exists():
+                entry.rename(entry.with_name(migrate_store.legacy_emx_cache_key(stage.em, **key)))
+
+
 def _call(fn, *args, cwd: str):
     """Call a test hook with ``cwd`` only when it takes it (replay hooks do; the simple metric functions do not)."""
     import inspect

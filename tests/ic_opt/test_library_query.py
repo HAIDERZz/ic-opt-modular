@@ -7,6 +7,7 @@ import json
 import multiprocessing
 import shutil
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -14,10 +15,13 @@ import pytest
 from threadpoolctl import threadpool_limits
 from typer.testing import CliRunner
 
+from ic_opt import migrate_store
 from ic_opt.cli import app
-from ic_opt.library import gp
+from ic_opt.library import dataset, gp
 from ic_opt.library import query as q
-from tests.ic_opt.library_fixtures import STOP_GHZ, build_library, params, truth
+from ic_opt.spec import load_spec
+from tests.ic_opt.fakes import FakeSpectreExecutor, age_store
+from tests.ic_opt.library_fixtures import STOP_GHZ, build_library, build_xfm_library, params, truth
 
 
 @pytest.fixture(scope="module")
@@ -233,3 +237,54 @@ def test_call_on_a_library_root_prints_json(library):
     assert cov.exit_code == 0 and json.loads(cov.output)["rows"] == 105
     bad = runner.invoke(app, ["call", "lib.coverage", str(library), "stratum=nope"])
     assert bad.exit_code == 2 and "no stratum 'nope'" in bad.output
+
+
+def tree(root: Path) -> dict[str, bytes]:
+    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+
+
+@pytest.mark.parametrize("build", [build_library, build_xfm_library], ids=["ind", "xfm"])
+def test_migrate_store_keeps_each_library_part_one_generation(tmp_path, build):
+    """T15.2 / C2 on the synthetic libraries stamped the pre-T15.2 way: after migrating every part, lib.load reports the same
+    generations (renamed one to one) and the datasets the same rows; --dry-run writes nothing, a second run changes nothing."""
+    root = build(tmp_path / "lib")
+    host = FakeSpectreExecutor(tmp_path / "host")                                   # hashes every process file to one content
+    parts = sorted(p.parent.parent for p in root.glob("*/.icopt/observations.jsonl"))
+    for part in parts:
+        age_store(part, load_spec(part / "spec.yaml"), host)
+    before = q.load(q.Library(root))
+    rows = {name: [asdict(r) for r in dataset.build(root, name, cache=False).rows] for name in before}
+
+    files = tree(root)
+    dry = [migrate_store.migrate(part, host, dry_run=True) for part in parts]
+    assert tree(root) == files and all(d.restamped == d.rows == d.spec_rows == d.pipeline_rows > 0 for d in dry)
+
+    renamed = {old: new for part in parts for old, new in migrate_store.migrate(part, host).pipelines.values()}
+    after = q.load(q.Library(root))
+    for name, b in before.items():
+        assert len(set(b["generations"].values())) == 1 and after[name]["generations"] == {p: renamed[g] for p, g in b["generations"].items()}
+        assert {k: v for k, v in after[name].items() if k not in ("generations", "cache")} == {k: v for k, v in b.items() if k not in ("generations", "cache")}
+        assert [asdict(r) for r in dataset.build(root, name, cache=False).rows] == rows[name]
+    files = tree(root)
+    assert not any(migrate_store.migrate(part, host).changed for part in parts) and tree(root) == files
+
+
+def test_migrate_store_keeps_the_library_caches(tmp_path, monkeypatch):
+    """The dataset key is what the rows are, not how they are stamped: after migrating every part each .cache file keeps
+    its name, the dataset is a cache hit that reports the new generations, and the model loads instead of refitting."""
+    root = build_library(tmp_path / "lib")
+    host = FakeSpectreExecutor(tmp_path / "host")
+    parts = sorted(p.parent.parent for p in root.glob("*/.icopt/observations.jsonl"))
+    for part in parts:
+        age_store(part, load_spec(part / "spec.yaml"), host)
+    q.Library(root).model("ind_demo", "Lp_lf")                            # dataset, calibration and model cached, old stamps
+    caches = sorted(p.name for p in (root / ".cache").iterdir())
+    assert any(c.startswith("dataset-ind_demo-") for c in caches) and any(c.startswith("model-ind_demo-Lp_lf-") for c in caches)
+
+    renamed = {old: new for part in parts for old, new in migrate_store.migrate(part, host).pipelines.values()}
+    fits = count_fits(monkeypatch)
+    lib = q.Library(root)
+    lib.model("ind_demo", "Lp_lf")
+    ds = lib.dataset("ind_demo")
+    assert fits == [] and sorted(p.name for p in (root / ".cache").iterdir()) == caches
+    assert ds.cache == "hit" and set(ds.generations.values()) == set(renamed.values())

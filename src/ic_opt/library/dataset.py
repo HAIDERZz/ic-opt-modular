@@ -11,8 +11,10 @@ None in that column only. Each row also carries the integrity evidence ``check``
 singular value of S over frequency (passivity) and whether the stored quantities.json reproduces under
 the definition the run measured with (the part spec's).
 
-Built datasets are cached under ``<library>/.cache/`` keyed by the observation files, the quantity
-definitions and the measure code, so a query does not re-read thousands of sNp files.
+Built datasets are cached under ``<library>/.cache/`` keyed by what they are made of -- the rows each part
+keeps and leaves out, the parts' devices, the quantity definitions and the measure code -- so a query does not
+re-read thousands of sNp files. The key ignores how the rows are stamped: restamping their fingerprints
+(``ic-opt migrate-store``) keeps it, and with it the calibration and model caches built on it.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ import numpy as np
 from ic_opt.em import measure, touchstone
 from ic_opt.library import manifest
 from ic_opt.observation import Observation
-from ic_opt.spec import Spec
+from ic_opt.spec import Device, Spec
 
 DATASET_VERSION = 3                                  # 2: anchored curves of a coupled pair stop below the system SRF; 3: so do peaks
 UNBANDED = ("Lp_lf", "Lp_res", "SRF_p", "Ls_lf", "Ls_res", "SRF_s", "k_lf")     # compared with the stored quantities.json
@@ -90,45 +92,24 @@ def build(root: str | Path, name: str, *, library: manifest.Library | None = Non
     if name not in lib.strata:
         raise DatasetError(f"no stratum {name!r} in {root / manifest.MANIFEST}; have {sorted(lib.strata)}")
     stratum = lib.strata[name]
-    obs_files = []
-    for part in stratum.parts:
-        path = root / part.store / ".icopt" / "observations.jsonl"
-        if not path.is_file():
-            raise DatasetError(f"{name}: part {part.store} has no observations ({path})")
-        obs_files.append(path)
-    key = _cache_key(stratum, obs_files)
+    parts = [_select(root, name, part) for part in stratum.parts]
+    generations = {p.store: p.generation for p in parts if p.generation is not None}
+    key = _cache_key(stratum, parts)
     cached = root / ".cache" / f"dataset-{name}-{key}.json"
     if cache and cached.is_file():
-        return _load(cached, stratum, name, "hit", key)
+        return _load(cached, stratum, name, "hit", key, generations)
 
     columns = stratum.columns()
     rows: list[Row] = []
-    generations: dict[str, str] = {}
     excluded: collections.Counter[str] = collections.Counter()
-    for part, path in zip(stratum.parts, obs_files):
-        project = root / part.store
-        spec = _spec(project)
-        if len(spec.devices) != 1:
-            raise DatasetError(f"{name}: part {part.store} has {len(spec.devices)} devices; a library store holds one")
-        device = spec.devices[0]
-        observations = [Observation.model_validate_json(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        ok = [o for o in observations if o.status == "ok"]
-        for o in observations:
-            if o.status != "ok":
-                excluded[f"status:{o.status}"] += 1
-        generation = part.pipeline_fingerprint or _most_common(o.pipeline_fingerprint for o in ok)
-        if generation is None:
-            continue
-        generations[part.store] = generation
-        for o in ok:
-            if o.pipeline_fingerprint != generation:
-                excluded["other generation"] += 1
-                continue
+    for p in parts:
+        excluded.update(p.excluded)
+        for o in p.kept:
             missing = [d for d in stratum.dims if d not in o.params]
             if missing:
-                raise DatasetError(f"{name}: {part.store}/{o.obs_id} lacks the dims {missing}")
+                raise DatasetError(f"{name}: {p.store}/{o.obs_id} lacks the dims {missing}")
             try:
-                rows.append(_row(root, project, part.store, device, o, stratum))
+                rows.append(_row(root, p.project, p.store, p.device, o, stratum))
             except (measure.MeasureError, touchstone.TouchstoneError, OSError) as exc:
                 excluded[f"measure: {type(exc).__name__}"] += 1
     ds = Dataset(name, list(stratum.dims), stratum.nt_dim, columns, rows, generations, dict(excluded), "miss" if cache else "off", key)
@@ -162,6 +143,37 @@ def check(ds: Dataset) -> dict:
 
 
 # -- internals ------------------------------------------------------------------------------------------------------------
+
+@dataclass
+class _Part:
+    """One part's share of a stratum, before any sNp is read: its device, the generation it uses and the rows that
+    generation keeps (ok, in file order), and what it leaves out (non-ok statuses, other generations)."""
+
+    store: str
+    project: Path
+    device: Device
+    generation: str | None
+    kept: list[Observation]
+    excluded: collections.Counter[str]
+
+
+def _select(root: Path, name: str, part: manifest.Part) -> _Part:
+    project = root / part.store
+    path = project / ".icopt" / "observations.jsonl"
+    if not path.is_file():
+        raise DatasetError(f"{name}: part {part.store} has no observations ({path})")
+    spec = _spec(project)
+    if len(spec.devices) != 1:
+        raise DatasetError(f"{name}: part {part.store} has {len(spec.devices)} devices; a library store holds one")
+    observations = [Observation.model_validate_json(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    ok = [o for o in observations if o.status == "ok"]
+    excluded = collections.Counter(f"status:{o.status}" for o in observations if o.status != "ok")
+    generation = part.pipeline_fingerprint or _most_common(o.pipeline_fingerprint for o in ok)
+    kept = [o for o in ok if o.pipeline_fingerprint == generation] if generation is not None else []
+    if generation is not None and len(kept) < len(ok):
+        excluded["other generation"] += len(ok) - len(kept)
+    return _Part(part.store, project, spec.devices[0], generation, kept, excluded)
+
 
 def _spec(project: Path) -> Spec:
     for path in (project / "spec.yaml", project / ".icopt" / "spec.json"):
@@ -247,18 +259,24 @@ def _drive_srf(q: measure.Quantities, curve: str) -> float | None:
     return q.scalars.get("SRF")
 
 
-def _cache_key(stratum: manifest.Stratum, obs_files: list[Path]) -> str:
+def _cache_key(stratum: manifest.Stratum, parts: list[_Part]) -> str:
+    """What the dataset is made of, not how its rows are stamped: the stratum's definition (a pinned generation counts
+    through the rows it keeps), the measure code, and per part its device (id, ports, topology: where the sNp is and how
+    it is measured), the rows it keeps (obs id, params, status) and what it leaves out. A restamp that keeps the same
+    rows in the same generation (``ic-opt migrate-store``) keeps the key, and with it the calibration and model caches."""
     h = hashlib.sha256()
     h.update(f"v{DATASET_VERSION}".encode())
-    h.update(stratum.model_dump_json().encode())
+    h.update(stratum.model_dump_json(exclude={"parts": {"__all__": {"pipeline_fingerprint"}}}).encode())
     h.update(hashlib.sha256(inspect.getsource(measure).encode()).digest())
-    for path in obs_files:
-        h.update(str(path).encode())
-        h.update(hashlib.sha256(path.read_bytes()).digest())
+    for p in parts:
+        content = {"store": p.store, "device": p.device.model_dump(mode="json", include={"id", "ports", "topology"}),
+                   "rows": [[o.obs_id, o.params, o.status] for o in p.kept], "excluded": dict(p.excluded)}
+        h.update(json.dumps(content, sort_keys=True, separators=(",", ":")).encode())
     return h.hexdigest()[:20]
 
 
-def _load(path: Path, stratum: manifest.Stratum, name: str, how: str, key: str) -> Dataset:
+def _load(path: Path, stratum: manifest.Stratum, name: str, how: str, key: str, generations: dict[str, str]) -> Dataset:
+    """A cached dataset; the generations come from the observations as they are now (a restamp keeps the key)."""
     data = json.loads(path.read_text(encoding="utf-8"))
     rows = [Row(**r) for r in data["rows"]]
-    return Dataset(name, list(stratum.dims), stratum.nt_dim, stratum.columns(), rows, data["generations"], data["excluded"], how, key)
+    return Dataset(name, list(stratum.dims), stratum.nt_dim, stratum.columns(), rows, generations, data["excluded"], how, key)

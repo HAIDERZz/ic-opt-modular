@@ -11,6 +11,12 @@ by the same point-level output. The engine chains stages, gives each a
 A point-level stage whose ``fingerprint(inp)`` is not None is cached by the
 engine under ``.icopt/cache/<name>/<fingerprint>/`` through its ``save(out,
 dir)`` / ``load(dir)`` pair.
+
+A stage's ``identity`` (optional) names the settings that change its answer;
+the pipeline fingerprint hashes the stages' names and identities, and an
+observation is only reused under the same one. A stage whose identity lives on
+the simulation host (EMX: the process file's content) also has
+``resolve_identity(executor)``, which ``pipeline_fingerprint`` calls first.
 """
 
 from __future__ import annotations
@@ -72,12 +78,20 @@ class Stage(Protocol):
     # cacheable point-level stages also implement:
     #   def save(self, out: Any, directory: Path) -> None      persist the output under ``directory``
     #   def load(self, directory: Path, inp: Any, ctx: StageContext) -> Any   rebuild the output from ``directory`` (+ the input)
+    # optional: ``identity: str`` (what changes the answer, in the pipeline fingerprint) and, when that lives on the host,
+    #   def resolve_identity(self, executor: Executor) -> None   fetch it once; ``identity`` is fixed from then on
 
     def run(self, inp: Any, ctx: StageContext) -> Any: ...
 
 
-def pipeline_fingerprint(stages: list[Stage]) -> str:
-    """Stage names plus each stage's ``identity`` (settings that change its answer, e.g. EMX physics + process file)."""
+def pipeline_fingerprint(stages: list[Stage], executor: Executor | None = None) -> str:
+    """Stage names plus each stage's ``identity`` (settings that change its answer, e.g. EMX physics + the process file's
+    content). With ``executor``, stages whose identity lives on the simulation host resolve it there first, once."""
     import hashlib
 
+    if executor is not None:
+        for stage in stages:
+            resolve = getattr(stage, "resolve_identity", None)
+            if resolve is not None:
+                resolve(executor)
     return hashlib.sha256("|".join(f"{s.name}:{getattr(s, 'identity', '')}" for s in stages).encode()).hexdigest()[:16]

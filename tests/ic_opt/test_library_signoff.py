@@ -82,3 +82,22 @@ def test_lib_signoff_resource_overrides_reach_emx_but_not_the_generation(tmp_pat
     assert fingerprints[0] == fingerprints[1]                                    # threads / memory are not physics
     assert "--parallel=1" in commands[0] and "--max-memory=4G" in commands[0]
     assert "--parallel=2" in commands[1] and "--max-memory=6G" in commands[1]
+
+
+def test_lib_signoff_process_file_reaches_emx_and_the_generation_follows_its_content(tmp_path):
+    lib_root = build_library(tmp_path / "lib")
+    (tmp_path / "cand.json").write_text(json.dumps([{"outer_diameter_um": 155, "width_um": 4.5, "spacing_um": 2.5, "turns": 2}]), encoding="utf-8")
+    main = load_recipe("lib_signoff")
+    fingerprints, commands = [], []
+    for name, extra in (("here", {}), ("there", {"process_file": "/mnt/lab/demo_copy.proc"})):
+        run, _ = make_run(tmp_path, name)
+        main(run, library=str(lib_root), candidates=str(tmp_path / "cand.json"), stratum="ind_demo", **extra)
+        (o,) = run.store.observations()
+        fingerprints.append(o.pipeline_fingerprint)
+        commands.append((run.store.root / "sims" / o.obs_id / "em" / "ind" / "emx.cmd").read_text())
+    assert " ind.gds ind /site/demo.proc " in commands[0] and " ind.gds ind /mnt/lab/demo_copy.proc " in commands[1]
+    assert fingerprints[0] == fingerprints[1]                  # the fake host holds the same content under both paths
+    run, ex = make_run(tmp_path, "relative")
+    with pytest.raises(ValueError, match="absolute"):
+        main(run, library=str(lib_root), candidates=str(tmp_path / "cand.json"), stratum="ind_demo", process_file="demo.proc")
+    assert ex.emx_runs == 0

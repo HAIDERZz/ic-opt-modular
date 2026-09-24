@@ -2,13 +2,16 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
+from ic_opt import migrate_store
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
 from ic_opt.eval.engine import BudgetExceeded
 from ic_opt.observation import ChildResult
 from ic_opt.sim.corner import aggregate
 from ic_opt.space import Point
+from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec, minimal_spec
 
@@ -142,3 +145,104 @@ def test_retention_drops_psf_of_failed_runs_when_configured(tmp_path):
     assert obs[0].status == "failed:extract" and obs[1].status == "ok"
     assert not Path(tmp_path, obs[0].children["tb/nominal"].sim_dir, "psf").exists()
     assert Path(tmp_path, obs[1].children["tb/nominal"].sim_dir, "psf").exists()
+
+
+# -- identity (T15.2): the problem, not the machine it runs on ----------------------------------------------------------
+
+GOLDEN = {                 # every field spelled out: the pinned fingerprints below belong to exactly this spec
+    "project": "golden",
+    "testbenches": [{"id": "tb", "maestro_point_root": "/x", "virtuoso_library": "lib", "cell": "c", "test_name": "t"}],
+    "variables": [{"name": "F", "kind": "integer", "lower": "20", "upper": "30", "step": "2"}],
+    "metrics": [{"name": "NF", "unit": "dB", "expression": "nf()"}],
+    "constraints": [{"metric": "NF", "op": "lt", "value": "9"}],
+    "objective": {"direction": "minimize", "expression": "NF"},
+    "simulator": {"parallel_jobs": 10, "threads_per_run": 8, "timeout_s": 600},
+    "budget": {"max_simulations": 100},
+}
+
+
+def golden(**changes) -> Spec:
+    return Spec.model_validate({**GOLDEN, **changes})
+
+
+def restamp(store: RunStore, **stamps: str) -> None:
+    """Rewrite every observation with these fingerprints (as an older version would have stamped them)."""
+    rows = [o.model_copy(update=stamps) for o in store.observations()]
+    store.observations_path.write_text("".join(o.model_dump_json() + "\n" for o in rows), encoding="utf-8")
+
+
+def test_spec_fingerprint_is_the_problem_not_the_machine():
+    base, sim = golden(), GOLDEN["simulator"]
+    for how in ({"simulator": {**sim, "parallel_jobs": 4}},                        # the audit's 10 -> 4 on a smaller machine
+                {"simulator": {**sim, "threads_per_run": 2, "timeout_s": 7200, "license_check": False,
+                               "keep_failed_runs": False, "keep_successful_runs": False}},
+                {"budget": {"max_simulations": 5000}}):
+        assert golden(**how).fingerprint() == base.fingerprint(), how
+        assert golden(**how)._legacy_fingerprint() != base._legacy_fingerprint()     # the old formula counted them
+    for what in ({"variables": [{**GOLDEN["variables"][0], "upper": "40"}]},
+                 {"metrics": [{"name": "NF", "unit": "dB", "expression": "nf(1)"}]},
+                 {"objective": {"direction": "maximize", "expression": "NF"}},
+                 {"simulator": {**sim, "preset": "mx"}}):
+        assert golden(**what).fingerprint() != base.fingerprint(), what
+    assert "budget" not in base.problem() and base.problem()["simulator"] == {"preset": "ax", "engine": "spectre_x", "output_format": "psfxl"}
+
+
+def test_fingerprints_are_pinned():
+    """Stored stamps must keep matching. The legacy value is what versions before T15.2 wrote for this spec (computed with
+    that code): if it moves, a field added to the schema reached the dump -- keep it out while unset (``Topology._dump``).
+    If the new value moves, stores stamped since T15.2 lose their identity: keep run controls out of Spec.problem() and
+    give new fields a None default (``problem()`` leaves unset fields out)."""
+    assert golden()._legacy_fingerprint() == "87ca2259471db3ad"
+    assert golden().fingerprint() == "15d08ed68b2dfd7c"
+
+
+def test_observations_stamped_with_the_legacy_fingerprint_are_reused(tmp_path):
+    spec = make_spec()
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 8.0})
+    deck = deck_for(spec)
+    p1, p2, p3 = (Point({"F": str(f), "W": "0.6u"}, "user") for f in (20, 22, 24))
+    evaluate(spec, [p1, p2], ex, store, deck=deck, limits=FAKE_HOST)
+    restamp(store, spec_fingerprint=spec._legacy_fingerprint())                       # a store from before T15.2
+
+    again = evaluate(spec, [p1, p2, p3], ex, RunStore(tmp_path), deck=deck, limits=FAKE_HOST)
+    assert sum(c.startswith("spectre") for c in ex.commands) == 3                       # p1, p2 reused; p3 simulated
+    assert [o.spec_fingerprint for o in again] == [spec._legacy_fingerprint()] * 2 + [spec.fingerprint()]
+
+    smaller = make_spec(simulator={**minimal_spec()["simulator"], "parallel_jobs": 1})    # the project moved to a smaller machine
+    evaluate(smaller, [p3], ex, RunStore(tmp_path), deck=deck, limits=FAKE_HOST)
+    assert sum(c.startswith("spectre") for c in ex.commands) == 3
+    wider = make_spec(variables=[minimal_spec()["variables"][0],
+                                 {"name": "W", "kind": "continuous_step", "lower": "0.6u", "upper": "2u", "step": "0.2u"}])
+    evaluate(wider, [p3], ex, RunStore(tmp_path), deck=deck, limits=FAKE_HOST)          # another problem: simulated again
+    assert sum(c.startswith("spectre") for c in ex.commands) == 4
+
+
+def test_migrate_store_restamps_a_project_once_and_nothing_else(tmp_path):
+    spec = make_spec()
+    (tmp_path / "spec.yaml").write_text(yaml.safe_dump(spec.model_dump(mode="json")), encoding="utf-8")
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 8.0})
+    points = [Point({"F": str(f), "W": "0.6u"}, "user") for f in (20, 22)]
+    evaluate(spec, points, ex, store, deck=deck_for(spec), limits=FAKE_HOST)
+    legacy = spec._legacy_fingerprint()
+    restamp(store, spec_fingerprint=legacy)
+    first, second = store.observations_path.read_text(encoding="utf-8").splitlines()
+    foreign = store.observations()[0].model_copy(update={"obs_id": "obs_0003", "spec_fingerprint": "0123456789abcdef"})
+    store.observations_path.write_text(f"{first}\n{json.dumps(json.loads(second))}\n\n{foreign.model_dump_json()}\n",   # spaced, blank,
+                                       encoding="utf-8")                                                                # another problem
+    before = store.observations_path.read_bytes()
+
+    dry = migrate_store.migrate(tmp_path, dry_run=True)
+    assert (dry.rows, dry.restamped, dry.spec_rows, dict(dry.other_specs)) == (3, 2, 2, {"0123456789abcdef": 1})
+    assert store.observations_path.read_bytes() == before and not list(store.root.glob("observations.jsonl.bak-*"))
+    assert "dry run: nothing written" in str(dry) and f"{legacy} -> {spec.fingerprint()}: 2 rows restamped" in str(dry)
+
+    done = migrate_store.migrate(tmp_path)
+    assert done.restamped == 2 and done.pipelines == {} and done.backup.read_bytes() == before
+    assert store.observations_path.read_bytes() == before.replace(legacy.encode(), spec.fingerprint().encode())   # byte for byte
+    again = migrate_store.migrate(tmp_path)
+    assert not again.changed and "nothing to change" in str(again) and len(list(store.root.glob("observations.jsonl.bak-*"))) == 1
+
+    evaluate(spec, points, ex, RunStore(tmp_path), deck=deck_for(spec), limits=FAKE_HOST)   # the restamped rows are reused
+    assert sum(c.startswith("spectre") for c in ex.commands) == 2

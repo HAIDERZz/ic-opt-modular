@@ -11,11 +11,15 @@ import hashlib
 import json
 import shlex
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ic_opt.em.pcell.base import EmxPort
 from ic_opt.em.touchstone import format_number, header_issues
 from ic_opt.eval.stage import StageContext, StageFailure
 from ic_opt.spec import EmGrid, EmSettings, EmSweep
+
+if TYPE_CHECKING:
+    from ic_opt.executor import Executor
 
 
 def numbered_ports(labels: list[str], references: dict[str, str | None]) -> list[EmxPort]:
@@ -69,21 +73,28 @@ def argv(em: EmSettings, *, gds_file: str, top_cell: str, s_file: str, log_file:
     return [*out, gds_file, top_cell, em.process_file, *positional]
 
 
-def physics_key(em: EmSettings) -> dict:
-    """The settings that change EMX's answer — not threads, memory, timeout or verbosity."""
-    return em.model_dump(mode="json", exclude={"threads", "memory_gb", "timeout_s", "verbose", "binary"})
+_MACHINE_FIELDS = frozenset({"threads", "memory_gb", "timeout_s", "verbose", "binary", "process_file"})   # facts of the host
 
 
-def process_file_digest(em: EmSettings, ctx: StageContext) -> str:
-    """sha256 of the process file on the executor host (the cache key must see rule changes, not just the path)."""
-    result = ctx.executor.run(f"sha256sum {shlex.quote(em.process_file)}", timeout_s=120)
-    if not result.ok:
-        raise StageFailure(f"emx process file unreadable on {ctx.executor.host}: {em.process_file}", result.stderr.strip())
-    return result.stdout.split()[0]
+def physics_key(em: EmSettings, *, proc_sha256: str) -> dict:
+    """What changes EMX's answer: the physics settings and the process file's content (``proc_sha256``, its sha256 on the
+    executor host) -- not the file's path, the binary, threads, memory, timeout or verbosity, which belong to the machine.
+    Unset (None) settings are left out, so an optional setting added later leaves existing generations alone."""
+    return {**em.model_dump(mode="json", exclude=_MACHINE_FIELDS, exclude_none=True), "proc_sha256": proc_sha256}
+
+
+def process_file_digest(em: EmSettings, executor: Executor) -> str:
+    """sha256 of the process file on the executor host: identities and cache keys see its content, never its path."""
+    result = executor.run(f"sha256sum {shlex.quote(em.process_file)}", timeout_s=120)
+    digest = result.stdout.split()[:1]
+    if not result.ok or not digest:
+        raise StageFailure(f"emx process file unreadable on {executor.host}: {em.process_file}", result.stderr.strip())
+    return digest[0]
 
 
 def fingerprint(em: EmSettings, *, gds_sha256: str, ports: list[EmxPort], proc_sha256: str) -> str:
-    payload = {"gds": gds_sha256, "ports": [p.argument() for p in ports], "em": physics_key(em), "proc": proc_sha256}
+    """The EMX cache key: GDS, ports and ``physics_key`` -- the process file by content, as in the stage's identity."""
+    payload = {"gds": gds_sha256, "ports": [p.argument() for p in ports], "em": physics_key(em, proc_sha256=proc_sha256)}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:24]
 
 

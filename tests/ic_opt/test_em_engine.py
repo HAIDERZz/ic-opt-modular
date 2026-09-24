@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from ic_opt import migrate_store
+from ic_opt.em import emx
 from ic_opt.eval import engine
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
 from ic_opt.executor import LocalExecutor
@@ -15,6 +17,8 @@ from ic_opt.observation import ChildResult
 from ic_opt.site import EnvelopeError, HostLimits
 from ic_opt.space import Point
 from ic_opt.spec import Spec
+from ic_opt.stages.em_chain import Measure as EmMeasure
+from ic_opt.stages.em_chain import emx_stages
 from ic_opt.store import RunStore
 from tests.ic_opt.fakes import FAKE_HOST, minimal_spec
 
@@ -264,3 +268,43 @@ def test_default_topology_and_em_settings():
     assert four.device("d").topology.drives == [("P1", "N1"), ("N2", "P2")] and four.device("d").topology.grounded == ["CTP"]
     assert four.em.threads == 4 and four.em.memory_gb == 32.0 and four.em.simultaneous_frequencies == 0 and four.em.accuracy == "standard"
     assert four.fingerprint() != spec.fingerprint()
+
+
+GOLDEN_EM = {              # every field spelled out: the pinned fingerprints below belong to exactly this spec
+    "project": "golden_em",
+    "devices": [{"id": "ind", "generator": "clean_port_ind_sym", "profile": "demo_6m", "ports": ["P1", "N1"],
+                 "fixed": {"opening_um": 8.0, "lead_length_um": 20.0, "metal": "6"}, "variables": {"outer_diameter_um": "outer_diameter_um"}}],
+    "em": {"process_file": "/site/demo.proc", "mode": "full_wave", "frequencies": {"start_hz": 0, "stop_hz": 6e10, "step_hz": 1e9},
+           "three_d_metals": ["M6", "M5"], "threads": 4, "memory_gb": 16, "timeout_s": 3600},
+    "variables": [{"name": "outer_diameter_um", "kind": "continuous_step", "lower": "80", "upper": "160", "step": "1"}],
+    "metrics": [{"name": "L", "unit": "H", "device": "ind", "quantity": "Lp_lf"}],
+    "objective": {"direction": "maximize", "expression": "L"},
+    "simulator": {"parallel_jobs": 4, "threads_per_run": 1, "timeout_s": 600},
+    "budget": {"max_simulations": 100},
+}
+
+
+def test_emx_resources_are_not_part_of_the_problem():
+    base, em = Spec.model_validate(GOLDEN_EM), GOLDEN_EM["em"]
+    for how in ({"threads": 16}, {"memory_gb": 200}, {"timeout_s": 60}, {"verbose": None}):
+        assert Spec.model_validate({**GOLDEN_EM, "em": {**em, **how}}).fingerprint() == base.fingerprint(), how
+    for what in ({"three_d_metals": ["M6"]}, {"accuracy": "high"}, {"frequencies": {**em["frequencies"], "stop_hz": 8e10}}):
+        assert Spec.model_validate({**GOLDEN_EM, "em": {**em, **what}}).fingerprint() != base.fingerprint(), what
+    assert "em" in base.problem() and not {"threads", "memory_gb", "timeout_s", "verbose"} & set(base.problem()["em"])
+    # pinned (see test_engine.test_fingerprints_are_pinned): the legacy value is what the code before T15.2 wrote
+    assert base._legacy_fingerprint() == "db88575a8bf11aa2" and base.fingerprint() == "2fa0e0d7de366bf2"
+
+
+def test_the_legacy_emx_identities_reproduce_what_the_old_code_stamped():
+    """migrate-store recognises pre-T15.2 stamps with these frozen formulas; the values were computed by that code. If they
+    move, a field added to EmSettings reached the dump: keep it out while unset (as ``Topology._dump`` does)."""
+    spec = Spec.model_validate(GOLDEN_EM)
+    assert migrate_store.legacy_emx_identity(spec.em) == (
+        '{"accuracy":"standard","extra_args":[],"frequencies":{"num_steps":null,"start_hz":0.0,"step_hz":1000000000.0,'
+        '"stop_hz":60000000000.0},"mode":"full_wave","modes":[],"process_file":"/site/demo.proc","s_impedance":50.0,'
+        '"simultaneous_frequencies":0,"three_d_metals":["M6","M5"],"via_inductance":[],"via_separation_um":null,"via_sidewalls":[]}')
+    assert migrate_store.legacy_pipeline_fingerprint([*emx_stages(spec), EmMeasure()]) == "400ef5c50050138b"
+    ports = emx.numbered_ports(["P1", "N1"], {"P1": "G01", "N1": "G02"})
+    key = {"gds_sha256": "g" * 64, "ports": ports, "proc_sha256": "p" * 64}
+    assert migrate_store.legacy_emx_cache_key(spec.em, **key) == "45305ad609148c03175e6f28"
+    assert emx.fingerprint(spec.em, **key) == "d5165498e1c35f69953b46d2"                # and the new key, pinned too

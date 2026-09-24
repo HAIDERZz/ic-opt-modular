@@ -242,6 +242,26 @@ def test_migrate_writes_the_old_emx_resources_and_names_them_for_review(tmp_path
     assert load_spec(new / "spec.yaml").simulator.parallel_jobs == 2                       # min(Spectre 8, EMX max_parallel_jobs 2)
 
 
+def test_migrate_store_command_then_continue_on_a_smaller_machine(tmp_path):
+    run = fake_run(project(tmp_path))
+    optimize.main(run, strategy="random", budget=3, batch=3, seed=1)
+    legacy, new = run.spec._legacy_fingerprint(), run.spec.fingerprint()
+    rows = [o.model_copy(update={"spec_fingerprint": legacy}) for o in run.store.observations()]
+    run.store.observations_path.write_text("".join(o.model_dump_json() + "\n" for o in rows))     # a project from before T15.2
+
+    dry = runner.invoke(app, ["migrate-store", str(run.project), "--dry-run"])
+    assert dry.exit_code == 0 and f"{legacy} -> {new}: 3 rows restamped" in dry.output and "dry run: nothing written" in dry.output
+    done = runner.invoke(app, ["migrate-store", str(run.project)])
+    assert done.exit_code == 0 and "done: 3 rows restamped" in done.output
+    assert "nothing to change" in runner.invoke(app, ["migrate-store", str(run.project)]).output
+    assert runner.invoke(app, ["migrate-store", str(tmp_path / "nowhere")]).exit_code == 2
+
+    later = fake_run(run.project)
+    later.spec.simulator.parallel_jobs = 1                      # continued on a smaller machine, with a bigger budget
+    optimize.main(later, strategy="random", budget=5, batch=2, seed=1)
+    assert len(later.store.observations()) == 5                 # the 3 migrated rows count: only 2 more ran
+
+
 # -- 0.1 shim -----------------------------------------------------------------------
 
 

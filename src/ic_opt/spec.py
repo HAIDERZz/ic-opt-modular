@@ -482,14 +482,42 @@ class Spec(Model):
     def metrics_for(self, tb_id: str) -> list[Metric]:
         return [m for m in self.metrics if m.expression is not None and m.testbench == tb_id]
 
+    def problem(self) -> dict:
+        """The problem this spec states: ``model_dump(mode="json")`` without how it is run -- the simulator's parallel jobs,
+        threads per run, timeout, license check and retention, EMX threads, memory cap, timeout and verbosity, and the
+        budget. Unset (None) fields are left out too, so an optional field added to the schema later leaves every
+        existing problem's identity alone."""
+        return self.model_dump(mode="json", exclude=_NOT_PROBLEM, exclude_none=True)
+
     def fingerprint(self) -> str:
-        payload = json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(payload.encode()).hexdigest()[:16]
+        """The problem's identity, a hash of ``problem()``: observations are reused and counted per problem, so a project
+        moved to a smaller machine or given a bigger budget keeps its history."""
+        return _digest(self.problem())
+
+    def _legacy_fingerprint(self) -> str:
+        """The identity versions before T15.2 stamped: a hash of the whole spec, resources and budget included. The engine
+        still takes it as this problem until ``ic-opt migrate-store`` restamps the observations. Frozen: it must keep
+        reproducing those stamps, so a field added to the schema stays out of the dump while unset (``Topology._dump``)."""
+        return _digest(self.model_dump(mode="json"))
 
 
 def _unique(values: list[str], label: str) -> None:
     if len(values) != len(set(values)):
         raise ValueError(f"{label} must be unique")
+
+
+# -- identity -------------------------------------------------------------------------
+
+# How a problem is run, not which problem it is: left out of Spec.problem() and so of Spec.fingerprint().
+_NOT_PROBLEM = {
+    "simulator": {"parallel_jobs", "threads_per_run", "timeout_s", "license_check", "keep_failed_runs", "keep_successful_runs"},
+    "em": {"threads", "memory_gb", "timeout_s", "verbose"},
+    "budget": True,
+}
+
+
+def _digest(payload: dict) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
 
 
 def load_spec(path: str | Path) -> Spec:

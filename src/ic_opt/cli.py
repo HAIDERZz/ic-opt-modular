@@ -6,6 +6,7 @@
     ic-opt blocks | ic-opt describe sim.evaluate
     ic-opt doctor PROJECT
     ic-opt migrate OLD_PROJECT NEW_PROJECT
+    ic-opt migrate-store PROJECT [--dry-run]       restamp observations with identities free of machine facts
     ic-opt call points.sobol PROJECT n=12 seed=3   call one block by name (JSON-ish key=value args)
 """
 
@@ -144,6 +145,26 @@ def migrate(old_project: Path, new_project: Path) -> None:
     (new_project / "MIGRATION.md").write_text(note, encoding="utf-8")
     typer.echo(f"wrote {new_project / 'spec.yaml'} and MIGRATION.md")
     typer.echo(note)
+
+
+@app.command("migrate-store")
+def migrate_store(
+    project: Annotated[Path, typer.Argument(help="project or library part directory (holds .icopt/observations.jsonl)")],
+    ssh_profile: Annotated[str | None, typer.Option("--ssh-profile", help="hash the EMX process file on this OpenSSH host")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="report what would change; write nothing")] = False,
+) -> None:
+    """Restamp a store's observations with identities free of machine facts: the spec fingerprint without resources and
+    budget, the EMX process file by content. Backs up observations.jsonl first; a second run changes nothing."""
+    from ic_opt import migrate_store as migrate_store_module
+    from ic_opt.eval.stage import StageFailure
+    from ic_opt.executor import SshExecutor
+
+    try:
+        executor = SshExecutor(ssh_profile, f"~/.ic-opt/scratch/{project.resolve().name}") if ssh_profile else None
+        typer.echo(str(migrate_store_module.migrate(project, executor, dry_run=dry_run)))
+    except (OSError, ValueError, RuntimeError, StageFailure) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
 
 
 @app.command()

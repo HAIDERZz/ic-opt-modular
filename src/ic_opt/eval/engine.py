@@ -1,7 +1,7 @@
 """The evaluation engine: points in, observations out. Knows nothing about Spectre or EMX.
 
 For every point it (1) reuses an existing ``ok`` observation of the same
-spec / pipeline / point / children, (2) checks the simulation budget, (3) runs
+problem / pipeline / point / children, (2) checks the simulation budget, (3) runs
 the point-level stages once (a stage with a fingerprint is served from
 ``.icopt/cache/<stage>/<fingerprint>/`` when it has run before), (4) runs the
 child-level chains — the testbench chain for every testbench × corner, the
@@ -11,6 +11,16 @@ simulation directories. Points run in parallel, capped by the executor host's
 site.yaml entry for the heaviest stage (a stage bigger than the whole entry is
 refused before anything starts); a point's children run serially, like the
 legacy flow.
+
+Identity. The problem is ``Spec.fingerprint()``: the spec without how it is run
+(resources, timeouts, retention, license check, budget), so a project moved to
+a smaller machine or given a bigger budget keeps reusing its observations. An
+observation stamped with the spec's pre-T15.2 fingerprint
+(``Spec._legacy_fingerprint()``, which hashed those too) counts as the same
+problem until ``ic-opt migrate-store`` restamps it; new observations carry the
+new one. The pipeline fingerprint is formed once per run, after the stages
+whose identity lives on the simulation host resolved it (EMX hashes its process
+file there), so every point of a run carries the same value.
 """
 
 from __future__ import annotations
@@ -124,16 +134,17 @@ def run(
     children = children_of(spec, pipeline, corner_ids)
     if not children:
         raise ValueError("pipeline produces no children for this spec (no testbenches for its testbench chain, no devices for its device chain)")
-    spec_fp, pipe_fp = spec.fingerprint(), pipeline_fingerprint(pipeline)
     children_wanted = {c.key for c in children}
     child_sims = child_simulates(pipeline)
     sims_per_point = (len(children) if child_sims else 0) + point_runs(pipeline)         # worst case: every cacheable point stage misses
     workers = workers_for(spec, pipeline, parallel_jobs, limits)
+    spec_fp, pipe_fp = spec.fingerprint(), pipeline_fingerprint(pipeline, executor)     # after the envelope check: it asks the host
+    same_problem = {spec_fp, spec._legacy_fingerprint()}                                # see "Identity" above
 
     with store.lock():
         existing = store.observations()
         reusable = {o.key: o for o in existing
-                    if o.spec_fingerprint == spec_fp and o.pipeline_fingerprint == pipe_fp and o.status == "ok"
+                    if o.spec_fingerprint in same_problem and o.pipeline_fingerprint == pipe_fp and o.status == "ok"
                     and set(o.children) == children_wanted}
         used = sum(simulations(o) for o in existing)
         next_index = store.next_obs_index()
