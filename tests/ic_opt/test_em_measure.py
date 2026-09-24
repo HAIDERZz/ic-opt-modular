@@ -220,3 +220,134 @@ def test_a_device_swept_only_above_the_low_frequency_band_is_not_a_failed_measur
     expected = measured(high, tmp_path / "x.s2p", measure.Topology([(0, 1)], [], 52e9)).scalars["Lp_lf"]
     assert o.status == "ok" and o.metrics["Llf"] == stored["Lp_lf"] == expected and Spec.model_validate(d).fingerprint() != derived.fingerprint()
 
+
+# -- T16.6: a curve between two samples is interpolated (audit row 24) -------------------------------------------------
+
+def old_at(q: measure.Quantities, name: str, frequency_hz: float) -> float:
+    """The lookup before T16.6: the nearest sample, refused farther than half the smallest spacing of the whole sweep."""
+    i = int(np.argmin(np.abs(q.freqs - frequency_hz)))
+    if abs(q.freqs[i] - frequency_hz) > 0.5 * float(np.min(np.diff(q.freqs))):
+        raise measure.MeasureError(f"{frequency_hz:g} Hz is outside the swept grid")
+    return float(q.curves[name][i])
+
+
+def same(a: float, b: float) -> bool:
+    return a == b or (math.isnan(a) and math.isnan(b))            # bit for bit; L, Q and k are NaN at f = 0
+
+
+def between(q: measure.Quantities, name: str, i: int, t: float) -> float:
+    """The curve a fraction ``t`` of the way from sample ``i`` to sample ``i + 1``, interpolated linearly."""
+    a, b = float(q.curves[name][i]), float(q.curves[name][i + 1])
+    return a + t * (b - a)
+
+
+def test_a_sample_reads_bit_for_bit_and_every_frequency_between_two_is_interpolated(tmp_path):
+    """The synthetic library fixtures (1 GHz steps): a frequency on a sample, or within a relative 1e-9 of it, reads the
+    sample's value bit for bit, as before. Any other frequency between two positive samples is interpolated -- a
+    midpoint too, where the old rule took the lower sample. Past either end is outside the sweep, even by less than half
+    a step (the old rule read the end sample there)."""
+    fixtures = (measured(rlc_touchstone(150, 5, 2, 2), tmp_path / "x.s2p", IND),
+                measured(xfm_touchstone(120, 100, 5, 5, 0), tmp_path / "x.s4p", XFM))
+    for q in fixtures:
+        f = q.freqs
+        for name in q.curves:
+            values = [float(v) for v in q.curves[name]]
+            assert all(same(q.at(name, x), v) and same(q.at(name, x), old_at(q, name, x)) for x, v in zip(f, values)), name
+            assert all(same(q.at(name, x * (1 + 5e-10)), v) and same(q.at(name, x * (1 - 5e-10)), v) for x, v in zip(f, values)), name
+            for t in (0.3, 0.5, 0.8):
+                assert all(q.at(name, f[i] + t * 1e9) == pytest.approx(between(q, name, i, t), rel=1e-12) for i in range(1, len(f) - 1)), name
+        assert q.at("Lp", 30.5e9) != old_at(q, "Lp", 30.5e9) and q.at("Lp", 30.00001e9) != q.at("Lp", 30e9)
+        for outside in (f[0] - 0.3e9, f[-1] + 0.3e9, f[-1] * (1 + 1e-8)):
+            with pytest.raises(measure.MeasureError, match="outside the swept grid"):
+                q.at("Lp", outside)
+        assert old_at(q, "Lp", f[-1] + 0.3e9) == q.at("Lp", f[-1])
+
+
+def test_between_0_hz_and_the_first_sample_l_and_k_hold_and_q_rises_from_0(tmp_path):
+    """A 1 GHz-step sweep from 0 Hz read at 0.9 GHz: the 0 Hz sample has no L, Q or k (it still reads NaN itself), so
+    L and k are their values at f1 = 1 GHz (flat at low frequency) and Q is 0.9 Q(f1) (linear from 0 at 0 Hz). The
+    inductor computed at 0.9 GHz itself agrees within 0.03 %; the old rule read f1 for Q too, 11 % high."""
+    xfm = measured(xfm_touchstone(120, 100, 5, 5, 0), tmp_path / "x.s4p", XFM)
+    ind = measured(rlc_touchstone(150, 5, 2, 2), tmp_path / "x.s2p", IND)
+    for q in (xfm, ind):
+        assert (q.freqs[0], q.freqs[1]) == (0.0, 1e9)
+        for name in q.curves:
+            f1 = float(q.curves[name][1])
+            if name.startswith("Q"):
+                assert q.at(name, 0.9e9) == pytest.approx(0.9 * f1, rel=1e-12) and q.at(name, 0.1e9) == pytest.approx(0.1 * f1, rel=1e-12)
+            else:
+                assert q.at(name, 0.9e9) == f1 and q.at(name, 0.1e9) == f1
+            assert math.isnan(q.at(name, 0.0)) and math.isnan(float(q.curves[name][0]))
+    assert {name: xfm.at(name, 0.9e9) for name in ("Lp", "Ls", "k")} == {name: float(xfm.curves[name][1]) for name in ("Lp", "Ls", "k")}
+    truth = measured(rlc_touchstone(150, 5, 2, 2, freqs_ghz=[0.9]), tmp_path / "t.s2p", IND)
+    for name in ("Lp", "Qp"):
+        assert ind.at(name, 0.9e9) == pytest.approx(float(truth.curves[name][0]), rel=3e-4), name
+    assert old_at(ind, "Qp", 0.9e9) / float(truth.curves["Qp"][0]) - 1 > 0.1
+
+
+def test_a_sweep_dense_low_and_sparse_high_answers_between_its_high_samples(tmp_path):
+    """Audit row 24: 1 GHz steps to 20 GHz, then 5 GHz steps to 100 GHz (``em.frequencies`` may list any frequencies). The
+    old rule refused everything farther than 0.5 GHz from a sample; now the curve is interpolated between the two samples
+    around the frequency, and a sample reads what the uniform sweep reads there. Lp at 62 GHz is 3.1 % low as the old
+    nearest sample (60 GHz), 0.24 % high interpolated."""
+    grid_ghz = [*range(21), *range(25, 101, 5)]
+    sparse = measured(rlc_touchstone(120, 5, 2, 1, freqs_ghz=grid_ghz), tmp_path / "sparse.s2p", IND)
+    dense = measured(rlc_touchstone(120, 5, 2, 1, stop_ghz=100), tmp_path / "dense.s2p", IND)
+    index = {round(f / 1e9): i for i, f in enumerate(sparse.freqs)}
+    for name in ("Lp", "Qp"):
+        assert all(same(sparse.at(name, f * 1e9), dense.at(name, f * 1e9)) for f in grid_ghz), name
+        for f_ghz in (62, 22):
+            with pytest.raises(measure.MeasureError):
+                old_at(sparse, name, f_ghz * 1e9)
+        for f_ghz, low, t in ((21, 20, 0.2), (22, 20, 0.4), (22.5, 20, 0.5), (62, 60, 0.4), (63, 60, 0.6), (97.5, 95, 0.5)):
+            assert sparse.at(name, f_ghz * 1e9) == pytest.approx(between(sparse, name, index[low], t), rel=1e-12), (name, f_ghz)
+        for outside in (102.5e9, 103e9, -1e9):
+            with pytest.raises(measure.MeasureError, match="outside the swept grid"):
+                sparse.at(name, outside)
+    true62 = dense.at("Lp", 62e9)
+    assert sparse.at("Lp", 62e9) / true62 - 1 == pytest.approx(0.0024, abs=2e-4) and sparse.at("Lp", 60e9) / true62 - 1 < -0.03
+
+
+def test_between_samples_the_curve_is_interpolated_which_a_denser_sweep_confirms(tmp_path):
+    """The check behind Quantities.at's choice, as its docstring quotes it: the synthetic od 150 um two-turn inductor
+    swept every 2 GHz, 68 frequencies every 0.25 GHz from 2.25 GHz to SRF / 1.25 between the samples, against S computed
+    at each frequency itself. Interpolating the curve beats interpolating S and measuring it: Lp 0.26 % against 0.54 %
+    in the median, Qp 0.43 % against 32 % -- S's chord between two samples reads as loss."""
+    grid_ghz = [2.0 * k for k in range(12)]                                                   # 0 .. 22 GHz
+    grid = measured(rlc_touchstone(150, 5, 2, 2, freqs_ghz=grid_ghz), tmp_path / "grid.s2p", IND)
+    ts = touchstone.read(tmp_path / "grid.s2p")
+    srf = measured(rlc_touchstone(150, 5, 2, 2), tmp_path / "srf.s2p", IND).scalars["SRF"]                # 26.7 GHz
+    anchors = np.array([a for a in np.arange(2.25, srf / 1.25e9, 0.25) if a not in grid_ghz]) * 1e9
+    truth = measured(rlc_touchstone(150, 5, 2, 2, freqs_ghz=anchors / 1e9), tmp_path / "truth.s2p", IND)
+    hi = np.searchsorted(ts.freqs, anchors)
+    t = (anchors - ts.freqs[hi - 1]) / (ts.freqs[hi] - ts.freqs[hi - 1])
+    via_s = measure.quantities(anchors, ts.s[hi - 1] + t[:, None, None] * (ts.s[hi] - ts.s[hi - 1]), IND, z0=ts.z0)
+    err = {name: (np.abs(np.array([grid.at(name, a) for a in anchors]) / truth.curves[name] - 1),
+                  np.abs(via_s.curves[name] / truth.curves[name] - 1)) for name in ("Lp", "Qp")}
+    quoted = {"Lp": (0.0026, 0.033, 0.0054, 0.022), "Qp": (0.0043, 0.012, 0.32, 0.62)}       # median, max: curve, then S
+    assert len(anchors) == 68
+    for name, (curve, s) in err.items():
+        found = (np.median(curve), np.max(curve), np.median(s), np.max(s))
+        assert found == pytest.approx(quoted[name], rel=0.1), name
+        assert np.median(curve) < np.median(s), name
+
+
+def test_a_metric_between_the_high_samples_of_a_frequency_list_is_measured(tmp_path):
+    """Audit row 24 through the measure stage: a spec whose em.frequencies list is dense low and sparse high, with Lp
+    metrics at 62 GHz (between two 5 GHz samples) and 22 GHz (in the interval where the spacing changes). Before T16.6
+    both were 'outside the swept grid' and the point failed:measure; now both are interpolated."""
+    grid_ghz = [*range(1, 21), *range(25, 101, 5)]
+    snp = "! EMX was run on fake as: emx\n" + rlc_touchstone(120, 5, 2, 1, freqs_ghz=grid_ghz)
+    d = em_only_spec(frequencies=[f * 1e9 for f in grid_ghz]).model_dump(mode="json")
+    d["metrics"] = [{"name": "L62", "unit": "H", "device": "ind", "quantity": "Lp", "frequency_hz": 62e9},
+                    {"name": "L22", "unit": "H", "device": "ind", "quantity": "Lp", "frequency_hz": 22e9}]
+    d["constraints"], d["objective"] = [], {"direction": "maximize", "expression": "L62"}
+    store = RunStore(tmp_path / "proj")
+    ex = FakeSpectreExecutor(store.root / "sims", snp_fn=lambda argv, n_ports, z0: snp)
+    (o,) = evaluate(Spec.model_validate(d), [Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")], ex, store,
+                    limits=FAKE_HOST)
+    q = measured(snp, tmp_path / "x.s2p", IND)
+    assert o.status == "ok" and o.issues == [] and o.metrics == {"L62": q.at("Lp", 62e9), "L22": q.at("Lp", 22e9)}
+    assert q.at("Lp", 60e9) < o.metrics["L62"] < q.at("Lp", 65e9)
+    with pytest.raises(measure.MeasureError):
+        old_at(q, "Lp", 62e9)

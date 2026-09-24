@@ -29,6 +29,11 @@ A sweep with no sample in (0, limit] -- one that starts above it, e.g. 50-120 GH
 sweep without a resonance leaves SRF None; L<N>_res is None likewise when no sample lies in (0, SRF / 5] (with no SRF
 it is L<N>_lf). Every other quantity is still produced. Samples inside such a band that are all non-finite are
 unusable data: MeasureError.
+
+A curve at one frequency (``Quantities.at``: a metric's frequency_hz, a library column's anchor) is the sample at that
+frequency, or else the curve interpolated linearly between the two samples around it -- below the first positive sample
+of a sweep that starts at 0 Hz, L and k hold that sample's value and Q rises linearly from 0 --; outside the sweep there
+is none (T16.6, audit row 24; before, the nearest sample's value).
 """
 
 from __future__ import annotations
@@ -43,6 +48,7 @@ DRIVE_NAMES = ("p", "s")
 LOW_FREQ_CAP_HZ = 3e9                      # top of the low-frequency band: the default limit and the relative limit's cap
 RELATIVE = "relative"                      # low_freq_max_hz: min(LOW_FREQ_CAP_HZ, SRF / SRF_TO_LOW_FREQ)
 SRF_TO_LOW_FREQ = 10.0
+SAMPLE_REL_TOL = 1e-9                      # Quantities.at: a frequency this close to a sample (relatively) reads that sample
 
 
 class MeasureError(ValueError):
@@ -77,13 +83,58 @@ class Quantities:
     scalars: dict[str, float | None]       # L*_lf, L*_res, Q*_peak, SRF_*, SRF, k_lf; None: outside the sweep (module docstring)
 
     def at(self, name: str, frequency_hz: float) -> float:
-        """A curve value at the grid point nearest ``frequency_hz`` (no interpolation, like em-opt's --anchored)."""
+        """A curve at ``frequency_hz``: the sample at that frequency, else the curve interpolated linearly between the two
+        samples around it, on a uniform sweep and on any frequency list alike.
+
+        A frequency within a relative ``SAMPLE_REL_TOL`` (1e-9) of a sample reads that sample's value, bit for bit. One
+        outside the sweep, below its first sample or above its last, is an error (MeasureError): nothing is
+        extrapolated.
+
+        A sweep that starts at 0 Hz has no L, Q or k at that sample (NaN: L divides by the frequency, k by reactances
+        that vanish there, and Q is not defined at 0 Hz), so between 0 Hz and its first positive sample f1 nothing is
+        interpolated towards it (``_below_first``). L and k take f1's value: at low frequency the inductance and the
+        coupling are flat -- the plateau L_lf and k_lf average. Q is interpolated between 0 at 0 Hz and Q(f1):
+        Q = wL / R grows about linearly with frequency there, from 0. On the synthetic fixtures swept every 1 GHz, at
+        0.9 GHz that is within 0.03 % of L, k and Q computed at 0.9 GHz itself (0.2 % for an inductor resonating at
+        9 GHz).
+
+        Before T16.6 the nearest sample served every frequency within half the smallest spacing of the whole sweep, and
+        up to that far past either end. A frequency list that is dense low and sparse high failed between its high
+        samples (audit row 24), and on any sweep a frequency off the samples read a value up to half a step away: on the
+        synthetic RLC inductor swept every 1 GHz to 20 GHz and every 5 GHz from 25 to 100 GHz, Lp at 62 and 63 GHz is
+        3.1 % low and 3.5 % high as its nearest sample, 0.24 % high interpolated.
+
+        The curve is interpolated, not S: closer to what a denser sweep gives. On the library tests' synthetic RLC
+        inductor (od 150 um, 2 turns, SRF 26.7 GHz) swept every 2 GHz, against S computed at each frequency itself,
+        every 0.25 GHz from 2.25 GHz to SRF / 1.25: Lp is off by 0.26 % median (3.3 % max, next to the resonance, where
+        L climbs steeply) with the curve interpolated, 0.54 % (2.2 %) with S interpolated and then measured; Qp by
+        0.43 % (1.2 %) against 32 % (62 %) -- the chord between two samples of a nearly lossless S passes inside the
+        unit circle and reads as loss. On the synthetic transformer, swept every 2, 5 or 10 GHz, the interpolated k is
+        2.6-4 times closer in the median and 5-12 times at the worst.
+        """
         if name not in self.curves:
             raise MeasureError(f"unknown curve {name}; have {sorted(self.curves)}")
-        i = int(np.argmin(np.abs(self.freqs - frequency_hz)))
-        if abs(self.freqs[i] - frequency_hz) > 0.5 * _grid_step(self.freqs):
-            raise MeasureError(f"{frequency_hz:g} Hz is outside the swept grid [{self.freqs[0]:g}, {self.freqs[-1]:g}]")
-        return float(self.curves[name][i])
+        f, curve, x = self.freqs, self.curves[name], float(frequency_hz)
+        if len(f) == 0 or not bool(np.all(np.diff(f) > 0)):
+            raise MeasureError("the sweep's frequencies must be a non-empty increasing list")
+        upper = int(np.searchsorted(f, x))                  # f[upper - 1] < x <= f[upper]
+        around = [i for i in (upper - 1, upper) if 0 <= i < len(f)]
+        for i in sorted(around, key=lambda i: abs(f[i] - x)):          # the nearer sample first
+            if math.isclose(f[i], x, rel_tol=SAMPLE_REL_TOL, abs_tol=0.0):
+                return float(curve[i])
+        if len(around) < 2:
+            raise MeasureError(f"{x:g} Hz is outside the swept grid [{f[0]:g}, {f[-1]:g}]")
+        lo, hi = around
+        if f[lo] == 0:
+            return _below_first(name, x, float(f[hi]), float(curve[hi]))
+        t = (x - f[lo]) / (f[hi] - f[lo])
+        return float(curve[lo] + t * (curve[hi] - curve[lo]))
+
+
+def _below_first(name: str, frequency_hz: float, f1: float, value_at_f1: float) -> float:
+    """A curve between 0 Hz, where it has no value, and the first positive sample f1 (``Quantities.at``): Q rises
+    linearly from 0 at 0 Hz to Q(f1); L and k keep their value at f1."""
+    return value_at_f1 * frequency_hz / f1 if name.startswith("Q") else value_at_f1
 
 
 def s_to_z(s: np.ndarray, z0: float = 50.0) -> np.ndarray:
@@ -167,10 +218,6 @@ def _srf_first_sign_flip(freqs, imag_z) -> float | None:
         return None
     i = flip[0]
     return float(f[i] + (f[i + 1] - f[i]) * v[i] / (v[i] - v[i + 1]))
-
-
-def _grid_step(freqs: np.ndarray) -> float:
-    return float(np.min(np.diff(freqs))) if len(freqs) > 1 else float("inf")
 
 
 def quantities(freqs: np.ndarray, s: np.ndarray, topo: Topology, *, z0: float = 50.0) -> Quantities:

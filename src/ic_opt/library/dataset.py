@@ -6,8 +6,8 @@ the part's most common -- so generations never mix. Every quantity is recomputed
 ``ic_opt.em.measure``: peaks inside the manifest's band, curves at the anchor frequencies (unusable where
 the resonance sits at or below ``srf_margin`` x f0), low-frequency scalars up to the stratum's
 ``low_freq_max_hz`` (else the part spec's), so parts swept to different frequencies answer with the same
-definition; a row whose sweep cannot give a value (no sample in the low-frequency band, no resonance) has
-None in that column only. Each row also carries the integrity evidence ``check`` reports: the largest
+definition; a row whose sweep cannot give a value (an anchor below its first sample or above its last, no
+sample in the low-frequency band, no resonance) has None in that column only. Each row also carries the integrity evidence ``check`` reports: the largest
 singular value of S over frequency (passivity) and whether the stored quantities.json reproduces under
 the definition the run measured with (the part spec's).
 
@@ -219,7 +219,7 @@ def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: 
     limit = ran_with if stratum.low_freq_max_hz is None else stratum.low_freq_max_hz      # the manifest's wins
     topo = measure.Topology.from_labels(topo_spec.drives, topo_spec.grounded, columns, low_freq_max_hz=limit)
     q = measure.quantities(ts.freqs, ts.s, topo, z0=ts.z0)
-    stop = float(ts.freqs[-1])
+    start, stop = float(ts.freqs[0]), float(ts.freqs[-1])
     values: dict[str, float | None] = {}
     for name, rule in stratum.quantities.items():
         if name in manifest.CURVES:
@@ -228,7 +228,8 @@ def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: 
             srf = _drive_srf(q, name)
             for f in rule.anchors_ghz:
                 f_hz = f * 1e9
-                if f_hz > stop or (srf is not None and srf <= rule.srf_margin * f_hz):
+                outside = f_hz < start or f_hz > stop                        # this row's sweep cannot give it
+                if outside or (srf is not None and srf <= rule.srf_margin * f_hz):
                     values[f"{name}@{f:g}"] = None
                 else:
                     v = q.at(name, f_hz)

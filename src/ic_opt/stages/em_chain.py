@@ -271,7 +271,8 @@ def em_circuit_pipeline(spec: Spec, deck: Deck, *, waveforms: list[WaveformExpor
 
 
 class Measure:
-    """Device child: the spec's quantity metrics for this device from its S-parameters (curves at a grid frequency, or scalars)."""
+    """Device child: the spec's quantity metrics for this device from its S-parameters (curves at a frequency, read as
+    ``measure.Quantities.at`` reads them, or scalars)."""
 
     name = "measure"
     level = "child"

@@ -178,6 +178,26 @@ def test_a_row_swept_above_the_low_frequency_band_misses_only_those_columns(tmp_
     assert dataset.check(ds)["values"]["Lp_lf"] == 4
 
 
+def test_an_anchor_below_a_part_sweep_leaves_only_that_column_empty(tmp_path):
+    """T16.6: a part swept 30-60 GHz cannot give Lp@20 or Qp@20. Like an anchor above its last sample, that leaves those
+    columns None and keeps the row with its other columns -- before, the lookup's error dropped the whole row
+    ("measure: MeasureError"). The part swept from 0 Hz has every column."""
+    from tests.ic_opt.library_fixtures import write_store
+
+    write_store(tmp_path, "full", [(od, w, 2.0, 1) for od in (80, 100) for w in (4.0, 6.0)], stop_ghz=60)
+    write_store(tmp_path, "high", [(od, w, 2.0, 1) for od in (90, 120) for w in (4.0, 6.0)], stop_ghz=60, start_ghz=30)
+    write_manifest(tmp_path, parts=("full", "high"), quantities={"SRF_p": {}, "Qp_peak": {"band_ghz": 60}, "Lp": {"anchors_ghz": [20, 40]},
+                                                                  "Qp": {"anchors_ghz": [20, 70]}})
+    ds = dataset.build(tmp_path, "ind_demo", cache=False)
+    assert len(ds.rows) == 8 and ds.excluded == {}
+    high, full = [r for r in ds.rows if r.part == "high"], [r for r in ds.rows if r.part == "full"]
+    assert all(r.values["Lp@20"] is None and r.values["Qp@20"] is None for r in high)
+    assert all(r.values["Lp@40"] is not None and r.values["Qp_peak"] is not None for r in high)
+    assert all(r.values["Lp@20"] is not None and r.values["Qp@20"] is not None for r in full)
+    assert all(r.values["Qp@70"] is None for r in ds.rows)                            # above every part's last sample, as before
+    assert dataset.check(ds)["values"]["Lp@20"] == 4
+
+
 def test_the_manifest_low_frequency_limit_wins_over_the_part_spec(tmp_path):
     """T15.6: the part spec's topology.low_freq_max_hz (2 GHz here) is the run's definition; a stratum's low_freq_max_hz
     redefines the column for the library, and the stored quantities still reproduce under the run's own."""

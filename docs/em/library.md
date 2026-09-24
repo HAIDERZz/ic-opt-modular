@@ -76,7 +76,16 @@ Scalars: `Lp_lf Lp_res Qp_peak SRF_p` and, for transformers, `Ls_lf Ls_res
 Qs_peak SRF_s k_lf`, plus `SRF`, the system SRF (the lowest resonance over
 all drives; `SRF_p` for an inductor). Curves sampled at anchors: `Lp Qp Ls
 Qs k`. Every value is recomputed from the sNp with these definitions, so
-parts swept to different stop frequencies still answer on one basis.
+parts swept to different stop frequencies still answer on one basis. An
+anchor reads the sample at that frequency; between two samples, the curve
+interpolated linearly between them, on a uniform sweep and on any frequency
+list alike (before T16.6: the nearest sample, up to half a step away). The
+0 Hz sample of a sweep has no L, Q or k, so below the first positive sample
+L and k keep that sample's value, because inductance and coupling are flat
+at low frequency, and Q rises linearly from 0 at 0 Hz, because Q = wL / R
+grows about in proportion to frequency there. An anchor outside a part's
+sweep, below its first sample or above its last, leaves that column empty;
+the row keeps its other columns.
 
 `rel_sigma_max` is a quantity's confidence ceiling on sigma / mu, for every
 anchor of a curve: a prediction less sure than that is `uncertain` (section

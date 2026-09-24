@@ -40,14 +40,17 @@ def use_site(monkeypatch, path: Path, **hosts: HostLimits) -> Path:
     return path
 
 
-def rlc_touchstone(od: float, w: float, s: float, nt: int, stop_ghz: float = STOP_GHZ, start_ghz: float = 0.0) -> str:
-    """R + jwL between the ports, C/2 to ground at each: L grows with turns and diameter, C with area (resonances in and above the sweep)."""
+def rlc_touchstone(od: float, w: float, s: float, nt: int, stop_ghz: float = STOP_GHZ, start_ghz: float = 0.0, *,
+                   freqs_ghz=None) -> str:
+    """R + jwL between the ports, C/2 to ground at each: L grows with turns and diameter, C with area (resonances in and above the sweep).
+    Sampled every 1 GHz from ``start_ghz`` to ``stop_ghz``, or at ``freqs_ghz`` when given (any list, e.g. a non-uniform one)."""
     ind = 0.4e-9 * nt**2 * (od / 100) ** 1.3 * (5 / w) ** 0.15 * (1 - 0.04 * (s - 2))
     res = 0.3 + 0.02 * nt * od / w
     cap = 12e-15 * nt * (od / 100) ** 2 * (w / 5) ** 0.5
     lines = ["! Touchstone from a synthetic RLC library", "# Hz S RI R 50"]
     eye = np.eye(2)
-    for f in np.arange(start_ghz * 1e9, stop_ghz * 1e9 + 0.5e9, 1e9):
+    freqs = np.arange(start_ghz * 1e9, stop_ghz * 1e9 + 0.5e9, 1e9) if freqs_ghz is None else np.asarray(freqs_ghz, dtype=float) * 1e9
+    for f in freqs:
         om = 2 * np.pi * f
         ys, yc = 1 / (res + 1j * om * ind), 1j * om * cap / 2
         y = np.array([[ys + yc, -ys], [-ys, ys + yc]])
