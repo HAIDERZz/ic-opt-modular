@@ -189,7 +189,7 @@ figcaption {{ font-size:12.5px; color:var(--muted); margin-top:6px; }}
 </style>
 <div class="wrap">
 <header>
-  <div class="eyebrow">ic-opt-modular · T13.0 · N28 · 电感库 1038 点</div>
+  <div class="eyebrow">ic-opt-modular · T13.0 · N28 · 电感库 {len(rows)} 点</div>
   <h1>N28 电感查询库验证</h1>
   <p class="note">用现有查询内核（em-opt 的 StratumGP 与 DomainGuard，只读导入，不改原工程）在新建的电感库上逐项验证：数据完整性、正向预测、SRF、域守卫、逆向推荐、真实查询示例。真实 EMX 复核留待变压器库跑完、经批准后进行。</p>
 </header>
