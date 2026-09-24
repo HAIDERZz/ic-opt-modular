@@ -32,7 +32,7 @@
 
 | # | 事项 | 决定 | 落点 |
 |---|---|---|---|
-| B-1 | 变压器格点间模型不准的普遍解法（真实复核：格点间 Lp@40 偏 +1.5…+22%、k 到 +9%、SRF 到 −18%，区间诚实但宽；根因 bs 表次级外径 20 µm 一档太稀、锚定量在谐振附近变化快） | a + b：`lib.densify` 按模型不确定度全域补点；建模改为 L@f = L_lf × 谐振因子 | T16.1 `lib.densify` 已做（0b3e5be：精确后验方差贪心选点、`bounds=` 子域、`score=ceiling|typical`；真实库六份输出 `reports/library_query/densify_40g_xfm_bs_*.json`）；T16.2a 研究已做（cab49bd，页 `XFM_ANCHOR_MODEL_STUDY_CN.html`，artifact GYPUVJwkAmSBM2aEyjFxmR）：关键是输入坐标——换成平均外径 + 外径比后，SRF 整档留出 p90 84–95%→1.4–1.6%；"低频电感 × 谐振因子 × 无量纲残差"（DF）把 Lp@40 整档留出 p90 36–40%→2.9%，区间最窄且诚实；k 保持现状；另发现采样空白"偏心 + 两外径不等"从未采过（10 个格点间点正落在那里）。T16.2b（manifest `model: direct|ratio|resonance` + SRF feature_map）已派发；T16.1c 待批准（B-12） |
+| B-1 | 变压器格点间模型不准的普遍解法（真实复核：格点间 Lp@40 偏 +1.5…+22%、k 到 +9%、SRF 到 −18%，区间诚实但宽；根因 bs 表次级外径 20 µm 一档太稀、锚定量在谐振附近变化快） | a + b：`lib.densify` 按模型不确定度全域补点；建模改为 L@f = L_lf × 谐振因子 | T16.1 `lib.densify` 已做（0b3e5be：精确后验方差贪心选点、`bounds=` 子域、`score=ceiling|typical`；真实库六份输出 `reports/library_query/densify_40g_xfm_bs_*.json`）；T16.2a 研究已做（cab49bd，页 `XFM_ANCHOR_MODEL_STUDY_CN.html`，artifact GYPUVJwkAmSBM2aEyjFxmR）：关键是输入坐标——换成平均外径 + 外径比后，SRF 整档留出 p90 84–95%→1.4–1.6%；"低频电感 × 谐振因子 × 无量纲残差"（DF）把 Lp@40 整档留出 p90 36–40%→2.9%，区间最窄且诚实；k 保持现状；另发现采样空白"偏心 + 两外径不等"从未采过（10 个格点间点正落在那里）。T16.2b 已做（442b0c3 + 验收 34f04a5：`Quantity.model: direct|ratio|resonance`、`library/composed.py`，库自身复现研究 DF 数字：留一档 OD_P p90 2.91/2.94%，10 个格点间最大 4.75/9.24% 覆盖 100%）；2026-09-25 10:00 已按建议改真实库 `library.yaml`（备份 `.bak_20260925_1000`：xfm_bs 块 SRF feature_map、Lp/Ls `model: resonance` + feature_map），40/60 GHz 区域页重生成中；T16.1c 待批准（B-12）；ms 表 `ratio` 另做对照（N-16） |
 | B-2 | 10 个格点间变压器实测点回流入库 | 回流 | 已做（2026-09-25 02:33：两复核工程先 `migrate-store` 重写代际，再经 `lib_signoff._adopt` 复制，xfm_bs_ap / xfm_bs_m10 各 1576→1581 行，数据集重建 excluded {}；记录 `<ic-opt-library>/n28_signoff/adopt_xfm_bs.{py,log}`、`migrate_store_xfm_bs.log`） |
 | B-3 | TuRBO 长期方案 | 暂维持 b（`-e vendor/TuRBO`，Uber 非商业许可） | 记录；面向商业用户时再议 c / d |
 | B-4 | 公开发布前的 N28 脱敏 | 发布前审计 | RT-2 |
@@ -81,6 +81,7 @@
 | N-13 | T13.11 遗留的不一致：配置名字检查把 "5" 读成名叫 M5 的金属，pcell 的 `stack.index("5")` 读成第 5 层金属；现有 profile 两者一致，若某 profile 的 M<n> 名字不在第 n 位（如底层叫 LI）就会分歧。修法：`stack.position_in` 优先按名字 M<n> | T16.3 发现 | 小，已做（2776ab8：生成器改传整数位置，黄金 GDS 与三套基线回放 0 差异） |
 | N-14 | 报告脚本里 `d4_grid.py`、`d4_probe.py`、`wps_locate.py` 与 `demo_families.py` 的 5/6 个配置仍用 M2.2 退役的字段名，今天的生成器会拒绝（N-8 只修 ruff，未更新） | T16.7 发现 | 小，可做 |
 | N-15 | N-5 的隔离冒烟脚本已绑入 site.yaml，但完整远程运行（实验室主机 + Spectre）未验证；ADR 已注明 | T16.7 | 需实验室主机 |
+| N-16 | 多圈变压器表（xfm_ms）按研究建议用 `model: ratio`（Ls@60 整档留出 p90 23.8/23.5%→7.0/8.8%），需先用库自身模型做一次对照再改真实 manifest | T16.2b | 小，可做 |
 
 ## 3. 记录（不打算单独立项）
 
