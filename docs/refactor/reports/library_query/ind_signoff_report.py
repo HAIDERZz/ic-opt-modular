@@ -47,6 +47,8 @@ def rows_for(report: dict) -> str:
     return "".join(out_rows)
 
 
+# Coverage before the sigma floor (library commit c5488b2; user decision 2026-09-24 "4. 是" added the floor, commit 07496db).
+BEFORE_FLOOR = {"inside": 66, "scored": 74, "by_stratum": {"ind_sym_ap": 0.848, "ind_sym_m10": 0.964}}
 tot_inside = sum(e["inside"] for r in REPORTS for pt in r["points"] for e in pt["quantities"].values() if "inside" in e)
 tot_scored = sum(1 for r in REPORTS for pt in r["points"] for e in pt["quantities"].values() if "inside" in e)
 errs = [abs(e["measured"] - e["predicted"]) / e["predicted"] for r in REPORTS for pt in r["points"] for e in pt["quantities"].values() if e.get("z") is not None]
@@ -100,7 +102,7 @@ td.bad {{ color:var(--warn); font-weight:600; }}
 
 <h2>结论</h2>
 <div class="finding ok"><b>预测准。</b>{len(errs)} 个实测量与预测的相对偏差全部在 {pct(worst, 2)} 以内（多数 0.3% 以内）；推荐目标（Lp 窗口、SRF 下限、锚定量）全部命中。</div>
-<div class="finding"><b>区间偏窄：覆盖 {pct(tot_inside / tot_scored)}，略低于 90%。</b>没盖住的 {len(outside)} 个量都是偏差 0.1–0.4% 而 |z| 2.5–9 的情况，集中在 Qp@10 与 Qp_peak：推荐点按"Q 最大"选出，线宽 9.9、线距 4.0 贴着参数盒边界，GP 在边界处的 σ 偏小，而留出校准（σ 放大系数按库内留出点定）主要反映内部点。可选修法：给每个量的 σ 加一个下限（不低于该量留出的典型误差），或校准时用更高的分位数。这项待定，不影响结论。</div>
+<div class="finding{' ok' if tot_inside / tot_scored >= 0.9 else ''}"><b>区间覆盖 {pct(tot_inside / tot_scored)}（加 σ 下限之前 {BEFORE_FLOOR['inside']}/{BEFORE_FLOOR['scored']} = {pct(BEFORE_FLOOR['inside'] / BEFORE_FLOOR['scored'])}）。</b>第一次对比时没盖住 {BEFORE_FLOOR['scored'] - BEFORE_FLOOR['inside']} 个量，都是偏差 0.1–0.4% 而 |z| 2.5–9 的情况，集中在 Qp@10 与 Qp_peak：推荐点按"Q 最大"选出，线宽 9.9、线距 4.0 贴着参数盒边界，GP 在边界处的 σ 偏小，而留出校准（σ 放大系数按库内留出点定）主要反映内部点。按用户决定（2026-09-24），库现在给每个量的 σ 加下限——不低于该量留出的中位相对误差（<code>StratumGP(sigma_floor_rel=…)</code>，commit 07496db）；本页的预测区间与 z 已用同一批实测重算（AP {pct(BEFORE_FLOOR['by_stratum']['ind_sym_ap'])} → {pct(next(r['coverage'] for r in REPORTS if r['stratum'] == 'ind_sym_ap'))}，M10 {pct(BEFORE_FLOOR['by_stratum']['ind_sym_m10'])} → {pct(next(r['coverage'] for r in REPORTS if r['stratum'] == 'ind_sym_m10'))}）。仍在区间外的 {len(outside)} 个量：{'；'.join(f"{o[0].split('_')[-1].upper()} {o[1]} <code>{o[2]}</code>（偏差 {(o[3]['measured'] - o[3]['predicted']) / o[3]['predicted'] * 100:+.2f}%，z {o[3]['z']:+.2f}）" for o in outside)}——偏差都在 0.5% 以内，是 |z| 略过 2 的贴边情况，不再是 z 5–9 的漏报。</div>
 
 <h2>逐量对比</h2>
 {"".join(f"<h3>{r['stratum']}（{r['ok']}/{r['signed_off']} ok，覆盖 {pct(r['coverage'])}，|z| 中位 {r['median_abs_z']:.2f}）</h3><div class='table-wrap'><table><thead><tr><th>候选</th><th>量</th><th class='num'>预测 [2σ 区间]</th><th class='num'>实测</th><th class='num'>偏差</th><th class='num'>z</th></tr></thead><tbody>{rows_for(r)}</tbody></table></div>" for r in REPORTS)}
