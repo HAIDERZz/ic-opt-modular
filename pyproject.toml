@@ -64,6 +64,8 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# what a bare `ruff check` covers: the package, the tests and the report scripts (vendor/ is third-party code)
+include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py", "docs/refactor/reports/**/*.py"]
 
 [tool.ruff.lint.per-file-ignores]
 # the geometry library moved from em-opt as-is; style-only findings are not worth diverging its history

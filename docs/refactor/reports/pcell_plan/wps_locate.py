@@ -29,4 +29,4 @@ for pair in region.space_check(_um_to_dbu(rule.min_space_um, dbu), True, kdb.Met
         bb = kdb.Box(e1.p1, e1.p2) + kdb.Box(e2.p1, e2.p2)
         pairs.append({"e1": str(e1), "e2": str(e2), "distance_um": round(pair.distance() * dbu, 4), "bbox_um": [bb.left * dbu, bb.bottom * dbu, bb.right * dbu, bb.top * dbu]})
 print(r.gds_path); print(json.dumps(pairs, indent=1))
-json.dump({"gds": str(r.gds_path), "pairs": pairs}, open(out / "pairs.json", "w"), indent=1)
+(out / "pairs.json").write_text(json.dumps({"gds": str(r.gds_path), "pairs": pairs}, indent=1))

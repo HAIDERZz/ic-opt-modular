@@ -16,7 +16,7 @@ Rules of thumb:
 uv venv --python 3.11 .venv
 uv pip install -e ".[dev,em,turbo,report]" -e vendor/open-box -e vendor/TuRBO   # the README install plus dev / report, one resolver call; prf needs swig
 .venv/bin/python -m pytest -q            # fake Spectre host, no Cadence needed
-.venv/bin/ruff check src tests
+.venv/bin/ruff check                     # src, tests and the report scripts in docs/refactor/reports (pyproject include)
 ```
 
 One task, one commit. Real Spectre smoke runs (local + `--ssh-profile`) are

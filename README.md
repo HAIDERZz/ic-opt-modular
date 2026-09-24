@@ -306,7 +306,7 @@ uses its own). A `spec.yaml` 0.2 wrote is not changed.
 # replay parity against recordings: IC_OPT_RECORDED_RUNS (Spectre), IC_OPT_EM_RECORDED_RUNS, IC_OPT_EM_RECORDED_ARGV,
 # IC_OPT_EM_SWEEPS, IC_OPT_EM_DB (EM), IC_OPT_LIBRARY (a real library), plus IC_OPT_PROFILE_DIRS for the private
 # process profiles
-.venv/bin/ruff check src tests
+.venv/bin/ruff check                   # src, tests and the report scripts in docs/refactor/reports (pyproject include)
 ```
 
 Design notes and the refactor record live in `docs/refactor/`; the remote

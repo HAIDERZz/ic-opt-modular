@@ -21,7 +21,7 @@ for od, nt, w, s in itertools.product([60, 70, 80, 90, 100, 120], [3, 4, 5], [3,
     with tempfile.TemporaryDirectory() as tmp:
         try:
             r = g.generate(g.config_model.model_validate(cfg), outdir=Path(tmp), gds_name="x.gds")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- a refusal is counted with its reason, the grid goes on
             tally["refused"] += 1; reasons[type(exc).__name__ + ": " + str(exc)[:80]] += 1
             continue
         rep = audit_gds(r.gds_path, "demo_6m")
@@ -33,4 +33,4 @@ for od, nt, w, s in itertools.product([60, 70, 80, 90, 100, 120], [3, 4, 5], [3,
 print(dict(tally)); print(reasons.most_common(6))
 for v in viol[:12]:
     print(v)
-json.dump({"tally": dict(tally), "violations": viol}, open(sys.argv[1], "w"), indent=1)
+Path(sys.argv[1]).write_text(json.dumps({"tally": dict(tally), "violations": viol}, indent=1))

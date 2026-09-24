@@ -35,8 +35,8 @@ for gid, cfg in CONFIGS.items():
         full["ground_fixture"].update({"stub_width_um": 6.0, "stub_width_by_port_um": {"P2": 3.0, "N2": 3.0}})
     try:
         r = g.generate(g.config_model.model_validate(full), outdir=out / gid, gds_name=f"{gid}.gds")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- a family that fails is reported, the others still build
         print(gid, "FAILED", type(exc).__name__, str(exc)[:300]); continue
     print(gid, "ok", r.gds_path)
     jobs.append({"gds": str(r.gds_path), "out": str(out / f"{gid}.png"), "title": f"{gid} (demo_6m, current code)"})
-json.dump(jobs, open(out / "jobs.json", "w"), indent=1)
+(out / "jobs.json").write_text(json.dumps(jobs, indent=1))

@@ -47,6 +47,17 @@ def data_uri(path: Path) -> str:
     return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
 
 
+def device_row(d: dict) -> str:
+    """One device's row of a family table: index, parameters, then the audit / topology / pad / port / time checks."""
+    audit = "✓" if not d["audit"] else html.escape(",".join(d["audit"]))
+    topology = "✓" if d["topology_ok"] else "✗"
+    hang = "✓" if d["pad_hang"] == 0 else f"{100 * d['pad_hang']:.1f}%"
+    outward = "✓" if d["ports_outward"] else "✗"
+    return (f"<tr><td>{d['index']:02d}</td><td>{html.escape(param_tag(d['config']))}</td><td class='num'>{audit}</td>"
+            f"<td class='num'>{topology}</td><td class='num'>{hang}</td><td class='num'>{outward}</td>"
+            f"<td class='num'>{d['build_s']:.2f}</td></tr>")
+
+
 def rebuild_thumbs(camp: Path, fam: str, devices: list[dict]) -> Path:
     for d in devices:
         gds = Path(d["gds"])
@@ -86,11 +97,7 @@ for fam, s in summary["families"].items():
     totals["refused"] += s["refused"]
     totals["ok"] += sum(1 for d in devices if d["ok"])
     reasons = "".join(f"<li><code>{html.escape(r)}</code> × {n}</li>" for r, n in s["refusal_reasons"])
-    rows = "".join(
-        "<tr><td>%02d</td><td>%s</td><td class='num'>%s</td><td class='num'>%s</td><td class='num'>%s</td><td class='num'>%s</td><td class='num'>%.2f</td></tr>" % (
-            d["index"], html.escape(param_tag(d["config"])), "✓" if not d["audit"] else html.escape(",".join(d["audit"])),
-            "✓" if d["topology_ok"] else "✗", "✓" if d["pad_hang"] == 0 else "%.1f%%" % (100 * d["pad_hang"]), "✓" if d["ports_outward"] else "✗", d["build_s"])
-        for d in devices)
+    rows = "".join(device_row(d) for d in devices)
     close_html = "".join(
         f"<figure><img src='{data_uri(png)}' alt='{fam} {d['index']:02d}'><figcaption><b>#{d['index']:02d}</b> {html.escape(tag)}</figcaption></figure>"
         for d, tag, png in closeups)

@@ -27,7 +27,7 @@ for stratum in sorted(p.name for p in SWEEP.iterdir()):
         with tempfile.TemporaryDirectory() as tmp:
             try:
                 r = g.generate(g.config_model.model_validate(m["geometry"]["config"]), outdir=Path(tmp), gds_name=recorded.name)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- a refusal is one of the outcomes counted, with its masked reason
                 tally["refused"] += 1
                 reasons[f"{stratum}: {type(exc).__name__}: {re.sub(r'[0-9.]+', '#', str(exc))[:90]}"] += 1
                 continue
@@ -35,4 +35,4 @@ for stratum in sorted(p.name for p in SWEEP.iterdir()):
             tally["equal" if cmp.get("equal") or cmp.get("physical_equal") or cmp.get("status") == "equal" else "different"] += 1
     result[stratum] = dict(tally, sampled=len(sample), total=len(points))
     print(stratum, dict(tally), flush=True)
-json.dump({"per_stratum": result, "refusal_reasons": reasons.most_common(12)}, open(sys.argv[2], "w"), indent=1)
+Path(sys.argv[2]).write_text(json.dumps({"per_stratum": result, "refusal_reasons": reasons.most_common(12)}, indent=1))

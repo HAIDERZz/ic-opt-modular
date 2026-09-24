@@ -24,7 +24,7 @@ def pad_hang(gds_path, drawing, w_um) -> list[float]:
     layout.read(str(gds_path))
     top = layout.top_cells()[0]
     index = layout.layer(*drawing)
-    limit = int(round(1.5 * w_um / layout.dbu))
+    limit = round(1.5 * w_um / layout.dbu)
     pads, ring = [], kdb.Region()
     it = top.begin_shapes_rec(index)
     while not it.at_end():
@@ -64,7 +64,7 @@ for od, nt, w, s, origin in grid:
     with tempfile.TemporaryDirectory() as tmp:
         try:
             r = g.generate(g.config_model.model_validate(cfg), outdir=Path(tmp), gds_name="x.gds")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- a refusal is a row of the grid, recorded with its reason
             tally["refused"] += 1
             rows.append({"od": od, "nt": nt, "w": w, "s": s, "origin": origin, "status": "refused", "why": f"{type(exc).__name__}: {str(exc)[:100]}"})
             continue
@@ -97,4 +97,5 @@ print("pads:", dict(hangs), "worst:", max((row.get("worst_hang", 0.0) for row in
 print({f"{k}:{l}": n for (k, l), n in kind_tally.items()})
 by_kind_nt = collections.Counter((row["nt"], k) for row in rows if row["status"] == "violations" for k, _ in map(tuple, row["kinds"]))
 print(sorted(by_kind_nt.items()))
-json.dump({"profile": profile, "top_metal": top_metal, "tally": dict(tally), "pads": dict(hangs), "kinds": {f"{k}:{l}": n for (k, l), n in kind_tally.items()}, "rows": rows}, open(out, "w"), indent=1)
+out.write_text(json.dumps({"profile": profile, "top_metal": top_metal, "tally": dict(tally), "pads": dict(hangs),
+                           "kinds": {f"{k}:{l}": n for (k, l), n in kind_tally.items()}, "rows": rows}, indent=1))
