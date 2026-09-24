@@ -20,7 +20,7 @@ from ic_opt.space import Point
 from ic_opt.spec import EmSettings, Spec
 from ic_opt.stages.em_chain import Geometry, Pcell, emx_stages
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import DEMO_PROC, FAKE_HOST, FakeSpectreExecutor, synthetic_snp
+from tests.ic_opt.fakes import DEMO_PROC, FAKE_HOST, HANG_S, FakeSpectreExecutor, synthetic_snp
 from tests.ic_opt.test_em_pcell import demo_spec
 
 pytest.importorskip("klayout.db")
@@ -166,6 +166,20 @@ def test_emx_failure_and_bad_output_are_stage_failures(tmp_path):
     obs = engine.run(spec, [Pcell(spec), *emx_stages(spec), Passthrough()], [Point({"outer_diameter_um": "110", "width_um": "5", "F": "1"}, "user")], bad, store,
                      limits=FAKE_HOST)
     assert obs[0].status == "failed:emx:ind" and any("EMX command line" in i for i in obs[0].issues)
+
+
+def test_an_emx_run_past_its_deadline_fails_its_point_and_caches_nothing(tmp_path):
+    """N-10 on a point-level stage: the first geometry's EMX hangs past em.timeout_s, so that point fails as failed:emx:ind
+    (every child) with the timeout as the issue and no cache entry; the next geometry is simulated as usual."""
+    spec = em_only_spec(timeout_s=1)
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", hang=lambda tool, cwd: tool == "emx" and "obs_0001" in cwd.parts)
+    points = [Point({"outer_diameter_um": w, "width_um": "5", "F": "1"}, "user") for w in ("100", "110")]
+    obs = engine.run(spec, [Pcell(spec), *emx_stages(spec), Passthrough()], points, ex, store, parallel_jobs=1, limits=FAKE_HOST)
+    assert [o.status for o in obs] == ["failed:emx:ind", "ok"] and ex.emx_runs == 1 and len(ex.hung) == 1
+    assert obs[0].issues == [f"ind/nominal: timed out after 1s: sleep {HANG_S} (its process group was killed)"]
+    assert obs[0].cache == {} and obs[1].cache == {"emx:ind": "miss"}
+    assert len(list((store.root / "cache" / "emx:ind").iterdir())) == 1                  # only the second geometry's run
 
 
 def test_touchstone_reader_round_trips_the_synthetic_file(tmp_path):

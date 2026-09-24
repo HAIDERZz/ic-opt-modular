@@ -54,6 +54,7 @@ Point-level status: `ok`, `constraint_failed`, `metric_failed`, `failed:<stage>`
 - `doctor` `[FAIL] tools/license/emx` → wrong or missing cshrc; `export:<tb>` → Maestro export not at `maestro_point_root/netlist/input.scs` on that host.
 - `netlist.import` `ValueError: <var> was not found` → the variable is not a top-level `parameters` entry in the exported netlist (only those may be swept).
 - `failed:spectre` with a license message → retry later; `failed:ocean` → check the metric expression in `metrics/probe.ocn`; `metric_failed` → the OCEAN expression returned nil/non-finite (see `ocean_scalars.tsv`).
+- `failed:<stage>` with `timed out after Ns` → that point's command ran past `simulator.timeout_s` / `em.timeout_s` and was killed with its process group; the other points ran on. Ask the user before raising the timeout: a hung point can also be a pathological design point.
 - `BudgetExceeded` → raise `budget.max_simulations` in `spec.yaml`: the problem fingerprint leaves the budget out, so the observations keep being reused and counted. That holds for a store an earlier ic-opt wrote only after `ic-opt migrate-store PROJECT`: its old stamps match the spec only as it was, and raising the budget first cuts the run off from them.
 
 ## EM devices

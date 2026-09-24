@@ -10,7 +10,9 @@ policy, (6) appends one Observation, (7) applies the retention policy to raw
 simulation directories. Points run in parallel, capped by the executor host's
 site.yaml entry for the heaviest stage (a stage bigger than the whole entry is
 refused before anything starts); a point's children run serially, like the
-legacy flow.
+legacy flow. A stage that fails -- a ``StageFailure``, or a command past its
+deadline (``CommandTimeout``) -- fails its child, or every child of the point
+for a point-level stage, as ``failed:<stage>``; the other points run on.
 
 Identity. The problem is ``Spec.fingerprint()``: the spec without how it is run
 (resources, timeouts, retention, license check, budget), so a project moved to
@@ -34,7 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ic_opt.eval.stage import Stage, StageContext, StageFailure, pipeline_fingerprint
-from ic_opt.executor import Executor
+from ic_opt.executor import CommandTimeout, Executor
 from ic_opt.observation import ChildResult, Observation, Observations
 from ic_opt.sim.corner import aggregate
 from ic_opt.site import EnvelopeError, HostLimits
@@ -197,13 +199,19 @@ def run(
 
 
 def _run_stages(stages: list[Stage], value, ctx: StageContext):
-    """Run stages in order; a StageFailure comes back tagged with the stage that raised it."""
+    """Run stages in order; a StageFailure comes back tagged with the stage that raised it. So does a command that outlived
+    its deadline (``CommandTimeout``, its process group already killed by the executor): a job that hangs fails its point
+    as ``failed:<stage>``, with the timeout and its deadline as the issue, and the other points run on."""
     for stage in stages:
         try:
             value = _run_cached(stage, value, ctx) if stage.level == "point" else stage.run(value, ctx)
         except StageFailure as failure:
             failure.stage = stage.name
             raise
+        except CommandTimeout as timeout:
+            failure = StageFailure(str(timeout))            # "timed out after <deadline>s: <command> (...)"
+            failure.stage = stage.name
+            raise failure from timeout
     return value
 
 

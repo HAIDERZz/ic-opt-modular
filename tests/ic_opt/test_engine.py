@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,7 @@ from ic_opt.sim.corner import aggregate
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec, minimal_spec
+from tests.ic_opt.fakes import FAKE_HOST, HANG_S, FakeSpectreExecutor, make_spec, minimal_spec
 
 TEMPLATE = "simulator lang=spectre\ninclude \"/p/top.scs\" section=tt\nparameters temperature=27 F={{F}} W={{W}}\ntran tran stop=10n\n"
 
@@ -99,6 +100,28 @@ def test_child_failure_marks_observation_and_keeps_going(tmp_path):
     assert obs.status == "failed:spectre" and not obs.feasible and obs.objective is None
     assert obs.children["cg/ss"].status == "failed:spectre" and obs.children["cg/ff"].status == "ok"
     assert obs.issues[0].startswith("cg/ss: spectre exited 1")
+
+
+def test_a_command_past_its_deadline_fails_its_point_and_the_run_goes_on(tmp_path):
+    """N-10: the second point's Spectre hangs -- a real sleep on the fake host -- past simulator.timeout_s. The executor
+    kills its process group and raises CommandTimeout; the engine records that point as failed:spectre, the timeout and
+    its deadline as the issue, and simulates and records the first and third points as before: one hung job no longer
+    aborts sim.evaluate."""
+    spec = make_spec(simulator={**minimal_spec()["simulator"], "parallel_jobs": 1, "timeout_s": 1})
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 8.0 + int(p["F"]) / 100},
+                             hang=lambda tool, cwd: tool == "spectre" and "obs_0002" in cwd.parts)
+    started = time.monotonic()
+    obs = evaluate(spec, [Point({"F": f, "W": "0.6u"}, "user") for f in ("20", "22", "24")], ex, store, deck=deck_for(spec),
+                   limits=FAKE_HOST)
+    assert time.monotonic() - started < 10                                 # the deadline ended the hung job, not its sleep
+    assert [(o.obs_id, o.status) for o in obs] == [("obs_0001", "ok"), ("obs_0002", "failed:spectre"), ("obs_0003", "ok")]
+    timed_out = f"timed out after 1s: sleep {HANG_S} (its process group was killed)"
+    assert obs[1].children["tb/nominal"].issues == [timed_out] and obs[1].issues == [f"tb/nominal: {timed_out}"]
+    assert obs[0].metrics == {"NF": 8.2} and obs[2].metrics == {"NF": 8.24} and len(ex.hung) == 1
+    assert [o.status for o in RunStore(tmp_path).observations()] == ["ok", "failed:spectre", "ok"]
+    step = json.loads((store.root / "steps.jsonl").read_text().splitlines()[-1])
+    assert (step["status"], step["new"], step["simulations"]) == ("ok", 3, 3)
 
 
 def test_reuse_budget_and_rerun_is_continuation(tmp_path):

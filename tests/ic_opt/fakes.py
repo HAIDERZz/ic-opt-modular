@@ -19,6 +19,7 @@ needs_turbo = pytest.mark.skipif(any(importlib.util.find_spec(name) is None for 
 # The fake host's site.yaml entry: room for every test pipeline's heaviest stage several times over (tests about the
 # envelope itself build their own HostLimits). The fake host reports exactly this size to env.doctor's machine probe.
 FAKE_HOST = HostLimits(max_threads=96, max_memory_gb=384)
+HANG_S = 120            # how long a hanging fake tool sleeps: far past any deadline a test sets, never waited out
 
 
 def minimal_spec(**overrides) -> dict:
@@ -74,13 +75,20 @@ class FakeSpectreExecutor(LocalExecutor):
     size as ``nproc`` / ``/proc/meminfo`` report it (None: the probe fails).
     ``tools`` names the tools on the host's PATH (None: every one): ``which``
     finds only those, and running one that is missing answers 127.
+    ``hang(tool, cwd) -> bool`` makes a spectre / ocean / emx run hang: the fake
+    host then runs a real ``sleep`` in its place, under ``LocalExecutor`` in a
+    process group of its own, so only the command's deadline or an interrupt
+    ends it; ``hung`` lists those runs as (tool, cwd).
     """
 
     def __init__(self, scratch_root: Path, metric_fn=None, *, fail_spectre=None, fail_ocean=None, nil_waveforms=(),
-                 snp_fn=None, fail_emx=None, machine=(FAKE_HOST.max_threads, FAKE_HOST.max_memory_gb), tools=None) -> None:
+                 snp_fn=None, fail_emx=None, machine=(FAKE_HOST.max_threads, FAKE_HOST.max_memory_gb), tools=None,
+                 hang=None) -> None:
         super().__init__(scratch_root)
         self.machine = machine
         self.tools = None if tools is None else set(tools)
+        self.hang = hang or (lambda tool, cwd: False)
+        self.hung: list[tuple[str, str]] = []
         self.metric_fn = metric_fn or (lambda p, tb, c: {})
         self.fail_spectre = fail_spectre or (lambda tb, corner: False)
         self.fail_ocean = fail_ocean or (lambda tb, corner: False)
@@ -98,6 +106,9 @@ class FakeSpectreExecutor(LocalExecutor):
             return CommandResult(0 if len(found) == len(argv) - 1 else 1, "".join(f"/cad/bin/{tool}\n" for tool in found), "", argv, 0.01)
         if argv[0] in ("spectre", "ocean", "emx", "lmstat") and not self._installed(argv[0]):
             return CommandResult(127, "", f"{argv[0]}: Command not found.\n", argv, 0.01)
+        if argv[0] in ("spectre", "ocean", "emx") and cwd is not None and self.hang(argv[0], Path(cwd)):   # a run, not a probe
+            self.hung.append((argv[0], cwd))
+            return super().run(f"sleep {HANG_S}", cwd=cwd, timeout_s=timeout_s)      # a real process: a deadline or an interrupt ends it
         if argv[-1] == "nproc" or argv == ["cat", "/proc/meminfo"]:    # doctor's machine probe: the fake host's size
             if self.machine is None:
                 return CommandResult(127, "", f"{argv[-1]}: not found", argv, 0.01)
