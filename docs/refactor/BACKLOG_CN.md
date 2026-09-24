@@ -32,7 +32,7 @@
 
 | # | 事项 | 决定 | 落点 |
 |---|---|---|---|
-| B-1 | 变压器格点间模型不准的普遍解法（真实复核：格点间 Lp@40 偏 +1.5…+22%、k 到 +9%、SRF 到 −18%，区间诚实但宽；根因 bs 表次级外径 20 µm 一档太稀、锚定量在谐振附近变化快） | a + b：`lib.densify` 按模型不确定度全域补点；建模改为 L@f = L_lf × 谐振因子 | T16.1 / T16.2（`T16_PLAN_CN.md`） |
+| B-1 | 变压器格点间模型不准的普遍解法（真实复核：格点间 Lp@40 偏 +1.5…+22%、k 到 +9%、SRF 到 −18%，区间诚实但宽；根因 bs 表次级外径 20 µm 一档太稀、锚定量在谐振附近变化快） | a + b：`lib.densify` 按模型不确定度全域补点；建模改为 L@f = L_lf × 谐振因子 | T16.1 / T16.2（`T16_PLAN_CN.md`）；T16.1 与 T16.2a 已派发（2026-09-25） |
 | B-2 | 10 个格点间变压器实测点回流入库 | 回流 | 已做（2026-09-25 02:33：两复核工程先 `migrate-store` 重写代际，再经 `lib_signoff._adopt` 复制，xfm_bs_ap / xfm_bs_m10 各 1576→1581 行，数据集重建 excluded {}；记录 `<ic-opt-library>/n28_signoff/adopt_xfm_bs.{py,log}`、`migrate_store_xfm_bs.log`） |
 | B-3 | TuRBO 长期方案 | 暂维持 b（`-e vendor/TuRBO`，Uber 非商业许可） | 记录；面向商业用户时再议 c / d |
 | B-4 | 公开发布前的 N28 脱敏 | 发布前审计 | RT-2 |
@@ -53,21 +53,21 @@
 
 | # | 事项 | 来源 | 大小 |
 |---|---|---|---|
-| R-13 | 过孔包围审计只认 "RV"：profile 标记要审计的过孔 | 审查 13 | 小 |
-| R-14 | 配置校验器用 AP=11 编号：在 `use_stack(profile)` 内按金属栈解析 | 审查 14 | 中 |
-| R-15 | 第三方生成器过产品级 DRC 门：生成器声明期望导体 | 审查 15 | 中 |
-| R-17 | Spectre license 排队等待 900 s 写死 → `simulator.license_queue_timeout_s` | 审查 17 | 小 |
-| R-18 | doctor 对纯 EM spec 仍要求 `spectre` / `ocean`；环境钩子只支持 csh 文件（`license_probe` 已入 site.yaml） | 审查 18 | 中 |
+| R-13 | 过孔包围审计只认 "RV"：profile 标记要审计的过孔 | 审查 13 | 小，进行中（T16.3，2026-09-25 派发） |
+| R-14 | 配置校验器用 AP=11 编号：在 `use_stack(profile)` 内按金属栈解析 | 审查 14 | 中，进行中（T16.3，2026-09-25 派发） |
+| R-15 | 第三方生成器过产品级 DRC 门：生成器声明期望导体 | 审查 15 | 中，进行中（T16.3，2026-09-25 派发） |
+| R-17 | Spectre license 排队等待 900 s 写死 → `simulator.license_queue_timeout_s` | 审查 17 | 小，进行中（T16.4，2026-09-25 派发） |
+| R-18 | doctor 对纯 EM spec 仍要求 `spectre` / `ocean`；环境钩子只支持 csh 文件（`license_probe` 已入 site.yaml） | 审查 18 | 中，进行中（T16.4，2026-09-25 派发） |
 | R-20 | 库缓存目录可指定，库根只读时回退 `~/.cache/ic-opt/<key>` | 审查 20 | 小 |
 | R-21 | σ/μ 置信上限按结果列可配（manifest） | 审查 21 | 小 |
 | R-22 | `lib.region` 的 `relax=` 参数 | 审查 22 | 小 |
-| R-23 | 5 nm 制造网格入 profile 字段 | 审查 23 | 小 |
+| R-23 | 5 nm 制造网格入 profile 字段 | 审查 23 | 小，进行中（T16.3，2026-09-25 派发） |
 | R-24 | 非均匀频率表的频率列取值（局部间距或插值） | 审查 24 | 中 |
 | R-25 | 四端口默认极性说明 + k_lf < 0 告警 | 审查 25 | 小 |
-| R-26 | 校验冒烟线宽夹到 profile 范围 | 审查 26 | 小 |
-| N-1 | `OPENBLAS_NUM_THREADS` / `MKL_NUM_THREADS` 也视为显式上限 | T15.3 问题 3 | 小 |
-| N-2 | 超时不释放资源：任务成进程组 / 会话，整组杀 | 审查开放问题 4 | 中 |
-| N-3 | `em.validate_profile proc=` 经 `--ssh-profile` 读远端 `.proc` | 审查开放问题 6 | 中 |
+| R-26 | 校验冒烟线宽夹到 profile 范围 | 审查 26 | 小，进行中（T16.3，2026-09-25 派发） |
+| N-1 | `OPENBLAS_NUM_THREADS` / `MKL_NUM_THREADS` 也视为显式上限 | T15.3 问题 3 | 小，进行中（T16.4，2026-09-25 派发） |
+| N-2 | 超时不释放资源：任务成进程组 / 会话，整组杀 | 审查开放问题 4 | 中，进行中（T16.4，2026-09-25 派发） |
+| N-3 | `em.validate_profile proc=` 经 `--ssh-profile` 读远端 `.proc` | 审查开放问题 6 | 中，进行中（T16.4，2026-09-25 派发） |
 | N-4 | 跨进程同时校准同一模型的竞争（同一台机器两个进程） | T15.3 问题 5 | 小 |
 | N-5 | ADR-0001 隔离冒烟脚本把 `~/.ic-opt/site.yaml` 绑进沙箱 | T15.7 问题 2 | 小（需能跑 bwrap） |
 | N-6 | pcell 注释里 em-opt 时代的指针（`geometry/…`、`.scratch/…`）清理 | T15.7 问题 5 | 小 |
