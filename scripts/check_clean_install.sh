@@ -8,9 +8,10 @@
 #
 # A  `-e ".[em]"` alone. OpenBox and gpytorch both pull scikit-learn in, so only an environment without
 #    them shows whether IC-Opt declares everything it imports: `ic-opt --help`, every ic_opt module, and
-#    the packaging / library / blocks tests must run.
-# B  the README install, `-e ".[em,turbo]" -e vendor/open-box` in one resolver call (OpenBox pins
-#    numpy < 2): the same checks plus the optimizer tests (sobol, turbo and openbox strategies).
+#    the packaging / library / blocks tests must run; the `turbo` and `latin_hypercube` strategies must
+#    fail with the ImportError that names the TuRBO install.
+# B  the README install, `-e ".[em,turbo]" -e vendor/open-box -e vendor/TuRBO` in one resolver call
+#    (OpenBox pins numpy < 2): the same checks plus the optimizer tests (sobol, turbo and openbox strategies).
 #
 # pytest is installed next to the package in both environments; nothing else is added. Uses uv when it is
 # on PATH (torch from its CPU build unless UV_TORCH_BACKEND says otherwise), else `python -m venv` + pip.
@@ -29,6 +30,19 @@ names = [m.name for m in pkgutil.walk_packages(ic_opt.__path__, "ic_opt.")]
 for name in names:
     importlib.import_module(name)
 print(f"{len(names)} ic_opt modules imported")'
+TURBO_ABSENT='import importlib.util, sys
+from ic_opt import suggesters
+from ic_opt.observation import Observations
+from tests.ic_opt.fakes import make_spec
+assert importlib.util.find_spec("turbo") is None, "TuRBO is importable here"
+for strategy in ("turbo", "latin_hypercube"):
+    try:
+        suggesters.make(strategy).propose(make_spec(), Observations(), 2, seed=0)
+    except ImportError as exc:
+        assert "uv pip install -e \".[turbo]\" -e vendor/TuRBO" in str(exc), exc
+        print(f"{strategy}: {exc}")
+    else:
+        sys.exit(f"strategy {strategy} ran without TuRBO")'
 
 finish() {
     if [[ "${KEEP:-0}" == 1 ]]; then echo "environments kept under $WORK"; else rm -rf "$WORK"; fi
@@ -80,7 +94,7 @@ quiet() { "$@" >/dev/null; }
 versions() {                # versions DIR: what the resolver picked ("-" = not installed)
     run_in "$1" python -c '
 import importlib.metadata as m, platform
-names = ["numpy", "scipy", "scikit-learn", "threadpoolctl", "klayout", "torch", "gpytorch", "openbox"]
+names = ["numpy", "scipy", "scikit-learn", "threadpoolctl", "klayout", "torch", "gpytorch", "openbox", "turbo"]
 def version(name):
     try:
         return m.version(name)
@@ -92,23 +106,25 @@ print("python " + platform.python_version() + ", " + ", ".join(f"{n} {version(n)
 A="$WORK/declared"
 B="$WORK/documented"
 
-echo "== A: -e \".[em]\" alone (no OpenBox, no torch): does IC-Opt declare what it imports?"
+echo "== A: -e \".[em]\" alone (no OpenBox, no TuRBO, no torch): does IC-Opt declare what it imports?"
 if check "A: venv" new_env "$A" && check "A: install" install "$A" -e "$ROOT[em]" "pytest>=8.0"; then
     versions "$A"
     check "A: ic-opt --help" quiet run_in "$A" ic-opt --help
     check "A: imports" run_in "$A" python -c "$IMPORT_ALL"
+    check "A: turbo strategies without TuRBO" run_in "$A" python -c "$TURBO_ABSENT"
     # shellcheck disable=SC2086
     check "A: pytest" run_in "$A" python -m pytest -q -rs -p no:cacheprovider $TESTS
 fi
 
 echo
-echo "== B: -e \".[em,turbo]\" -e vendor/open-box in one resolver call (the README install)"
+echo "== B: -e \".[em,turbo]\" -e vendor/open-box -e vendor/TuRBO in one resolver call (the README install)"
 if check "B: venv" new_env "$B" &&
-    check "B: install" install "$B" -e "$ROOT[em,turbo]" -e "$ROOT/vendor/open-box" "pytest>=8.0"; then
+    check "B: install" install "$B" -e "$ROOT[em,turbo]" -e "$ROOT/vendor/open-box" -e "$ROOT/vendor/TuRBO" "pytest>=8.0"; then
     versions "$B"
     check "B: ic-opt --help" quiet run_in "$B" ic-opt --help
     check "B: imports" run_in "$B" python -c "$IMPORT_ALL
-import openbox, torch, gpytorch"
+import openbox, torch, gpytorch, turbo
+print(f\"turbo from {turbo.__file__}\")"
     # shellcheck disable=SC2086
     check "B: pytest" run_in "$B" python -m pytest -q -rs -p no:cacheprovider $TESTS tests/ic_opt/test_optimize.py
 fi

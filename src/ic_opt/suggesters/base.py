@@ -8,9 +8,7 @@ Raw vectors live in the numeric space of :func:`ic_opt.space.bounds`; the
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Protocol
 
 import numpy as np
@@ -19,7 +17,9 @@ from ic_opt import space
 from ic_opt.observation import Observation, Observations
 from ic_opt.spec import Spec
 
-TURBO_PATH = Path(__file__).resolve().parents[3] / "vendor" / "TuRBO"
+# TuRBO (the `turbo` strategy, `latin_hypercube` designs) is vendored in the checkout, not shipped in the package:
+# it is under Uber's non-commercial licence. It is installed from the checkout like OpenBox and imported normally.
+TURBO_INSTALL = 'uv pip install -e ".[turbo]" -e vendor/TuRBO'
 
 
 @dataclass
@@ -56,8 +56,10 @@ def unit_design(method: str, n: int, dim: int, seed: int) -> np.ndarray:
 
         return Sobol(d=dim, scramble=True, seed=seed).random(n=n)
     if method == "latin_hypercube":
-        ensure_turbo_importable()
-        from turbo.utils import latin_hypercube
+        try:
+            from turbo.utils import latin_hypercube
+        except ImportError as exc:
+            raise turbo_missing("method 'latin_hypercube'") from exc
 
         return latin_hypercube(n, dim)
     if method == "random":
@@ -70,6 +72,8 @@ def scale(unit: np.ndarray, spec: Spec) -> list[list[float]]:
     return (lb + unit * (ub - lb)).tolist()
 
 
-def ensure_turbo_importable() -> None:
-    if str(TURBO_PATH) not in sys.path:
-        sys.path.insert(0, str(TURBO_PATH))
+def turbo_missing(what: str) -> ImportError:
+    """The error for ``what`` (e.g. "strategy 'turbo'") when ``import turbo`` fails: what to install, and the licence."""
+    return ImportError(f"{what} needs TuRBO, which is vendored in the ic-opt checkout (vendor/TuRBO, Uber's non-commercial "
+                       "licence) rather than shipped, and torch + gpytorch from the `turbo` extra; install both from the "
+                       f"checkout: {TURBO_INSTALL}")

@@ -2,20 +2,25 @@
 
 Every module-level third-party import under ``src/ic_opt`` resolves to a distribution in
 ``[project].dependencies`` -- or, under ``ic_opt/em``, the ``em`` extra (klayout). Imports inside functions
-are optional features (OpenBox, torch, SHAP) and are not checked here; ``scripts/check_clean_install.sh``
-installs the package into fresh environments and runs it.
+are optional features (OpenBox, TuRBO, torch, SHAP) and are not checked here; ``scripts/check_clean_install.sh``
+installs the package into fresh environments and runs it. OpenBox and TuRBO are vendored and installed from the
+checkout (T15.5b): a missing one says how to install it, and nothing reaches them by editing ``sys.path``.
 """
 
 from __future__ import annotations
 
 import ast
+import json
+import os
 import re
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
 
 import pytest
 
+from ic_opt import suggesters
 from ic_opt.observation import Observations
 from ic_opt.suggesters.openbox import OpenBoxSuggester
 from tests.ic_opt.fakes import make_spec
@@ -23,6 +28,23 @@ from tests.ic_opt.fakes import make_spec
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "src" / "ic_opt"
 DISTRIBUTION = {"sklearn": "scikit-learn", "yaml": "pyyaml"}      # import name -> distribution name, where they differ
+TURBO_INSTALL = 'uv pip install -e ".[turbo]" -e vendor/TuRBO'     # what a missing TuRBO asks for, from the checkout
+
+# Run in a fresh interpreter (this one imported ic_opt.suggesters at collection): import the suggesters, use both
+# TuRBO-backed ones, report sys.path before / after and where `turbo` came from (None: not importable here).
+FRESH_TURBO_USE = """
+import json, sys
+before = list(sys.path)
+from ic_opt import suggesters
+from ic_opt.observation import Observations
+from tests.ic_opt.fakes import make_spec
+for strategy in ("latin_hypercube", "turbo"):
+    try:
+        suggesters.make(strategy).propose(make_spec(), Observations(), 2, seed=0)
+    except ImportError:
+        pass
+print(json.dumps({"before": before, "after": sys.path, "turbo": getattr(sys.modules.get("turbo"), "__file__", None)}))
+"""
 
 
 def _normalized(name: str) -> str:
@@ -60,3 +82,24 @@ def test_an_openbox_strategy_without_openbox_says_how_to_install_it(monkeypatch)
     monkeypatch.setitem(sys.modules, "openbox", None)                # `import openbox` now raises ImportError
     with pytest.raises(ImportError, match=r"-e vendor/open-box"):
         OpenBoxSuggester().propose(make_spec(), Observations(), 1, seed=0)
+
+
+@pytest.mark.parametrize("strategy", ["turbo", "latin_hypercube"])
+def test_a_turbo_strategy_without_turbo_says_how_to_install_it(monkeypatch, strategy):
+    monkeypatch.setitem(sys.modules, "turbo", None)                  # `import turbo` now raises ImportError,
+    monkeypatch.setitem(sys.modules, "turbo.utils", None)            # and so does `turbo.utils` if a test loaded it
+    with pytest.raises(ImportError, match=re.escape(TURBO_INSTALL)) as raised:
+        suggesters.make(strategy).propose(make_spec(), Observations(), 2, seed=0)
+    assert "non-commercial" in str(raised.value)
+
+
+def test_the_suggesters_import_turbo_without_touching_sys_path():
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(PACKAGE.parent), str(ROOT)])}
+    done = subprocess.run([sys.executable, "-c", FRESH_TURBO_USE], cwd=ROOT, env=env, capture_output=True, text=True,
+                          check=False)
+    assert done.returncode == 0, done.stderr
+    fresh = json.loads(done.stdout.splitlines()[-1])
+    assert fresh["after"] == fresh["before"]
+    if fresh["turbo"] is not None:                                   # installed: its own editable finder or site-packages
+        where = Path(fresh["turbo"]).resolve()
+        assert where.parts[-4:-2] == ("vendor", "TuRBO") or "site-packages" in where.parts, where

@@ -14,9 +14,9 @@ spec.yaml  ──►  ic-opt run <recipe> <project> [--plan]  ──►  .icopt/
 
 ```bash
 uv venv --python 3.11 .venv
-uv pip install -e ".[em,turbo]" -e vendor/open-box   # one resolver call; add dev / report / prf here too
-ic-opt --version                                      # ic-opt 0.2.0
-bash scripts/check_clean_install.sh                   # optional: the same install in throwaway venvs, smoke-tested
+uv pip install -e ".[em,turbo]" -e vendor/open-box -e vendor/TuRBO   # one resolver call; add dev / report / prf here too
+ic-opt --version                                                     # ic-opt 0.2.0
+bash scripts/check_clean_install.sh                                  # optional: the same install in throwaway venvs, smoke-tested
 ```
 
 The package declares everything it imports at start-up (numpy, scipy, scikit-learn, threadpoolctl, ...).
@@ -27,8 +27,9 @@ scikit-learn < 1.4, ConfigSpace <= 0.6.1, matplotlib < 3.9); together they have 
 Extras: `em` (klayout: pcell geometry and the EM stages), `turbo` (torch + gpytorch for the `turbo` strategy
 and `latin_hypercube` designs; the CPU build is enough: uv's `--torch-backend cpu` skips the CUDA wheels),
 `report` (SHAP parameter importance), `prf` (OpenBox random-forest surrogate, needs swig), `dev` (pytest,
-ruff). The `turbo` strategy loads TuRBO from `vendor/TuRBO` in the checkout; TuRBO is under Uber's
-non-commercial licence (`vendor/TuRBO/LICENSE.md`).
+ruff). The `turbo` strategy and `latin_hypercube` designs import TuRBO, which is installed from `vendor/TuRBO`
+in the checkout like OpenBox (`-e vendor/TuRBO` above); TuRBO is under Uber's non-commercial licence
+(`vendor/TuRBO/LICENSE.md`), which is why it is not copied into the package.
 
 Cadence tools come from a csh environment file **on the simulation host**:
 pass `--cshrc FILE`, set `IC_OPT_CADENCE_CSHRC`, or put `cshrc:` in that

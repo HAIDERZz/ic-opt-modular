@@ -13,7 +13,8 @@ from ic_opt.site import HostLimits
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 
-needs_turbo = pytest.mark.skipif(importlib.util.find_spec("torch") is None, reason="turbo strategy needs the [turbo] extra (torch)")
+needs_turbo = pytest.mark.skipif(any(importlib.util.find_spec(name) is None for name in ("turbo", "torch")),
+                                 reason='turbo strategy needs TuRBO and torch: uv pip install -e ".[turbo]" -e vendor/TuRBO')
 
 # The fake host's site.yaml entry: room for every test pipeline's heaviest stage several times over (tests about the
 # envelope itself build their own HostLimits). The fake host reports exactly this size to env.doctor's machine probe.

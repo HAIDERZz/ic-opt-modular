@@ -20,9 +20,9 @@ from ic_opt.observation import Observations
 from ic_opt.spec import Spec
 from ic_opt.suggesters.base import (
     Proposal,
-    ensure_turbo_importable,
     history_arrays,
     scale,
+    turbo_missing,
     unit_design,
 )
 
@@ -38,12 +38,11 @@ class TurboSuggester:
         self.n_training_steps = n_training_steps
 
     def propose(self, spec: Spec, history: Observations, n: int, *, seed: int) -> Proposal:
-        ensure_turbo_importable()
         try:
             from turbo import Turbo1
             from turbo.utils import from_unit_cube, to_unit_cube
-        except ImportError as exc:                    # torch / gpytorch are the optional `turbo` extra
-            raise ImportError("strategy 'turbo' needs torch and gpytorch: pip install 'ic-auto-opt-workflow[turbo]'") from exc
+        except ImportError as exc:                    # vendor/TuRBO, and torch / gpytorch from the `turbo` extra
+            raise turbo_missing("strategy 'turbo'") from exc
 
         dim = len(spec.variables)
         n_init = self.n_init or 2 * dim

@@ -28,10 +28,10 @@ dependencies = [
 [project.optional-dependencies]
 # opt: OpenBox (the openbox_* strategies, opt.optimize's default) is vendored, not declared -- a path dependency does
 # not survive into a published wheel. Install it from the checkout in the same resolver call, which keeps its
-# numpy < 2 / scipy < 1.13 / scikit-learn < 1.4 pins:  uv pip install -e ".[em,turbo]" -e vendor/open-box
-turbo = [                      # the `turbo` strategy and `latin_hypercube` designs load vendor/TuRBO, which imports torch + gpytorch
-    "torch>=2.0",
-    "gpytorch>=1.11",
+# numpy < 2 / scipy < 1.13 / scikit-learn < 1.4 pins:  uv pip install -e ".[em,turbo]" -e vendor/open-box -e vendor/TuRBO
+turbo = [                      # torch + gpytorch for the `turbo` strategy and `latin_hypercube` designs. TuRBO itself is
+    "torch>=2.0",              # vendored (vendor/TuRBO, Uber's non-commercial licence, so not copied into the package) and
+    "gpytorch>=1.11",          # installed from the checkout in the same resolver call as OpenBox: -e vendor/TuRBO
 ]
 dev = [
     "pytest>=8.0",
