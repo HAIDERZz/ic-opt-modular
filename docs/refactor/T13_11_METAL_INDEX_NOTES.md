@@ -11,7 +11,7 @@ Status: done (2026-09-24), after the N28 transformer production run.
   skips a level, a metal no via reaches, or a via naming an unknown conductor fails the profile.
 - **One mapping, `ic_opt.em.pcell.stack`.** Name ↔ position lives in one module used by both the generator core
   (`_pcell_core._metal_index / _metal_name`) and the DRC audit (whose own copy is gone). Inside `use_stack(profile)`
-  positions are the profile's stack; outside it (reference mode) the fixed convention "M<n>"/"<n>" → n, "AP" → 11
+  positions are the profile's stack; outside it (reference mode) the fixed convention `"M<n>"` / `"<n>"` → n, `"AP"` → 11
   stays. The active stack is a context variable, so threaded builds never see each other's profile.
 - **Where the stack is opened:** the six family entry points (`@builds_on_profile_stack`, keyed on their `process`
   argument), the generator's output stage (`_write_geometry_outputs`: shield, audits), and the audit's expected-layer
