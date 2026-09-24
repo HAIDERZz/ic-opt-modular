@@ -4,9 +4,12 @@ Rows come from the stratum's parts (run stores). Per part only ``ok`` observatio
 (pipeline fingerprint: geometry generation + EMX physics + process file) are used -- the pinned one or
 the part's most common -- so generations never mix. Every quantity is recomputed from the stored sNp by
 ``ic_opt.em.measure``: peaks inside the manifest's band, curves at the anchor frequencies (unusable where
-the resonance sits at or below ``srf_margin`` x f0), so parts swept to different frequencies answer with
-the same definition. Each row also carries the integrity evidence ``check`` reports: the largest singular
-value of S over frequency (passivity) and whether the stored quantities.json reproduces.
+the resonance sits at or below ``srf_margin`` x f0), low-frequency scalars up to the stratum's
+``low_freq_max_hz`` (else the part spec's), so parts swept to different frequencies answer with the same
+definition; a row whose sweep cannot give a value (no sample in the low-frequency band, no resonance) has
+None in that column only. Each row also carries the integrity evidence ``check`` reports: the largest
+singular value of S over frequency (passivity) and whether the stored quantities.json reproduces under
+the definition the run measured with (the part spec's).
 
 Built datasets are cached under ``<library>/.cache/`` keyed by the observation files, the quantity
 definitions and the measure code, so a query does not re-read thousands of sNp files.
@@ -190,7 +193,9 @@ def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: 
     snp = work / f"{device.id}.s{len(columns)}p"
     ts = touchstone.read(snp)
     topo_spec = device.topology or device.default_topology()
-    topo = measure.Topology.from_labels(topo_spec.drives, topo_spec.grounded, columns)
+    ran_with = topo_spec.low_freq_max_hz                                   # the run's own definition (quantities.json)
+    limit = ran_with if stratum.low_freq_max_hz is None else stratum.low_freq_max_hz      # the manifest's wins
+    topo = measure.Topology.from_labels(topo_spec.drives, topo_spec.grounded, columns, low_freq_max_hz=limit)
     q = measure.quantities(ts.freqs, ts.s, topo, z0=ts.z0)
     stop = float(ts.freqs[-1])
     values: dict[str, float | None] = {}
@@ -219,7 +224,9 @@ def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: 
     stored_match = None
     if stored_path.is_file():
         stored = json.loads(stored_path.read_text(encoding="utf-8"))
-        stored_match = all(stored.get(k) == q.scalars.get(k) for k in UNBANDED if k in stored or k in q.scalars)
+        ran = q if limit == ran_with else measure.quantities(
+            ts.freqs, ts.s, measure.Topology.from_labels(topo_spec.drives, topo_spec.grounded, columns, low_freq_max_hz=ran_with), z0=ts.z0)
+        stored_match = all(stored.get(k) == ran.scalars.get(k) for k in UNBANDED if k in stored or k in ran.scalars)
     return Row(part, o.obs_id, {d: float(o.params[d]) for d in stratum.dims}, values, stop, len(ts.freqs), ts.n_ports,
                float(np.linalg.svd(ts.s, compute_uv=False).max()), stored_match, str(snp.relative_to(root)))
 

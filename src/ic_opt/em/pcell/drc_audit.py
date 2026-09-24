@@ -20,6 +20,10 @@ from dataclasses import dataclass, field
 import klayout.db as kdb
 
 from ic_opt.em.pcell import stack as _stack
+from ic_opt.em.pcell.process_rules import (
+    ProcessRuleProfile,
+    get_process_rule_profile,
+)
 from ic_opt.em.pcell.rule_adapter import (
     GeometryRuleAdapter,
     get_geometry_rule_adapter,
@@ -575,6 +579,19 @@ def require_layers_from_config(generator_id: str, config: dict) -> list[str]:
             if name not in out:
                 out.append(name)
     return out
+
+
+def fixture_exemptions(profile: ProcessRuleProfile | str) -> frozenset[tuple[str, str]]:
+    """The ``ignore_findings`` every product-scope verdict on ``profile``
+    (a profile or its id) passes: ``max_width`` on the ground-fixture
+    conductor, ``profile.fixture_conductor`` -- the bottom of the metal
+    stack, whatever the profile calls it (T15.6). The fixture ring is drawn
+    as wide as its config says, wider than that metal's max_width by
+    design; every other rule on that metal, and every rule on the other
+    metals, still counts."""
+    if isinstance(profile, str):
+        profile = get_process_rule_profile(profile)
+    return frozenset({("max_width", profile.fixture_conductor)})
 
 
 def product_scope_record(

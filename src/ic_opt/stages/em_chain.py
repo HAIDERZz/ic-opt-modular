@@ -129,17 +129,20 @@ class Pcell:
 
 
 def _audit(device: Device, model, gds_path: Path) -> None:
-    """em-opt's product-scope DRC gate: every conductor the config names must be drawn, no rule violation except M1 max_width (the ground fixture)."""
+    """em-opt's product-scope DRC gate: every conductor the config names must be drawn, no rule violation except
+    max_width on the profile's fixture conductor (the ground fixture, ``drc_audit.fixture_exemptions``)."""
     if getattr(model, "drc_check", True) is False:
         return
     from ic_opt.em.pcell.drc_audit import (
         audit_gds,
+        fixture_exemptions,
         product_scope_record,
         require_layers_from_config,
     )
 
     expected = require_layers_from_config(device.generator, model.model_dump())
-    record = product_scope_record(audit_gds(gds_path, model.process_profile), expected, ignore_findings=frozenset({("max_width", "M1")}))
+    record = product_scope_record(audit_gds(gds_path, model.process_profile), expected,
+                                  ignore_findings=fixture_exemptions(model.process_profile))
     if record["outcome"] == "missing_layer":
         raise StageFailure(f"device {device.id}: DRC audit found missing product layers {record['missing']}")
     if record["outcome"] != "pass":
@@ -264,7 +267,8 @@ class Measure:
             raise StageFailure(f"device {ctx.unit} has no S-parameters")
         try:
             ts = touchstone.read(sp.path)
-            topo = measure_kernel.Topology.from_labels(device.topology.drives, device.topology.grounded, sp.port_labels)
+            topo = measure_kernel.Topology.from_labels(device.topology.drives, device.topology.grounded, sp.port_labels,
+                                                       low_freq_max_hz=device.topology.low_freq_max_hz)
             q = measure_kernel.quantities(ts.freqs, ts.s, topo, z0=ts.z0)
         except (touchstone.TouchstoneError, measure_kernel.MeasureError, KeyError) as exc:
             raise StageFailure(f"device {ctx.unit}: {exc}") from exc

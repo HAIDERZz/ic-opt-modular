@@ -2,9 +2,10 @@
 
 The existing profiles keep their numbers (the byte-identity check against the recorded N28 library and the frozen
 demo_6m / N28 / N65 baselines lives in docs/refactor/reports/pcell_plan/pcell_byte_replay.py); these tests pin the
-mechanism: the chain is read from the vias whatever the key order, the fixture metal is the chain's bottom, the
-reference convention survives outside a profile, user configs must name real metals, stacks do not leak between
-threads, and a fictitious 12-metal profile whose top is called RDL builds every family on RDL.
+mechanism: the chain is read from the vias whatever the key order, the fixture metal is the chain's bottom (and the
+DRC gate excuses the fixture ring on it by that name, T15.6), the reference convention survives outside a profile,
+user configs must name real metals, stacks do not leak between threads, and a fictitious 12-metal profile whose top is
+called RDL builds every family on RDL.
 """
 from __future__ import annotations
 
@@ -74,15 +75,24 @@ def test_the_stack_is_the_via_chain_whatever_the_key_order():
     assert grown.metal_stack[-3:] == ("M10", "M11", "RDL")                                 # sorted keys put M10 before M2; the vias do not
 
 
+def bottom_renamed(base: dict, name: str) -> dict:
+    """``base`` (demo_6m) with its bottom metal M1 called ``name`` everywhere it appears; a bottom metal not named M1 must
+    then be declared as layer_catalog.ground_fixture_conductor."""
+    d = copy.deepcopy(base)
+    cat = d["layer_catalog"]
+    cat["conductors"] = {(name if k == "M1" else k): v for k, v in cat["conductors"].items()}
+    cat["conductors"][name]["emx_name"] = name
+    cat["vias"]["VIA1"]["connects"] = [name, "M2"]
+    for section in (d["emx_stack"]["conductors"], d["layout_rules"]["metal_width_space"],
+                    d["layout_rules"]["via_primitives"]["VIA1"]["min_enclosure_um"]):
+        section[name] = section.pop("M1")
+    d["coverage"]["metal_width_space"] = list(d["layout_rules"]["metal_width_space"])
+    return d
+
+
 def test_the_fixture_metal_is_the_bottom_named_m1_or_declared():
-    renamed = demo()
+    renamed = bottom_renamed(demo(), "ME1")
     cat = renamed["layer_catalog"]
-    cat["conductors"] = {("ME1" if k == "M1" else k): v for k, v in cat["conductors"].items()}
-    cat["vias"]["VIA1"]["connects"] = ["ME1", "M2"]
-    for section in (renamed["emx_stack"]["conductors"], renamed["layout_rules"]["metal_width_space"]):
-        section["ME1"] = section.pop("M1")
-    renamed["layout_rules"]["via_primitives"]["VIA1"]["min_enclosure_um"] = {"ME1": 0.03, "M2": 0.03}
-    renamed["coverage"]["metal_width_space"] = list(renamed["layout_rules"]["metal_width_space"])
     with pytest.raises(ValueError, match="declare layer_catalog.ground_fixture_conductor"):
         ProcessRuleProfile.model_validate(renamed)
     cat["ground_fixture_conductor"] = "ME1"
@@ -145,10 +155,36 @@ def test_a_config_metal_must_name_a_metal_of_its_profile():
         gen.config_model.model_validate(base | {"metal": "7"})                                # no M7: never "the 7th metal"
 
 
+def test_a_renamed_fixture_metal_passes_the_smoke_and_the_pcell_audit(tmp_path, monkeypatch):
+    """T15.6 (audit row 12): the product-scope DRC gate excuses max_width on the profile's fixture conductor, whatever
+    the profile calls it. demo_6m with M1 renamed ME1 used to fail every build ([max_width] ME1 x1, the fixture ring)."""
+    from ic_opt.em.pcell.drc_audit import audit_gds, fixture_exemptions
+    from ic_opt.space import Point
+    from ic_opt.spec import Spec
+    from ic_opt.stages.em_chain import Pcell
+    from tests.ic_opt.test_em_pcell import demo_spec, point_context
+
+    data = bottom_renamed(demo(), "ME1") | {"process_id": "me1_6m"}
+    data["layer_catalog"]["ground_fixture_conductor"] = "ME1"
+    monkeypatch.setenv(PROFILE_DIRS_ENV_VAR, str(write_profile(tmp_path / "profiles", data, "me1_6m")))
+    assert fixture_exemptions("me1_6m") == {("max_width", "ME1")} and fixture_exemptions("demo_6m") == {("max_width", "M1")}
+    report = validate_profile("me1_6m", generate=True)
+    assert report.passed and "6 PASS, 0 FAIL, 0 SKIP" in report.format(), report.format()
+    d = demo_spec(two_devices=True).model_dump(mode="json")
+    for device in d["devices"]:
+        device["profile"] = "me1_6m"
+    spec = Spec.model_validate(d)
+    point = Point({"ind.outer_diameter_um": "90", "ind.width_um": "4", "xfm.primary_width_um": "6", "xfm.secondary_width_um": "5"}, "user")
+    geometry = Pcell(spec).run(point, point_context(spec, tmp_path / "run"))           # the product-scope audit is part of the build
+    for g in geometry.devices.values():                                                 # it passed on the exemption alone
+        assert {(v.kind, v.layer) for v in audit_gds(g.gds_path, "me1_6m").violations} == {("max_width", "ME1")}
+
+
 def test_twelve_metals_with_rdl_on_top_build_every_family(tmp_path, monkeypatch):
     from ic_opt.em.pcell._pcell_core import max_opening
     from ic_opt.em.pcell.drc_audit import (
         audit_gds,
+        fixture_exemptions,
         product_scope_record,
         require_layers_from_config,
     )
@@ -167,7 +203,7 @@ def test_twelve_metals_with_rdl_on_top_build_every_family(tmp_path, monkeypatch)
         with tempfile.TemporaryDirectory() as out:
             geometry = gen.generate(config, outdir=Path(out), gds_name="rdl.gds")
             record = product_scope_record(audit_gds(geometry.gds_path, "rdl12"), require_layers_from_config(family, config.model_dump()),
-                                          ignore_findings=frozenset({("max_width", "M1")}))
+                                          ignore_findings=fixture_exemptions(profile))
         assert record["outcome"] == "pass", (family, record)
 
 

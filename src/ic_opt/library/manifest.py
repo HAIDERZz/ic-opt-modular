@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, PositiveFloat, field_validator, model_validator
 
 from ic_opt.spec import Model
 
@@ -54,6 +54,7 @@ class Stratum(Model):
     parts: list[Part] = Field(min_length=1)
     quantities: dict[str, Quantity] = Field(min_length=1)
     steps: dict[str, float] = Field(default_factory=dict)  # candidate resolution per dim for inverse queries (e.g. outer_diameter_um: 1)
+    low_freq_max_hz: PositiveFloat | Literal["relative"] | None = None   # top of the L*_lf / k_lf band for every part; None: each part's spec
 
     @model_validator(mode="after")
     def _consistent(self) -> Stratum:

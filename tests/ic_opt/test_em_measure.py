@@ -19,6 +19,7 @@ from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 from tests.ic_opt.fakes import FakeSpectreExecutor, synthetic_snp
+from tests.ic_opt.library_fixtures import rlc_touchstone, xfm_touchstone
 from tests.ic_opt.test_em_circuit import em_circuit_spec
 from tests.ic_opt.test_em_emx import em_only_spec
 
@@ -140,4 +141,82 @@ def test_a_q_peak_is_searched_below_the_system_resonance():
     below = (freqs > 0) & (freqs < q.scalars["SRF_p"])
     assert q.scalars["Qp_peak"] == pytest.approx(np.nanmax(q.curves["Qp"][below]))
     assert np.nanmax(q.curves["Qp"]) > 3 * q.scalars["Qp_peak"]                          # the band-edge climb is ignored
+
+
+# -- T15.6: the low-frequency limit (audit row 11) ---------------------------------------------
+
+IND = measure.Topology.from_labels([("P1", "N1")], [], ["P1", "N1"])
+XFM = measure.Topology.from_labels([("P1", "N1"), ("N2", "P2")], [], ["P1", "N1", "P2", "N2"])
+
+
+def measured(text: str, path: Path, topo: measure.Topology) -> measure.Quantities:
+    path.write_text(text)
+    ts = touchstone.read(path)
+    return measure.quantities(ts.freqs, ts.s, topo, z0=ts.z0)
+
+
+def test_the_low_frequency_limit_is_3_ghz_by_default_a_number_or_relative_to_the_srf(tmp_path):
+    """None averages 0 < f <= 3 GHz (the parity definition); a number is that many Hz; "relative" is min(3 GHz, SRF / 10)
+    with the system SRF, 3 GHz without one. Only the low-frequency band moves; nothing there at all leaves Lp_lf None."""
+    relative = measure.Topology([(0, 1)], [], "relative")
+    assert IND.low_freq_limit(20e9) == measure.LOW_FREQ_CAP_HZ == 3e9
+    assert (relative.low_freq_limit(20e9), relative.low_freq_limit(50e9), relative.low_freq_limit(None)) == (2e9, 3e9, 3e9)
+    text = rlc_touchstone(150, 5, 2, 2)                                                  # resonates between 10 and 30 GHz
+    default, rel, fixed = (measured(text, tmp_path / "x.s2p", measure.Topology([(0, 1)], [], limit)) for limit in (None, "relative", 1.5e9))
+    f, lp, srf = default.freqs, default.curves["Lp"], default.scalars["SRF"]
+    assert 10e9 < srf < 30e9 and default.scalars["Lp_lf"] == float(np.mean(lp[(f > 0) & (f <= 3e9)]))
+    assert rel.scalars["Lp_lf"] == float(np.mean(lp[(f > 0) & (f <= srf / 10)])) != default.scalars["Lp_lf"]
+    assert fixed.scalars["Lp_lf"] == float(lp[f == 1e9][0])
+    for q in (rel, fixed):
+        assert {k: v for k, v in q.scalars.items() if k != "Lp_lf"} == {k: v for k, v in default.scalars.items() if k != "Lp_lf"}
+    low = measured(rlc_touchstone(260, 4, 2, 3), tmp_path / "low.s2p", relative)        # SRF below 10 GHz: SRF / 10 < the first sample
+    assert low.scalars["SRF"] < 10e9 and low.scalars["Lp_lf"] is None and low.scalars["Lp_res"] is not None
+
+
+def test_a_sweep_above_the_low_frequency_band_leaves_only_those_scalars_empty(tmp_path):
+    """C5: a 50-120 GHz sweep has nothing at or below 3 GHz (nor at or below SRF / 5): L*_lf, k_lf and L*_res are None
+    instead of a MeasureError, and Lp@80, SRF and the Q peaks come out exactly as from a sweep that starts at 0."""
+    full = measured(rlc_touchstone(120, 5, 2, 1, stop_ghz=120), tmp_path / "full.s2p", IND)
+    high = measured(rlc_touchstone(120, 5, 2, 1, stop_ghz=120, start_ghz=50), tmp_path / "high.s2p", IND)
+    assert high.scalars["Lp_lf"] is None and high.scalars["Lp_res"] is None
+    assert 50e9 < high.scalars["SRF"] < 120e9 and high.scalars["SRF"] == full.scalars["SRF"]
+    assert high.at("Lp", 80e9) == full.at("Lp", 80e9) and high.scalars["Qp_peak"] > 0
+    pair = measured(xfm_touchstone(120, 100, 5, 5, 0, stop_ghz=120, start_ghz=50), tmp_path / "high.s4p", XFM)
+    whole = measured(xfm_touchstone(120, 100, 5, 5, 0, stop_ghz=120), tmp_path / "full.s4p", XFM)
+    assert all(pair.scalars[k] is None for k in ("Lp_lf", "Ls_lf", "k_lf", "Lp_res", "Ls_res")) and whole.scalars["k_lf"] > 0
+    assert pair.at("k", 80e9) == whole.at("k", 80e9) and pair.scalars["Qs_peak"] == whole.scalars["Qs_peak"]
+
+
+def test_a_device_swept_only_above_the_low_frequency_band_is_not_a_failed_measure(tmp_path):
+    """C5 through the measure stage: Lp@80 and SRF are metrics of a 50-120 GHz sweep; a metric that asks for Lp_lf fails
+    as a missing value, until the device's topology.low_freq_max_hz reaches into the sweep. An unset limit is left out
+    of the spec's dump, so a spec written before the field existed keeps its fingerprint."""
+    high = "! EMX was run on fake as: emx\n" + rlc_touchstone(120, 5, 2, 1, stop_ghz=120, start_ghz=50)     # the header the emx stage checks
+    point = Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")
+
+    def run(d: dict, name: str):
+        store = RunStore(tmp_path / name)
+        ex = FakeSpectreExecutor(store.root / "sims", snp_fn=lambda argv, n_ports, z0: high)
+        (o,) = evaluate(Spec.model_validate(d), [point], ex, store)
+        return o, json.loads((store.root / "sims" / o.obs_id / "ind" / "nominal" / "quantities.json").read_text())
+
+    d = em_only_spec().model_dump(mode="json")
+    assert "low_freq_max_hz" not in json.dumps(d)
+    d["metrics"] = [{"name": "L80", "unit": "H", "device": "ind", "quantity": "Lp", "frequency_hz": 80e9},
+                    {"name": "SRF", "unit": "Hz", "device": "ind", "quantity": "SRF"}]
+    d["constraints"], d["objective"] = [], {"direction": "maximize", "expression": "L80"}
+    o, stored = run(d, "a")
+    assert o.status == "ok" and o.metrics["L80"] == measured(high, tmp_path / "x.s2p", IND).at("Lp", 80e9)
+    assert 50e9 < o.metrics["SRF"] < 120e9 and stored["SRF"] == o.metrics["SRF"] and stored["Lp_lf"] is None and stored["Lp_res"] is None
+    d["metrics"].append({"name": "Llf", "unit": "H", "device": "ind", "quantity": "Lp_lf"})
+    o, _ = run(d, "b")
+    assert o.status == "failed:measure" and o.issues == ["ind/nominal: metric Llf: Lp_lf is None"]
+    assert o.children["ind/nominal"].metrics["L80"] > 0
+    derived = Spec.model_validate({**d, "devices": [{**d["devices"][0], "topology": None}]})
+    d["devices"][0]["topology"] = {"drives": [["P1", "N1"]], "low_freq_max_hz": None}
+    assert Spec.model_validate(d).fingerprint() == derived.fingerprint()
+    d["devices"][0]["topology"]["low_freq_max_hz"] = 52e9                                  # a band the sweep covers: 50, 51, 52 GHz
+    o, stored = run(d, "c")
+    expected = measured(high, tmp_path / "x.s2p", measure.Topology([(0, 1)], [], 52e9)).scalars["Lp_lf"]
+    assert o.status == "ok" and o.metrics["Llf"] == stored["Lp_lf"] == expected and Spec.model_validate(d).fingerprint() != derived.fingerprint()
 

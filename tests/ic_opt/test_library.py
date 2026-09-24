@@ -22,12 +22,12 @@ DIMS = ["outer_diameter_um", "width_um", "spacing_um", "turns"]
 QUANTITIES = {"Lp_lf": {}, "Lp_res": {}, "Qp_peak": {"band_ghz": 30}, "SRF_p": {}, "Lp": {"anchors_ghz": [5, 20]}, "Qp": {"anchors_ghz": [5, 20]}}
 
 
-def part_spec(project: str, stop_ghz: float, **em) -> Spec:
+def part_spec(project: str, stop_ghz: float, *, topology: dict | None = None, **em) -> Spec:
     d = minimal_spec()
     d["project"], d["testbenches"] = project, []
     d["devices"] = [{"id": "ind", "generator": "clean_port_ind_sym", "profile": "demo_6m", "ports": ["P1", "N1"],
                      "fixed": {"opening_um": 8.0, "lead_length_um": 20.0, "metal": "6", "ground_fixture": FIXTURE},
-                     "variables": {k: k for k in DIMS}}]
+                     "variables": {k: k for k in DIMS}, "topology": topology}]
     d["variables"] = [{"name": "outer_diameter_um", "kind": "continuous_step", "lower": "80", "upper": "160", "step": "1"},
                       {"name": "width_um", "kind": "continuous_step", "lower": "3", "upper": "8", "step": "0.1"},
                       {"name": "spacing_um", "kind": "continuous_step", "lower": "2", "upper": "4", "step": "0.1"},
@@ -40,8 +40,8 @@ def part_spec(project: str, stop_ghz: float, **em) -> Spec:
     return Spec.model_validate(d)
 
 
-def run_part(root: Path, name: str, stop_ghz: float, points: list[dict], *, fail_emx=None, **em) -> RunStore:
-    spec = part_spec(name, stop_ghz, **em)
+def run_part(root: Path, name: str, stop_ghz: float, points: list[dict], *, fail_emx=None, topology: dict | None = None, **em) -> RunStore:
+    spec = part_spec(name, stop_ghz, topology=topology, **em)
     (root / name).mkdir(parents=True, exist_ok=True)
     (root / name / "spec.yaml").write_text(yaml.safe_dump(spec.model_dump(mode="json")), encoding="utf-8")
     store = RunStore(root / name)
@@ -154,3 +154,45 @@ def test_declaration_errors_fail_loudly(tmp_path):
         dataset.build(tmp_path, "ind_demo", cache=False)
     with pytest.raises(dataset.DatasetError, match="no stratum 'nope'"):
         dataset.build(tmp_path, "nope", cache=False)
+
+
+def test_a_row_swept_above_the_low_frequency_band_misses_only_those_columns(tmp_path):
+    """T15.6 (audit row 11): a part swept 50-120 GHz has no sample at or below 3 GHz. Its rows lose Lp_lf (and Lp_res,
+    nothing lies below SRF / 5) but keep Lp@80, SRF_p and Qp_peak; the part swept from 0 keeps everything."""
+    from tests.ic_opt.library_fixtures import write_store
+
+    write_store(tmp_path, "full", [(od, w, 2.0, 1) for od in (80, 100) for w in (4.0, 6.0)], stop_ghz=120)
+    write_store(tmp_path, "high", [(od, w, 2.0, 1) for od in (90, 120) for w in (4.0, 6.0)], stop_ghz=120, start_ghz=50)
+    write_manifest(tmp_path, parts=("full", "high"), quantities={"Lp_lf": {}, "Lp_res": {}, "SRF_p": {}, "Qp_peak": {"band_ghz": 120},
+                                                                  "Lp": {"anchors_ghz": [80]}})
+    ds = dataset.build(tmp_path, "ind_demo", cache=False)
+    assert len(ds.rows) == 8 and ds.excluded == {}
+    assert {r.part for r in ds.usable("Lp_lf")} == {"full"} and {r.part for r in ds.usable("Lp_res")} == {"full"}
+    assert len(ds.usable("Lp@80")) == len(ds.usable("Qp_peak")) == 8
+    high = [r for r in ds.rows if r.part == "high"]
+    assert all(r.values["Lp_lf"] is None and r.values["Lp_res"] is None for r in high)
+    assert any(r.values["SRF_p"] is not None for r in high)                          # od 120 resonates inside 50-120 GHz
+    assert dataset.check(ds)["values"]["Lp_lf"] == 4
+
+
+def test_the_manifest_low_frequency_limit_wins_over_the_part_spec(tmp_path):
+    """T15.6: the part spec's topology.low_freq_max_hz (2 GHz here) is the run's definition; a stratum's low_freq_max_hz
+    redefines the column for the library, and the stored quantities still reproduce under the run's own."""
+    run_part(tmp_path, "ind_nt2", 30, NT2, topology={"drives": [["P1", "N1"]], "low_freq_max_hz": 2e9})
+
+    def kernel(row, limit):
+        ts = touchstone.read(tmp_path / row.snp)
+        topo = measure.Topology.from_labels([("P1", "N1")], [], ["P1", "N1"], low_freq_max_hz=limit)
+        return measure.quantities(ts.freqs, ts.s, topo, z0=ts.z0).scalars["Lp_lf"]
+
+    write_manifest(tmp_path, parts=("ind_nt2",))
+    ds = dataset.build(tmp_path, "ind_demo", cache=False)
+    assert len(ds.rows) == 4 and all(r.values["Lp_lf"] == kernel(r, 2e9) and r.stored_match is True for r in ds.rows)
+    write_manifest(tmp_path, parts=("ind_nt2",), low_freq_max_hz="relative")
+    ds = dataset.build(tmp_path, "ind_demo", cache=False)
+    assert all(r.values["Lp_lf"] == kernel(r, "relative") and r.stored_match is True for r in ds.rows)
+    assert any(r.values["Lp_lf"] != kernel(r, 2e9) for r in ds.rows)              # no resonance in the sweep: "relative" is 3 GHz
+    for bad in (0, -1e9, "relatve"):
+        with pytest.raises(ValueError, match="low_freq_max_hz"):
+            manifest.Stratum.model_validate({"generator": "g", "dims": ["a"], "parts": [{"store": "a"}], "quantities": {"Lp_lf": {}},
+                                             "low_freq_max_hz": bad})

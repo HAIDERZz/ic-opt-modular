@@ -75,6 +75,13 @@ all drives; `SRF_p` for an inductor). Curves sampled at anchors: `Lp Qp Ls
 Qs k`. Every value is recomputed from the sNp with these definitions, so
 parts swept to different stop frequencies still answer on one basis.
 
+The low-frequency scalars (`Lp_lf`, `Ls_lf`, `k_lf`) average the samples
+up to 3 GHz; a stratum's `low_freq_max_hz` sets another top, in Hz or
+`relative` for min(3 GHz, SRF / 10), over the parts' own
+`topology.low_freq_max_hz`, and a row swept entirely above that top keeps
+its other columns: only these (and `Lp_res` when nothing lies below
+SRF / 5) stay empty.
+
 For a transformer, query `SRF` rather than `SRF_p` / `SRF_s`: the secondary's
 resonance reflects into the primary's impedance as a sharp dip, and whether
 that dip crosses zero decides whether `SRF_p` lands on it or on the primary's

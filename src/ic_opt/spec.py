@@ -16,7 +16,15 @@ from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveFloat,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 VARIABLE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")   # device variables: <device>.<field>
@@ -221,6 +229,15 @@ class Topology(Model):
 
     drives: list[tuple[str, str]] = Field(min_length=1, max_length=2)   # (plus, minus) port labels per drive
     grounded: list[str] = Field(default_factory=list)
+    low_freq_max_hz: PositiveFloat | Literal["relative"] | None = None   # top of the L*_lf / k_lf band (ic_opt.em.measure); None: 3 GHz
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        """An unset low-frequency limit stays out of the dump, so the specs written before it existed keep their fingerprint."""
+        data = handler(self)
+        if self.low_freq_max_hz is None:
+            data.pop("low_freq_max_hz", None)
+        return data
 
 
 class Device(Model):

@@ -15,17 +15,34 @@ Q<N>_peak is the largest Q below the system SRF (T13.7): above the lowest resona
 climb again towards the band edge (a multi-turn secondary resonates inside the sweep), which is not the device's
 quality factor. For one drive nothing changes -- an inductor's Q is negative past its own SRF. em-opt's recorded
 library took the full-sweep maximum; its Q peaks of coupled pairs therefore differ from these by design.
+
+L<N>_lf and k_lf average the finite samples with 0 < f <= the low-frequency limit, which the topology's
+``low_freq_max_hz`` sets (T15.6):
+
+* None, the default: ``LOW_FREQ_CAP_HZ`` (3 GHz), the definition the OCEAN parity was proven with;
+* a number: that many Hz;
+* ``"relative"``: min(3 GHz, SRF / 10), SRF being the system SRF when the sweep has one, else 3 GHz -- the band where
+  the inductance of a device resonating below 30 GHz is still flat. It is not the default because it moves L<N>_lf
+  of every recorded device that resonates below 30 GHz (26 of the 72 parity devices).
+
+A sweep with no sample in (0, limit] -- one that starts above it, e.g. 50-120 GHz -- leaves L<N>_lf and k_lf None, as a
+sweep without a resonance leaves SRF None; L<N>_res is None likewise when no sample lies in (0, SRF / 5] (with no SRF
+it is L<N>_lf). Every other quantity is still produced. Samples inside such a band that are all non-finite are
+unusable data: MeasureError.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import Literal
 
 import numpy as np
 
 DRIVE_NAMES = ("p", "s")
-LOW_FREQ_MAX_HZ = 3e9
+LOW_FREQ_CAP_HZ = 3e9                      # top of the low-frequency band: the default limit and the relative limit's cap
+RELATIVE = "relative"                      # low_freq_max_hz: min(LOW_FREQ_CAP_HZ, SRF / SRF_TO_LOW_FREQ)
+SRF_TO_LOW_FREQ = 10.0
 
 
 class MeasureError(ValueError):
@@ -36,19 +53,28 @@ class MeasureError(ValueError):
 class Topology:
     drives: list[tuple[int, int]]          # (plus, minus) 0-based sNp column indices
     grounded: list[int] = field(default_factory=list)
-    low_freq_max_hz: float = LOW_FREQ_MAX_HZ
+    low_freq_max_hz: float | Literal["relative"] | None = None     # None: LOW_FREQ_CAP_HZ (module docstring)
 
     @classmethod
-    def from_labels(cls, drives: list[tuple[str, str]], grounded: list[str], columns: list[str]) -> Topology:
+    def from_labels(cls, drives: list[tuple[str, str]], grounded: list[str], columns: list[str], *,
+                    low_freq_max_hz: float | Literal["relative"] | None = None) -> Topology:
         index = {label: i for i, label in enumerate(columns)}
-        return cls([(index[p], index[m]) for p, m in drives], [index[g] for g in grounded])
+        return cls([(index[p], index[m]) for p, m in drives], [index[g] for g in grounded], low_freq_max_hz)
+
+    def low_freq_limit(self, srf: float | None) -> float:
+        """Top of the low-frequency band in Hz for a device whose system SRF is ``srf`` (None: no resonance in the sweep)."""
+        if self.low_freq_max_hz is None:
+            return LOW_FREQ_CAP_HZ
+        if self.low_freq_max_hz == RELATIVE:
+            return LOW_FREQ_CAP_HZ if srf is None else min(LOW_FREQ_CAP_HZ, srf / SRF_TO_LOW_FREQ)
+        return float(self.low_freq_max_hz)
 
 
 @dataclass
 class Quantities:
     freqs: np.ndarray
     curves: dict[str, np.ndarray]          # Lp, Qp, [Ls, Qs, k] over freqs
-    scalars: dict[str, float | None]       # L*_lf, L*_res, Q*_peak, SRF_* (None: no resonance in the sweep), k_lf
+    scalars: dict[str, float | None]       # L*_lf, L*_res, Q*_peak, SRF_*, SRF, k_lf; None: outside the sweep (module docstring)
 
     def at(self, name: str, frequency_hz: float) -> float:
         """A curve value at the grid point nearest ``frequency_hz`` (no interpolation, like em-opt's --anchored)."""
@@ -105,18 +131,27 @@ def _mixed_mode_z(z: np.ndarray, topo: Topology) -> np.ndarray:
     return zm
 
 
-def _finite_lf_mean(freqs, values, low_freq_max_hz, what) -> float:
-    mask = (freqs > 0) & (freqs <= low_freq_max_hz) & np.isfinite(values)
+def _band(freqs, values, top_hz, what) -> np.ndarray | None:
+    """Mask of the finite samples with 0 < f <= top_hz; None when the sweep has no sample there at all (it starts above)."""
+    band = (freqs > 0) & (freqs <= top_hz)
+    if not band.any():
+        return None
+    mask = band & np.isfinite(values)
     if not mask.any():
-        raise MeasureError(f"no finite low-frequency samples for {what}")
-    return float(np.mean(values[mask]))
+        raise MeasureError(f"no finite {what} sample in (0, {top_hz:g} Hz]")
+    return mask
 
 
-def _l_res(freqs, l_curve, srf, what) -> float:
+def _low_freq_mean(freqs, values, top_hz, what) -> float | None:
+    mask = _band(freqs, values, top_hz, what)
+    return None if mask is None else float(np.mean(values[mask]))
+
+
+def _l_res(freqs, l_curve, srf, what) -> float | None:
     """L at the largest finite-L grid sample with 0 < f <= srf/5 (resonance-aware alternative to the low-frequency mean)."""
-    mask = (freqs > 0) & (freqs <= srf / 5.0) & np.isfinite(l_curve)
-    if not mask.any():
-        raise MeasureError(f"no finite L sample at or below SRF/5 for drive {what}")
+    mask = _band(freqs, l_curve, srf / 5.0, f"L{what}")
+    if mask is None:
+        return None
     idx = np.nonzero(mask)[0]
     return float(l_curve[idx[np.argmax(freqs[idx])]])
 
@@ -140,7 +175,7 @@ def _grid_step(freqs: np.ndarray) -> float:
 
 def quantities(freqs: np.ndarray, s: np.ndarray, topo: Topology, *, z0: float = 50.0) -> Quantities:
     """Curves and scalars for every drive; ``L*_res`` is capped and ``Q*_peak`` searched below the system SRF (the
-    lowest finite SRF over all drives)."""
+    lowest finite SRF over all drives), ``L*_lf`` and ``k_lf`` averaged up to ``topo.low_freq_limit(SRF)``."""
     names = DRIVE_NAMES[: len(topo.drives)]
     zm = _mixed_mode_z(s_to_z(s, z0=z0), topo)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -150,12 +185,13 @@ def quantities(freqs: np.ndarray, s: np.ndarray, topo: Topology, *, z0: float = 
         srfs = {nm: _srf_first_sign_flip(freqs, np.imag(zm[:, i, i])) for i, nm in enumerate(names)}
         finite = [v for v in srfs.values() if v is not None]
         srf_cap = min(finite) if finite else None
+        lf_top = topo.low_freq_limit(srf_cap)
         for i, nm in enumerate(names):
             zii = zm[:, i, i]
             l_curve = np.where(w > 0, np.imag(zii) / np.where(w > 0, w, np.nan), np.nan)
             q_curve = np.where(freqs > 0, np.imag(zii) / np.real(zii), np.nan)
             curves[f"L{nm}"], curves[f"Q{nm}"] = l_curve, q_curve
-            scalars[f"L{nm}_lf"] = _finite_lf_mean(freqs, l_curve, topo.low_freq_max_hz, f"L{nm}")
+            scalars[f"L{nm}_lf"] = _low_freq_mean(freqs, l_curve, lf_top, f"L{nm}")
             qmask = np.isfinite(q_curve) & (freqs > 0)
             if srf_cap is not None:
                 qmask &= freqs < srf_cap
@@ -171,5 +207,5 @@ def quantities(freqs: np.ndarray, s: np.ndarray, topo: Topology, *, z0: float = 
             with np.errstate(invalid="ignore"):
                 k_curve = im01 / np.sqrt(np.where(im00 * im11 > 0, im00 * im11, np.nan))
             curves["k"] = k_curve
-            scalars["k_lf"] = _finite_lf_mean(freqs, k_curve, topo.low_freq_max_hz, "k")
+            scalars["k_lf"] = _low_freq_mean(freqs, k_curve, lf_top, "k")
     return Quantities(freqs, curves, scalars)

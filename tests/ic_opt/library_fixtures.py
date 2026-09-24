@@ -15,14 +15,14 @@ from tests.ic_opt.test_library import DIMS, FIXTURE, part_spec
 STOP_GHZ = 60
 
 
-def rlc_touchstone(od: float, w: float, s: float, nt: int, stop_ghz: float = STOP_GHZ) -> str:
+def rlc_touchstone(od: float, w: float, s: float, nt: int, stop_ghz: float = STOP_GHZ, start_ghz: float = 0.0) -> str:
     """R + jwL between the ports, C/2 to ground at each: L grows with turns and diameter, C with area (resonances in and above the sweep)."""
     ind = 0.4e-9 * nt**2 * (od / 100) ** 1.3 * (5 / w) ** 0.15 * (1 - 0.04 * (s - 2))
     res = 0.3 + 0.02 * nt * od / w
     cap = 12e-15 * nt * (od / 100) ** 2 * (w / 5) ** 0.5
     lines = ["! Touchstone from a synthetic RLC library", "# Hz S RI R 50"]
     eye = np.eye(2)
-    for f in np.arange(0.0, stop_ghz * 1e9 + 0.5e9, 1e9):
+    for f in np.arange(start_ghz * 1e9, stop_ghz * 1e9 + 0.5e9, 1e9):
         om = 2 * np.pi * f
         ys, yc = 1 / (res + 1j * om * ind), 1j * om * cap / 2
         y = np.array([[ys + yc, -ys], [-ys, ys + yc]])
@@ -31,16 +31,18 @@ def rlc_touchstone(od: float, w: float, s: float, nt: int, stop_ghz: float = STO
     return "\n".join(lines) + "\n"
 
 
-def write_store(root: Path, name: str, points: list[tuple[float, float, float, int]]) -> None:
+def write_store(root: Path, name: str, points: list[tuple[float, float, float, int]], *, stop_ghz: float = STOP_GHZ,
+                start_ghz: float = 0.0) -> None:
     project = root / name
     (project / ".icopt").mkdir(parents=True)
-    (project / "spec.yaml").write_text(yaml.safe_dump(part_spec(name, STOP_GHZ).model_dump(mode="json")), encoding="utf-8")
+    sweep = {"start_hz": start_ghz * 1e9, "stop_hz": stop_ghz * 1e9, "step_hz": 1e9}
+    (project / "spec.yaml").write_text(yaml.safe_dump(part_spec(name, stop_ghz, frequencies=sweep).model_dump(mode="json")), encoding="utf-8")
     lines = []
     for i, (od, w, s, nt) in enumerate(points, 1):
         obs = f"obs_{i:04d}"
         em = project / ".icopt" / "sims" / obs / "em" / "ind"
         em.mkdir(parents=True)
-        (em / "ind.s2p").write_text(rlc_touchstone(od, w, s, nt), encoding="utf-8")
+        (em / "ind.s2p").write_text(rlc_touchstone(od, w, s, nt, stop_ghz, start_ghz), encoding="utf-8")
         params = {"outer_diameter_um": f"{od:g}", "width_um": f"{w:g}", "spacing_um": f"{s:g}", "turns": str(nt)}
         o = Observation(obs_id=obs, params=params, origin="grid", status="ok", spec_fingerprint="spec", pipeline_fingerprint="gen1",
                         started_at="", finished_at="")
@@ -89,14 +91,14 @@ def xfm_physics(op: float, os_: float, wp: float, ws: float, cs: float) -> dict:
             "Rp": 0.4 + 0.02 * op / wp, "Rs": 0.4 + 0.02 * os_ / ws, "Cp": 8e-15 * (op / 100) ** 2, "Cs": 8e-15 * (os_ / 100) ** 2}
 
 
-def xfm_touchstone(op: float, os_: float, wp: float, ws: float, cs: float, stop_ghz: float = XFM_STOP_GHZ) -> str:
+def xfm_touchstone(op: float, os_: float, wp: float, ws: float, cs: float, stop_ghz: float = XFM_STOP_GHZ, start_ghz: float = 0.0) -> str:
     """Ports P1 N1 P2 N2: the primary branch P1 -> N1, the secondary N2 -> P2 (drives (P1, N1), (N2, P2) couple positively), C/2 per port."""
     ph = xfm_physics(op, os_, wp, ws, cs)
     m = ph["k"] * np.sqrt(ph["Lp"] * ph["Ls"])
     inc = np.array([[1, 0], [-1, 0], [0, -1], [0, 1]], dtype=float)
     lines = ["! Touchstone from a synthetic coupled-inductor library", "# Hz S RI R 50"]
     eye = np.eye(4)
-    for f in np.arange(0.0, stop_ghz * 1e9 + 0.5e9, 1e9):
+    for f in np.arange(start_ghz * 1e9, stop_ghz * 1e9 + 0.5e9, 1e9):
         om = 2 * np.pi * f
         zb = np.array([[ph["Rp"] + 1j * om * ph["Lp"], 1j * om * m], [1j * om * m, ph["Rs"] + 1j * om * ph["Ls"]]])
         y = inc @ np.linalg.inv(zb) @ inc.T + np.diag(1j * om * np.array([ph["Cp"], ph["Cp"], ph["Cs"], ph["Cs"]]) / 2)

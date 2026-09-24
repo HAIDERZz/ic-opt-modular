@@ -497,12 +497,13 @@ def _generate_one_family(
 ) -> tuple[str, list[str]]:
     """(status, details) for one family: build the canonical device
     through the production plugin path, then apply the production DRC
-    scope (audit_gds + product_scope_record with the mandatory
-    ground-fixture max_width:M1 exemption, exactly prepare_em_candidate's
-    interpretation)."""
+    scope (audit_gds + product_scope_record with the ground-fixture
+    exemption, fixture_exemptions: max_width on the profile's fixture
+    conductor -- exactly the pcell stage's interpretation)."""
     from ic_opt.em.pcell._pcell_core import max_opening
     from ic_opt.em.pcell.drc_audit import (
         audit_gds,
+        fixture_exemptions,
         product_scope_record,
         require_layers_from_config,
     )
@@ -529,7 +530,7 @@ def _generate_one_family(
         record = product_scope_record(
             report,
             require_layers_from_config(family, config.model_dump()),
-            ignore_findings=frozenset({("max_width", "M1")}),
+            ignore_findings=fixture_exemptions(profile),
         )
     except Exception as exc:
         return "FAIL", [f"{family}: {type(exc).__name__}: {exc}"]
