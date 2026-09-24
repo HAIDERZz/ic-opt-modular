@@ -8,6 +8,7 @@ it from its own ``run.site.host("local")``. ``rel_sigma_max`` is the confidence 
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 
@@ -114,3 +115,44 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
         pool_size=int(pool_size), seed=int(seed), k=float(k), rel_sigma_max=float(rel_sigma_max), group_by=_names(group_by),
         trend=_trend(trend), n=int(n), verify_build=bool(verify_build), sample_size=int(sample_size),
         threads=None if threads is None else int(threads), workers=None if workers is None else int(workers)))
+
+
+def densify(library: _query.Library | str | Path, stratum: str, n: int, quantities: str | list[str] | None = None,
+            bounds: dict | None = None, score: str = "ceiling", pool_size: int = 65536, top: int = 4000, seed: int = 0,
+            k: float = 2.0, threads: int | None = None, workers: int | None = None, out: str | None = None,
+            rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX) -> dict:
+    """Where to simulate next: ``n`` new geometries whose simulation lowers the models' uncertainty the most over the
+    sampled domain, whatever the targets.
+
+    ``quantities`` is a comma list (default: every column). ``bounds`` (JSON) keeps part of the domain: per dim a window
+    ``{"min": a, "max": b}`` (clipped to the achieved range; either end may be left out) or a fixed value, e.g.
+    ``{"<dim>": <v>, "<dim>": {"min": <a>, "max": <b>}}``; a dim the stratum lacks or a window missing its achieved range
+    is refused. Candidates come from ``pool_size`` Sobol points inside the bounds snapped to the manifest steps, off the
+    measured rows and inside every model's domain. Each is scored by the largest over the quantities of the model's own
+    posterior sigma (no floor; for a positive quantity the log-space sigma) divided by a norm: ``score=ceiling`` (the
+    default) divides by ``rel_sigma_max`` -- how far above the confidence ceiling, the same yardstick for every quantity;
+    ``score=typical`` by the quantity's held-out median relative error. The ``top`` best get each model's posterior
+    covariance among them (fewer when the covariances would not fit 10% of site.yaml's max_memory_gb); then, n times, the
+    best is picked and every other candidate's variance updated as if the pick were measured, so the next pick goes where
+    uncertainty remains. ``before`` / ``after`` give the pool's relative sigma (median, p90, max, share above
+    ``rel_sigma_max``) without and with the picks measured -- exact for the fitted hyperparameters; a refit after
+    sign-off changes them. Each candidate carries its score, sigma before any pick and when picked, the current
+    prediction with its calibrated ``k``-sigma interval and the three nearest measured rows; ``bounds`` echoes the
+    effective bounds ({} without) and ``pool`` counts what they keep. ``out`` writes the answer to that file, which
+    ``ic-opt run lib_signoff PROJECT library=... candidates=<file> top=<n> --plan`` takes as it is. ``threads`` and
+    ``workers`` cap BLAS and the fitting processes within site.yaml's hosts.local, as in ``lib.region``. The answer is
+    strict JSON, every non-finite number null.
+    """
+    from ic_opt.library import densify as _densify
+
+    if bounds is not None and not isinstance(bounds, dict):
+        raise ValueError(f"bounds: expected a JSON object, got {bounds!r}")
+    answer = _strict_json(_densify.densify(
+        _lib(library), stratum, _names(quantities), n=int(n), pool_size=int(pool_size), top=int(top), seed=int(seed), k=float(k),
+        rel_sigma_max=float(rel_sigma_max), score=str(score), bounds=bounds, threads=None if threads is None else int(threads),
+        workers=None if workers is None else int(workers)))
+    if out:
+        path = Path(out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(answer, indent=1, allow_nan=False) + "\n", encoding="utf-8")
+    return answer

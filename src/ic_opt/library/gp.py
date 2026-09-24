@@ -22,7 +22,10 @@ Changed after the T13.0 verification:
   widths (and the secondary's spacing) over their diameters, the centre offset over the mean radius and,
   for xfm_ms, the secondary's turns as one feature -- one joint GP, never split per turns level.
   Scaling ranges of the features are the extremes over the corners of the dims' box (every feature is
-  monotone in each dim), so they follow from the same ``ranges`` as the identity map.
+  monotone in each dim), so they follow from the same ``ranges`` as the identity map;
+- where to simulate next (T16.1, ``lib.densify``) needs the GP's own uncertainty: ``predict(floor=False)``
+  skips the sigma floor, which is flat and says nothing about where the model is unsure, and
+  ``posterior_cov`` gives the posterior covariance among rows in the space the model is fitted in.
 """
 
 from __future__ import annotations
@@ -141,14 +144,40 @@ class StratumGP:
         levels = x[:, self.dims.index(self.nt_dim)]
         return np.array([abs(v - round(v)) <= 1e-9 and round(v) in self._sub for v in levels], dtype=bool)
 
-    def predict(self, x) -> tuple[np.ndarray, np.ndarray]:
+    def predict(self, x, *, floor: bool = True) -> tuple[np.ndarray, np.ndarray]:
         """(mu, sigma) in the target's units; NaN where ``available`` is False. For log targets sigma is the delta-method
-        exp(mu_log)*sigma_log. sigma is never below ``sigma_floor_rel`` x |mu|."""
+        exp(mu_log)*sigma_log. sigma is never below ``sigma_floor_rel`` x |mu| -- unless ``floor`` is False: then it is the
+        GP's own posterior sigma, the one that varies with where the model is unsure."""
         mu, sigma = self._predict(x)
-        if self.sigma_floor_rel > 0:
+        if floor and self.sigma_floor_rel > 0:
             with np.errstate(invalid="ignore"):
                 sigma = np.maximum(sigma, self.sigma_floor_rel * np.abs(mu))
         return mu, sigma
+
+    def posterior_cov(self, x) -> tuple[np.ndarray, np.ndarray]:
+        """(mu, cov) of the posterior at the rows of ``x``, in the space the model is fitted in: log for a log target, where
+        a variance is a relative one. The diagonal is the variance ``predict(floor=False)`` reports as sigma (in that
+        space); the white-noise term is part of it, as it is of that sigma. A per_nt model's turns levels are separate GPs:
+        zero covariance between rows of different levels, NaN in the rows and columns (and mu) of rows ``available`` is
+        False for."""
+        x = np.asarray(x, dtype=float)
+        if x.ndim != 2 or x.shape[1] != len(self.dims):
+            raise ValueError(f"expected [N, {len(self.dims)}] inputs")
+        if self.nt_mode == "per_nt":
+            if self._nt_idx is None:
+                raise RuntimeError("fit() first")
+            mu, cov = np.full(len(x), np.nan), np.zeros((len(x), len(x)))
+            ok = self.available(x)
+            cov[~ok, :] = np.nan
+            cov[:, ~ok] = np.nan
+            levels = np.round(x[:, self._nt_idx]).astype(int)
+            for level in sorted(set(levels[ok].tolist())):
+                idx = np.nonzero(ok & (levels == level))[0]
+                mu[idx], cov[np.ix_(idx, idx)] = self._sub[level].posterior_cov(np.delete(x[idx], self._nt_idx, axis=1))
+            return mu, cov
+        if self._gp is None:
+            raise RuntimeError("fit() first")
+        return self._gp.predict(self._scale(x), return_cov=True)
 
     def _predict(self, x) -> tuple[np.ndarray, np.ndarray]:
         x = np.asarray(x, dtype=float)

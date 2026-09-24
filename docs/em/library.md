@@ -197,6 +197,75 @@ fitted in parallel processes sized from `hosts.local` (see
 [Compute](#compute)). `workers` and `threads` cap the fitting processes and
 the BLAS threads; a value above what that entry allows is refused.
 
+## 5c. Where to simulate next: `lib.densify`
+
+```bash
+ic-opt call lib.densify <library root> stratum=<stratum> n=<n> quantities=<quantity>,<quantity> out=<file>
+ic-opt call lib.densify <library root> stratum=<stratum> n=<n> 'bounds={"<dim>": <v>, "<dim>": {"min": <a>, "max": <b>}}' out=<file>
+ic-opt run lib_signoff <project> library=<library root> candidates=<file> top=<n> adopt=true --plan
+ic-opt run lib_signoff <project> library=<library root> candidates=<file> top=<n> adopt=true
+```
+
+`lib.suggest` and `lib.region` answer target windows, and how well they
+can depends on where the library has rows. `lib.densify` asks where new
+rows would help the models most, whatever the targets. It proposes `n`
+geometries whose simulation lowers the uncertainty of the named quantities
+(default: every column) the most over the whole sampled domain. The whole
+domain counts: where most rows hold a dim at one value and a few rows
+reach further, the models know little of the region those few rows open,
+and the picks go there first.
+
+`bounds` keeps the part of the domain you care about: per dim a fixed value
+or a window `{"min": a, "max": b}`, either end optional and clipped to the
+range the rows reach. For example, fix a dim at the value most rows share
+to densify there and nowhere else. A dim the stratum lacks, or a window or
+value outside the rows' range, is refused and the message gives that range.
+The answer echoes the effective bounds (`{}` without) and `pool` counts
+the points they keep (`in_bounds`).
+
+The candidates are `pool_size` Sobol points (65 536) inside the bounds,
+snapped to the manifest `steps`, off the measured rows and inside every
+model's domain. Each is scored by the largest, over the quantities, of the
+model's own posterior sigma divided by a norm. With `score=ceiling` (the
+default) the norm is `rel_sigma_max` (0.15 unless given): how far the model
+is above the sigma the library calls usable, one yardstick for every
+quantity, so the picks go where the library cannot answer yet. With
+`score=typical` it is the quantity's held-out median relative error: how
+many typical errors the model may be off, which lets a quantity with a tiny
+typical error lead the ranking even where its sigma is already below the
+ceiling. `method` names the score and each quantity's norm. The sigma is
+relative (log-space for a positive quantity) and has no floor: the floor of
+section 4 is the same everywhere and says nothing about where the model is
+unsure.
+The `top` best (4000; fewer when their covariance matrices would not fit
+the prediction budget, see [Compute](#compute)) get each model's posterior
+covariance. Then, `n` times, the best is picked and every other
+candidate's variance is updated as if the pick had been measured, so the
+next pick goes where uncertainty remains instead of next to the last one.
+A GP's variance does not depend on the measured value, so for the fitted
+hyperparameters the update is exact. Turns levels are separate models and
+never share an update.
+
+`before` and `after` give, per quantity, the median, p90 and maximum
+relative sigma over the pool and the share above `rel_sigma_max`, without
+and with the picks measured. The library refits after adoption and
+optimizes the hyperparameters again, so read `after` as the order of the
+gain, not a promise. Each candidate carries its score, its sigma before any
+pick and when it was picked, the current prediction with its calibrated
+interval (`k`), and the three nearest measured rows. Where most of the
+nearest rows resonate above their sweep, an SRF is settled there
+(`above_sweep` in `lib.query`): it neither scores nor counts in its
+statistics, since a simulation there would not yield one.
+
+`out=` writes the answer to a file that `lib_signoff` takes as its
+`candidates` (section 7). `--plan` lists the EMX runs and is the approval
+point; the same command without it simulates, compares each measurement
+with the prediction made before it and, with `adopt=true`, copies the rows
+into the part stores. The next dataset build includes them, and the
+calibrations and models are refitted on first use because their cache keys
+follow the data. A second `lib.densify` with the same `seed` then shows
+what the batch bought: its `before` against the first one's `after`.
+
 ## 6. Design on the library: `lib_design`
 
 The same em_only spec you would optimize with EMX (device, variables,
@@ -221,8 +290,8 @@ ic-opt run lib_signoff <project> library=<library root> candidates=<project>/.ic
 ic-opt run lib_signoff <project> library=<library root> candidates=<project>/.icopt/reports/lib_design.json top=10 adopt=true
 ```
 
-`candidates` is a `lib_design` report, a `lib.suggest` answer or a list of
-parameter dicts. Each candidate is simulated with the EMX settings of the part
+`candidates` is a `lib_design` report, a `lib.suggest` or `lib.densify`
+answer or a list of parameter dicts. Each candidate is simulated with the EMX settings of the part
 that holds its turns level. The predictions are recorded before EMX runs, and
 the report (`.icopt/reports/lib_signoff.json`) gives, per quantity, the
 predicted value, bounds, measurement, z score and whether it fell inside.
@@ -250,9 +319,12 @@ every model it needs once, before the search starts.
   run alone: raise the entry or fit fewer rows. Each worker gets
   `max_threads // workers` BLAS threads, at least one. With one worker the
   fits run in the calling process, one after another.
-- Prediction (`lib.suggest`, `lib.region`): up to `max_threads` BLAS
-  threads, in chunks that keep each GP call within 10% of `max_memory_gb`
-  (a call over m rows holds about 7 x m x training rows x 8 bytes).
+- Prediction (`lib.suggest`, `lib.region`, `lib.densify`): up to
+  `max_threads` BLAS threads, in chunks that keep each GP call within 10% of
+  `max_memory_gb` (a call over m rows holds about 7 x m x training rows x 8
+  bytes). `lib.densify` also keeps one `top` x `top` covariance matrix per
+  quantity within that 10%, and lowers `top` until they fit (the answer
+  says so in `notes`).
 - `workers=` and `threads=` cap these numbers; a value above what the entry
   allows is refused. An explicit `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` or
   `MKL_NUM_THREADS` (the smallest of those set) only ever lowers the threads

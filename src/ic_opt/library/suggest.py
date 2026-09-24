@@ -260,8 +260,11 @@ def srf_floors(library: query.Library, stratum: str, x: np.ndarray, quantity: st
     return out
 
 
-def pool(library: query.Library, stratum: str, n: int, seed: int = 0) -> np.ndarray:
-    """``n`` scrambled-Sobol candidates over the achieved box, snapped to the manifest steps; one turns level each."""
+def pool(library: query.Library, stratum: str, n: int, seed: int = 0, box: dict[str, tuple[float, float]] | None = None) -> np.ndarray:
+    """``n`` scrambled-Sobol candidates over the achieved box, snapped to the manifest steps; one turns level each.
+    ``box`` narrows the sampled range of some dims to ``(lo, hi)`` inside the achieved one: lo == hi fixes the dim, and
+    for the turns dim only the levels inside it are drawn. A dim fixed within a level keeps that level's value, so a
+    caller bounding such a dim drops the rows it leaves outside."""
     ds = library.dataset(stratum)
     steps = library.manifest.strata[stratum].steps
     x = ds.matrix()
@@ -269,11 +272,13 @@ def pool(library: query.Library, stratum: str, n: int, seed: int = 0) -> np.ndar
     u = qmc.Sobol(d=len(ds.dims), scramble=True, seed=seed).random(n)
     out = np.empty((n, len(ds.dims)))
     lo, hi = x.min(axis=0), x.max(axis=0)
+    for d, (a, b) in (box or {}).items():
+        lo[ds.dims.index(d)], hi[ds.dims.index(d)] = a, b
     for i in cont:
         out[:, i] = lo[i] + u[:, i] * (hi[i] - lo[i])
     if ds.nt_dim:
         j = ds.dims.index(ds.nt_dim)
-        levels = np.array(sorted({round(v) for v in x[:, j]}))
+        levels = np.array(sorted({round(v) for v in x[:, j] if lo[j] - 1e-9 <= v <= hi[j] + 1e-9}))
         out[:, j] = levels[np.minimum((u[:, j] * len(levels)).astype(int), len(levels) - 1)]
         for level in levels:                                 # a dim fixed within a level stays at its value there
             rows = x[np.round(x[:, j]) == level]

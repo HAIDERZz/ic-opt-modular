@@ -3,8 +3,8 @@
 ``ic-opt run lib_signoff PROJECT library=<root> candidates=<json> [stratum=...] [top=10] [adopt=false] [threads=N memory_gb=G]
 [process_file=/abs/path.proc] --plan``
 
-``candidates`` is a ``lib_design`` report (``leaders``), a ``lib.suggest`` answer (``candidates``) or a list of
-parameter dicts. Each candidate is simulated with the spec of the stratum part that holds its turns level
+``candidates`` is a ``lib_design`` report (``leaders``), a ``lib.suggest`` or ``lib.densify`` answer (``candidates``) or a
+list of parameter dicts. Each candidate is simulated with the spec of the stratum part that holds its turns level
 (generator, fixed fields, EMX physics, process file -- e.g. single turns with the single-turn part's wider
 sweep), so a signed-off point is a measurement of the same generation as the library.
 The predictions are taken before anything runs; after EMX the quantities are measured with the library's

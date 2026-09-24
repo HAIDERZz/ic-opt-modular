@@ -71,14 +71,16 @@ lib_coverage = block("lib.coverage", "What a stratum covers: rows, ranges, level
 lib_query = block("lib.query", "Measured values, or predictions with calibrated bounds and domain verdicts")(_library.query)
 lib_suggest = block("lib.suggest", "Designs meeting targets with margin: measured first, then built predictions")(_library.suggest)
 lib_region = block("lib.region", "The region meeting target windows: robust and mean sweep ranges, groups, trend")(_library.region)
+lib_densify = block("lib.densify", "Where to simulate next: n geometries that cut the models' uncertainty most, for lib_signoff")(
+    _library.densify)
 validate_profile = block("em.validate_profile", "Check a process profile: schema, consistency, site .proc (names, thicknesses, GDS layers), one device per family")(
     _profile.validate_profile)
 score_model = _analyze.score_model
 store = RunStore
 
 __all__ = [
-    "REGISTRY", "Block", "best", "block", "describe", "doctor", "evaluate", "import_netlists", "lib_coverage", "lib_load", "lib_query",
-    "lib_region", "lib_suggest", "load_spec", "optimize",
+    "REGISTRY", "Block", "best", "block", "describe", "doctor", "evaluate", "import_netlists", "lib_coverage", "lib_densify", "lib_load",
+    "lib_query", "lib_region", "lib_suggest", "load_spec", "optimize",
     "points_fixed", "points_from", "points_grid", "points_one_at_a_time", "points_sobol", "report", "score_model",
     "spectre_pipeline", "store", "suggest", "validate_profile",
 ]
