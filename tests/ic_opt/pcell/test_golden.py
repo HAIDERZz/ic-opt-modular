@@ -21,6 +21,7 @@ pytest.importorskip("klayout.db")
 from ic_opt.em.pcell import get_generator
 from ic_opt.em.pcell.drc_audit import audit_gds
 from ic_opt.em.pcell.gds_compare import compare_gds
+from ic_opt.em.pcell.generator_plugin import METAL_FIELDS
 
 GOLDEN = Path(__file__).parent / "golden"
 FIXTURE = {"inner_margin_um": 15.0, "ring_width_um": 20.0, "stub_width_um": 5.0, "stub_length_um": 2.0, "stub_chamfer_um": 0.0}
@@ -89,10 +90,13 @@ CASES = {
 KNOWN_FINDINGS: dict[str, set[tuple[str, str]]] = {}
 
 
-def build(name: str, outdir: Path) -> Path:
+def build(name: str, outdir: Path, profile: str = "demo_6m", respell=None) -> Path:
+    """The golden case ``name`` built on ``profile``; ``respell`` maps each metal field's value to another spelling."""
     generator_id, config = CASES[name]
     generator = get_generator(generator_id, plugin_module="builtin:clean_port")
-    full = {**config, "process_profile": "demo_6m", "ground_fixture": dict(FIXTURE)}
+    if respell is not None:
+        config = {k: respell(v) if k in METAL_FIELDS and v is not None else v for k, v in config.items()}
+    full = {**config, "process_profile": profile, "ground_fixture": dict(FIXTURE)}
     if generator_id == "clean_port_xfm_ms":
         full["ground_fixture"].update({"stub_width_um": 6.0, "stub_width_by_port_um": {"P2": 3.0, "N2": 3.0}})
     return generator.generate(generator.config_model.model_validate(full), outdir=outdir, gds_name=f"{name}.gds").gds_path

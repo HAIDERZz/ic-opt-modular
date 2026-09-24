@@ -5,11 +5,17 @@ below" is position - 1 -- and resolve names through ``index`` / ``name``. Two mo
 
 * profile mode, inside ``use_stack(profile)`` (every generator entry point and audit with a process profile opens
   one): the positions are the profile's ``metal_stack`` (its catalog conductors with a width rule, bottom first).
-  Any number of metals and any names work -- RDL, UTM ... A name resolves exactly (case-insensitive); ``"M<n>"`` /
-  ``"<n>"`` that is not a name is the n-th metal. The existing profiles keep their numbers: M<n> is n and AP is 11
-  on the 10-metal stack; on the 9-metal one AP is 10, where the fixed convention left an empty 10 that the code
-  skipped by name, so the conductors the generators reach are the same.
+  Any number of metals and any names work -- RDL, UTM ... A name resolves exactly (case-insensitive); ``"<n>"``
+  (or ``"m05"``) is the metal named M<n> -- as the configs' name check reads it -- and only when no metal has that
+  name, the n-th metal. The two differ on a stack whose M<n> is not its n-th metal (a bottom metal called LI puts
+  M5 sixth, T16 N-13). The existing profiles keep their numbers: M<n> is n and AP is 11 on the 10-metal stack; on
+  the 9-metal one AP is 10, where the fixed convention left an empty 10 that the code skipped by name, so the
+  conductors the generators reach are the same.
 * reference mode (no profile): the fixed 1P10M+AP convention, "M<n>" / "<n>" -> n, "AP" -> 11.
+
+A string is a spelling, read as above; an integer is already a position -- the generators' own arithmetic ("one
+level below" is position - 1) -- and passes through as it is, so a position handed on to a primitive is never
+re-read as a name.
 
 The same context carries the profile's manufacturing grid (``layout_rules.manufacturing_grid_um``, T16 R-23): the
 pcell's snapping (``_pcell_core.ceiltogrid`` and the rest) reads ``grid_um()``, the reference 0.005 um outside a
@@ -21,6 +27,7 @@ from __future__ import annotations
 import contextlib
 import functools
 import inspect
+import numbers
 from collections.abc import Callable, Iterator
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
@@ -84,21 +91,32 @@ def size() -> int:
 
 
 def index(metal) -> int:
-    """Name or spelling -> stack position. Raises ValueError for a token that is no conductor of the stack."""
+    """Name, spelling or position -> stack position. Raises ValueError for a token that is no conductor of the stack."""
     return position_in(_ACTIVE.get(), metal)
 
 
 def position_in(names: tuple[str, ...] | None, metal) -> int:
     """``index`` on the given stack (``names`` bottom first; None: the reference convention) instead of the active one:
-    for callers that judge a metal against a profile without building on it (the generator configs, T16 R-14)."""
+    for callers that judge a metal against a profile without building on it (the generator configs, T16 R-14).
+
+    ``metal`` is a spelling (a name; ``"<n>"`` / ``"M<n>"``: the metal named M<n>, else the n-th metal) or an integer
+    position, returned unchanged when the stack has it (T16 N-13)."""
+    if isinstance(metal, numbers.Integral) and not isinstance(metal, bool):
+        if names is not None and not 1 <= metal <= len(names):
+            raise ValueError(f"metal {metal!r} is not a conductor of the stack {list(names)}")
+        return int(metal)
     token = str(metal).strip()
     if names is not None:
         folded = {n.upper(): i for i, n in enumerate(names, 1)}
         if token.upper() in folded:
             return folded[token.upper()]
         digits = token[1:] if token[:1] in ("m", "M") else token
-        if digits.isdigit() and 1 <= int(digits) <= len(names):
-            return int(digits)
+        if digits.isdigit():
+            named = folded.get(f"M{int(digits)}")
+            if named is not None:
+                return named
+            if 1 <= int(digits) <= len(names):
+                return int(digits)
         raise ValueError(f"metal {metal!r} is not a conductor of the stack {list(names)}")
     if token.upper() == "AP":
         return REFERENCE_SIZE

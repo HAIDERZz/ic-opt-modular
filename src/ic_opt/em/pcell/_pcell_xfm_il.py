@@ -380,7 +380,7 @@ def _il_ct_tap_exact(cell, other_sl1, other_sl2, which, OD, W, LEAD, NT,
         (ct_met, sl_met) if upward else (sl_met, ct_met)
     )
     # The lead itself registers its own port (port contract 2026-09-21):
-    # base_lead(L=lead_len, W=W, TOP_ME=BTM_ME=str(ct_met)) draws the exact
+    # base_lead(L=lead_len, W=W, TOP_ME=BTM_ME=ct_met) draws the exact
     # same vias(Length=W, Width=lead_len, TOP_ME=ct_met, BTM_ME=ct_met)
     # this call site drew directly before -- zero geometry change, only the
     # port now rides the same local integer-nm frame as that lead instead
@@ -395,7 +395,7 @@ def _il_ct_tap_exact(cell, other_sl1, other_sl2, which, OD, W, LEAD, NT,
     # docstring).
     cell.inst(
         base_lead(
-            L=lead_len, W=W, TOP_ME=str(ct_met), BTM_ME=str(ct_met),
+            L=lead_len, W=W, TOP_ME=ct_met, BTM_ME=ct_met,
             process=process,
             port_name=port_name, port_logical_name=port_name,
             port_metal=ct_met, port_label_layer=_pin(ct_met, process),
@@ -605,7 +605,7 @@ def _il_shifted_hud_cross(
         "S": S,
         "OPENING": ROP,
         "TOP_ME": TOP_ME,
-        "BTM_ME": str(leg1),
+        "BTM_ME": leg1,
         "PITCH": PITCH,
         "LEG2_BTM_ME": LEG2_BTM_ME,
         "bridge_lane_shift_um": leg1_dy,
@@ -907,8 +907,9 @@ def _il_primary_coil(
         "TOP_ME": TOP_ME,
         # Real leg1 conductor, not a bare `TOP_ME - 1` (gdsfactory review
         # 2026-09-21); this is metadata only (see base_ind_hud_cross's own
-        # dead-BTM_ME note) but should still name the real plane.
-        "BTM_ME": str(_metal_below(_metal_index(TOP_ME), process, levels=1)),
+        # dead-BTM_ME note) but should still record the real plane (its
+        # stack position, an int).
+        "BTM_ME": _metal_below(_metal_index(TOP_ME), process, levels=1),
         "PITCH": PITCH,
         "LEG2_BTM_ME": LEG2_BTM_ME,
         "bridge_lane_offset_um": lane_offset,
@@ -1302,7 +1303,6 @@ def xfm_il(
     # its ring kernel privately: colliding odd-band bridges must take -q/+q
     # on SL-1/SL-2 while S's even-band bridges take the exact opposite.  The
     # shared ind_sym/base_ind_hud_cross public geometry remains byte-stable.
-    leg2_me = str(leg2)
     # Interleaved bands alternate P/S one-for-one at a physical radial
     # step of (W+S), so the chamfer staircase must be computed over the
     # MERGED radial order (P turn k = physical ring 2k, S turn k =
@@ -1325,7 +1325,7 @@ def xfm_il(
         dummy=dummy,
         process=process,
         PITCH=pitch,
-        LEG2_BTM_ME=leg2_me,
+        LEG2_BTM_ME=leg2,
         lane_offset=lane_offset,
         outer_escape_offset=escape_p,
         chamfer_biases=p_biases,
@@ -1358,7 +1358,7 @@ def xfm_il(
         DUMMYL=DUMMYL,
         process=process,
         PITCH=pitch,
-        LEG2_BTM_ME=leg2_me,
+        LEG2_BTM_ME=leg2,
         chamfer_biases=s_biases,
         lane_offset=lane_offset,
         outer_escape_offset=escape_s,

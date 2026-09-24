@@ -80,11 +80,11 @@ def _config_stack(profile_id) -> tuple[str, ...] | None:
 
 def _metal_position(value, profile_id) -> int | None:
     """Stack position of a config's metal, read the way the pcell reads it (``ic_opt.em.pcell.stack``): on the
-    profile's stack by name ("AP", "RDL", "M6"; "6" the sixth metal), without a loadable profile by the reference
-    convention ("M<n>"/"<n>" -> n, "AP" -> 11). None for a spelling that names no metal -- left to the name check
-    (``_metals_are_profile_conductors``) or the pcell's own guard. Every adjacency rule below works on these
-    positions, so a 6-metal + AP profile has AP at 7 and a profile whose metals are not called M<n> is judged
-    like any other (T16 R-14)."""
+    profile's stack by name ("AP", "RDL", "M6"; "6" the metal named M6, T16 N-13), without a loadable profile by
+    the reference convention ("M<n>"/"<n>" -> n, "AP" -> 11). None for a spelling that names no metal -- left to
+    the name check (``_metals_are_profile_conductors``) or the pcell's own guard. Every adjacency rule below works
+    on these positions, so a 6-metal + AP profile has AP at 7 and a profile whose metals are not called M<n> is
+    judged like any other (T16 R-14)."""
     if value is None:
         return None
     try:
@@ -230,9 +230,10 @@ class _CleanPortDeviceConfigBase(BaseModel):
 
     @model_validator(mode="after")
     def _metals_are_profile_conductors(self):
-        """Every metal the config names is a metal of its profile's stack, by name: "AP", "M9", or "9" for M9. The
-        pcell reads digits as stack positions internally (T13.11), so a "10" on a stack without M10 has to be
-        refused here rather than land on whatever the tenth metal is."""
+        """Every metal the config names is a metal of its profile's stack, by name: "AP", "M9", or "9" for M9 -- the
+        pcell reads "9" the same way (``stack.position_in``, T16 N-13). Where no metal is called M<n> the pcell
+        falls back to the n-th metal, so a "10" on a stack without M10 has to be refused here rather than land on
+        whatever the tenth metal is."""
         stack = _config_stack(self.process_profile)
         if stack is None:
             return self

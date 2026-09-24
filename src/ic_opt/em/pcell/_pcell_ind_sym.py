@@ -764,9 +764,9 @@ def _compact_two_turn_candidate(
             "LEAD": LEAD,
             "S": S,
             "NT": 2,
-            "TOP_ME": str(top_met),
-            "BTM_ME": str(bottom_met),
-            "LEG2_BTM_ME": str(top_met),
+            "TOP_ME": top_met,
+            "BTM_ME": bottom_met,
+            "LEG2_BTM_ME": top_met,
             "compact_bridge_pad_length_um": pad_length,
             "compact_bridge_outer_offset_um": outer_g,
             "compact_bridge_inner_offset_um": inner_g,
@@ -786,7 +786,7 @@ def _compact_two_turn_candidate(
     )
     pin = _pin(top_met, process)
     cell.inst(
-        build(base_lead_pair, W=W, OPENING=OPENING, LEAD=LEAD + W, TOP_ME=str(top_met), LEAD_ME=str(top_met),
+        build(base_lead_pair, W=W, OPENING=OPENING, LEAD=LEAD + W, TOP_ME=top_met, LEAD_ME=top_met,
               P1TXT=port_order[0], N1TXT=port_order[1], process=process, port_metal=top_met, port_label_layer=pin,
               port_p1_logical_name=("P1" if semantic_port_roles else None),
               port_n1_logical_name=("N1" if semantic_port_roles else None), PORT_SPACING=port_spacing),
