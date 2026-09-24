@@ -108,6 +108,8 @@ def test_quantities_match_the_recorded_library():
             drives, grounded = TOPOLOGIES[topology]
             q = measure.quantities(ts.freqs, ts.s, measure.Topology.from_labels(drives, grounded, columns), z0=ts.z0)
             for name, value in conn.execute("select name, value from metrics where sample_id=? and freq_hz is null", (sample_id,)):
+                if len(drives) == 2 and name.endswith("_peak"):
+                    continue          # em-opt took the full-sweep maximum; a coupled pair's Q peak is now searched below the system SRF (T13.7)
                 ours = q.scalars[name]
                 assert (ours is None) == (value is None), f"{stratum}/{sample_id} {name}: {value} vs {ours}"
                 if value is not None:
@@ -120,3 +122,22 @@ def test_quantities_match_the_recorded_library():
                     assert ours == pytest.approx(value, rel=1e-9, abs=1e-30), f"{stratum}/{sample_id} {name}@{freq:g}"
             checked += 1
     assert checked >= len(strata)
+
+
+def test_a_q_peak_is_searched_below_the_system_resonance():
+    """A differential element whose reactance crosses zero at 25 GHz and climbs again past 75 GHz: the full-sweep Q
+    maximum would sit at the band edge, the device's Q peak lies below its resonance."""
+    freqs = np.arange(0.0, 151e9, 1e9)
+    f0, z0 = 25e9, 50.0
+    reactance = 2 * np.pi * freqs * 0.3e-9 * np.cos(np.pi * freqs / (2 * f0))         # + below f0, - between f0 and 3 f0, + again above
+    z_diff = 1.0 + 1j * reactance
+    s = np.empty((len(freqs), 2, 2), dtype=complex)
+    for i, zd in enumerate(z_diff):
+        z = zd / 2 * np.array([[1, -1], [-1, 1]]) + 1e3 * np.array([[1, 1], [1, 1]])   # differential zd, a stiff common mode
+        s[i] = (z - z0 * np.eye(2)) @ np.linalg.inv(z + z0 * np.eye(2))
+    q = measure.quantities(freqs, s, measure.Topology.from_labels([("P1", "N1")], [], ["P1", "N1"]), z0=z0)
+    assert q.scalars["SRF_p"] == pytest.approx(f0, abs=1e9) and q.scalars["SRF"] == q.scalars["SRF_p"]
+    below = (freqs > 0) & (freqs < q.scalars["SRF_p"])
+    assert q.scalars["Qp_peak"] == pytest.approx(np.nanmax(q.curves["Qp"][below]))
+    assert np.nanmax(q.curves["Qp"]) > 3 * q.scalars["Qp_peak"]                          # the band-edge climb is ignored
+

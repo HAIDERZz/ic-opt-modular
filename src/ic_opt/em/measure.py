@@ -10,6 +10,11 @@ Scalars: L<N>_lf, L<N>_res, Q<N>_peak, SRF_<N>, k_lf, and SRF -- the system SRF,
 all drives (a one-drive device: SRF_p). A drive's first Im(Z) zero can be the other winding's resonance
 reflected through the coupling or its own, depending on how deep the reflected dip goes, so SRF_<N> of a
 coupled pair may jump between the two between neighbouring geometries; SRF does not.
+
+Q<N>_peak is the largest Q below the system SRF (T13.7): above the lowest resonance a coupled pair's Q curve can
+climb again towards the band edge (a multi-turn secondary resonates inside the sweep), which is not the device's
+quality factor. For one drive nothing changes -- an inductor's Q is negative past its own SRF. em-opt's recorded
+library took the full-sweep maximum; its Q peaks of coupled pairs therefore differ from these by design.
 """
 
 from __future__ import annotations
@@ -134,13 +139,17 @@ def _grid_step(freqs: np.ndarray) -> float:
 
 
 def quantities(freqs: np.ndarray, s: np.ndarray, topo: Topology, *, z0: float = 50.0) -> Quantities:
-    """Curves and scalars for every drive; ``L*_res`` is capped by the system SRF (the lowest finite SRF over all drives)."""
+    """Curves and scalars for every drive; ``L*_res`` is capped and ``Q*_peak`` searched below the system SRF (the
+    lowest finite SRF over all drives)."""
     names = DRIVE_NAMES[: len(topo.drives)]
     zm = _mixed_mode_z(s_to_z(s, z0=z0), topo)
     with np.errstate(divide="ignore", invalid="ignore"):
         w = 2 * math.pi * freqs
         curves: dict[str, np.ndarray] = {}
         scalars: dict[str, float | None] = {}
+        srfs = {nm: _srf_first_sign_flip(freqs, np.imag(zm[:, i, i])) for i, nm in enumerate(names)}
+        finite = [v for v in srfs.values() if v is not None]
+        srf_cap = min(finite) if finite else None
         for i, nm in enumerate(names):
             zii = zm[:, i, i]
             l_curve = np.where(w > 0, np.imag(zii) / np.where(w > 0, w, np.nan), np.nan)
@@ -148,12 +157,12 @@ def quantities(freqs: np.ndarray, s: np.ndarray, topo: Topology, *, z0: float = 
             curves[f"L{nm}"], curves[f"Q{nm}"] = l_curve, q_curve
             scalars[f"L{nm}_lf"] = _finite_lf_mean(freqs, l_curve, topo.low_freq_max_hz, f"L{nm}")
             qmask = np.isfinite(q_curve) & (freqs > 0)
+            if srf_cap is not None:
+                qmask &= freqs < srf_cap
             if not qmask.any():
-                raise MeasureError(f"no finite Q samples for drive {nm}")
+                raise MeasureError(f"no finite Q samples below the system SRF for drive {nm}")
             scalars[f"Q{nm}_peak"] = float(np.max(q_curve[qmask]))
-            scalars[f"SRF_{nm}"] = _srf_first_sign_flip(freqs, np.imag(zii))
-        finite = [scalars[f"SRF_{nm}"] for nm in names if scalars[f"SRF_{nm}"] is not None]
-        srf_cap = min(finite) if finite else None
+            scalars[f"SRF_{nm}"] = srfs[nm]
         scalars["SRF"] = srf_cap
         for nm in names:
             scalars[f"L{nm}_res"] = scalars[f"L{nm}_lf"] if srf_cap is None else _l_res(freqs, curves[f"L{nm}"], srf_cap, nm)
