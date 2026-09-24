@@ -1,6 +1,6 @@
 ---
 name: ic-opt
-description: Drive IC-Opt 0.2 from a project directory — write or migrate spec.yaml, preview with --plan, run built-in or custom recipes (optimize, fix_run, coarse_to_fine, signoff), read .icopt results and reports, and advise on Spectre/OCEAN design optimization, locally or over SSH; query, design on and sign off EM device libraries.
+description: Drive IC-Opt 0.3 from a project directory — write or migrate spec.yaml, preview with --plan, run built-in or custom recipes (optimize, fix_run, coarse_to_fine, signoff), read .icopt results and reports, and advise on Spectre/OCEAN design optimization, locally or over SSH; query, design on and sign off EM device libraries.
 ---
 
 # IC-Opt operator

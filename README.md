@@ -15,7 +15,7 @@ spec.yaml  ──►  ic-opt run <recipe> <project> [--plan]  ──►  .icopt/
 ```bash
 uv venv --python 3.11 .venv
 uv pip install -e ".[em,turbo]" -e vendor/open-box -e vendor/TuRBO   # one resolver call; add dev / report / prf here too
-ic-opt --version                                                     # ic-opt 0.2.0
+ic-opt --version                                                     # ic-opt 0.3.0
 bash scripts/check_clean_install.sh                                  # optional: the same install in throwaway venvs, smoke-tested
 ```
 

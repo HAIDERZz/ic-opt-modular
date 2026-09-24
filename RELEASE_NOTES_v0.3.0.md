@@ -101,7 +101,25 @@ Do the steps in this order; each one is checked by the tool.
 
 ## Verified
 
-<!-- fill at release: test counts, clean installs, migration of the N28 library, sign-offs -->
+- Tests at the tag: the non-pcell suite 271 passed / 12 skipped; the pcell suite 917
+  passed with a private process profile and 288 passed / 635 skipped without
+  one (13 golden GDS files unchanged); the CLI suite 77 passed; `ruff check`
+  clean. Clean-environment installs (`scripts/check_clean_install.sh`, two
+  environments, packaging and library tests inside) PASS.
+- A store written by the 0.2.0 release (frozen as a test fixture, produced by
+  that tag's own code) is restamped by `migrate-store` and its rows are reused
+  by `sim.evaluate` without new simulations.
+- A real device library (eight run stores, 5,000+ EMX observations on a
+  28 nm process) was migrated in place: one generation per part before and
+  after, row counts unchanged, backups kept; the library's accuracy gates and
+  a 40 GHz `lib.region` answer were identical before and after.
+- Real-EMX verification through `lib_signoff`: 10 inductor designs (all
+  quantities within 1.05 % of the prediction, 94.6 % of them inside the
+  calibrated interval) and 10 single-turn transformer designs between lattice
+  points (intervals honest at 96–98 % coverage; the model's between-lattice
+  error itself is the subject of the next milestone).
+- Windows / macOS controllers: the lock, spawn and path code paths are tested
+  with stubs only; not yet run on real machines.
 
 ## Compatibility
 
