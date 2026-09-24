@@ -82,6 +82,7 @@ def estimate_plot() -> str:
     fig, axes = plt.subplots(1, 3, figsize=(13, 3.9))
     for p in PROJECTS:
         v = [(grid[r["grid_key"]], r) for r in checks if r["project"] == p and r["status"] == "ok" and r["grid_key"] in grid]
+        v = [(g, r) for g, r in v if all(g.get(k) is not None for k in ("Lp_est_nH", "Ls_est_nH", "k_est"))]   # densification points carry no estimate
         axes[0].scatter([g["Lp_est_nH"] for g, _ in v], [r["Lp_nH"] for _, r in v], s=4, alpha=0.5, color=COLORS[p], label=TITLE[p])
         axes[1].scatter([g["Ls_est_nH"] for g, _ in v], [r["Ls_nH"] for _, r in v], s=4, alpha=0.5, color=COLORS[p])
         axes[2].scatter([g["k_est"] for g, _ in v], [r["k"] for _, r in v], s=4, alpha=0.5, color=COLORS[p])
