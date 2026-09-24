@@ -13,14 +13,22 @@ spec.yaml  ──►  ic-opt run <recipe> <project> [--plan]  ──►  .icopt/
 ## Install
 
 ```bash
-uv venv .venv && uv pip install -e vendor/open-box -e ".[dev,report]"
-ic-opt --version                      # ic-opt 0.2.0
+uv venv --python 3.11 .venv
+uv pip install -e ".[em,turbo]" -e vendor/open-box   # one resolver call; add dev / report / prf here too
+ic-opt --version                                      # ic-opt 0.2.0
+bash scripts/check_clean_install.sh                   # optional: the same install in throwaway venvs, smoke-tested
 ```
 
-Extras: `em` (klayout for the pcell geometry library), `report` (SHAP parameter
-importance), `turbo` (torch + gpytorch for the `turbo` strategy; the CPU build
-is enough), `prf` (OpenBox random-forest surrogate, needs swig). Install everything in **one** `uv pip install` so the
-resolver keeps numpy < 2, which the vendored OpenBox requires.
+The package declares everything it imports at start-up (numpy, scipy, scikit-learn, threadpoolctl, ...).
+OpenBox, which serves the `openbox_*` strategies (`opt.optimize`'s default), is vendored in `vendor/open-box`
+instead of declared, because a path dependency does not survive into a published wheel. Install it in the
+**same** `uv pip install` as the package so the resolver keeps its pins (numpy < 2, scipy < 1.13,
+scikit-learn < 1.4, ConfigSpace <= 0.6.1, matplotlib < 3.9); together they have wheels only on Python 3.11.
+Extras: `em` (klayout: pcell geometry and the EM stages), `turbo` (torch + gpytorch for the `turbo` strategy
+and `latin_hypercube` designs; the CPU build is enough: uv's `--torch-backend cpu` skips the CUDA wheels),
+`report` (SHAP parameter importance), `prf` (OpenBox random-forest surrogate, needs swig), `dev` (pytest,
+ruff). The `turbo` strategy loads TuRBO from `vendor/TuRBO` in the checkout; TuRBO is under Uber's
+non-commercial licence (`vendor/TuRBO/LICENSE.md`).
 
 Cadence tools come from a csh environment file **on the simulation host**:
 pass `--cshrc FILE`, set `IC_OPT_CADENCE_CSHRC`, or put `cshrc:` in

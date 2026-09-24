@@ -19,12 +19,17 @@ dependencies = [
     "numpy>=1.24",
     "pydantic>=2.7",
     "PyYAML>=6.0",
+    "scikit-learn>=1.3",       # ic_opt.library GP models; the CLI imports the library at start-up
     "scipy>=1.10",
+    "threadpoolctl>=3.0",      # ic_opt.library BLAS thread limits
     "typer>=0.12",
 ]
 
 [project.optional-dependencies]
-turbo = [                      # only the `turbo` strategy needs torch (vendor/TuRBO); OpenBox and sobol/random do not
+# opt: OpenBox (the openbox_* strategies, opt.optimize's default) is vendored, not declared -- a path dependency does
+# not survive into a published wheel. Install it from the checkout in the same resolver call, which keeps its
+# numpy < 2 / scipy < 1.13 / scikit-learn < 1.4 pins:  uv pip install -e ".[em,turbo]" -e vendor/open-box
+turbo = [                      # the `turbo` strategy and `latin_hypercube` designs load vendor/TuRBO, which imports torch + gpytorch
     "torch>=2.0",
     "gpytorch>=1.11",
 ]

@@ -27,9 +27,13 @@ class OpenBoxSuggester:
         self.workdir = workdir
 
     def propose(self, spec: Spec, history: Observations, n: int, *, seed: int) -> Proposal:
-        from openbox import Advisor
-        from openbox import Observation as OpenBoxObservation
-        from openbox import space as sp
+        try:
+            from openbox import Advisor
+            from openbox import Observation as OpenBoxObservation
+            from openbox import space as sp
+        except ImportError as exc:        # vendored, not declared: a path dependency does not survive into a wheel
+            raise ImportError(f"strategy {self.name!r} needs the OpenBox vendored in the ic-opt checkout; install it in the same "
+                              'resolver call as the package: uv pip install -e ".[em,turbo]" -e vendor/open-box') from exc
 
         cs = _config_space(spec, sp)
         advisor = Advisor(
