@@ -182,7 +182,10 @@ compares the entry with what the host reports (`nproc`, `MemTotal`) and warns,
 never blocks, when the entry is larger. `run.jobs` and the engine trim
 concurrency to fit; recipes pass `limits=run.limits` to `sim.evaluate` and
 `opt.optimize`. A flat 0.2.0 file (top-level `max_threads`) is read as
-`hosts.local`, with a note to move it under `hosts:`.
+`hosts.local`, with a note to move it under `hosts:`. `hosts.local` is also
+the budget of the device library's own compute (model fits, BLAS threads,
+prediction chunks), which always runs on the machine running ic-opt:
+[docs/em/library.md](docs/em/library.md#compute).
 
 ## Results
 

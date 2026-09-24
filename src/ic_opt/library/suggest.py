@@ -24,6 +24,10 @@ known rows exactly as ``suggest`` ranks a Sobol pool. It is three parts ``lib.re
 ``predict_all`` (the one prediction path: one GP call per quantity, the bounds derived from it, SRF mapped
 from the GHz it is fitted in back to Hz, settled rows, the domain + confidence gate), ``satisfy`` (robust:
 the interval inside every window; mean: the predicted value) and ``rank``.
+
+A GP call's memory grows with (rows predicted) x (training rows), so a large batch is predicted in chunks
+sized by bytes, not rows: ``predict_budget`` is a share of the machine's ``max_memory_gb`` (the library's
+``limits``), ``rows_per_call`` the rows that fit in it for a given model.
 """
 
 from __future__ import annotations
@@ -36,17 +40,20 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial import cKDTree
 from scipy.stats import qmc
+from threadpoolctl import threadpool_limits
 
 from ic_opt.eval.stage import StageContext, StageFailure
 from ic_opt.executor.local import LocalExecutor
 from ic_opt.library import dataset, domain, gp, query
+from ic_opt.site import HostLimits
 from ic_opt.space import Point
 from ic_opt.stages.em_chain import Pcell
 from ic_opt.store import RunStore
 
 _ANCHOR = re.compile(r"^(Lp|Qp|Ls|Qs|k)@([0-9.]+)$")
 LEVELS = ("robust", "mean")                          # satisfy: the calibrated interval, or the predicted value, inside every window
-PREDICT_CHUNK = 40_000                               # rows per GP call: bounds the (rows x training rows) kernel block of a large grid
+PREDICT_MEMORY_SHARE = 0.10                          # of the machine's max_memory_gb: what one GP call may hold by default
+PREDICT_COPIES = 7                                   # (rows x training rows) float64 arrays alive at once in a GP call (rows_per_call)
 
 
 @dataclass(frozen=True)
@@ -136,28 +143,47 @@ def in_domain(x: np.ndarray, models: dict[str, query.Model], *, srf_floor: dict[
     return ok
 
 
-def _gp_predict(model: gp.StratumGP, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """``model.predict`` in chunks of PREDICT_CHUNK rows (a pool is one chunk, a region grid many)."""
-    if len(x) <= PREDICT_CHUNK:
-        return model.predict(x) if len(x) else (np.empty(0), np.empty(0))
-    parts = [model.predict(x[i:i + PREDICT_CHUNK]) for i in range(0, len(x), PREDICT_CHUNK)]
+def predict_budget(limits: HostLimits) -> int:
+    """Bytes one GP call may hold by default: PREDICT_MEMORY_SHARE of the machine's max_memory_gb (``Library.limits``,
+    site.yaml's hosts.local unless the library was given its own)."""
+    return int(limits.max_memory_gb * PREDICT_MEMORY_SHARE * query.BYTES_PER_GB)
+
+
+def rows_per_call(budget_bytes: int, n_train: int) -> int:
+    """Rows per GP call within ``budget_bytes`` for a model fitted on ``n_train`` rows, at least one. Predicting m rows with
+    sigma keeps PREDICT_COPIES float64 arrays of m x n_train alive at once: the Matern distances and their polynomial and
+    exponential terms, the amplitude and noise blocks and their sum, the triangular solve behind sigma (tracemalloc
+    measured 6.0 of them on scikit-learn 1.3; the seventh is margin). A per_nt model predicts each turns level with that
+    level's rows, fewer than ``n_train``: the chunk is conservative there."""
+    return max(1, int(budget_bytes) // (np.dtype(np.float64).itemsize * max(1, n_train) * PREDICT_COPIES))
+
+
+def _gp_predict(model: gp.StratumGP, x: np.ndarray, chunk_rows: int | None) -> tuple[np.ndarray, np.ndarray]:
+    """``model.predict`` in calls of at most ``chunk_rows`` rows (None: one call; a pool is usually one chunk, a region grid many)."""
+    if not len(x):
+        return np.empty(0), np.empty(0)
+    if chunk_rows is None or len(x) <= chunk_rows:
+        return model.predict(x)
+    parts = [model.predict(x[i:i + chunk_rows]) for i in range(0, len(x), chunk_rows)]
     return np.concatenate([p[0] for p in parts]), np.concatenate([p[1] for p in parts])
 
 
 def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX,
                 srf_floor: dict[str, np.ndarray] | None = None, exact: dict[str, np.ndarray] | None = None,
-                check_domain: bool = True) -> tuple[np.ndarray, dict]:
+                check_domain: bool = True, chunk_bytes: int | None = None) -> tuple[np.ndarray, dict]:
     """``(ok, pred)`` for candidate rows ``x`` and every quantity in ``models``: ``ok`` is the domain (``in_domain``) and
     confidence gate (a finite value, sigma / mu within ``rel_sigma_max``); ``pred[q]`` holds value, lo, hi (calibrated
     k-sigma), rel_sigma and sigma in SI units. One GP prediction per quantity: the bounds come from that (mu, sigma)
     as ``StratumGP.predict_bounds`` derives them, and SRF, fitted in GHz, is mapped back to Hz here and nowhere else.
     ``srf_floor[q]`` gives a per-candidate lower bound for an SRF known to lie above the sweep (NaN elsewhere);
-    ``exact[q]`` gives measured values (NaN where not measured), used as zero-width intervals instead of predictions."""
+    ``exact[q]`` gives measured values (NaN where not measured), used as zero-width intervals instead of predictions.
+    ``chunk_bytes`` bounds each GP call's memory (``rows_per_call`` for the model's training rows; the library's callers
+    pass ``predict_budget(library.limits)``); None predicts every row in one call."""
     n = len(x)
     ok = in_domain(x, models, srf_floor=srf_floor, exact=exact) if check_domain else np.ones(n, dtype=bool)
     pred: dict[str, dict[str, np.ndarray]] = {}
     for q, m in models.items():
-        mu, sigma = _gp_predict(m.gp, x)
+        mu, sigma = _gp_predict(m.gp, x, None if chunk_bytes is None else rows_per_call(chunk_bytes, len(m.rows)))
         lo, hi = gp.prediction_bounds(mu, sigma, log_target=m.gp.log_target, k=k * m.gp.k_scale)
         scale = 1e9 if q.startswith("SRF") else 1.0            # the library fits SRF in GHz (Library.model)
         mu, sigma, lo, hi = mu * scale, sigma * scale, lo * scale, hi * scale
@@ -206,13 +232,13 @@ def rank(pred: dict, targets: list[Target], objective: tuple[str, str] | None, o
 
 def score(x: np.ndarray, models: dict[str, query.Model], targets: list[Target], objective: tuple[str, str] | None, *,
           k: float = 2.0, rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX, srf_floor: dict[str, np.ndarray] | None = None,
-          check_domain: bool = True, exact: dict[str, np.ndarray] | None = None) -> dict:
+          check_domain: bool = True, exact: dict[str, np.ndarray] | None = None, chunk_bytes: int | None = None) -> dict:
     """Predict, gate and rank candidate rows ``x``: ``predict_all`` over the targets' and the objective's quantities,
-    the robust ``satisfy``, ``rank``. ``models`` must cover every target and the objective; ``srf_floor`` and ``exact``
-    as in ``predict_all``."""
+    the robust ``satisfy``, ``rank``. ``models`` must cover every target and the objective; ``srf_floor``, ``exact`` and
+    ``chunk_bytes`` as in ``predict_all``."""
     names = sorted({t.quantity for t in targets} | ({objective[1]} if objective else set()))
     ok, pred = predict_all(x, {q: models[q] for q in names}, k=k, rel_sigma_max=rel_sigma_max, srf_floor=srf_floor, exact=exact,
-                           check_domain=check_domain)
+                           check_domain=check_domain, chunk_bytes=chunk_bytes)
     if targets:
         ok &= satisfy(pred, targets, "robust")
     return {"ok": ok, "ranked": rank(pred, targets, objective, ok), "pred": pred}
@@ -315,7 +341,9 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
         for j, i in enumerate(row_of):
             if i >= 0 and ds.rows[i].values.get(q) is None:
                 floor[j] = ds.rows[i].stop_hz
-    s = score(x, models, goals, obj, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, exact=exact)
+    with threadpool_limits(limits=query.blas_threads(library.limits), user_api="blas"):   # the pool's prediction, like a region's
+        s = score(x, models, goals, obj, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, exact=exact,
+                  chunk_bytes=predict_budget(library.limits))
     ranges = library.ranges(stratum)
     measured_ranked = [i for i in s["ranked"] if row_of[i] >= 0]
     predicted_ranked = [i for i in s["ranked"] if row_of[i] < 0]

@@ -14,14 +14,20 @@ generation of predictions.
 
 A device only maps onto a stratum built with the same generator and the same fixed fields (metal, fixture,
 leads ...): ``match_stratum`` finds it, and ``Predict`` refuses a device whose fixed fields differ.
+
+The engine runs points in parallel threads; the models they share are fitted once, before any of them is
+queried: ``Predict.prefit`` (``lib_design`` calls it before the evaluation starts) hands every column the
+stage will ask for to ``Library.models``, which fits the uncached ones in parallel processes within the
+library's limits. A thread never fits a model by itself.
 """
 
 from __future__ import annotations
 
 import json
+import threading
 
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
-from ic_opt.library import dataset, query
+from ic_opt.library import dataset, domain, query
 from ic_opt.observation import ChildResult
 from ic_opt.spec import Spec
 from ic_opt.stages.em_chain import Geometry, Pcell
@@ -54,13 +60,33 @@ class Predict:
     simulates = False                                  # a prediction is not a simulation: it spends none of the spec's budget
     resources = Resources()
 
-    def __init__(self, library: query.Library, strata: dict[str, str], *, k: float = 2.0, rel_sigma_max: float = 0.15):
+    def __init__(self, library: query.Library, strata: dict[str, str], *, k: float = 2.0,
+                 rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX):
         self.library, self.strata, self.k, self.rel_sigma_max = library, dict(strata), k, rel_sigma_max
         self.identity = json.dumps({"k": k, "rel_sigma_max": rel_sigma_max, "calibrate": library.calibrate,
                                     "strata": {d: [s, library.dataset(s).key] for d, s in sorted(self.strata.items())}}, separators=(",", ":"))
+        self._lock = threading.Lock()
+        self._ready: dict[str, list[str]] | None = None
 
     def fingerprint(self, geometry: Geometry, ctx: StageContext) -> str | None:
         return None
+
+    def prefit(self, spec: Spec) -> dict[str, list[str]]:
+        """Every model this stage will ask for -- per stratum, the columns of its devices' metrics -- fitted or loaded once,
+        through ``Library.models`` (the uncached ones in parallel processes within the library's limits); returns them.
+        Call it before the evaluation threads start (``lib_design`` does). ``run`` calls it too, so the models are ready
+        before any query even when the caller did not: the first evaluation thread fits for all while the others wait."""
+        with self._lock:
+            if self._ready is None:
+                wanted: dict[str, dict[str, None]] = {}
+                for device, stratum in self.strata.items():
+                    columns = _columns(spec, device, self.library.dataset(stratum))[0].values()
+                    wanted.setdefault(stratum, {}).update(dict.fromkeys(columns))
+                for stratum, columns in wanted.items():
+                    if columns:
+                        self.library.models(stratum, list(columns))
+                self._ready = {stratum: list(columns) for stratum, columns in wanted.items()}
+            return self._ready
 
     def run(self, geometry: Geometry, ctx: StageContext) -> ChildResult:
         stratum = self.strata.get(ctx.unit)
@@ -76,14 +102,9 @@ class Predict:
         missing = [d for d in ds.dims if d not in config]
         if missing:
             raise StageFailure(f"device {ctx.unit}: the generator config lacks the library dims {missing}")
-        wanted = {}
-        issues = []
-        for metric in ctx.spec.metrics_for_device(ctx.unit):
-            column = metric.quantity if metric.frequency_hz is None else f"{metric.quantity}@{metric.frequency_hz / 1e9:g}"
-            if column in ds.columns:
-                wanted[metric.name] = column
-            else:
-                issues.append(f"metric {metric.name}: stratum {stratum} has no {column} (columns {ds.columns})")
+        wanted, issues = _columns(ctx.spec, ctx.unit, ds)
+        if wanted:
+            self.prefit(ctx.spec)                        # a no-op once done: the models are in memory before any query
         answer = query.query(self.library, stratum, {d: config[d] for d in ds.dims}, sorted(set(wanted.values())) or None,
                              k=self.k, rel_sigma_max=self.rel_sigma_max) if wanted else {"quantities": {}}
         metrics = {}
@@ -97,7 +118,20 @@ class Predict:
         return ChildResult(unit=ctx.unit, corner=None, metrics=metrics, issues=issues, status="ok" if not issues else "failed:predict")
 
 
+def _columns(spec: Spec, device: str, ds: dataset.Dataset) -> tuple[dict[str, str], list[str]]:
+    """The device's metrics as stratum columns (``Lp`` at 28 GHz reads ``Lp@28``), and an issue per metric the stratum lacks."""
+    wanted, issues = {}, []
+    for metric in spec.metrics_for_device(device):
+        column = metric.quantity if metric.frequency_hz is None else f"{metric.quantity}@{metric.frequency_hz / 1e9:g}"
+        if column in ds.columns:
+            wanted[metric.name] = column
+        else:
+            issues.append(f"metric {metric.name}: stratum {ds.stratum} has no {column} (columns {ds.columns})")
+    return wanted, issues
+
+
 def surrogate_pipeline(spec: Spec, library: query.Library, strata: dict[str, str] | None = None, **predict) -> list:
-    """pcell -> library prediction per device (the em_only pipeline with EMX + measure replaced by the library)."""
+    """pcell -> library prediction per device (the em_only pipeline with EMX + measure replaced by the library); ``predict``
+    goes to ``Predict`` (``k``, ``rel_sigma_max``)."""
     strata = strata or {d.id: match_stratum(library, d) for d in spec.devices}
     return [Pcell(spec), Predict(library, strata, **predict)]

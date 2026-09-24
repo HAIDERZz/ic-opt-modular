@@ -117,15 +117,17 @@ Each quantity comes back with a `status`:
 | --- | --- |
 | `measured` | the point is a library row: the measured value |
 | `predicted` | GP mean `value` with calibrated bounds `lo` / `hi`, plus the three nearest measured rows as evidence |
-| `uncertain` | predicted, but sigma / mu exceeds 0.15: reported with its numbers, never used silently |
+| `uncertain` | predicted, but sigma / mu exceeds `rel_sigma_max` (0.15 unless given): reported with its numbers, never used silently |
 | `out_of_domain` | the domain guard refused: `criterion`, `reason`, the nearest measured rows |
 | `above_sweep` | SRF only: most nearest rows did not resonate inside their sweep; `lower_bound` is that sweep's stop |
 
 The domain guard's criteria: (1) inside the achieved box, and a dim that is
 fixed within a turns level must match it; (2) a model exists for this turns
 level (at least 25 usable rows); (3) inside the level's convex hull over the
-dims that vary there; (4) sigma / mu at most 0.15. The model is a Matern 5/2
-GP per turns level on log targets. Bounds are mu +- k sigma (`k=2`) widened by
+dims that vary there; (4) sigma / mu at most `rel_sigma_max` (a parameter of
+`lib.query`, `lib.suggest`, `lib.region` and `lib_design`; 0.15 unless
+given). The model is a Matern 5/2 GP per turns level on log targets. Bounds
+are mu +- k sigma (`k=2`) widened by
 a calibration factor from held-out residuals (`max(1, q95(|z|) / 2)`), so
 about 95% of held-out measurements fall inside; sigma is never reported below
 the quantity's held-out median relative error, because the GP is overconfident
@@ -180,9 +182,10 @@ and max along one dim over the points meeting every other target;
 meet every target; and a `points_sample` to plot. The per-dim ranges are
 projections. The dims are correlated (a width leaves a short stretch of
 diameters), so take a sweep from the `group_by` rows, not from the ranges
-alone. Fitted models are cached under `.cache/`, and the uncached ones are
-fitted in parallel processes (`workers`, by default one per quantity up to
-6) that share `threads` BLAS threads (default `$OMP_NUM_THREADS`, else 8).
+alone. Fitted models are cached under `.cache/`; the uncached ones are
+fitted in parallel processes sized from `hosts.local` (see
+[Compute](#compute)). `workers` and `threads` cap the fitting processes and
+the BLAS threads; a value above what that entry allows is refused.
 
 ## 6. Design on the library: `lib_design`
 
@@ -217,6 +220,39 @@ predicted value, bounds, measurement, z score and whether it fell inside.
 under fresh ids. The next dataset build includes them, and the content key
 of every cache and every `predict` stage changes with it.
 
+## Compute
+
+The library computes on the machine running ic-opt, within that machine's
+entry `hosts.local` of `~/.ic-opt/site.yaml` (`max_threads`,
+`max_memory_gb`) and nothing else: no core count is read from the machine
+and no number is built in. The entry is read when a model has to be fitted
+or a batch predicted. Datasets, coverage, measured rows and models already
+cached in `.cache/` need no entry; without one, a fit is refused with the
+entry to add. `lib_design` fits on the same entry
+(`run.site.host("local")`), never on the simulation host's, and fits every
+model it needs once, before the search starts.
+
+- Fitting: one worker process per uncached model, at most
+  `max_threads // 2` (a fit keeps about two cores busy whatever BLAS gets)
+  and at most `max_memory_gb` over one fit's peak, 3 x rows² x (dims + 2)
+  x 8 bytes for the largest model; 61 on Windows. Each worker gets
+  `max_threads // workers` BLAS threads. With one worker the fits run in
+  the calling process, one after another.
+- Prediction (`lib.suggest`, `lib.region`): up to `max_threads` BLAS
+  threads, in chunks that keep each GP call within 10% of `max_memory_gb`
+  (a call over m rows holds about 7 x m x training rows x 8 bytes).
+- `workers=` and `threads=` cap these numbers; a value above what the entry
+  allows is refused. An explicit `OMP_NUM_THREADS` only ever lowers the
+  threads of every process; it is never raised.
+
+For example, a 1300-row inductor stratum over four dims with 28 columns to
+fit (0.3 GB per fit): an entry of 8 threads and 16 GB gives 4 workers of 2
+threads and chunks of about 23 600 rows; 128 threads and 256 GB give 28
+workers of 4 threads and chunks of about 377 600 rows. Each command takes
+the whole entry. A second command on the same machine, such as a local EMX
+sweep, needs its own share: lower `hosts.local` or set `OMP_NUM_THREADS`
+for one of them.
+
 ## A new process
 
 The library is only as good as the process profile the generator drew with.
@@ -235,7 +271,3 @@ exits 1 on any failed stage. The pcell finds the profile through
 `IC_OPT_PROFILE_DIRS`. The audit covers the generator's core rules only
 (width, space, maximum width, via enclosure, wide-parallel spacing, port
 connectivity). It is not foundry sign-off DRC.
-
-Fitting shares the host with EMX: cap BLAS threads for query and suggest
-work next to a running sweep (`OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
-MKL_NUM_THREADS=4`).

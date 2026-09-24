@@ -6,13 +6,30 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from ic_opt import site
 from ic_opt.em import measure, touchstone
 from ic_opt.observation import Observation
+from ic_opt.site import HostLimits
 from ic_opt.spec import Spec
 from tests.ic_opt.fakes import minimal_spec
 from tests.ic_opt.test_library import DIMS, FIXTURE, part_spec
 
 STOP_GHZ = 60
+
+# The machine the library tests compute on (what its site.yaml hosts.local entry would say): two threads, so max_threads // 2
+# is one worker and every fit runs in the test process, one after another -- countable and patchable. Tests of the parallel
+# path give FAKE_HOST (fakes.py) instead.
+LOCAL = HostLimits(max_threads=2, max_memory_gb=8)
+
+
+def use_site(monkeypatch, path: Path, **hosts: HostLimits) -> Path:
+    """Point ``site.SITE_FILE`` at ``path``, a site.yaml holding ``hosts`` (none: nothing is written, the file is missing).
+    The command line and a Library without limits read this file, never the developer's own."""
+    if hosts:
+        path.write_text("hosts:\n" + "".join(f"  {name}: {{max_threads: {h.max_threads}, max_memory_gb: {h.max_memory_gb:g}}}\n"
+                                             for name, h in hosts.items()), encoding="utf-8")
+    monkeypatch.setattr(site, "SITE_FILE", path)
+    return path
 
 
 def rlc_touchstone(od: float, w: float, s: float, nt: int, stop_ghz: float = STOP_GHZ, start_ghz: float = 0.0) -> str:

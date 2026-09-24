@@ -11,10 +11,16 @@ from ic_opt.recipe import PLAN_MODE, Run, load_recipe
 from ic_opt.site import HostLimits, Site
 from ic_opt.store import RunStore
 from tests.ic_opt.fakes import FakeSpectreExecutor
-from tests.ic_opt.library_fixtures import build_library, rlc_touchstone, truth
+from tests.ic_opt.library_fixtures import LOCAL, build_library, rlc_touchstone, truth, use_site
 from tests.ic_opt.test_library import part_spec
 
 pytest.importorskip("klayout.db")
+
+
+@pytest.fixture(autouse=True)
+def site_file(tmp_path, monkeypatch):
+    """lib_signoff's library fits its models within site.yaml's hosts.local: this file's, never the developer's own."""
+    return use_site(monkeypatch, tmp_path / "site.yaml", local=LOCAL)
 
 
 def library_physics(argv, n_ports, z0, cwd):

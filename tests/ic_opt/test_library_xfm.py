@@ -8,6 +8,7 @@ from ic_opt.em import measure
 from ic_opt.library import dataset, gp, manifest, query
 from ic_opt.library import suggest as s
 from tests.ic_opt.library_fixtures import (
+    LOCAL,
     XFM_DIMS,
     build_xfm_library,
     xfm_physics,
@@ -80,14 +81,14 @@ def test_manifest_rejects_unknown_maps_and_foreign_dims():
 
 
 def test_the_dimensionless_map_wins_on_scale_invariant_coupling(tmp_path):
-    mapped = query.Library(build_xfm_library(tmp_path / "mapped")).model("xfm_demo", "k_lf")
-    plain = query.Library(build_xfm_library(tmp_path / "plain", feature_map=None)).model("xfm_demo", "k_lf")
+    mapped = query.Library(build_xfm_library(tmp_path / "mapped"), limits=LOCAL).model("xfm_demo", "k_lf")
+    plain = query.Library(build_xfm_library(tmp_path / "plain", feature_map=None), limits=LOCAL).model("xfm_demo", "k_lf")
     assert mapped.gp.feature_map == "xfm_bs_dimensionless" and plain.gp.feature_map is None
     assert mapped.calibration["median_rel"] < plain.calibration["median_rel"]
 
 
 def test_query_predicts_coupling_and_both_inductances(xfm_library):
-    lib = query.Library(xfm_library)
+    lib = query.Library(xfm_library, limits=LOCAL)
     geometry = (150.0, 150.0, 5.5, 5.5, 5.0)
     answer = query.query(lib, "xfm_demo", dict(zip(XFM_DIMS, geometry)), ["k_lf", "Lp_lf", "Ls_lf"])
     physics = xfm_physics(*geometry)
@@ -100,12 +101,12 @@ def test_anchored_coupling_targets_imply_the_system_resonance(xfm_library):
     goals = s.parse_targets({"k@10": {"min": 0.5}})
     assert {(t.quantity, t.value) for t in s.implied_srf(goals, None, 1.25)} == {("SRF_p", 12.5e9), ("SRF_s", 12.5e9)}   # per drive: both
     assert {(t.quantity, t.value) for t in s.implied_srf(goals, None, 1.25, ["SRF", "SRF_p"])} == {("SRF", 12.5e9)}
-    answer = s.suggest(query.Library(xfm_library), "xfm_demo", {"k@10": {"min": 0.5}}, "max:k_lf", n=1, verify_build=False)
+    answer = s.suggest(query.Library(xfm_library, limits=LOCAL), "xfm_demo", {"k@10": {"min": 0.5}}, "max:k_lf", n=1, verify_build=False)
     assert {t["quantity"] for t in answer["targets"]} == {"k@10", "SRF"}
 
 
 def test_suggest_returns_built_transformers_that_meet_the_targets(xfm_library):
-    lib = query.Library(xfm_library)
+    lib = query.Library(xfm_library, limits=LOCAL)
     answer = s.suggest(lib, "xfm_demo", {"k_lf": {"min": 0.6}, "Lp_lf": {"target": 0.5e-9, "tol": 0.05}}, "max:k_lf", n=2)
     assert answer["candidates"], answer["notes"]
     for c in answer["candidates"]:

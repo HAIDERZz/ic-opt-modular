@@ -24,6 +24,10 @@ space, and its bounds are the sweep ranges. ``region`` grids that region and des
 Every prediction goes through ``suggest.predict_all``: one GP prediction per quantity and point, with SRF mapped
 from the GHz it is fitted in back to Hz in that one place (the T14 prototype predicted every point twice, and
 compared SRF in the wrong unit, which emptied a whole run).
+
+The work is sized by the library's ``limits`` (site.yaml's hosts.local unless the library was given its own): the
+uncached models are fitted by ``Library.models``, predictions run with ``query.blas_threads`` BLAS threads in chunks
+of ``suggest.predict_budget`` bytes.
 """
 
 from __future__ import annotations
@@ -31,7 +35,6 @@ from __future__ import annotations
 import dataclasses
 import itertools
 import math
-import os
 import time
 
 import numpy as np
@@ -40,7 +43,6 @@ from threadpoolctl import threadpool_limits
 from ic_opt.library import dataset, domain, query, suggest
 
 RELAX = 0.10                                         # the coarse pass widens every stated window by this fraction
-DEFAULT_THREADS = 8                                  # BLAS threads without ``threads`` or OMP_NUM_THREADS (T14 plan, D5)
 STAGES = ("models", "coarse", "grid", "predict", "summarize")
 
 
@@ -53,8 +55,10 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     """The region of ``stratum`` whose predictions meet ``targets`` (see the module docstring), as plain JSON data.
 
     ``steps`` gives grid steps for some or all continuous dims (multiples of the manifest steps); ``group_by`` names
-    dims to tabulate the mean set by; ``trend`` is ``(quantity, dim)``; ``threads`` is the BLAS thread budget of
-    fitting and prediction and ``workers`` the fitting processes (both reach ``Library.models`` where it exists)."""
+    dims to tabulate the mean set by; ``trend`` is ``(quantity, dim)``. ``threads`` (the BLAS threads of fitting and
+    prediction) and ``workers`` (the fitting processes) are explicit caps within the library's limits, refused above
+    them; by default both follow from the limits (``Library.models``, ``query.blas_threads``), and an explicit
+    OMP_NUM_THREADS lowers the threads."""
     marks = [time.perf_counter()]
     ds = library.dataset(stratum)
     stated = suggest.parse_targets(targets)
@@ -69,10 +73,11 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     explicit = _explicit_steps(library, stratum, steps)
     notes = [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
              for t in goals if t not in stated]
-    with threadpool_limits(limits=_threads(threads), user_api="blas"):
-        models = _models(library, stratum, names, workers, threads)
+    blas, budget = query.blas_threads(library.limits, threads), suggest.predict_budget(library.limits)
+    with threadpool_limits(limits=blas, user_api="blas"):
+        models = library.models(stratum, names, workers=workers, threads=threads)
         marks.append(time.perf_counter())
-        survivors, pooled, confident, alone = _coarse(library, stratum, models, stated, goals, pool_size, seed, k, rel_sigma_max)
+        survivors, pooled, confident, alone = _coarse(library, stratum, models, stated, goals, pool_size, seed, k, rel_sigma_max, budget)
         marks.append(time.perf_counter())
         if len(survivors):
             x, grid, grid_notes = _grid(library, stratum, survivors, explicit, levels_per_dim, max_points)
@@ -82,7 +87,7 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
             notes.append(_empty_note(pooled, confident, alone))
         x, floors = _inside(library, stratum, x, models)
         marks.append(time.perf_counter())
-        ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, check_domain=True)
+        ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, check_domain=True, chunk_bytes=budget)
         robust, mean = ok & suggest.satisfy(pred, goals, "robust"), ok & suggest.satisfy(pred, goals, "mean")
         marks.append(time.perf_counter())
         binding = {t.quantity: int((ok & suggest.satisfy(pred, [t], "mean")).sum()) for t in goals}
@@ -96,7 +101,7 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
         if rejected:
             notes.append(f"{rejected} leading candidates failed the real build and were skipped")
         measured = _measured(ds, goals, names)
-        missed = _unanswered(library, stratum, measured, models, k, rel_sigma_max)
+        missed = _unanswered(library, stratum, measured, models, k, rel_sigma_max, budget)
         if missed:
             notes.append(f"{len(missed)} of {len(measured)} measured designs meeting every target lie where a model has no confident "
                          f"answer, so the region cannot contain them: {', '.join(missed[:3])}{' ...' if len(missed) > 3 else ''}")
@@ -148,22 +153,6 @@ def _explicit_steps(library: query.Library, stratum: str, steps: dict | None) ->
     return out
 
 
-def _threads(threads: int | None) -> int:
-    """The BLAS thread budget: ``threads``, else OMP_NUM_THREADS, else DEFAULT_THREADS."""
-    try:
-        return max(1, int(threads or os.environ.get("OMP_NUM_THREADS") or DEFAULT_THREADS))
-    except ValueError:
-        return DEFAULT_THREADS
-
-
-def _models(library: query.Library, stratum: str, names: list[str], workers: int | None, threads: int | None) -> dict[str, query.Model]:
-    """The models of ``names``: through ``Library.models`` (disk cache, parallel fits) where the library has it."""
-    if hasattr(library, "models"):
-        got = library.models(stratum, names, workers=workers, threads=threads)
-        return {q: got[q] for q in names}
-    return {q: library.model(stratum, q) for q in names}
-
-
 # -- the coarse pass and the grid ---------------------------------------------------------------------------------------
 
 def _relaxed(t: suggest.Target) -> suggest.Target:
@@ -178,7 +167,7 @@ def _relaxed(t: suggest.Target) -> suggest.Target:
 
 
 def _coarse(library: query.Library, stratum: str, models: dict, stated: list[suggest.Target], goals: list[suggest.Target],
-            pool_size: int, seed: int, k: float, rel_sigma_max: float) -> tuple[np.ndarray, int, int, dict[str, int]]:
+            pool_size: int, seed: int, k: float, rel_sigma_max: float, budget: int) -> tuple[np.ndarray, int, int, dict[str, int]]:
     """The coarse candidates meeting every target at the mean level with the stated windows RELAX wider (the implied
     SRF as it is); the candidate count, the confident count, and the count meeting each relaxed target alone.
 
@@ -187,7 +176,7 @@ def _coarse(library: query.Library, stratum: str, models: dict, stated: list[sug
     so a bracket from the pool alone can cut off part of a region that measured designs prove is there."""
     x = np.unique(np.round(np.vstack([library.dataset(stratum).matrix(), suggest.pool(library, stratum, pool_size, seed)]), 9), axis=0)
     floors = {q: suggest.srf_floors(library, stratum, x, q) for q in models if q.startswith("SRF")}
-    ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors)
+    ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, chunk_bytes=budget)
     loose = [_relaxed(t) if t in stated else t for t in goals]
     alone = {t.quantity: int((ok & suggest.satisfy(pred, [t], "mean")).sum()) for t in loose}
     return x[ok & suggest.satisfy(pred, loose, "mean")], len(x), int(ok.sum()), alone
@@ -398,7 +387,8 @@ def _measured(ds: dataset.Dataset, goals: list[suggest.Target], names: list[str]
              "values": {q: r.values.get(q) for q in names}} for r, h in zip(ds.rows, hit) if h]
 
 
-def _unanswered(library: query.Library, stratum: str, measured: list[dict], models: dict, k: float, rel_sigma_max: float) -> list[str]:
+def _unanswered(library: query.Library, stratum: str, measured: list[dict], models: dict, k: float, rel_sigma_max: float,
+                budget: int) -> list[str]:
     """``part/obs_id`` of the measured designs where ``predict_all``'s gate fails (a model's domain, its confidence): no
     grid point there can be feasible, whatever the design measured."""
     if not measured:
@@ -406,7 +396,7 @@ def _unanswered(library: query.Library, stratum: str, measured: list[dict], mode
     dims = library.dataset(stratum).dims
     x = np.array([[m["params"][d] for d in dims] for m in measured])
     floors = {q: suggest.srf_floors(library, stratum, x, q) for q in models if q.startswith("SRF")}
-    ok, _ = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors)
+    ok, _ = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, chunk_bytes=budget)
     return [f"{m['part']}/{m['obs_id']}" for m, good in zip(measured, ok) if not good]
 
 

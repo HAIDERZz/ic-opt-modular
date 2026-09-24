@@ -9,8 +9,15 @@ median relative error (both cached next to the dataset).
 Fitted models are cached on disk too (``.cache/model-<stratum>-<quantity>-<key>.pkl``), keyed by the data,
 the settings, the calibration, the gp code and the scikit-learn version, so a new process loads a model
 instead of refitting it: the GP hyperparameter optimisation is sequential, takes ~2 min per quantity on a
-1300-row stratum and does not get faster with more BLAS threads. For the same reason ``Library.models``
-fits the quantities that are not cached yet in parallel processes.
+1300-row stratum on the reference host and does not get faster with more BLAS threads. For the same reason
+``Library.models`` fits the quantities that are not cached yet in parallel processes.
+
+The library computes on the machine running ic-opt, within that machine's limits and nothing else: the
+``limits`` a library is given, else site.yaml's ``hosts.local``, read the first time a model has to be fitted
+or a batch predicted (``Library.limits``; a missing file or entry raises ``SiteError``). Reading needs no
+limits: datasets, coverage, measured rows and models loaded from their cache files. ``fit_plan`` turns the
+limits into worker processes and BLAS threads per worker, ``blas_threads`` into the BLAS threads of work in
+this process; an explicit OMP_NUM_THREADS only ever lowers those threads.
 
 ``query`` answers a geometry: a measured row at exactly those coordinates is returned as measured;
 otherwise each quantity is either predicted (mu with calibrated bounds, plus the three nearest measured
@@ -28,6 +35,7 @@ import json
 import multiprocessing
 import os
 import pickle
+import sys
 import tempfile
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
@@ -35,14 +43,18 @@ from pathlib import Path
 
 import numpy as np
 import sklearn
+from threadpoolctl import threadpool_limits
 
+from ic_opt import site
 from ic_opt.library import dataset, domain, gp, manifest
 
 UNITS = {"L": "H", "Q": "1", "SRF": "Hz", "k": "1"}
 ABOVE_SWEEP_VOTES = 3                                # of the 5 nearest measured rows
 MODEL_CACHE_VERSION = 1                              # bump when a fit changes outside gp.py and the settings (e.g. how x, y are prepared)
-FIT_WORKERS = max(1, (os.cpu_count() or 2) // 2)    # by default every uncached model is fitted at once: a fit keeps ~1.5 cores and
-                                                     # a few hundred MB busy whatever BLAS gets, so half the cores is the only cap (2026-09-24)
+THREADS_PER_FIT = 2                                  # a fit keeps ~1.5 cores busy whatever BLAS gets (2026-09-24): a worker counts as two threads
+FIT_PEAK_COPIES = 3                                  # a fit's peak memory in kernel-gradient arrays (fit_memory_gb)
+BYTES_PER_GB = 1024**3                               # GB as site.yaml means it (env.doctor reads MemTotal in these units)
+WINDOWS_MAX_WORKERS = 61                             # ProcessPoolExecutor refuses more worker processes on Windows
 
 
 def unit(quantity: str) -> str:
@@ -61,12 +73,22 @@ class Model:
 
 
 class Library:
-    def __init__(self, root: str | Path, *, calibrate: bool = True):
+    def __init__(self, root: str | Path, *, calibrate: bool = True, limits: site.HostLimits | None = None):
         self.root = Path(root)
         self.manifest = manifest.load(self.root)
         self.calibrate = calibrate
+        self._limits = limits
         self._datasets: dict[str, dataset.Dataset] = {}
         self._models: dict[tuple[str, str], Model] = {}
+
+    @property
+    def limits(self) -> site.HostLimits:
+        """What the library may use of the machine running ic-opt: the ``limits`` it was given, else site.yaml's
+        ``hosts.local``, read here on first use -- when a model has to be fitted or a batch predicted, never to read.
+        A missing site.yaml or ``local`` entry raises ``SiteError`` with the entry to add."""
+        if self._limits is None:
+            self._limits = site.load().host("local")
+        return self._limits
 
     def strata(self) -> list[str]:
         return sorted(self.manifest.strata)
@@ -86,26 +108,21 @@ class Library:
         return out
 
     def model(self, stratum: str, quantity: str) -> Model:
+        """One quantity's model: in memory, else loaded from its cache files, else fitted within ``limits`` (``models``)."""
         key = (stratum, quantity)
         if key not in self._models:
-            ds, rows, x, y, settings = self._fit_inputs(stratum, quantity)
-            calibration = self._calibration(ds, quantity, x, y, settings)
-            path = self._model_path(ds, quantity, settings, calibration)
-            model = _load_model(path, ds.dims)
-            if model is None:                            # not cached yet, or the file is unusable: fit and (over)write it
-                model = gp.StratumGP(**settings, k_scale=calibration["k_scale"], sigma_floor_rel=calibration.get("median_rel", 0.0)).fit(x, y)
-                _save_model(path, model)
-            guard = domain.DomainGuard(x, ds.dims, settings["ranges"], nt_dim=ds.nt_dim, ids=list(range(len(rows))))
-            self._models[key] = Model(stratum, quantity, rows, model, guard, calibration)
+            self.models(stratum, [quantity])
         return self._models[key]
 
     def models(self, stratum: str, quantities: list[str], *, workers: int | None = None, threads: int | None = None) -> dict[str, Model]:
-        """``model`` for several quantities, in the order asked. The ones without a cache file are fitted first in up to
-        ``workers`` worker processes (default one per missing quantity, at most FIT_WORKERS = half the cores): each fit is a sequential
-        optimisation that no amount of BLAS threads speeds up, so processes are what runs several at once. Each worker caps
-        BLAS at ``threads // workers`` (``threads`` defaults to $OMP_NUM_THREADS or 8, and to at least two per worker), writes
-        the calibration and model caches and returns only the quantity's name; every model is then loaded here from its
-        cache file, so no fitted model crosses a pipe.
+        """``model`` for several quantities, in the order asked. The ones whose cache files do not load are fitted first, sized
+        by ``fit_plan`` from ``limits``: worker processes and BLAS threads per worker. ``workers`` and ``threads`` are explicit
+        caps within those limits; a value above them raises ValueError naming the limit. Each fit is a sequential
+        optimisation that no amount of BLAS threads speeds up (~2 min per quantity of a 1300-row stratum on the reference
+        host), so processes are what runs several at once: with more than one worker, each fits a quantity in its own
+        process with BLAS capped, writes the calibration and model caches and returns only the quantity's name, and every
+        model is then loaded here from its cache file, so no fitted model crosses a pipe. With one worker the fits run
+        here, one after another, capped the same way.
 
         The workers are spawned on every platform: spawn is the only start method on Windows and the default on macOS, and
         Linux uses it too so that all three behave alike. A spawned worker is a fresh interpreter that knows nothing of this
@@ -113,15 +130,51 @@ class Library:
         0.5 s on the reference host (Linux, Python 3.11: 0.43 s for one worker, 0.46 s for four started together), against
         minutes per fit. Every worker also imports the main module of the program, so a script that gets here (directly or
         through ``lib.region`` / ``lib_signoff``) keeps its top-level work under ``if __name__ == "__main__":``."""
-        missing = [q for q in dict.fromkeys(quantities) if (stratum, q) not in self._models and self._model_file(stratum, q) is None]
-        workers = min(FIT_WORKERS if workers is None else workers, len(missing))
-        threads = max(int(os.environ.get("OMP_NUM_THREADS", "8")), 2 * workers) if threads is None else threads
-        if workers > 1:
-            with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn")) as pool:
-                jobs = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, max(1, threads // workers)) for q in missing]
-                for job in jobs:
-                    job.result()                         # a failed fit raises here, with the worker's exception
-        return {q: self.model(stratum, q) for q in quantities}
+        missing = [q for q in dict.fromkeys(quantities) if not self._load(stratum, q)]
+        if missing:
+            ds = self.dataset(stratum)
+            n, per_worker = fit_plan(self.limits, len(missing), max(len(ds.usable(q)) for q in missing), len(ds.dims),
+                                     workers=workers, threads=threads)
+            if n > 1:
+                with ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("spawn")) as pool:
+                    jobs = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, per_worker) for q in missing]
+                    for job in jobs:
+                        job.result()                     # a failed fit raises here, with the worker's exception
+                unread = [q for q in missing if not self._load(stratum, q)]
+                if unread:
+                    raise RuntimeError(f"{stratum}: the workers fitted {unread} but their cache files under {self.root / '.cache'} do not load")
+            else:
+                with threadpool_limits(limits=per_worker):
+                    for q in missing:
+                        self._fit(stratum, q)
+        return {q: self._models[(stratum, q)] for q in quantities}
+
+    def _load(self, stratum: str, quantity: str) -> bool:
+        """Whether the quantity's model is in memory, after putting it there from its cache files when they hold a usable
+        one (no calibration file, no model file, or one that does not unpickle: False, fit it)."""
+        if (stratum, quantity) in self._models:
+            return True
+        ds, rows, x, y, settings = self._fit_inputs(stratum, quantity)
+        calibration = self._calibration(ds, quantity, x, y, settings, compute=False)
+        model = None if calibration is None else _load_model(self._model_path(ds, quantity, settings, calibration), ds.dims)
+        if model is None:
+            return False
+        self._keep(stratum, quantity, ds, rows, x, settings, model, calibration)
+        return True
+
+    def _fit(self, stratum: str, quantity: str) -> None:
+        """Calibrate (the five hold-out fits, cached), fit, (over)write the model's cache file and keep the model. BLAS is
+        capped by the caller: ``models`` in this process, ``_fit_in_worker`` in a worker's."""
+        ds, rows, x, y, settings = self._fit_inputs(stratum, quantity)
+        calibration = self._calibration(ds, quantity, x, y, settings)
+        model = gp.StratumGP(**settings, k_scale=calibration["k_scale"], sigma_floor_rel=calibration.get("median_rel", 0.0)).fit(x, y)
+        _save_model(self._model_path(ds, quantity, settings, calibration), model)
+        self._keep(stratum, quantity, ds, rows, x, settings, model, calibration)
+
+    def _keep(self, stratum: str, quantity: str, ds: dataset.Dataset, rows: list[dataset.Row], x: np.ndarray, settings: dict,
+              model: gp.StratumGP, calibration: dict) -> None:
+        guard = domain.DomainGuard(x, ds.dims, settings["ranges"], nt_dim=ds.nt_dim, ids=list(range(len(rows))))
+        self._models[(stratum, quantity)] = Model(stratum, quantity, rows, model, guard, calibration)
 
     def _fit_inputs(self, stratum: str, quantity: str) -> tuple[dataset.Dataset, list[dataset.Row], np.ndarray, np.ndarray, dict]:
         """What a fit of ``quantity`` needs: the dataset, the usable rows, x, y and the StratumGP settings."""
@@ -200,13 +253,89 @@ def _save_model(path: Path, model: gp.StratumGP) -> None:
 def _fit_in_worker(root: Path, calibrate: bool, stratum: str, quantity: str, threads: int) -> str:
     """One ``Library.models`` worker process: fit a quantity with BLAS capped at ``threads``; the fit writes the calibration
     and model caches, and only the name goes back (the parent loads the model from its cache file). The worker is spawned,
-    so these arguments are all it has: it opens the library itself, and the limit reaches every BLAS / OpenMP pool the fit
-    uses because importing this module has loaded numpy, scipy and scikit-learn before it is set."""
-    from threadpoolctl import threadpool_limits
-
+    so these arguments are all it has: it opens the library itself (the parent sized the work, so it needs no limits), and
+    the cap reaches every BLAS / OpenMP pool the fit uses because importing this module has loaded numpy, scipy and
+    scikit-learn before it is set."""
     with threadpool_limits(limits=threads):
-        Library(root, calibrate=calibrate).model(stratum, quantity)
+        lib = Library(root, calibrate=calibrate)
+        if not lib._load(stratum, quantity):             # another process may have written it meanwhile
+            lib._fit(stratum, quantity)
     return quantity
+
+
+# -- compute within the machine's limits ---------------------------------------------------------------------------------
+
+def fit_memory_gb(rows: int, dims: int) -> float:
+    """Peak memory of one fit on ``rows`` rows over ``dims`` dims, in GB rounded up to 0.1. The hyperparameter search
+    evaluates the log marginal likelihood with its gradient: the kernel gradient holds rows x rows x (dims + 2) float64
+    (a length scale per dim, the amplitude and the noise level), and the Matern gradient terms and the kernel sum's
+    stacked copies keep two more arrays of that size alive at once, so FIT_PEAK_COPIES = 3 (tracemalloc measured 3.00 on
+    scikit-learn 1.3, 3-6 dims, 300-900 rows); everything else in a fit is rows x rows or smaller. A per_nt sub-GP sees
+    one turns level's rows and one dim fewer, so this bounds it from above."""
+    need = FIT_PEAK_COPIES * rows * rows * (dims + 2) * np.dtype(np.float64).itemsize
+    return max(1, -(-need * 10 // BYTES_PER_GB)) / 10
+
+
+def omp_cap() -> int | None:
+    """An explicit OMP_NUM_THREADS -- the first value of a nested list such as ``4,2`` -- or None when it is unset or not a
+    positive integer. No library process gets more threads than this: an explicit cap is lowered further, never raised."""
+    first = os.environ.get("OMP_NUM_THREADS", "").split(",")[0].strip()
+    return int(first) if first.isdigit() and int(first) > 0 else None
+
+
+def blas_threads(limits: site.HostLimits, threads: int | None = None) -> int:
+    """BLAS threads for library work in this process (a region's predictions): ``threads``, an explicit cap within
+    max_threads, else max_threads; never more than an explicit OMP_NUM_THREADS."""
+    budget = limits.max_threads if threads is None else _thread_budget(limits, threads)
+    cap = omp_cap()
+    return budget if cap is None else min(budget, cap)
+
+
+def fit_plan(limits: site.HostLimits, missing: int, rows: int, dims: int, *, workers: int | None = None,
+             threads: int | None = None) -> tuple[int, int]:
+    """``(worker processes, BLAS threads per worker)`` to fit ``missing`` models of at most ``rows`` usable rows over ``dims``
+    dims within ``limits``, the machine running ic-opt:
+
+    - workers: one per model, at most max_threads // THREADS_PER_FIT (a fit keeps about two cores busy whatever BLAS
+      gets), max_memory_gb // ``fit_memory_gb`` of the largest model and, on Windows, the WINDOWS_MAX_WORKERS processes
+      ProcessPoolExecutor allows; at least one (a model too big for the memory still fits alone);
+    - BLAS threads per worker: the thread budget (``threads``, else max_threads) shared out, at least one each, never
+      more than an explicit OMP_NUM_THREADS.
+
+    ``workers`` and ``threads`` are explicit caps: honoured up to these limits, refused above them with a ValueError that
+    names the limit (``threads`` at most max_threads; ``workers`` within every bound above and, with ``threads``, at most
+    that many)."""
+    budget = limits.max_threads if threads is None else _thread_budget(limits, threads)
+    per_fit = fit_memory_gb(rows, dims)
+    machine = "of this machine (site.yaml hosts.local)"
+    bounds = [(max(1, limits.max_threads // THREADS_PER_FIT),
+               f"max_threads {limits.max_threads} {machine} // {THREADS_PER_FIT}, a fit keeping about {THREADS_PER_FIT} cores busy"),
+              (max(1, int(limits.max_memory_gb // per_fit)),
+               f"max_memory_gb {limits.max_memory_gb:g} {machine} // {per_fit:g} GB per fit ({rows} rows, {dims} dims)")]
+    if threads is not None:
+        bounds.append((threads, f"threads={threads}, one per worker at least"))
+    if sys.platform == "win32":
+        bounds.append((WINDOWS_MAX_WORKERS, "ProcessPoolExecutor's worker limit on Windows"))
+    if workers is not None:
+        if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+            raise ValueError(f"workers must be a positive integer, got {workers!r}")
+        for bound, why in bounds:
+            if workers > bound:
+                raise ValueError(f"workers={workers} exceeds {bound}: {why}")
+    n = max(1, min(missing, workers if workers is not None else min(bound for bound, _ in bounds)))
+    per_worker = max(1, budget // n)
+    cap = omp_cap()
+    return n, per_worker if cap is None else min(per_worker, cap)
+
+
+def _thread_budget(limits: site.HostLimits, threads: int) -> int:
+    """An explicit ``threads``, checked against the machine's max_threads."""
+    if isinstance(threads, bool) or not isinstance(threads, int) or threads < 1:
+        raise ValueError(f"threads must be a positive integer, got {threads!r}")
+    if threads > limits.max_threads:
+        raise ValueError(f"threads={threads} exceeds max_threads {limits.max_threads} of this machine (site.yaml hosts.local); "
+                         "lower threads or raise that entry")
+    return threads
 
 
 def query(library: Library, stratum: str, params: dict, quantities: list[str] | None = None, *, k: float = 2.0,

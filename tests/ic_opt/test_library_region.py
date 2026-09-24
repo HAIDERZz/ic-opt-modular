@@ -1,8 +1,10 @@
 """T14.2/T14.3: lib.region on the synthetic transformer library -- window targets, the score split, the grid, both levels, the
-summaries, and the block the command line calls."""
+summaries, and the block the command line calls. T15.3: its BLAS threads and prediction chunks come from the library's limits."""
 from __future__ import annotations
 
+import inspect
 import json
+import shutil
 
 import numpy as np
 import pytest
@@ -10,9 +12,17 @@ from typer.testing import CliRunner
 
 from ic_opt.blocks import library as library_blocks
 from ic_opt.cli import app
-from ic_opt.library import domain, query, region
+from ic_opt.library import domain, gp, query, region
 from ic_opt.library import suggest as s
-from tests.ic_opt.library_fixtures import XFM_DIMS, build_library, build_xfm_library
+from ic_opt.site import HostLimits
+from tests.ic_opt.fakes import FAKE_HOST
+from tests.ic_opt.library_fixtures import (
+    LOCAL,
+    XFM_DIMS,
+    build_library,
+    build_xfm_library,
+    use_site,
+)
 
 pytest.importorskip("klayout.db")
 
@@ -26,7 +36,7 @@ KEYS = ["stratum", "targets", "objective", "grid", "levels", "binding", "edge", 
 
 @pytest.fixture(scope="module")
 def lib(tmp_path_factory):
-    return query.Library(build_xfm_library(tmp_path_factory.mktemp("xfmregion")))
+    return query.Library(build_xfm_library(tmp_path_factory.mktemp("xfmregion")), limits=LOCAL)
 
 
 def run(lib, targets, objective=None, **kw):
@@ -35,6 +45,19 @@ def run(lib, targets, objective=None, **kw):
 
 def key(params: dict) -> tuple:
     return tuple(round(params[d], 6) for d in XFM_DIMS)
+
+
+def spy_predict(monkeypatch) -> list[int]:
+    """From now on, the rows of every StratumGP.predict call: one per chunk ``suggest._gp_predict`` splits a batch into."""
+    calls: list[int] = []
+    original = gp.StratumGP.predict
+
+    def predict(self, x):
+        calls.append(len(x))
+        return original(self, x)
+
+    monkeypatch.setattr(gp.StratumGP, "predict", predict)
+    return calls
 
 
 def plain(value) -> bool:
@@ -97,10 +120,12 @@ def test_the_split_reproduces_score_and_the_two_prediction_original(lib, monkeyp
         for q, p in before_pred.items():
             for field in ("value", "lo", "hi", "rel_sigma"):
                 np.testing.assert_allclose(ref["pred"][q][field], p[field], rtol=1e-12)
-    monkeypatch.setattr(s, "PREDICT_CHUNK", 100)                                   # a grid is predicted in chunks: the same answer
-    chunked_ok, chunked = s.predict_all(x, models)
-    monkeypatch.undo()
+    budget = 8 * s.PREDICT_COPIES * max(len(m.rows) for m in models.values()) * 100     # 100 rows per call for the largest model
+    calls = spy_predict(monkeypatch)
+    chunked_ok, chunked = s.predict_all(x, models, chunk_bytes=budget)                  # a grid is predicted in chunks: the same answer
+    assert calls and max(calls) <= s.rows_per_call(budget, min(len(m.rows) for m in models.values())) and len(calls) > len(models)
     whole_ok, whole = s.predict_all(x, models)
+    assert calls[-len(models):] == [len(x)] * len(models)                             # no budget: one call per model
     assert chunked_ok.tolist() == whole_ok.tolist()
     for q in whole:                  # up to the GP's own rounding: its mean is a large cancelling sum, ordered by the batch size
         for field in ("value", "lo", "hi", "rel_sigma", "sigma"):
@@ -195,7 +220,7 @@ def test_verify_build_attaches_the_real_generators_verdict(lib):
 
 def test_turns_go_by_level_and_a_level_keeps_the_dims_it_fixes(tmp_path_factory):
     """The inductor library: turns 1 and 2, every single-turn row at spacing 2 um (spacing does not shape one turn)."""
-    lib = query.Library(build_library(tmp_path_factory.mktemp("indregion")))
+    lib = query.Library(build_library(tmp_path_factory.mktemp("indregion")), limits=LOCAL)
     r = region.region(lib, "ind_demo", {"Lp_lf": {"min": 0.8e-9, "max": 1.6e-9}}, pool_size=512, workers=1, sample_size=10**6,
                       steps={"outer_diameter_um": 5, "width_um": 0.5, "spacing_um": 0.5}, group_by=["turns"])
     assert set(r["grid"]["steps"]) == {"outer_diameter_um", "width_um", "spacing_um"} and r["grid"]["bracket"]["turns"] == [1.0, 2.0]
@@ -222,6 +247,9 @@ def test_the_block_answers_strict_json_and_parses_the_command_line_spellings(lib
                    "candidates": [{"predicted": {"SRF": {"value": 5e10, "lo": 5e10, "hi": None}}}], "trend": {"rows": [[None, None, 0.5]]}}
     json.dumps(out, allow_nan=False)
     assert (seen["group_by"], seen["trend"], seen["max_points"], seen["workers"], seen["threads"]) == ([W_P, W_S], ("k@10", CS), 30000, 2, None)
+    assert seen["rel_sigma_max"] == domain.DEFAULT_SIGMA_REL_MAX
+    library_blocks.region(lib, "xfm_demo", PLAIN, rel_sigma_max="0.3")
+    assert seen["rel_sigma_max"] == 0.3
     for bad in ("k_lf", "k_lf:", f":{CS}", ["k_lf", CS]):
         with pytest.raises(ValueError, match="expected <quantity>:<dim>"):
             library_blocks.region(lib, "xfm_demo", PLAIN, trend=bad)
@@ -229,7 +257,8 @@ def test_the_block_answers_strict_json_and_parses_the_command_line_spellings(lib
         library_blocks.region(lib, "xfm_demo", "{Lp_lf: {min: 4e-10}}")                  # the shell ate the quotes
 
 
-def test_call_lib_region_prints_json(lib):
+def test_call_lib_region_prints_json(lib, tmp_path, monkeypatch):
+    use_site(monkeypatch, tmp_path / "site.yaml", local=LOCAL)
     out = CliRunner().invoke(app, ["call", "lib.region", str(lib.root), "stratum=xfm_demo", f"targets={json.dumps(PLAIN)}",
                                    f"steps={json.dumps({OD_P: 5, OD_S: 5, W_P: 1, W_S: 1, CS: 2})}", f"group_by={W_P},{W_S}",
                                    f"trend=k_lf:{CS}", "objective=max:Qp_peak", "n=2", "pool_size=2048", "workers=1"])
@@ -242,3 +271,76 @@ def test_call_lib_region_prints_json(lib):
     assert body["grid"]["steps"] == {OD_P: 5, OD_S: 5, W_P: 1, W_S: 1, CS: 2}
     bad = CliRunner().invoke(app, ["call", "lib.region", str(lib.root), "stratum=xfm_demo", f"targets={json.dumps(PLAIN)}", "trend=k_lf"])
     assert bad.exit_code == 2 and "expected <quantity>:<dim>" in bad.output
+
+
+# -- T15.3: the work is sized by the library's limits -------------------------------------------------------------------
+
+
+def spy_sizing(monkeypatch) -> tuple[list, list]:
+    """From now on, region's BLAS limits (limit, user_api) and the chunk budget of every prediction it makes."""
+    blas, budgets = [], []
+    real_limits, real_predict = region.threadpool_limits, s.predict_all
+
+    def limits(limits=None, user_api=None):
+        blas.append((limits, user_api))
+        return real_limits(limits=limits, user_api=user_api)
+
+    def predict_all(*args, chunk_bytes=None, **kwargs):
+        budgets.append(chunk_bytes)
+        return real_predict(*args, chunk_bytes=chunk_bytes, **kwargs)
+
+    monkeypatch.setattr(region, "threadpool_limits", limits)
+    monkeypatch.setattr(s, "predict_all", predict_all)
+    return blas, budgets
+
+
+COARSE = {OD_P: 10, OD_S: 10, W_P: 1, W_S: 1, CS: 4}
+
+
+def test_region_takes_blas_threads_and_prediction_chunks_from_the_limits(lib, monkeypatch):
+    """BLAS: max_threads, or the explicit ``threads`` within it, never above OMP_NUM_THREADS; every prediction in chunks of
+    PREDICT_MEMORY_SHARE of max_memory_gb."""
+    blas, budgets = spy_sizing(monkeypatch)
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    six = HostLimits(max_threads=6, max_memory_gb=3)
+    run(query.Library(lib.root, limits=six), PLAIN, steps=COARSE, n=1)
+    assert blas == [(6, "blas")] and budgets and set(budgets) == {s.predict_budget(six)} == {int(0.3 * 1024**3)}
+    run(query.Library(lib.root, limits=six), PLAIN, steps=COARSE, n=1, threads=4)
+    monkeypatch.setenv("OMP_NUM_THREADS", "2")
+    run(query.Library(lib.root, limits=six), PLAIN, steps=COARSE, n=1)
+    run(query.Library(lib.root, limits=six), PLAIN, steps=COARSE, n=1, threads=4)
+    assert [limit for limit, _ in blas] == [6, 4, 2, 2]
+    with pytest.raises(ValueError, match="threads=7 exceeds max_threads 6"):
+        run(query.Library(lib.root, limits=six), PLAIN, threads=7)
+
+
+def test_region_refuses_workers_above_the_limits_before_fitting(lib, tmp_path):
+    root = shutil.copytree(lib.root, tmp_path / "lib", ignore=shutil.ignore_patterns(".cache"))
+    with pytest.raises(ValueError, match=r"workers=2 exceeds 1: max_threads 2 of this machine \(site.yaml hosts.local\) // 2"):
+        region.region(query.Library(root, limits=LOCAL), "xfm_demo", PLAIN, pool_size=256, workers=2)
+    assert not list((root / ".cache").glob("model-*")) and not list((root / ".cache").glob("calibration-*"))
+
+
+def test_the_command_line_sizes_the_library_from_the_site_files_local_entry(lib, tmp_path, monkeypatch):
+    """`ic-opt call` on a library root: the computation takes hosts.local of the site file the command line reads -- never
+    another host's entry; without a local entry, a region is refused and a measured row still answers."""
+    blas, budgets = spy_sizing(monkeypatch)
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    laptop = HostLimits(max_threads=3, max_memory_gb=5)
+    use_site(monkeypatch, tmp_path / "site.yaml", local=laptop, lab=FAKE_HOST)
+    args = ["call", "lib.region", str(lib.root), "stratum=xfm_demo", f"targets={json.dumps(PLAIN)}", f"steps={json.dumps(COARSE)}",
+            "n=1", "pool_size=256", "workers=1"]
+    out = CliRunner().invoke(app, args)
+    assert out.exit_code == 0, out.output
+    assert blas == [(3, "blas")] and budgets and set(budgets) == {s.predict_budget(laptop)}
+    use_site(monkeypatch, tmp_path / "lab.yaml", lab=FAKE_HOST)
+    refused = CliRunner().invoke(app, args)
+    assert refused.exit_code == 2 and "has no entry for host 'local' (known: lab)" in refused.output, refused.output
+    row = lib.dataset("xfm_demo").rows[0]
+    measured = CliRunner().invoke(app, ["call", "lib.query", str(lib.root), "stratum=xfm_demo", f"params={json.dumps(row.coords)}"])
+    assert measured.exit_code == 0 and json.loads(measured.output)["measured"]["obs_id"] == row.obs_id, measured.output
+
+
+@pytest.mark.parametrize("block", [library_blocks.query, library_blocks.suggest, library_blocks.region])
+def test_the_confidence_ceiling_is_a_block_parameter(block):
+    assert inspect.signature(block).parameters["rel_sigma_max"].default == domain.DEFAULT_SIGMA_REL_MAX

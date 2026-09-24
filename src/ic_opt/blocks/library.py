@@ -1,10 +1,17 @@
-"""Library blocks: ``ic-opt call lib.<name> <library dir> key=value ...`` (the directory holds library.yaml)."""
+"""Library blocks: ``ic-opt call lib.<name> <library dir> key=value ...`` (the directory holds library.yaml).
+
+The library computes on the machine running ic-opt. A library given as a directory (the command line) sizes
+its model fits and predictions from site.yaml's ``hosts.local``, read when something has to be fitted or
+predicted in bulk -- never the executor host's entry; a recipe passes ``Library(root, limits=...)`` to size
+it from its own ``run.site.host("local")``. ``rel_sigma_max`` is the confidence ceiling on sigma / mu
+(domain criterion 4)."""
 
 from __future__ import annotations
 
 import math
 from pathlib import Path
 
+from ic_opt.library import domain as _domain
 from ic_opt.library import query as _query
 
 
@@ -50,32 +57,36 @@ def coverage(library: _query.Library | str | Path, stratum: str) -> dict:
     return _query.coverage(_lib(library), stratum)
 
 
-def query(library: _query.Library | str | Path, stratum: str, params: dict, quantities: str | list[str] | None = None, k: float = 2.0) -> dict:
+def query(library: _query.Library | str | Path, stratum: str, params: dict, quantities: str | list[str] | None = None, k: float = 2.0,
+          rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX) -> dict:
     """Measured values at an exact library point; elsewhere mu with calibrated k-sigma bounds, the domain verdict and nearest measured rows.
 
-    ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns).
+    ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns). A
+    prediction with sigma / mu above ``rel_sigma_max`` is reported as ``uncertain``.
     """
-    return _query.query(_lib(library), stratum, params, _names(quantities), k=float(k))
+    return _query.query(_lib(library), stratum, params, _names(quantities), k=float(k), rel_sigma_max=float(rel_sigma_max))
 
 
 def suggest(library: _query.Library | str | Path, stratum: str, targets: dict, objective: str | None = None, n: int = 5,
-            pool_size: int = 8192, seed: int = 0, k: float = 2.0, verify_build: bool = True) -> dict:
+            pool_size: int = 8192, seed: int = 0, k: float = 2.0, verify_build: bool = True,
+            rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX) -> dict:
     """Designs that meet ``targets`` with margin: measured ones first (exact), then predicted candidates built and audited.
 
     ``targets`` maps quantities to ``{"min": v}``, ``{"max": v}`` or ``{"target": v, "tol": rel}`` (JSON on the command
     line); ``objective`` is ``max:<quantity>`` or ``min:<quantity>``. Anchored targets add SRF >= 1.25 x f0 unless SRF is
-    already constrained.
+    already constrained. A candidate with sigma / mu above ``rel_sigma_max`` for any quantity is dropped.
     """
     from ic_opt.library import suggest as _suggest
 
     return _strict_json(_suggest.suggest(_lib(library), stratum, targets, objective, n=int(n), pool_size=int(pool_size), seed=int(seed),
-                                         k=float(k), verify_build=bool(verify_build)))
+                                         k=float(k), rel_sigma_max=float(rel_sigma_max), verify_build=bool(verify_build)))
 
 
 def region(library: _query.Library | str | Path, stratum: str, targets: dict, objective: str | None = None, steps: dict | None = None,
            levels_per_dim: int = 20, max_points: int = 2_000_000, pool_size: int = 32768, seed: int = 0, k: float = 2.0,
            group_by: str | list[str] | None = None, trend: str | None = None, n: int = 8, verify_build: bool = False,
-           sample_size: int = 5000, threads: int | None = None, workers: int | None = None) -> dict:
+           sample_size: int = 5000, threads: int | None = None, workers: int | None = None,
+           rel_sigma_max: float = _domain.DEFAULT_SIGMA_REL_MAX) -> dict:
     """The part of the geometry space whose predictions meet ``targets``: sweep ranges, not ``lib.suggest``'s best few points.
 
     Two levels: ``robust`` -- the calibrated k-sigma interval lies inside every window (``lib.suggest``'s test; centre a
@@ -85,8 +96,10 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
     ``min:<quantity>``) ranks the candidates. The grid lies on multiples of the manifest steps, about ``levels_per_dim``
     values per dim and at most ``max_points``, unless ``steps`` (JSON) sets a dim's step. ``group_by`` is a comma list of
     dims to tabulate the region by; ``trend`` is ``<quantity>:<dim>`` (e.g. ``k@40:center_spacing_um``): that quantity
-    along that dim over the points meeting every other target. ``threads`` caps BLAS, ``workers`` is the processes fitting
-    uncached models. The answer is strict JSON, every non-finite number null: ``targets[].upper`` is null except for windows.
+    along that dim over the points meeting every other target. A point with sigma / mu above ``rel_sigma_max`` is not
+    confident and joins neither level. ``threads`` caps BLAS and ``workers`` the processes fitting uncached models, both
+    within site.yaml's hosts.local (above it they are refused; by default they follow from it). The answer is strict JSON,
+    every non-finite number null: ``targets[].upper`` is null except for windows.
     """
     from ic_opt.library import region as _region
 
@@ -95,6 +108,6 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
             raise ValueError(f"{name}: expected a JSON object, got {value!r}")
     return _strict_json(_region.region(
         _lib(library), stratum, targets, objective, steps=steps, levels_per_dim=int(levels_per_dim), max_points=int(max_points),
-        pool_size=int(pool_size), seed=int(seed), k=float(k), group_by=_names(group_by), trend=_trend(trend), n=int(n),
-        verify_build=bool(verify_build), sample_size=int(sample_size), threads=None if threads is None else int(threads),
-        workers=None if workers is None else int(workers)))
+        pool_size=int(pool_size), seed=int(seed), k=float(k), rel_sigma_max=float(rel_sigma_max), group_by=_names(group_by),
+        trend=_trend(trend), n=int(n), verify_build=bool(verify_build), sample_size=int(sample_size),
+        threads=None if threads is None else int(threads), workers=None if workers is None else int(workers)))
