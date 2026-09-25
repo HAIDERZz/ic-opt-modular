@@ -1,0 +1,103 @@
+{
+ "stratum": "xfm_bs_ap",
+ "purpose": "B-12 independent random test set (not chosen by sigma)",
+ "seed": 20260925,
+ "bounds": {
+  "center_spacing_um": {
+   "min": 0,
+   "max": 16
+  }
+ },
+ "candidates": [
+  {
+   "params": {
+    "primary_outer_diameter_um": 89.0,
+    "secondary_outer_diameter_um": 88.0,
+    "primary_width_um": 6.8,
+    "secondary_width_um": 6.5,
+    "center_spacing_um": 8.0
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 119.0,
+    "secondary_outer_diameter_um": 83.0,
+    "primary_width_um": 9.6,
+    "secondary_width_um": 6.7,
+    "center_spacing_um": 0.0
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 142.0,
+    "secondary_outer_diameter_um": 101.0,
+    "primary_width_um": 5.7,
+    "secondary_width_um": 5.3,
+    "center_spacing_um": 3.0
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 167.0,
+    "secondary_outer_diameter_um": 242.0,
+    "primary_width_um": 8.6,
+    "secondary_width_um": 8.3,
+    "center_spacing_um": 5.5
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 145.0,
+    "secondary_outer_diameter_um": 236.0,
+    "primary_width_um": 4.3,
+    "secondary_width_um": 7.5,
+    "center_spacing_um": 12.5
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 141.0,
+    "secondary_outer_diameter_um": 128.0,
+    "primary_width_um": 8.9,
+    "secondary_width_um": 8.3,
+    "center_spacing_um": 15.5
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 113.0,
+    "secondary_outer_diameter_um": 208.0,
+    "primary_width_um": 6.7,
+    "secondary_width_um": 7.0,
+    "center_spacing_um": 1.0
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 75.0,
+    "secondary_outer_diameter_um": 114.0,
+    "primary_width_um": 6.5,
+    "secondary_width_um": 8.8,
+    "center_spacing_um": 2.0
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 116.0,
+    "secondary_outer_diameter_um": 84.0,
+    "primary_width_um": 9.6,
+    "secondary_width_um": 4.7,
+    "center_spacing_um": 12.0
+   }
+  },
+  {
+   "params": {
+    "primary_outer_diameter_um": 60.0,
+    "secondary_outer_diameter_um": 99.0,
+    "primary_width_um": 4.7,
+    "secondary_width_um": 9.1,
+    "center_spacing_um": 1.5
+   }
+  }
+ ]
+}
