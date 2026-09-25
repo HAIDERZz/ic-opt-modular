@@ -870,9 +870,9 @@ a {{ color:var(--accent-2); }}
 <li><b>已发布</b>：0.3.0（标签 <code>v0.3.0</code>），T16 七个波次全部合入；B-12 真实加密批完成并回流。</li>
 <li><b>推送</b>：2026-09-25 由 Claude 推送 <code>origin/main</code>（1128c7f → d512977，58 次提交）与标签 <code>v0.3.0</code>；今后推送由 Claude 负责（RT-5 的 GitHub Release 页仍由用户操作，发布说明用 <code>RELEASE_NOTES_v0.3.0.md</code>）。</li>
 <li><b>用户推迟</b>：B-7 … B-11（脱敏后续）与 0.4.0；B-3 维持 TuRBO 方案 b。</li>
-<li><b>进行中</b>：N-17（用户已批准：中心偏移 8–24 µm、外径比 0.8–1.25 一带再补一轮 60 点 + 10 个独立测试点，xfm_bs_ap 与 xfm_bs_m10 各一轮；结果见 <code>reports/library_query/XFM_DENSIFY_N17_CN.html</code>）。</li>
-<li><b>小项可做</b>：N-14（4 个报告脚本仍用退役字段名）、N-16（多圈变压器表改 ratio 建模前先做对照）。N-18（今天一次 <code>uv run</code> 把 .venv 装坏）已按文档安装命令恢复并关闭：是操作失误，不是安装法的问题，规则已记入 Claude 的记忆。</li>
-<li><b>需实验室主机</b>：N-15（隔离 SSH 冒烟脚本的完整远程运行）。</li>
+<li><b>已做</b>：N-17（中心偏移 8–24 µm、外径比 0.8–1.25 一带，xfm_bs_ap 与 xfm_bs_m10 各 60 选点 + 10 测试点，140/140 EMX 成功并回流；页 <code>reports/library_query/XFM_DENSIFY_N17_CN.html</code>）；N-14；N-16（多圈表 Lp/Ls 改比值 + 无量纲坐标，页 <code>XFM_MS_RATIO_ACCEPTANCE_CN.html</code>）。</li>
+<li><b>待拍板</b>：N-19（单圈表 Q@40 两列在偏移带 10–30% 误差，两轮补点都没改善；候选给 Q 列加无量纲坐标或按 Q 峰值 × 比值建模）。N-18（一次 <code>uv run</code> 把 .venv 装坏）已按文档安装命令恢复并关闭：是操作失误，不是安装法的问题。</li>
+<li><b>进行中</b>：N-15（控制端改为用户的 Windows / macOS 笔记本，本机即仿真服务器；验收包 <code>&lt;EDA_AI_AGENT&gt;/ic-opt-accept/n15/</code>，等两份笔记本报告回传后核对）。</li>
 </ul>
 <p>待办总表：<code>docs/refactor/BACKLOG_CN.md</code>；执行记录：<code>docs/refactor/EXECUTION_PLAN_CN.md</code>。</p>
 

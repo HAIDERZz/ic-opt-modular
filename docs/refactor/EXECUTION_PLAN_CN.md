@@ -112,3 +112,15 @@ T1–T7 每个任务一个提交（在 `refactor/modular-blocks` 分支）。
 - 总览页 `reports/project_structure/PROJECT_STRUCTURE_2026-09-25_CN.html`（脚本 `build_structure_report.py`，事实全部实测）。
 - 环境事故：一次 `uv run` 当场生成不含 vendor/open-box 的 uv.lock 并把 .venv 同步成 numpy 2.x，`import ic_opt` 失败（该 uv.lock 已删）；按 CONTRIBUTING 的 `uv pip install` 恢复，定向测试 69 绿；记为 N-18。
 - 推送：`git push origin main`（1128c7f → d512977）与 `git push origin v0.3.0` 已由 Claude 完成；`--tags` 合并形式曾被自动模式分类器拦下，分开推即可。
+
+### 2026-09-25 · N-14 / N-16 / N-15 准备 / 旧图清理
+
+- N-14：四个报告脚本改 M2.2 字段名，demo_6m 全跑通（f05c865）。09-22 的五张旧图按用户决定删除。
+- 查询库原理讲解页 `reports/library_query/LIBRARY_PRINCIPLES_CN.html`（fbf33a2；用户要求先理解原理再批 N-16；说明库基于通用 GP 自研，与 OpenBox / TuRBO 无关）。
+- N-16：`xfm_ms_ratio_acceptance.py` 在库临时副本上用库自身实现复核（57 个整档留出 × 直接 / 只换坐标 / 比值+坐标，4 套完整库校准，13 分钟）：Ls@60 整档留出 p90 ap 41.2%/20.9%→8.5%/6.6%，m10 27.4%/21.2%→13.5%/7.4%；收益主要来自无量纲坐标，比值再改善一点。真实 manifest 的 xfm_ms Lp/Ls 改 `model: ratio, feature_map: xfm_ms_dimensionless`（备份 `library.yaml.bak_20260925_1815`），两表 `xfm_query_verify.py` 重跑。页 `XFM_MS_RATIO_ACCEPTANCE_CN.html`。
+- N-15：用户选方案 1（控制端 = 用户的 Windows / macOS 笔记本，本机即仿真服务器）。验收包 `<EDA_AI_AGENT>/ic-opt-accept/n15/`：工程（09-22 隔离验收的混频器工程）、本机基线（6 次 Spectre，86 s）与 `expected.json`、`n15_compare.py`、`N15_PLAN_CN.md`（笔记本 agent 的十步方案）、报告模板；等报告回传核对。
+
+### 2026-09-25 · N-17 第二轮补点（用户批准）
+
+- 池限定中心偏移 8–24 µm × 外径比 0.8–1.25（`make_n17.py` 包装 `densify._pool` 加比值过滤，其余走库的贪心选点），ap 与 m10 各 60 选点 + 10 独立随机测试点，140/140 真实 EMX 成功（ap 7 路、m10 5 路 × 8 线程 × 32 GB，17:00–18:17），两表回流。
+- 结果（`XFM_DENSIFY_N17_CN.html`）：中位误差全线下降、最大误差压缩 2–4 倍；选点处回流前覆盖 91% / 94%；未吃透角落（外径比 1.1–1.25、宽线、偏移 15–20 µm）与 Q@40 两列（新 N-19）留待下一阶段。
