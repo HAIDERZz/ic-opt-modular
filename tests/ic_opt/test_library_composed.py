@@ -1,6 +1,7 @@
-"""T16.2b: curve columns composed from the stratum's own models -- ``model: ratio`` (low-frequency value x ratio) and
-``model: resonance`` (low-frequency value x the ideal rise at the predicted SRF x a residual) -- on a synthetic transformer
-table whose Lp@20 / Ls@20 rise towards a resonance that is steep across OD_S / OD_P (library_fixtures.res_physics)."""
+"""T16.2b: curve columns composed from the stratum's own models -- ``model: ratio`` (base value x ratio: the low-frequency
+value, or for Qp / Qs the peak, N-19) and ``model: resonance`` (low-frequency value x the ideal rise at the predicted SRF x
+a residual) -- on a synthetic transformer table whose Lp@20 / Ls@20 rise towards a resonance that is steep across
+OD_S / OD_P (library_fixtures.res_physics)."""
 from __future__ import annotations
 
 import contextlib
@@ -34,8 +35,9 @@ from tests.ic_opt.library_fixtures import (
     res_manifest,
 )
 
-S, LP, LS, K = RES_STRATUM, "Lp@20", "Ls@20", "k@20"
+S, LP, LS, K, QP = RES_STRATUM, "Lp@20", "Ls@20", "k@20", "Qp@20"
 RESONANCE = {"model": "resonance", "feature_map": MAPPED}
+RATIO = {"model": "ratio", "feature_map": MAPPED}
 ONE_THREAD = HostLimits(max_threads=1, max_memory_gb=8)
 
 
@@ -72,8 +74,10 @@ def stratum(**quantities) -> dict:
 
 @pytest.mark.parametrize(("quantities", "message"), [
     ({"Lp_lf": {"model": "ratio"}}, "a scalar is always modelled directly"),
-    ({"Lp_lf": {}, "SRF": {}, "Qp": {"anchors_ghz": [20], "model": "ratio"}}, "Qp has none"),
+    ({"Lp_lf": {}, "SRF": {}, "Qp": {"anchors_ghz": [20], "model": "ratio"}}, r"add \['Qp_peak'\]"),
+    ({"Qp_peak": {}, "Qs": {"anchors_ghz": [20], "model": "ratio"}}, r"add \['Qs_peak'\]"),
     ({"k_lf": {}, "SRF": {}, "k": {"anchors_ghz": [20], "model": "resonance"}}, "applies to the inductances"),
+    ({"Qp_peak": {}, "SRF": {}, "Qp": {"anchors_ghz": [20], "model": "resonance"}}, "applies to the inductances"),
     ({"SRF": {}, "Lp": {"anchors_ghz": [20], "model": "ratio"}}, r"add \['Lp_lf'\]"),
     ({"Ls_lf": {}, "Ls": {"anchors_ghz": [20], "model": "resonance"}}, r"add \['SRF'\]"),
     ({"Lp_lf": {}, "Lp": {"anchors_ghz": [20], "model": "exponential"}}, "Input should be 'direct', 'ratio' or 'resonance'"),
@@ -88,6 +92,13 @@ def test_ratio_needs_only_the_low_frequency_scalar_and_resonance_the_srf_too():
                                                  k={"anchors_ghz": [20], "model": "ratio"}))
     assert ok.quantities["Lp"].model == "resonance" and ok.quantities["k"].model == "ratio"
     assert manifest.Stratum.model_validate(stratum(Ls_lf={}, Ls={"anchors_ghz": [20], "model": "ratio"})).quantities["Ls"].model == "ratio"
+
+
+def test_a_q_curve_takes_ratio_on_its_peak():
+    """N-19: the base of a Q curve's ratio is its peak -- Qp_peak for Qp, Qs_peak for Qs -- the one scalar it needs."""
+    ok = manifest.Stratum.model_validate(stratum(Qp_peak={}, Qs_peak={}, Qp={"anchors_ghz": [20], "model": "ratio"},
+                                                 Qs={"anchors_ghz": [20], "model": "ratio"}))
+    assert ok.quantities["Qp"].model == ok.quantities["Qs"].model == "ratio"
 
 
 def test_direct_is_the_default_and_keeps_every_cache_key(tmp_path):
@@ -137,6 +148,44 @@ def test_ratio_is_the_low_frequency_model_times_a_ratio_model(tmp_path):
     ds = lib.dataset(S)
     rows = ds.usable(K)[::7]
     np.testing.assert_allclose(k20.gp.predict(ds.matrix(rows))[0], ds.values(K, rows), rtol=5e-3)     # its own rows, near-exactly
+
+
+def test_a_q_ratio_is_the_peak_model_times_a_ratio_model(tmp_path):
+    """Qp@20 = Qp_peak x (Qp@20 / Qp_peak) (N-19): a Q curve's base is its peak -- the library's own Qp_peak model object,
+    shared -- and the prediction adds the two models in log space; lib.query's composition names the peak."""
+    lib = q.Library(build_resonance_library(tmp_path / "lib", qp=RATIO, scalars=("Qp_peak",)), limits=LOCAL)
+    qp20, peak = lib.model(S, QP), lib.model(S, "Qp_peak")
+    assert isinstance(qp20.gp, composed.ComposedGP) and qp20.gp.kind == "ratio" and qp20.gp.lf is peak.gp
+    assert qp20.gp.part.feature_map == MAPPED and qp20.calibration["model"] == "ratio"
+    x = np.array([[110.0, 104.0, 6.0, 7.0, 0.0], [150.0, 170.0, 5.5, 5.0, 0.0]])
+    mu, _ = qp20.gp.predict(x)
+    np.testing.assert_allclose(np.log(mu), np.log(peak.gp.predict(x)[0]) + np.log(qp20.gp.part.predict(x)[0]), rtol=1e-12)
+    ds = lib.dataset(S)
+    rows = ds.usable(QP)[::7]
+    np.testing.assert_allclose(qp20.gp.predict(ds.matrix(rows))[0], ds.values(QP, rows), rtol=5e-3)    # its own rows, near-exactly
+    answer = q.query(lib, S, dict(zip(XFM_DIMS, x[0])), [QP, "Qp_peak"])["quantities"]
+    c = answer[QP]["composition"]
+    assert answer[QP]["status"] == "predicted" and set(c) == {"model", "formula", "Qp_peak", "ratio"}
+    assert c["model"] == "ratio" and c["formula"] == "Qp_peak x ratio"
+    assert c["Qp_peak"] == pytest.approx(answer["Qp_peak"]["value"], rel=1e-12)
+    assert c["Qp_peak"] * c["ratio"] == pytest.approx(answer[QP]["value"], rel=1e-9)
+
+
+def test_q_values_at_or_below_zero_are_left_out_of_the_ratio_and_counted(tmp_path):
+    """A log-space model takes no value <= 0: rows of a Q column holding one are left out of the ratio's fit and of its
+    calibration, as rows without the curve are, and the calibration counts them. Held out, such a row would have no finite
+    |z| and the calibration would come out wrong without a word; left out, the hold-out draws from the other 97 rows and
+    the model answers the three rows' geometries from their neighbours."""
+    lib = q.Library(build_resonance_library(tmp_path / "lib", qp=RATIO, scalars=("Qp_peak",)), limits=LOCAL)
+    rows = lib.dataset(S).rows
+    picked = [26, 49, 73]                                             # inside the table: OD_P 100, 120 and 140
+    truth = [rows[i].values[QP] for i in picked]
+    for i, value in zip(picked, (-2.0, 0.0, -0.5)):
+        rows[i].values[QP] = value                                    # this library's dataset in memory: what its fits read
+    m = lib.model(S, QP)
+    assert m.calibration["dropped_nonpositive"] == 3 and m.calibration["n_scored"] == len(gp.SEEDS) * round(gp.HOLDOUT * 97)
+    assert np.isfinite([m.calibration[key] for key in ("k_scale", "median_rel", "coverage_2sigma_before")]).all()
+    np.testing.assert_allclose(m.gp.predict(lib.dataset(S).matrix([rows[i] for i in picked]))[0], truth, rtol=0.01)
 
 
 # -- the library's handling: order, sharing, caches ----------------------------------------------------------------------

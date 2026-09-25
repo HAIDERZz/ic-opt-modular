@@ -12,13 +12,15 @@ curve's ``feature_map``). A composed model predicts, in log space,
 - ``ratio``:      log L(f0) = log L_lf(x) + log R(x)
 - ``resonance``:  log L(f0) = log L_lf(x) + log (1 / (1 - (f0 / SRF(x))**2)) + log Res(x)
 
-L_lf is the stratum's low-frequency scalar model (``Lp_lf`` for ``Lp``, ``Ls_lf`` for ``Ls``, ``k_lf`` for ``k``) and
-SRF its system-SRF model: the very model objects the library answers those columns with, fitted once and shared
-(``attach``). R is a GP of its own on the measured ratio L(f0) / L_lf, and Res one on that ratio divided by the ideal
-rise of a parallel resonance at the SRF the SRF model predicts; each is fitted on the rows that have the curve and
-the low-frequency value (and, for ``resonance``, a predicted SRF above f0: below it the rise does not exist), with
-the curve's own settings, ``feature_map`` included. f0 is given in the SRF model's own unit (the library fits SRF in
-GHz; ``query.fit_unit``), so no conversion happens here.
+L_lf is the stratum's model of the curve's base scalar -- the low-frequency value (``Lp_lf`` for ``Lp``, ``Ls_lf`` for
+``Ls``, ``k_lf`` for ``k``) or, for a Q curve, its peak (``Qp_peak`` for ``Qp``, ``Qs_peak`` for ``Qs``; ``ratio`` only,
+N-19: log Q(f0) = log Q_peak(x) + log R(x)) -- and SRF its system-SRF model: the very model objects the library answers
+those columns with, fitted once and shared (``attach``). R is a GP of its own on the measured ratio L(f0) / L_lf, and
+Res one on that ratio divided by the ideal rise of a parallel resonance at the SRF the SRF model predicts; each is
+fitted on the rows that have the curve and the base value, both positive (the fit is in log space), and, for
+``resonance``, a predicted SRF above f0 (below it the rise does not exist), with the curve's own settings,
+``feature_map`` included. f0 is given in the SRF model's own unit (the library fits SRF in GHz; ``query.fit_unit``), so
+no conversion happens here.
 
 Where the SRF model puts the resonance at or below sqrt(1 / U_MAX) f0 = 1.118 f0, (f0 / SRF)**2 is held at U_MAX: the
 rise stays finite (5) and its derivative 2u / (1 - u) = 8 carries the SRF's uncertainty into a wide interval, which the
@@ -32,7 +34,9 @@ posterior covariances under the same assumption: cov_lf + (g g^T) * cov_SRF + co
 widens by ``k_scale``, exactly as for ``gp.StratumGP``; both come from ``holdout``, the calibration: the 5 x 20 %
 seeded hold-out of the curve's usable rows (the direct model's protocol), except that every fold refits every part --
 L_lf, SRF and R / Res -- on that fold's training rows, so the held-out rows are predicted by models that never saw
-them. ``holdout_fold`` is one seed of it, so that the library can run the folds in parallel processes.
+them. ``holdout_fold`` is one seed of it, so that the library can run the folds in parallel processes. A row whose
+curve value is <= 0 is left out of the hold-out, as it is of the fit (log space can neither fit nor score it), and
+counted: ``dropped_nonpositive``.
 
 A pickled composed model holds only its own part; the shared L_lf and SRF models are attached again when it is loaded
 (``Library`` keys its cache file by theirs).
@@ -58,7 +62,7 @@ def rise(srf, f0: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 class ComposedGP:
-    """A curve column's model built on the stratum's low-frequency (and SRF) models; the ``gp.StratumGP`` interface the
+    """A curve column's model built on the stratum's base-scalar (and SRF) models; the ``gp.StratumGP`` interface the
     library uses (see the module docstring)."""
 
     log_target = True                               # always: the composition is a sum in log space
@@ -99,12 +103,12 @@ class ComposedGP:
 
     def _ready(self) -> None:
         if self.lf is None or (self.kind == "resonance" and self.srf is None):
-            raise RuntimeError("attach() the low-frequency (and SRF) models first")
+            raise RuntimeError("attach() the base (and SRF) models first")
 
     def fit(self, x, y, *, lf_y) -> ComposedGP:
-        """Fit R (``ratio``) or Res (``resonance``) on the rows of ``x`` that have the curve ``y`` and the low-frequency value
-        ``lf_y`` (NaN: not measured), and for ``resonance`` a predicted SRF above f0. L_lf and SRF must be attached; they are
-        not refitted here."""
+        """Fit R (``ratio``) or Res (``resonance``) on the rows of ``x`` that have the curve ``y`` and the base value ``lf_y``
+        (NaN: not measured), both positive, and for ``resonance`` a predicted SRF above f0; the other rows are left out.
+        L_lf and SRF must be attached; they are not refitted here."""
         self._ready()
         x, y, lf_y = np.asarray(x, dtype=float), np.asarray(y, dtype=float), np.asarray(lf_y, dtype=float)
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -116,7 +120,7 @@ class ComposedGP:
                 u, _, _ = rise(srf, self.f0)
                 target = target * (1 - u)                                         # the ratio over the ideal rise 1 / (1 - u)
         if not ok.any():
-            raise ValueError("no row has the curve, the low-frequency value (and a predicted SRF above f0) to fit on")
+            raise ValueError("no row has a positive curve value and base value (and a predicted SRF above f0) to fit on")
         self.part = gp.StratumGP(**self.part_settings).fit(x[ok], target[ok])
         self.n_train = max(self.n_train, int(ok.sum()))
         return self
@@ -196,9 +200,9 @@ class ComposedGP:
         return m_lf + log_rise + m_part, c_lf + c_part + np.outer(g, g) * c_srf
 
     def explain(self, x, srf_unit: float = 1.0) -> list[dict]:
-        """Per row, where the value comes from, in the curve's units: the low-frequency value, the ratio (``ratio``) or the
-        SRF (times ``srf_unit``: in its column's unit), the ideal rise and the residual (``resonance``); their product is
-        the predicted value."""
+        """Per row, where the value comes from, in the curve's units: the base value under its column's name (the
+        low-frequency value, or a Q curve's peak), the ratio (``ratio``) or the SRF (times ``srf_unit``: in its column's
+        unit), the ideal rise and the residual (``resonance``); their product is the predicted value."""
         t = self.terms(x)
         rows = []
         for i in range(len(t["lf"])):
@@ -223,14 +227,17 @@ class ComposedGP:
 
 def holdout_fold(x, y, lf_y, srf_y, seed: int, *, kind: str, f0: float, dims: list[str], ranges: dict, nt_dim: str | None,
                  part: dict, lf: dict, srf: dict | None, names: dict, fraction: float = gp.HOLDOUT) -> dict:
-    """One seed of ``holdout``. ``x`` holds every row of the stratum; ``y``, ``lf_y`` and ``srf_y`` the curve, its
-    low-frequency scalar and the system SRF (in the SRF model's unit) per row, NaN where a row has no usable value;
-    ``part``, ``lf`` and ``srf`` are the three models' StratumGP settings. The seed's held-out rows are ``gp.split``'s of
-    the curve's usable rows, as a direct model's calibration holds them out; every part is refitted on its own usable
-    rows minus those. Returns the held-out rows' relative errors, |z| (against the unfloored sigma), whether each lies
-    inside the 2-sigma interval, their turns levels and the rows skipped because a part had no model for their level."""
+    """One seed of ``holdout``. ``x`` holds every row of the stratum; ``y``, ``lf_y`` and ``srf_y`` the curve, its base
+    scalar and the system SRF (in the SRF model's unit) per row, NaN where a row has no usable value; ``part``, ``lf``
+    and ``srf`` are the three models' StratumGP settings. The seed's held-out rows are ``gp.split``'s of the curve's
+    usable rows, as a direct model's calibration holds them out -- usable meaning a positive value: log space can
+    neither fit nor score a value <= 0, so such a row is left out like a row without the curve, and counted
+    (``nonpositive``); every part is refitted on its own usable rows minus the held-out ones. Returns the held-out rows'
+    relative errors, |z| (against the unfloored sigma), whether each lies inside the 2-sigma interval, their turns
+    levels, the rows skipped because a part had no model for their level and the curve's rows left out as <= 0."""
     x, y, lf_y = np.asarray(x, dtype=float), np.asarray(y, dtype=float), np.asarray(lf_y, dtype=float)
-    curve = np.flatnonzero(np.isfinite(y))
+    positive = np.isfinite(y) & (y > 0)                  # the curve's rows a log-space model can fit and score
+    curve = np.flatnonzero(positive)
     test_i, _ = gp.split(len(curve), seed, fraction)
     held = np.zeros(len(y), dtype=bool)
     held[curve[test_i]] = True
@@ -253,11 +260,12 @@ def holdout_fold(x, y, lf_y, srf_y, seed: int, *, kind: str, f0: float, dims: li
     z = np.abs(np.log(yt) - np.log(mu)) / np.maximum(sigma / np.maximum(np.abs(mu), 1e-300), 1e-300)
     levels = np.round(x[test, dims.index(nt_dim)]).astype(int).tolist() if nt_dim is not None else []
     return {"seed": seed, "rel": (np.abs(mu - yt) / np.abs(yt)).tolist(), "z": z.tolist(), "inside": ((yt >= lo) & (yt <= hi)).tolist(),
-            "levels": levels, "skipped": int((~ok).sum()), "n": len(curve)}
+            "levels": levels, "skipped": int((~ok).sum()), "n": len(curve), "nonpositive": int((np.isfinite(y) & ~positive).sum())}
 
 
 def merge(folds: list[dict]) -> dict:
-    """``holdout_fold`` results, in seed order, as the report ``gp.holdout`` gives (``calibration_scale`` reads its z)."""
+    """``holdout_fold`` results, in seed order, as the report ``gp.holdout`` gives (``calibration_scale`` reads its z),
+    plus ``dropped_nonpositive``: the curve's rows left out as <= 0 (the same rows in every fold)."""
     rel = [v for f in folds for v in f["rel"]]
     z = [v for f in folds for v in f["z"]]
     inside = [v for f in folds for v in f["inside"]]
@@ -265,6 +273,7 @@ def merge(folds: list[dict]) -> dict:
     rel_a = np.array(rel)
     by_level = {int(v): float(np.median(rel_a[np.array(levels) == v])) for v in sorted(set(levels))} if levels else {}
     return {"n": folds[0]["n"] if folds else 0, "n_scored": len(rel), "skipped_unfitted_level": sum(f["skipped"] for f in folds),
+            "dropped_nonpositive": folds[0]["nonpositive"] if folds else 0,
             "median_rel": float(np.median(rel_a)) if rel else float("nan"),
             "p90_rel": float(np.quantile(rel_a, 0.9)) if rel else float("nan"),
             "max_rel": float(rel_a.max()) if rel else float("nan"),

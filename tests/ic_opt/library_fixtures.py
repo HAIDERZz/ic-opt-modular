@@ -237,13 +237,16 @@ def res_points(ops=RES_OPS) -> list[tuple[float, float, float, float, float]]:
 
 
 def res_manifest(root: Path, *, lp: dict | None = None, ls: dict | None = None, k: dict | None = None, srf: dict | None = None,
-                 scalars: tuple[str, ...] = ("Lp_lf", "Ls_lf", "k_lf", "SRF")) -> Path:
+                 qp: dict | None = None, qs: dict | None = None, scalars: tuple[str, ...] = ("Lp_lf", "Ls_lf", "k_lf", "SRF")) -> Path:
     """(Re)write the library.yaml of a resonance table: ``lp`` / ``ls`` / ``k`` / ``srf`` are extra fields of those quantities
-    (``model``, ``feature_map``); ``scalars`` the scalar columns it declares."""
-    rules = {"Lp_lf": {}, "Ls_lf": {}, "k_lf": {"feature_map": MAPPED}, "SRF": dict(srf or {})}
+    (``model``, ``feature_map``); ``qp`` / ``qs``, when given, add the Q curves at the same anchor with those fields (N-19:
+    the network's own Q = Im Z / Re Z, positive below the SRF); ``scalars`` the scalar columns it declares, ``Qp_peak`` and
+    ``Qs_peak`` among the choices."""
+    rules = {"Lp_lf": {}, "Ls_lf": {}, "k_lf": {"feature_map": MAPPED}, "SRF": dict(srf or {}), "Qp_peak": {}, "Qs_peak": {}}
     quantities = {name: rules[name] for name in scalars}
     quantities.update({"Lp": {"anchors_ghz": [RES_F0_GHZ], **(lp or {})}, "Ls": {"anchors_ghz": [RES_F0_GHZ], **(ls or {})},
                        "k": {"anchors_ghz": [RES_F0_GHZ], "feature_map": MAPPED, **(k or {})}})
+    quantities.update({name: {"anchors_ghz": [RES_F0_GHZ], **rule} for name, rule in (("Qp", qp), ("Qs", qs)) if rule is not None})
     doc = {"schema_version": "ic-opt-library-v1", "process_profile": "demo_6m",
            "strata": {RES_STRATUM: {"generator": "clean_port_xfm_bs", "dims": XFM_DIMS, "parts": [{"store": "xfm"}],
                                     "steps": {"primary_outer_diameter_um": 1, "secondary_outer_diameter_um": 1, "primary_width_um": 0.1,

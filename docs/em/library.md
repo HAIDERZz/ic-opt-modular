@@ -135,9 +135,10 @@ the column and has to learn both. The other two build the column from the
 stratum's own models and fit only what is left, with the curve's
 `feature_map`:
 
-- `ratio`: the low-frequency scalar (`Lp_lf` for `Lp`, `Ls_lf` for `Ls`,
-  `k_lf` for `k`) times a model of the measured ratio, say
-  `Lp@40 / Lp_lf`;
+- `ratio`: a base scalar -- the low-frequency value for `Lp`, `Ls` and `k`
+  (`Lp_lf`, `Ls_lf`, `k_lf`), the peak for `Qp` and `Qs` (`Qp_peak`,
+  `Qs_peak`) -- times a model of the measured ratio, say `Lp@40 / Lp_lf`
+  or `Qp@40 / Qp_peak`;
 - `resonance` (`Lp` and `Ls` only): the low-frequency value, times the rise
   of an ideal parallel resonance `1 / (1 - (f0 / SRF)^2)` at the SRF that the
   stratum's `SRF` model predicts, times a model of what is left.
@@ -217,9 +218,10 @@ at the edge of the sampled box, where designs recommended for a maximum tend
 to sit.
 
 A curve built with `model: ratio` or `model: resonance` also answers where its
-value came from, in `composition`: the low-frequency value (`Lp_lf`), and the
-`ratio`, or the `SRF` (in Hz), the `resonance_factor` 1 / (1 - (f0/SRF)^2) and
-the `residual`. Their product is `value`.
+value came from, in `composition`: the base value under its own name (the
+low-frequency value such as `Lp_lf`, or for `Qp` / `Qs` the peak `Qp_peak` /
+`Qs_peak`), and the `ratio`, or the `SRF` (in Hz), the `resonance_factor`
+1 / (1 - (f0/SRF)^2) and the `residual`. Their product is `value`.
 
 ## 5. Inverse questions: `lib.suggest`
 

@@ -13,9 +13,10 @@ precedence is a call's explicit ``rel_sigma_max``, then the quantity's, then ``d
 (``Library.rel_sigma_max``) -- and it is no part of any cache key: setting it refits nothing.
 
 A curve's ``model`` says how its columns are predicted: ``direct`` (the default) fits one model per column;
-``ratio`` and ``resonance`` build the column from the stratum's low-frequency scalar (and, for ``resonance``, its
-system SRF) and fit only what is left (``ic_opt.library.composed``). Unlike the ceiling, a ``model`` other than
-``direct`` is part of the dataset's cache key (it changes what is fitted); ``direct`` stays out of it.
+``ratio`` and ``resonance`` build the column from the stratum's base scalar for that curve (``LOW_FREQUENCY``: the
+low-frequency value for ``Lp`` / ``Ls`` / ``k``, the peak for ``Qp`` / ``Qs``) and, for ``resonance``, its system SRF,
+and fit only what is left (``ic_opt.library.composed``). Unlike the ceiling, a ``model`` other than ``direct`` is part
+of the dataset's cache key (it changes what is fitted); ``direct`` stays out of it.
 """
 
 from __future__ import annotations
@@ -33,7 +34,9 @@ SCHEMA = "ic-opt-library-v1"
 SCALARS = ("Lp_lf", "Lp_res", "Qp_peak", "SRF_p", "Ls_lf", "Ls_res", "Qs_peak", "SRF_s", "k_lf", "SRF")   # SRF: the system SRF
 CURVES = ("Lp", "Qp", "Ls", "Qs", "k")
 PEAKS = ("Qp_peak", "Qs_peak")
-LOW_FREQUENCY = {"Lp": "Lp_lf", "Ls": "Ls_lf", "k": "k_lf"}   # the scalar a ratio / resonance curve (Quantity.model) is built on
+# the base scalar a ratio / resonance curve (Quantity.model) is built on: the low-frequency value, or the peak for the Q
+# curves (N-19; the name is older than the Q entries)
+LOW_FREQUENCY = {"Lp": "Lp_lf", "Ls": "Ls_lf", "k": "k_lf", "Qp": "Qp_peak", "Qs": "Qs_peak"}
 RESONANCE_CURVES = ("Lp", "Ls")                           # inductances: the ones that rise towards the self-resonance
 XFM_BS_DIMS = ("primary_outer_diameter_um", "secondary_outer_diameter_um", "primary_width_um", "secondary_width_um", "center_spacing_um")
 XFM_MS_DIMS = (*XFM_BS_DIMS, "secondary_spacing_um", "secondary_turns")
@@ -111,12 +114,14 @@ class Stratum(Model):
         return self
 
     def _check_model(self, name: str, model: str) -> None:
-        """A ``ratio`` / ``resonance`` curve names the models it is built on: they must be the stratum's own quantities."""
+        """A ``ratio`` / ``resonance`` curve names the models it is built on -- its base scalar (``LOW_FREQUENCY``: the
+        low-frequency value, or the Q peak for the Q curves) and, for ``resonance``, SRF: they must be the stratum's own
+        quantities."""
         if name not in CURVES:
             raise ValueError(f"{name}: model {model!r} applies to the curves {CURVES}; a scalar is always modelled directly")
         if name not in LOW_FREQUENCY:
-            raise ValueError(f"{name}: model {model!r} builds on a low-frequency scalar, and {name} has none "
-                             f"(the curves that have one: {sorted(LOW_FREQUENCY)})")
+            raise ValueError(f"{name}: model {model!r} builds on a base scalar (the low-frequency value, or the Q peak for the "
+                             f"Q curves), and {name} has none (the curves that have one: {sorted(LOW_FREQUENCY)})")
         if model == "resonance" and name not in RESONANCE_CURVES:
             raise ValueError(f"{name}: model resonance applies to the inductances {RESONANCE_CURVES}; use ratio for {name}")
         needed = [LOW_FREQUENCY[name]] + (["SRF"] if model == "resonance" else [])

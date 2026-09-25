@@ -20,12 +20,13 @@ time calibrates and fits a model into a cache directory: the fit holds a lock fi
 another process that needs the same model waits for it, then loads what it wrote (``Library._fit``).
 
 A curve whose manifest entry says ``model: ratio`` or ``model: resonance`` is composed from the stratum's own
-low-frequency (and SRF) models (``ic_opt.library.composed``): ``models`` loads or fits those first, each once
+base-scalar (and SRF) models (``ic_opt.library.composed``): ``models`` loads or fits those first, each once
 however many curves are built on it, then the composed curves -- their calibration folds as jobs of their own,
 since every fold refits every part. A composed model's cache files live in the same cache and hold the same lock
 discipline: its calibration file is keyed by the option and the parts' settings, its model file by the parts' model
 keys as well; the file holds only its own part, and the shared models are attached when it loads. ``query`` adds to
-a composed curve's answer where the value came from.
+a composed curve's answer where the value came from. A curve's base scalar is the one ``manifest.LOW_FREQUENCY``
+names: the low-frequency value, or the peak of a Q curve.
 
 SRF is fitted in GHz (the log-GP is tamer there) and answered in Hz: ``fit_unit`` is the one place that says so.
 
@@ -302,8 +303,9 @@ class Library:
     # -- composed curves (ic_opt.library.composed) ---------------------------------------------------------------------
 
     def _plan(self, stratum: str, quantity: str) -> dict | None:
-        """How a composed curve column is built -- ``{"model", "f0" (in the SRF model's unit), "lf", "srf"}`` -- or None for a
-        column modelled directly."""
+        """How a composed curve column is built -- ``{"model", "f0" (in the SRF model's unit), "lf", "srf"}``, ``lf`` naming its
+        base scalar (``manifest.LOW_FREQUENCY``: the low-frequency value, or a Q curve's peak) -- or None for a column
+        modelled directly."""
         base, at, f = quantity.partition("@")
         rule = self.manifest.strata[stratum].quantities.get(base)
         if not at or rule is None or rule.model == "direct":
@@ -335,8 +337,8 @@ class Library:
                 "names": {"lf": plan["lf"], "srf": plan["srf"]}}
 
     def _composed_data(self, stratum: str, quantity: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
-        """Every row of the stratum and, per row, the curve, its low-frequency scalar and the SRF (in the SRF model's unit):
-        NaN where a row has no usable value."""
+        """Every row of the stratum and, per row, the curve, its base scalar and the SRF (in the SRF model's unit): NaN
+        where a row has no usable value."""
         plan = self._plan(stratum, quantity)
         ds = self.dataset(stratum)
         srf = ds.values(plan["srf"]) / fit_unit(plan["srf"]) if plan["srf"] else None
@@ -357,7 +359,8 @@ class Library:
 
     def _composed_calibration(self, stratum: str, quantity: str, *, compute: bool = True, folds: list[dict] | None = None) -> dict | None:
         """The composed curve's calibration: cached, else from ``folds`` (the parallel path), else computed here (all five
-        folds) unless ``compute`` is False."""
+        folds) unless ``compute`` is False. ``dropped_nonpositive`` counts the curve's rows with a value <= 0, which the
+        log-space model leaves out of its fit and its hold-out (``composed.holdout_fold``)."""
         if not self.calibrate:
             return {"k_scale": 1.0, "source": "off"}
         name = self._composed_calibration_name(stratum, quantity)
@@ -370,6 +373,7 @@ class Library:
         report = composed.merge(folds) if folds is not None else composed.holdout(*self._composed_data(stratum, quantity), **settings)
         out = {"k_scale": gp.calibration_scale(report), "median_rel": report["median_rel"],
                "coverage_2sigma_before": report["coverage_2sigma"], "n_scored": report["n_scored"],
+               "dropped_nonpositive": report["dropped_nonpositive"],
                "source": "holdout 5x20%, every part refitted on each fold", "sigma_floor": "median held-out relative error",
                "model": settings["kind"]}
         _write_json(self.cache.target(name), out)
