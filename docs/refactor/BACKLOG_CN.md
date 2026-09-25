@@ -82,8 +82,8 @@
 | N-14 | 报告脚本里 `d4_grid.py`、`d4_probe.py`、`wps_locate.py` 与 `demo_families.py` 的 5/6 个配置仍用 M2.2 退役的字段名，今天的生成器会拒绝（N-8 只修 ruff，未更新） | T16.7 发现 | 小，可做 |
 | N-15 | N-5 的隔离冒烟脚本已绑入 site.yaml，但完整远程运行（实验室主机 + Spectre）未验证；ADR 已注明 | T16.7 | 需实验室主机 |
 | N-16 | 多圈变压器表（xfm_ms）按研究建议用 `model: ratio`（Ls@60 整档留出 p90 23.8/23.5%→7.0/8.8%），需先用库自身模型做一次对照再改真实 manifest | T16.2b | 小，可做 |
-| N-17 | B-12 后续：在中心偏移 8–24 µm、外径比 0.8–1.25 一带再补一轮（约 60 点，需 `--plan` 批准）；xfm_bs_m10 同样处理；未采样区域的校准盲区——候选把"离最近实测行的缩放距离"计入不确定度 | B-12 | 中，待批准 |
-| N-18 | `uv run` / `uv sync` 与文档安装法冲突（仓库不跟踪 uv.lock，`uv run` 会当场生成一份不含 vendor/open-box 的解析）：README / CONTRIBUTING 的 `uv pip install -e ".[…]" -e vendor/open-box -e vendor/TuRBO` 一次解析保住 openbox 的 numpy<2 / scipy<1.13 / scikit-learn<1.4，而 `uv run` / `uv sync` 按 lock 把 numpy 升到 2.x、留下 pandas 2.1.4，`import ic_opt` 即失败（2026-09-25 实际发生一次，已按文档命令恢复到 numpy 1.26.4 / scipy 1.12.0 / scikit-learn 1.3.2，定向测试 69 绿） | 候选：(a) 把 openbox 的约束写进 `[tool.uv] constraint-dependencies`；(b) README / CONTRIBUTING 明写"不要 `uv run` / `uv sync`，只用 `uv pip install`"并把 `uv.lock` 加进 .gitignore；(c) `[tool.uv] managed = false` 让 `uv run` 不再同步 | 小，待拍板 |
+| N-17 | B-12 后续：在中心偏移 8–24 µm、外径比 0.8–1.25 一带再补一轮（约 60 点，需 `--plan` 批准）；xfm_bs_m10 同样处理；未采样区域的校准盲区——候选把"离最近实测行的缩放距离"计入不确定度 | B-12 | 用户 2026-09-25 批准（"N-17可以补充"）；进行中 |
+| N-18 | 2026-09-25 一次 `uv run` 在仓库里当场生成不含 vendor/open-box 的 uv.lock 并把 .venv 同步成 numpy 2.x，`import ic_opt` 失败 | 按 CONTRIBUTING 的 `uv pip install -e ".[dev,em,turbo,report]" -e vendor/open-box -e vendor/TuRBO` 恢复（numpy 1.26.4 / scipy 1.12.0 / scikit-learn 1.3.2），定向测试 69 绿，uv.lock 已删 | 已关闭：操作失误（`uv run` / `uv sync` 不是本仓库的安装法），安装法不改；规则记入 Claude 记忆 |
 
 ## 3. 记录（不打算单独立项）
 

@@ -160,7 +160,7 @@ COMPONENTS = [
         "engine",
         "评估引擎 + 阶段流水线",
         "src/ic_opt/eval/engine.py · src/ic_opt/stages/",
-        "按 spec 的仿真链把点交给执行器，管并发、预算与资源包络",
+        "按 spec 的仿真链把点交给执行器，管并发、预算与资源包络；有 devices 的 spec 走 em_circuit 链：pcell → emx → bind_nport → spectre → ocean → extract",
     ),
     (
         "executor",
@@ -190,13 +190,13 @@ COMPONENTS = [
         "spectre",
         "Spectre / OCEAN",
         "src/ic_opt/stages/spectre_chain.py · src/ic_opt/sim/",
-        "电路仿真与标量抽取（仿真主机）",
+        "电路仿真与标量抽取（仿真主机）；联合优化时网表里的 nport 实例指向 EMX 的 sNp",
     ),
     (
         "emx",
         "EMX",
         "src/ic_opt/em/emx.py · src/ic_opt/stages/em_chain.py",
-        "全波电磁仿真；.proc 工艺文件只在主机上",
+        "全波电磁仿真得 sNp，供 bind_nport 绑进电路网表；.proc 工艺文件只在主机上",
     ),
 ]
 
@@ -773,11 +773,11 @@ a {{ color:var(--accent-2); }}
 {table(["项", "值"], key_rows, "kv")}
 
 <h2 id="s2">2 系统结构（archify 架构图）</h2>
-<p class="lead">整个系统只有一条主路径：设计者写 <code>spec.yaml</code>，命令行装载配方，配方组合块，块把点交给评估引擎，引擎经执行器把阶段任务送到仿真主机，结果回到运行存储。电磁器件走同一引擎的 EM 链；器件查询库只读运行存储建模。</p>
+<p class="lead">整个系统只有一条主路径：设计者写 <code>spec.yaml</code>，命令行装载配方，配方组合块，块把点交给评估引擎，引擎经执行器把阶段任务送到仿真主机，结果回到运行存储。这个项目的本质不是单独优化电磁器件，而是把真实的电磁器件带进原理图仿真做联合优化：spec 里同时写电路变量和器件几何变量，每个点先由 pcell 生成几何、EMX 全波仿真得到 sNp，再由 bind_nport 把 sNp 绑进电路网表，Spectre / OCEAN 跑出整机指标，优化器据此提下一批点。只到 EMX 为止的 em_only 链用于建器件库；器件查询库只读运行存储建模。</p>
 <figure><a href="https://claude.ai/artifact/Q2GCRD2WtGwpZHH8LvTFfG"><img src="{
         b64(arch_png)
     }" alt="IC-Opt 0.3 系统结构图"></a>
-<figcaption>archify 架构图（浏览器检查截图，1440×900 浅色）。交互版：<a href="https://claude.ai/artifact/Q2GCRD2WtGwpZHH8LvTFfG">artifact Q2GCRD2W…</a>；源文件 <code>docs/refactor/diagrams/ic-opt-system-v030.architecture.json</code>，渲染 <code>ic-opt-system-v030.html</code>（不入仓库）。三个引导视图：一次优化运行、电磁器件路径、器件查询库。</figcaption></figure>
+<figcaption>archify 架构图（浏览器检查截图，1440×900 浅色）。交互版：<a href="https://claude.ai/artifact/Q2GCRD2WtGwpZHH8LvTFfG">artifact Q2GCRD2W…</a>；源文件 <code>docs/refactor/diagrams/ic-opt-system-v030.architecture.json</code>，渲染 <code>ic-opt-system-v030.html</code>（不入仓库）。三个引导视图：一次优化运行、电磁器件联合优化（pcell → EMX → bind_nport → Spectre）、器件查询库。</figcaption></figure>
 {table(["组件", "源码", "职责"], comp_rows)}
 <div class="note">仓库内没有任何真实工艺数据：随包只带虚构的 <code>demo_6m</code> profile；N28 的 profile、<code>.proc</code> 与器件库都在仓库外（<code>IC_OPT_PROFILE_DIRS</code>、<code>&lt;ic-opt-library&gt;/n28/</code>）。</div>
 
@@ -785,7 +785,7 @@ a {{ color:var(--accent-2); }}
 <div class="grid2">
 <div class="card"><h4>① 定义</h4><p><code>spec.yaml</code> 一份写清问题：变量与网格（space）、目标与约束（objective）、仿真链（simulator / stages）、资源（threads / memory）。<code>spec.load</code> 校验后得到 <code>Spec</code>，其指纹决定运行存储里哪些观测算"同一个问题"。</p></div>
 <div class="card"><h4>② 取点</h4><p><code>points.*</code> 给固定点、网格、Sobol；<code>opt.suggest</code> 让建议器（默认 OpenBox，可选 TuRBO）按已有观测提下一批点；<code>opt.optimize</code> 把建议与评估循环到预算用尽。</p></div>
-<div class="card"><h4>③ 评估</h4><p><code>sim.evaluate</code> 调 <code>engine.run</code>：按 <code>site.yaml</code> 的 <code>HostLimits</code> 算并发，把每个点的阶段任务交给执行器；Spectre 链是 netlist → spectre/ocean → 标量，EM 链是 pcell → emx → bind_nport。超出资源包络直接拒绝（<code>EnvelopeError</code>）。</p></div>
+<div class="card"><h4>③ 评估</h4><p><code>sim.evaluate</code> 调 <code>engine.run</code>：按 <code>site.yaml</code> 的 <code>HostLimits</code> 算并发，把每个点的阶段任务交给执行器；Spectre 链是 netlist → spectre/ocean → 标量；有器件的 spec 走 em_circuit 链 pcell → emx → bind_nport → spectre/ocean → extract，器件与电路一起评估；没有 testbench 的 spec 走 em_only 链 pcell → emx → measure（建库、器件表征）。超出资源包络直接拒绝（<code>EnvelopeError</code>）。</p></div>
 <div class="card"><h4>④ 执行</h4><p>执行器在本地或 SSH 主机上以进程组跑命令，转发 Ctrl-C 与超时；远程文件系统边界由 ADR-0001 约束（控制端只看自己拿回来的产物）。</p></div>
 <div class="card"><h4>⑤ 记录</h4><p><code>RunStore</code> 把观测追加进 <code>.icopt/</code>（观测表 + sims 产物 + 缓存），指纹变更后用 <code>ic-opt migrate-store</code> 迁移；<code>analyze.best</code> / <code>analyze.report</code> 读它出最优点与报告。</p></div>
 <div class="card"><h4>⑥ 复用</h4><p>器件查询库把多个运行存储当数据源：<code>lib.load</code> 建数据集，<code>lib.query / suggest / region / densify</code> 用模型回答；<code>lib_signoff</code> 用真实 EMX 复核并把 ok 行回流。</p></div>
@@ -870,8 +870,8 @@ a {{ color:var(--accent-2); }}
 <li><b>已发布</b>：0.3.0（标签 <code>v0.3.0</code>），T16 七个波次全部合入；B-12 真实加密批完成并回流。</li>
 <li><b>推送</b>：2026-09-25 由 Claude 推送 <code>origin/main</code>（1128c7f → d512977，58 次提交）与标签 <code>v0.3.0</code>；今后推送由 Claude 负责（RT-5 的 GitHub Release 页仍由用户操作，发布说明用 <code>RELEASE_NOTES_v0.3.0.md</code>）。</li>
 <li><b>用户推迟</b>：B-7 … B-11（脱敏后续）与 0.4.0；B-3 维持 TuRBO 方案 b。</li>
-<li><b>待批准</b>：N-17（中心偏移 8–24 µm、外径比 0.8–1.25 一带再补一轮约 60 点，xfm_bs_m10 同样处理；候选把"离最近实测行的缩放距离"计入不确定度）。</li>
-<li><b>小项可做</b>：N-14（4 个报告脚本仍用退役字段名）、N-16（多圈变压器表改 ratio 建模前先做对照）、N-18（新增：<code>uv.lock</code> 与文档安装法不一致，<code>uv run</code> 会把环境装坏，今天实际发生一次并已恢复）。</li>
+<li><b>进行中</b>：N-17（用户已批准：中心偏移 8–24 µm、外径比 0.8–1.25 一带再补一轮 60 点 + 10 个独立测试点，xfm_bs_ap 与 xfm_bs_m10 各一轮；结果见 <code>reports/library_query/XFM_DENSIFY_N17_CN.html</code>）。</li>
+<li><b>小项可做</b>：N-14（4 个报告脚本仍用退役字段名）、N-16（多圈变压器表改 ratio 建模前先做对照）。N-18（今天一次 <code>uv run</code> 把 .venv 装坏）已按文档安装命令恢复并关闭：是操作失误，不是安装法的问题，规则已记入 Claude 的记忆。</li>
 <li><b>需实验室主机</b>：N-15（隔离 SSH 冒烟脚本的完整远程运行）。</li>
 </ul>
 <p>待办总表：<code>docs/refactor/BACKLOG_CN.md</code>；执行记录：<code>docs/refactor/EXECUTION_PLAN_CN.md</code>。</p>

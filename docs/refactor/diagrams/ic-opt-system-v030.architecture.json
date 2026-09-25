@@ -19,19 +19,21 @@
           "spectre",
           "store"
         ],
-        "note": "从命令行到仿真主机再回到运行存储：sim.evaluate / opt.optimize 走的主路径。"
+        "note": "从命令行到仿真主机再回到运行存储：sim.evaluate / opt.optimize 走的主路径；spec 里有 devices 时同一条路径经 EM 链进入 Spectre。"
       },
       {
         "id": "em-path",
-        "label": "电磁器件路径",
+        "label": "电磁器件联合优化",
         "focus": [
+          "suggesters",
           "engine",
           "pcell",
           "executor",
           "emx",
+          "spectre",
           "store"
         ],
-        "note": "pcell 生成几何并审计，EMX 全波仿真，结果按代际写入运行存储。"
+        "note": "em_circuit 链：优化器同时提几何与电路参数，pcell 生成 GDS+端口，EMX 全波得 sNp，bind_nport 把 sNp 绑进电路网表，Spectre/OCEAN 出整机指标。器件不单独优化；只到 EMX 的 em_only 链用于建库。"
       },
       {
         "id": "library-path",
@@ -48,7 +50,7 @@
       "url": "https://github.com/HAIDERZz/ic-opt-modular",
       "provider": "github",
       "link_mode": "web",
-      "revision": "a26ab9e3116b614c9b01263bf56e715d63da330b"
+      "revision": "7bf36e496a38d20d231c75c4c6960c2c48498ede"
     },
     "legend": {
       "mode": "auto",
@@ -469,6 +471,15 @@
       "to": "store",
       "label": "只读运行存储建数据集",
       "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "emx-spectre",
+      "from": "emx",
+      "to": "spectre",
+      "label": "sNp 绑进电路网表（bind_nport）",
+      "variant": "emphasis",
+      "fromSide": "bottom",
       "toSide": "bottom"
     }
   ]
