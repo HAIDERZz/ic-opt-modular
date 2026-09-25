@@ -1,0 +1,52 @@
+{
+  "ind_sym_ap": {
+    "rows": 516,
+    "parts": {
+      "ind_sym_ap": 458,
+      "ind_sym_ap_nt1": 58
+    },
+    "stored_reproduced": 516,
+    "mismatch": 0
+  },
+  "ind_sym_m10": {
+    "rows": 532,
+    "parts": {
+      "ind_sym_m10": 476,
+      "ind_sym_m10_nt1": 56
+    },
+    "stored_reproduced": 532,
+    "mismatch": 0
+  },
+  "xfm_bs_ap": {
+    "rows": 1641,
+    "parts": {
+      "xfm_bs_ap": 1641
+    },
+    "stored_reproduced": 1641,
+    "mismatch": 0
+  },
+  "xfm_bs_m10": {
+    "rows": 1581,
+    "parts": {
+      "xfm_bs_m10": 1581
+    },
+    "stored_reproduced": 1581,
+    "mismatch": 0
+  },
+  "xfm_ms_ap": {
+    "rows": 2440,
+    "parts": {
+      "xfm_ms_ap": 2440
+    },
+    "stored_reproduced": 2440,
+    "mismatch": 0
+  },
+  "xfm_ms_m10": {
+    "rows": 2370,
+    "parts": {
+      "xfm_ms_m10": 2370
+    },
+    "stored_reproduced": 2370,
+    "mismatch": 0
+  }
+}

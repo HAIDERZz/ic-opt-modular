@@ -1,0 +1,4064 @@
+{
+  "date": "2026-09-25",
+  "git": {
+    "head": "50baac1f4256068bc5d1c237f3ed2d2f9fd92c08",
+    "head_date": "2026-09-25 14:39:11 +0800",
+    "origin_main": "1128c7fad8871679b4c19032c69a76483bf2056b",
+    "ahead": 57,
+    "tags": [
+      "v0.1.1",
+      "v0.1.10",
+      "v0.1.2",
+      "v0.1.3",
+      "v0.1.4",
+      "v0.1.5",
+      "v0.1.6",
+      "v0.1.7",
+      "v0.1.8",
+      "v0.1.9",
+      "v0.2.0",
+      "v0.3.0"
+    ],
+    "v030": "ba1895bf9bd185ccd5b1ed0a5f09049a4339e569",
+    "commits_total": 164,
+    "commits_since_0922": 163
+  },
+  "version": "0.3.0",
+  "packages": [
+    {
+      "path": "src/ic_opt",
+      "label": "顶层模块",
+      "desc": "命令行、spec 模型、参数空间与目标、观测与运行存储、site 限额、配方装载、迁移、文件锁",
+      "files": 13,
+      "lines": 2410,
+      "modules": [
+        "_lock.py",
+        "cli.py",
+        "deck.py",
+        "migrate.py",
+        "migrate_store.py",
+        "objective.py",
+        "observation.py",
+        "recipe.py",
+        "site.py",
+        "space.py",
+        "spec.py",
+        "store.py"
+      ]
+    },
+    {
+      "path": "src/ic_opt/blocks",
+      "label": "blocks 可组合块",
+      "desc": "20 个自描述块：spec / points / sim / opt / analyze / netlist / env / em / lib",
+      "files": 9,
+      "lines": 1288,
+      "modules": [
+        "analyze.py",
+        "doctor.py",
+        "evaluate.py",
+        "library.py",
+        "netlist.py",
+        "optimize.py",
+        "points.py",
+        "profile.py"
+      ]
+    },
+    {
+      "path": "src/ic_opt/recipes",
+      "label": "recipes 配方",
+      "desc": "6 个 Python 配方：optimize、coarse_to_fine、fix_run、signoff、lib_design、lib_signoff",
+      "files": 7,
+      "lines": 282,
+      "modules": [
+        "coarse_to_fine.py",
+        "fix_run.py",
+        "lib_design.py",
+        "lib_signoff.py",
+        "optimize.py",
+        "signoff.py"
+      ]
+    },
+    {
+      "path": "src/ic_opt/eval",
+      "label": "eval 评估引擎",
+      "desc": "engine.run：并发调度、预算、资源包络、Ctrl-C 与超时传递",
+      "files": 3,
+      "lines": 431,
+      "modules": [
+        "engine.py",
+        "stage.py"
+      ]
+    },
+    {
+      "path": "src/ic_opt/stages",
+      "label": "stages 阶段流水线",
+      "desc": "spectre 链（netlist → spectre/ocean → 标量）与 EM 链（pcell → emx → bind_nport）",
+      "files": 3,
+      "lines": 554,
+      "modules": [
+        "em_chain.py",
+        "spectre_chain.py"
+      ]
+    },
+    {
+      "path": "src/ic_opt/executor",
+      "label": "executor 执行器",
+      "desc": "本地 / SSH 执行器、进程组与信号转发、命令超时",
+      "files": 5,
+      "lines": 567,
+      "modules": [
+        "base.py",
+        "local.py",
+        "process_group.py",
+        "ssh.py"
+      ]
+    },
+    {
+      "path": "src/ic_opt/sim",
+      "label": "sim 电路仿真",
+      "desc": "OCEAN 脚本生成与标量解析、网表 deck、角点",
+      "files": 4,
+      "lines": 400,
+      "modules": [
+        "corner.py",
+        "netlist.py",
+        "ocean.py"
+      ]
+    },
+    {
+      "path": "src/ic_opt/suggesters",
+      "label": "suggesters 建议器",
+      "desc": "TuRBO、OpenBox（默认）、Sobol / 拉丁超立方 / 随机",
+      "files": 5,
+      "lines": 345,
+      "modules": [
+        "base.py",
+        "openbox.py",
+        "random.py",
+        "turbo.py"
+      ]
+    },
+    {
+      "path": "src/ic_opt/em",
+      "label": "em EM 量测",
+      "desc": "EMX 设置与命令行、Touchstone 读写、nport 网表补丁、measure（sNp → 结果列）",
+      "files": 5,
+      "lines": 577,
+      "modules": [
+        "emx.py",
+        "measure.py",
+        "nport.py",
+        "touchstone.py"
+      ]
+    },
+    {
+      "path": "src/ic_opt/em/pcell",
+      "label": "em/pcell 几何库",
+      "desc": "六族无源器件生成器、工艺规则 profile、DRC 审计、金属栈、回放、参数参考",
+      "files": 30,
+      "lines": 13847,
+      "modules": [
+        "_pcell_core.py",
+        "_pcell_demo.py",
+        "_pcell_guards.py",
+        "_pcell_ind_sym.py",
+        "_pcell_primitives.py",
+        "_pcell_straight_extension.py",
+        "_pcell_xfm_balun.py",
+        "_pcell_xfm_bs.py",
+        "_pcell_xfm_il.py",
+        "_pcell_xfm_ms.py",
+        "_pcell_xfm_tw.py",
+        "base.py",
+        "connectivity.py",
+        "drc_audit.py",
+        "fixture.py",
+        "gds_compare.py",
+        "generator_plugin.py",
+        "path_safety.py",
+        "pcell_inductor_port_clean.py",
+        "pgs.py",
+        "proc_file.py",
+        "process_rules.py",
+        "profile_validation.py",
+        "reference.py",
+        "registry.py",
+        "render.py",
+        "replay.py",
+        "rule_adapter.py",
+        "stack.py"
+      ]
+    },
+    {
+      "path": "src/ic_opt/library",
+      "label": "library 器件查询库",
+      "desc": "清单、数据集、StratumGP / ComposedGP、域守卫、query / suggest / region / densify、缓存、阶段",
+      "files": 12,
+      "lines": 3418,
+      "modules": [
+        "cache.py",
+        "composed.py",
+        "dataset.py",
+        "densify.py",
+        "domain.py",
+        "gp.py",
+        "manifest.py",
+        "query.py",
+        "region.py",
+        "stage.py",
+        "suggest.py"
+      ]
+    }
+  ],
+  "totals": {
+    "src_files": 96,
+    "src_lines": 24119,
+    "test_files": 70,
+    "test_lines": 20143,
+    "test_functions": 900
+  },
+  "test_dirs": [
+    {
+      "dir": "tests",
+      "files": 1,
+      "lines": 1
+    },
+    {
+      "dir": "tests/ic_opt",
+      "files": 38,
+      "lines": 7806
+    },
+    {
+      "dir": "tests/ic_opt/pcell",
+      "files": 31,
+      "lines": 12336
+    }
+  ],
+  "blocks": [
+    {
+      "name": "analyze.best",
+      "desc": "Best feasible observations under the corner policy"
+    },
+    {
+      "name": "analyze.report",
+      "desc": "report.md + report.html with six sections and four figures"
+    },
+    {
+      "name": "em.validate_profile",
+      "desc": "Check a process profile: schema, consistency, site .proc (names, thicknesses, GDS layers), one device per family"
+    },
+    {
+      "name": "env.doctor",
+      "desc": "Check executor, tools, license, exports, site envelope, budget"
+    },
+    {
+      "name": "lib.coverage",
+      "desc": "What a stratum covers: rows, ranges, levels, quantities"
+    },
+    {
+      "name": "lib.densify",
+      "desc": "Where to simulate next: n geometries that cut the models' uncertainty most, for lib_signoff"
+    },
+    {
+      "name": "lib.load",
+      "desc": "Build or read each stratum's dataset; integrity evidence"
+    },
+    {
+      "name": "lib.query",
+      "desc": "Measured values, or predictions with calibrated bounds and domain verdicts"
+    },
+    {
+      "name": "lib.region",
+      "desc": "The region meeting target windows: robust and mean sweep ranges, groups, trend"
+    },
+    {
+      "name": "lib.suggest",
+      "desc": "Designs meeting targets with margin: measured first, then built predictions"
+    },
+    {
+      "name": "netlist.import",
+      "desc": "Fetch Maestro exports and template them into a Deck"
+    },
+    {
+      "name": "opt.optimize",
+      "desc": "Loop suggest ⇄ evaluate until the step holds its budget"
+    },
+    {
+      "name": "opt.suggest",
+      "desc": "Propose n new points from observations (stateless)"
+    },
+    {
+      "name": "points.fixed",
+      "desc": "User-listed points, validated against the grid"
+    },
+    {
+      "name": "points.from",
+      "desc": "Points of existing observations (e.g. top-k for a sign-off)"
+    },
+    {
+      "name": "points.grid",
+      "desc": "The full grid or an evenly thinned one"
+    },
+    {
+      "name": "points.one_at_a_time",
+      "desc": "Center plus ± one grid step per variable"
+    },
+    {
+      "name": "points.sobol",
+      "desc": "Space-filling points (sobol / latin_hypercube / random)"
+    },
+    {
+      "name": "sim.evaluate",
+      "desc": "Run the pipeline on points and append observations"
+    },
+    {
+      "name": "spec.load",
+      "desc": "Read spec.yaml into a validated Spec"
+    }
+  ],
+  "recipes": [
+    {
+      "name": "coarse_to_fine",
+      "desc": "Built-in recipe: coarse_to_fine — global search with OpenBox, then TuRBO refinement warm-started from it."
+    },
+    {
+      "name": "fix_run",
+      "desc": "Built-in recipe: fix_run — simulate user-listed points once, optionally with waveform exports."
+    },
+    {
+      "name": "lib_design",
+      "desc": "Built-in recipe: lib_design -- optimize a device on library predictions (no EMX), report the leaders with their bounds."
+    },
+    {
+      "name": "lib_signoff",
+      "desc": "Built-in recipe: lib_signoff -- run library candidates through real EMX, compare with the predictions, optionally adopt them."
+    },
+    {
+      "name": "optimize",
+      "desc": "Built-in recipe: optimize — today's \"optimize\" mode for any tb × corner shape."
+    },
+    {
+      "name": "signoff",
+      "desc": "Built-in recipe: signoff — optimize at one corner, then re-check the top-k across all corners."
+    }
+  ],
+  "cli": [
+    {
+      "name": "run",
+      "desc": "Run a recipe (``--plan`` first: it is the only approval point)."
+    },
+    {
+      "name": "blocks",
+      "desc": "List the blocks a recipe can compose."
+    },
+    {
+      "name": "describe",
+      "desc": "Signature and documentation of one block."
+    },
+    {
+      "name": "doctor",
+      "desc": "Check that the spec can run here (tools, license, exports, envelope, budget)."
+    },
+    {
+      "name": "migrate",
+      "desc": "opt_requirement.md (0.1) -> spec.yaml (0.2) plus a note with the recipe to use."
+    },
+    {
+      "name": "migrate-store",
+      "desc": "Restamp a store's observations with identities free of machine facts: the spec fingerprint without resources and"
+    },
+    {
+      "name": "call",
+      "desc": "Call one block; spec / executor / store / observations are filled in from the project (a library root fills in the library,"
+    }
+  ],
+  "docs": {
+    "core": [
+      {
+        "path": "README.md",
+        "lines": 320
+      },
+      {
+        "path": "CONTRIBUTING.md",
+        "lines": 23
+      },
+      {
+        "path": "RELEASE_NOTES_v0.3.0.md",
+        "lines": 130
+      },
+      {
+        "path": "docs/em/library.md",
+        "lines": 489
+      },
+      {
+        "path": "docs/em/devices.md",
+        "lines": 217
+      },
+      {
+        "path": "docs/adr/0001-remote-filesystem-boundary.md",
+        "lines": 96
+      },
+      {
+        "path": "skills/ic-opt/SKILL.md",
+        "lines": 77
+      },
+      {
+        "path": "skills/author-process-rule/SKILL.md",
+        "lines": 422
+      },
+      {
+        "path": "src/ic_opt/em/pcell/README.md",
+        "lines": 406
+      }
+    ],
+    "plans": [
+      {
+        "path": "docs/refactor/AUDIT_ENV_ASSUMPTIONS_2026-09-24_CN.md",
+        "lines": 92,
+        "title": "审查：把开发机约束或测试案例当成普遍情况的地方（2026-09-24）"
+      },
+      {
+        "path": "docs/refactor/BACKLOG_CN.md",
+        "lines": 99,
+        "title": "待办总表（阶段性收尾，2026-09-25）"
+      },
+      {
+        "path": "docs/refactor/DESIGN_CN.md",
+        "lines": 284,
+        "title": "IC-Opt 0.2 详细设计（实现契约）"
+      },
+      {
+        "path": "docs/refactor/EXECUTION_PLAN_CN.md",
+        "lines": 105,
+        "title": "执行计划（ic-opt 0.2 重构）"
+      },
+      {
+        "path": "docs/refactor/N28_DESENSITISATION_AUDIT_2026-09-25_CN.md",
+        "lines": 138,
+        "title": "N28 脱敏审计（2026-09-25，0.3.0 发布前，BACKLOG B-4 / RT-2）"
+      },
+      {
+        "path": "docs/refactor/REFACTOR_PLAN_CN.md",
+        "lines": 430,
+        "title": "IC-Opt 模块化重构方案（减法版）"
+      },
+      {
+        "path": "docs/refactor/REPORT_INVENTORY_CN.md",
+        "lines": 83,
+        "title": "现有报告与图表清单（决策 ⑦）"
+      },
+      {
+        "path": "docs/refactor/T10_LIBRARY_PLAN_CN.md",
+        "lines": 158,
+        "title": "T10：查询库（器件特性库 / 代理模型 / 逆向推荐）的嵌入方案"
+      },
+      {
+        "path": "docs/refactor/T13_11_METAL_INDEX_NOTES.md",
+        "lines": 44,
+        "title": "T13.11 metal positions from the profile (design record)"
+      },
+      {
+        "path": "docs/refactor/T13_LIBRARY_MODULE_PLAN_CN.md",
+        "lines": 147,
+        "title": "T13：器件查询库嵌入 ic-opt 的开发方案"
+      },
+      {
+        "path": "docs/refactor/T14_LIBRARY_REGION_PLAN_CN.md",
+        "lines": 189,
+        "title": "T14：查询库\"目标窗 → 可行参数区域\"（`lib.region`）开发方案"
+      },
+      {
+        "path": "docs/refactor/T15_NO_DEFAULT_RESOURCES_PLAN_CN.md",
+        "lines": 186,
+        "title": "T15：资源由用户指定、去掉开发环境假设"
+      },
+      {
+        "path": "docs/refactor/T16_PLAN_CN.md",
+        "lines": 185,
+        "title": "T16 方案：格点间精度的普遍解法 + 审查余项（2026-09-25）"
+      },
+      {
+        "path": "docs/refactor/T9_EM_PLAN_CN.md",
+        "lines": 209,
+        "title": "T9：把 em-opt 的 EM 能力作为阶段与模块并入 ic-opt"
+      }
+    ],
+    "analysis": [
+      {
+        "path": "docs/refactor/analysis/README.md",
+        "lines": 22
+      },
+      {
+        "path": "docs/refactor/analysis/em/01_em_evaluation_chain.md",
+        "lines": 415
+      },
+      {
+        "path": "docs/refactor/analysis/em/02_pcell_geometry_layer.md",
+        "lines": 1304
+      },
+      {
+        "path": "docs/refactor/analysis/em/03_device_db_and_surrogate.md",
+        "lines": 580
+      },
+      {
+        "path": "docs/refactor/analysis/em/04_recorded_data_and_fakes.md",
+        "lines": 481
+      },
+      {
+        "path": "docs/refactor/analysis/pcell/01_gdsfactory_v10_methodology.md",
+        "lines": 339
+      },
+      {
+        "path": "docs/refactor/analysis/pcell/02_pcell_modeling_critique.md",
+        "lines": 617
+      },
+      {
+        "path": "docs/refactor/analysis/pcell/03_d4_status.md",
+        "lines": 57
+      }
+    ]
+  },
+  "report_pages": [
+    {
+      "page": "IND_QUERY_VERIFY_CN.html",
+      "artifact": "LzQW9GC3berWR45jMzhgtn",
+      "note": "2026-09-25 按回流后的 1048 行重生成（cbbe008）"
+    },
+    {
+      "page": "T13_PLAN_CN.html",
+      "artifact": "9Kd6syDGfn56CXnXGo2qqJ",
+      "note": "T13 方案页"
+    },
+    {
+      "page": "XFM_QUERY_VERIFY_CN.html",
+      "artifact": "6MKZJ2QPf25CYocfPTJNZm",
+      "note": "ms 两表为高频加密后的重验"
+    },
+    {
+      "page": "IND_SIGNOFF_N28_CN.html",
+      "artifact": "6hBxsFKhvUo3vFMZfufryg",
+      "note": "电感 10 点真实复核，已回流"
+    },
+    {
+      "page": "XFM_SIGNOFF_N28_CN.html",
+      "artifact": "1izasWsgeg4BagNz6rrz5n",
+      "note": "变压器格点间 10 点真实复核，未回流（BACKLOG B-2）"
+    },
+    {
+      "page": "XFM_ANCHOR_MODEL_STUDY_CN.html",
+      "artifact": "GYPUVJwkAmSBM2aEyjFxmR",
+      "note": "T16.2a 锚定结果列（Lp@f0、k@f0 等按频率列出的量）的建模对照（不改产品代码）"
+    },
+    {
+      "page": "XFM_BS_40G_REGION_CN.html",
+      "artifact": "Gu4d8j12ikgSpeVrXusQG6",
+      "note": "40 GHz 单圈变压器扫参范围；v3 = 回流 10 行 + 谐振分解模型（T16.2b）后重生成"
+    },
+    {
+      "page": "XFM_BS_60G_REGION_CN.html",
+      "artifact": "4eCa3y9zBQ3LxDSs53A3Hs",
+      "note": "60 GHz 同上；v2 同 40 GHz 的 v3"
+    },
+    {
+      "page": "XFM_DENSIFY_B12_CN.html",
+      "artifact": "Pfa1MDmG4FoLDrsZqKKcep",
+      "note": "B-12 真实加密批：60 选点回流 xfm_bs_ap（1581→1641 行）+ 10 个独立测试点回流前后对比"
+    },
+    {
+      "page": "arch/region-60g.workflow.html",
+      "artifact": "HisZZFoUYYiMv3rjQKDbcz",
+      "note": "可行域查找流程图"
+    },
+    {
+      "page": "arch/t13-library-module.architecture.html",
+      "artifact": null,
+      "note": "`*.visual-check.*` 是浏览器检查证据"
+    },
+    {
+      "page": "PCELL_IMPROVEMENT_PLAN_CN.html",
+      "artifact": "U4vL284CytQFfe6DAncnk7",
+      "note": "PCell 打磨计划（T11）"
+    },
+    {
+      "page": "IND_LIBRARY_PLAN_CN.html",
+      "artifact": "3PwCq5MSpd9YpjbRZUEKQG",
+      "note": "电感建库提案"
+    },
+    {
+      "page": "IND_LIBRARY_N28_CN.html",
+      "artifact": "UxuKzJTt2WKitZu1W6NibU",
+      "note": "电感库审阅页"
+    },
+    {
+      "page": "XFM_LIBRARY_PLAN_CN.html",
+      "artifact": "NtoZwFEiSBrB3JKZA5KrJA",
+      "note": "变压器建库提案"
+    },
+    {
+      "page": "XFM_LIBRARY_N28_CN.html",
+      "artifact": "98KEBu2RDgmDuVr2nm8CRx",
+      "note": "变压器库审阅页（含加密批）"
+    },
+    {
+      "page": "smoke/pcell_random50/REPORT.html",
+      "artifact": "SbcEAt2h18v8eJyYQNSemh",
+      "note": "PCell 随机自检"
+    }
+  ],
+  "diagrams": [
+    {
+      "stem": "ic-opt-system-v030",
+      "kind": "architecture",
+      "title": "IC-Opt 0.3 系统结构",
+      "artifact": "Q2GCRD2WtGwpZHH8LvTFfG",
+      "nodes": 12,
+      "edges": 13,
+      "views": [
+        "一次优化运行",
+        "电磁器件路径",
+        "器件查询库"
+      ],
+      "visual_check": "pass"
+    },
+    {
+      "stem": "device-library-pipeline",
+      "kind": "dataflow",
+      "title": "器件查询库数据流",
+      "artifact": "T1NBTvFvkTtoEstp7ZvMqA",
+      "nodes": 9,
+      "edges": 9,
+      "views": [
+        "建库",
+        "建模",
+        "使用与回流"
+      ],
+      "visual_check": "pass"
+    }
+  ],
+  "graphify": {
+    "files": 267,
+    "words": 351279,
+    "nodes": 5165,
+    "edges": 12414,
+    "communities": 281,
+    "thin": 64,
+    "confidence": {
+      "EXTRACTED": 9607,
+      "INFERRED": 2807
+    },
+    "relations": [
+      [
+        "calls",
+        3865
+      ],
+      [
+        "contains",
+        2232
+      ],
+      [
+        "references",
+        1889
+      ],
+      [
+        "uses",
+        1882
+      ],
+      [
+        "rationale_for",
+        1400
+      ],
+      [
+        "method",
+        321
+      ],
+      [
+        "imports_from",
+        204
+      ],
+      [
+        "imports",
+        151
+      ]
+    ],
+    "summary": "- 5165 nodes · 12414 edges · 281 communities (232 shown, 49 thin omitted)\n- Extraction: 77% EXTRACTED · 23% INFERRED · 0% AMBIGUOUS · INFERRED: 2807 edges (avg confidence: 0.6)\n- Token cost: 1,520,202 input · 158,973 output",
+    "communities_top": [
+      {
+        "id": 0,
+        "label": "pcell 回归测试：tw 与工艺不变量",
+        "size": 155,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (155)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 1,
+        "label": "阶段流水线：EM 链与 Spectre 链",
+        "size": 138,
+        "files": [
+          "em_chain.py (57)",
+          "spectre_chain.py (30)",
+          "stage.py (19)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 2,
+        "label": "运行存储、优化块与评估块",
+        "size": 116,
+        "files": [
+          "store.py (23)",
+          "optimize.py (18)",
+          "evaluate.py (17)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 3,
+        "label": "pcell 回归测试：il 逃逸与桥",
+        "size": 107,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (107)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 4,
+        "label": "pcell 回归测试：写读与 balun/bs",
+        "size": 106,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (106)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 5,
+        "label": "建议器：TuRBO / OpenBox / Sobol",
+        "size": 96,
+        "files": [
+          "base.py (18)",
+          "turbo.py (16)",
+          "openbox.py (14)"
+        ],
+        "area": "spec / 空间 / 建议器"
+      },
+      {
+        "id": 6,
+        "label": "域守卫与电感查询验证脚本",
+        "size": 78,
+        "files": [
+          "ind_query_verify.py (26)",
+          "domain.py (23)",
+          "test_library_model.py (13)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 7,
+        "label": "pcell 核心：端口、地环夹具、族入口",
+        "size": 76,
+        "files": [
+          "_pcell_core.py (16)",
+          "_pcell_xfm_il.py (12)",
+          "fixture.py (11)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 8,
+        "label": "pcell 核心：金属/过孔与 il 生成",
+        "size": 74,
+        "files": [
+          "_pcell_core.py (50)",
+          "_pcell_xfm_il.py (17)",
+          "_pcell_ind_sym.py (4)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 9,
+        "label": "参数空间、目标与点集",
+        "size": 68,
+        "files": [
+          "space.py (25)",
+          "points.py (14)",
+          "objective.py (13)"
+        ],
+        "area": "spec / 空间 / 建议器"
+      },
+      {
+        "id": 10,
+        "label": "site.yaml 与 Run/配方装载",
+        "size": 66,
+        "files": [
+          "test_site.py (31)",
+          "recipe.py (11)",
+          "fix_run.py (5)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 12,
+        "label": "八边形几何与 balun 绕组",
+        "size": 54,
+        "files": [
+          "_pcell_core.py (17)",
+          "_pcell_ind_sym.py (11)",
+          "_pcell_xfm_balun.py (7)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 14,
+        "label": "pcell 图元：引线、交叉、对角",
+        "size": 54,
+        "files": [
+          "_pcell_primitives.py (35)",
+          "_pcell_core.py (6)",
+          "test_octagon.py (5)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 11,
+        "label": "工艺规则 profile 模型",
+        "size": 54,
+        "files": [
+          "process_rules.py (48)",
+          "rule_adapter.py (3)",
+          "test_geometry_process_rules.py (2)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 13,
+        "label": "查询库 lib.query 测试",
+        "size": 54,
+        "files": [
+          "test_library_query.py (45)",
+          "library_fixtures.py (2)",
+          "test_library_cache.py (2)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 15,
+        "label": "xfm_bs 区域报告脚本",
+        "size": 52,
+        "files": [
+          "xfm_bs_region_report.py (52)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 16,
+        "label": "金属栈映射与逐字节回放",
+        "size": 50,
+        "files": [
+          "stack.py (16)",
+          "pcell_byte_replay.py (15)",
+          "T13_11_METAL_INDEX_NOTES.md (10)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 17,
+        "label": "pcell 回归测试：ind_sym CT 与多圈",
+        "size": 49,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (49)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 18,
+        "label": "migrate-store 存储迁移",
+        "size": 46,
+        "files": [
+          "migrate_store.py (46)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 19,
+        "label": "lib.region 可行域核心",
+        "size": 45,
+        "files": [
+          "region.py (45)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 20,
+        "label": "pcell 守卫：绕组段与落点检查",
+        "size": 44,
+        "files": [
+          "_pcell_guards.py (21)",
+          "_pcell_core.py (14)",
+          "test_winding_segments.py (7)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 21,
+        "label": "EM 量测 measure 测试",
+        "size": 44,
+        "files": [
+          "test_em_measure.py (38)",
+          "library_fixtures.py (4)",
+          "fakes.py (2)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 22,
+        "label": "干净端口插件测试：stub 宽度",
+        "size": 44,
+        "files": [
+          "test_clean_port_generator_plugin.py (44)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 24,
+        "label": "xfm_tw 缠绕变压器生成器",
+        "size": 43,
+        "files": [
+          "_pcell_xfm_tw.py (42)",
+          "02_pcell_modeling_critique.md (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 23,
+        "label": "lib.densify 测试",
+        "size": 43,
+        "files": [
+          "test_library_densify.py (43)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 28,
+        "label": "profile 校验 validate_profile",
+        "size": 41,
+        "files": [
+          "profile_validation.py (33)",
+          "proc_file.py (6)",
+          "test_profile_validation.py (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 25,
+        "label": "工艺规则 profile 测试与夹具",
+        "size": 41,
+        "files": [
+          "test_geometry_process_rules.py (27)",
+          "conftest.py (5)",
+          "process_rules.py (4)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 26,
+        "label": "查询库测试夹具（变压器/谐振）",
+        "size": 41,
+        "files": [
+          "library_fixtures.py (22)",
+          "test_library_xfm.py (17)",
+          "test_library_densify.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 27,
+        "label": "ComposedGP 谐振分解测试",
+        "size": 41,
+        "files": [
+          "test_library_composed.py (41)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 29,
+        "label": "评估引擎 engine.run 与资源包络",
+        "size": 39,
+        "files": [
+          "engine.py (34)",
+          "site.py (2)",
+          "? (1)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 31,
+        "label": "pcell 回归测试：地环夹具与标签",
+        "size": 39,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (39)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 32,
+        "label": "profile 校验测试",
+        "size": 39,
+        "files": [
+          "test_profile_validation.py (39)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 30,
+        "label": "EM 引擎测试",
+        "size": 39,
+        "files": [
+          "test_em_engine.py (39)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 33,
+        "label": "lib.suggest 建议核心",
+        "size": 37,
+        "files": [
+          "suggest.py (37)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 34,
+        "label": "干净端口插件测试：xfm_il 配置",
+        "size": 37,
+        "files": [
+          "test_clean_port_generator_plugin.py (37)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 35,
+        "label": "变压器查询验证与报告脚本",
+        "size": 36,
+        "files": [
+          "xfm_query_report.py (20)",
+          "xfm_query_verify.py (16)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 36,
+        "label": "lib.region 测试",
+        "size": 35,
+        "files": [
+          "test_library_region.py (35)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 37,
+        "label": "生成器插件配置模型（xfm）",
+        "size": 34,
+        "files": [
+          "generator_plugin.py (33)",
+          "02_pcell_geometry_layer.md (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 38,
+        "label": "评估引擎测试",
+        "size": 34,
+        "files": [
+          "test_engine.py (29)",
+          "fakes.py (4)",
+          "test_blocks.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 41,
+        "label": "文件锁 _lock",
+        "size": 32,
+        "files": [
+          "test_lock.py (19)",
+          "_lock.py (12)",
+          "? (1)"
+        ],
+        "area": "测试"
+      }
+    ],
+    "all_communities": [
+      {
+        "id": 0,
+        "label": "pcell 回归测试：tw 与工艺不变量",
+        "size": 155,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (155)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 1,
+        "label": "阶段流水线：EM 链与 Spectre 链",
+        "size": 138,
+        "files": [
+          "em_chain.py (57)",
+          "spectre_chain.py (30)",
+          "stage.py (19)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 2,
+        "label": "运行存储、优化块与评估块",
+        "size": 116,
+        "files": [
+          "store.py (23)",
+          "optimize.py (18)",
+          "evaluate.py (17)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 3,
+        "label": "pcell 回归测试：il 逃逸与桥",
+        "size": 107,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (107)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 4,
+        "label": "pcell 回归测试：写读与 balun/bs",
+        "size": 106,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (106)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 5,
+        "label": "建议器：TuRBO / OpenBox / Sobol",
+        "size": 96,
+        "files": [
+          "base.py (18)",
+          "turbo.py (16)",
+          "openbox.py (14)"
+        ],
+        "area": "spec / 空间 / 建议器"
+      },
+      {
+        "id": 6,
+        "label": "域守卫与电感查询验证脚本",
+        "size": 78,
+        "files": [
+          "ind_query_verify.py (26)",
+          "domain.py (23)",
+          "test_library_model.py (13)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 7,
+        "label": "pcell 核心：端口、地环夹具、族入口",
+        "size": 76,
+        "files": [
+          "_pcell_core.py (16)",
+          "_pcell_xfm_il.py (12)",
+          "fixture.py (11)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 8,
+        "label": "pcell 核心：金属/过孔与 il 生成",
+        "size": 74,
+        "files": [
+          "_pcell_core.py (50)",
+          "_pcell_xfm_il.py (17)",
+          "_pcell_ind_sym.py (4)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 9,
+        "label": "参数空间、目标与点集",
+        "size": 68,
+        "files": [
+          "space.py (25)",
+          "points.py (14)",
+          "objective.py (13)"
+        ],
+        "area": "spec / 空间 / 建议器"
+      },
+      {
+        "id": 10,
+        "label": "site.yaml 与 Run/配方装载",
+        "size": 66,
+        "files": [
+          "test_site.py (31)",
+          "recipe.py (11)",
+          "fix_run.py (5)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 12,
+        "label": "八边形几何与 balun 绕组",
+        "size": 54,
+        "files": [
+          "_pcell_core.py (17)",
+          "_pcell_ind_sym.py (11)",
+          "_pcell_xfm_balun.py (7)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 14,
+        "label": "pcell 图元：引线、交叉、对角",
+        "size": 54,
+        "files": [
+          "_pcell_primitives.py (35)",
+          "_pcell_core.py (6)",
+          "test_octagon.py (5)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 11,
+        "label": "工艺规则 profile 模型",
+        "size": 54,
+        "files": [
+          "process_rules.py (48)",
+          "rule_adapter.py (3)",
+          "test_geometry_process_rules.py (2)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 13,
+        "label": "查询库 lib.query 测试",
+        "size": 54,
+        "files": [
+          "test_library_query.py (45)",
+          "library_fixtures.py (2)",
+          "test_library_cache.py (2)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 15,
+        "label": "xfm_bs 区域报告脚本",
+        "size": 52,
+        "files": [
+          "xfm_bs_region_report.py (52)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 16,
+        "label": "金属栈映射与逐字节回放",
+        "size": 50,
+        "files": [
+          "stack.py (16)",
+          "pcell_byte_replay.py (15)",
+          "T13_11_METAL_INDEX_NOTES.md (10)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 17,
+        "label": "pcell 回归测试：ind_sym CT 与多圈",
+        "size": 49,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (49)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 18,
+        "label": "migrate-store 存储迁移",
+        "size": 46,
+        "files": [
+          "migrate_store.py (46)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 19,
+        "label": "lib.region 可行域核心",
+        "size": 45,
+        "files": [
+          "region.py (45)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 20,
+        "label": "pcell 守卫：绕组段与落点检查",
+        "size": 44,
+        "files": [
+          "_pcell_guards.py (21)",
+          "_pcell_core.py (14)",
+          "test_winding_segments.py (7)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 21,
+        "label": "EM 量测 measure 测试",
+        "size": 44,
+        "files": [
+          "test_em_measure.py (38)",
+          "library_fixtures.py (4)",
+          "fakes.py (2)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 22,
+        "label": "干净端口插件测试：stub 宽度",
+        "size": 44,
+        "files": [
+          "test_clean_port_generator_plugin.py (44)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 24,
+        "label": "xfm_tw 缠绕变压器生成器",
+        "size": 43,
+        "files": [
+          "_pcell_xfm_tw.py (42)",
+          "02_pcell_modeling_critique.md (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 23,
+        "label": "lib.densify 测试",
+        "size": 43,
+        "files": [
+          "test_library_densify.py (43)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 28,
+        "label": "profile 校验 validate_profile",
+        "size": 41,
+        "files": [
+          "profile_validation.py (33)",
+          "proc_file.py (6)",
+          "test_profile_validation.py (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 25,
+        "label": "工艺规则 profile 测试与夹具",
+        "size": 41,
+        "files": [
+          "test_geometry_process_rules.py (27)",
+          "conftest.py (5)",
+          "process_rules.py (4)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 26,
+        "label": "查询库测试夹具（变压器/谐振）",
+        "size": 41,
+        "files": [
+          "library_fixtures.py (22)",
+          "test_library_xfm.py (17)",
+          "test_library_densify.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 27,
+        "label": "ComposedGP 谐振分解测试",
+        "size": 41,
+        "files": [
+          "test_library_composed.py (41)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 29,
+        "label": "评估引擎 engine.run 与资源包络",
+        "size": 39,
+        "files": [
+          "engine.py (34)",
+          "site.py (2)",
+          "? (1)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 31,
+        "label": "pcell 回归测试：地环夹具与标签",
+        "size": 39,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (39)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 32,
+        "label": "profile 校验测试",
+        "size": 39,
+        "files": [
+          "test_profile_validation.py (39)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 30,
+        "label": "EM 引擎测试",
+        "size": 39,
+        "files": [
+          "test_em_engine.py (39)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 33,
+        "label": "lib.suggest 建议核心",
+        "size": 37,
+        "files": [
+          "suggest.py (37)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 34,
+        "label": "干净端口插件测试：xfm_il 配置",
+        "size": 37,
+        "files": [
+          "test_clean_port_generator_plugin.py (37)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 35,
+        "label": "变压器查询验证与报告脚本",
+        "size": 36,
+        "files": [
+          "xfm_query_report.py (20)",
+          "xfm_query_verify.py (16)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 36,
+        "label": "lib.region 测试",
+        "size": 35,
+        "files": [
+          "test_library_region.py (35)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 37,
+        "label": "生成器插件配置模型（xfm）",
+        "size": 34,
+        "files": [
+          "generator_plugin.py (33)",
+          "02_pcell_geometry_layer.md (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 38,
+        "label": "评估引擎测试",
+        "size": 34,
+        "files": [
+          "test_engine.py (29)",
+          "fakes.py (4)",
+          "test_blocks.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 41,
+        "label": "文件锁 _lock",
+        "size": 32,
+        "files": [
+          "test_lock.py (19)",
+          "_lock.py (12)",
+          "? (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 40,
+        "label": "DRC 审计：金属规则与过孔包围",
+        "size": 32,
+        "files": [
+          "drc_audit.py (28)",
+          "render.py (4)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 42,
+        "label": "金属栈与过孔审计测试",
+        "size": 32,
+        "files": [
+          "test_audited_vias.py (16)",
+          "test_metal_stack.py (16)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 39,
+        "label": "分析文档：器件库与代理模型",
+        "size": 32,
+        "files": [
+          "03_device_db_and_surrogate.md (32)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 44,
+        "label": "pcell 演示/渲染与 GDS 写出",
+        "size": 31,
+        "files": [
+          "_pcell_core.py (22)",
+          "_pcell_demo.py (9)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 43,
+        "label": "GDS 审计与产品范围测试",
+        "size": 31,
+        "files": [
+          "test_clean_port_generator_plugin.py (23)",
+          "drc_audit.py (6)",
+          "test_metal_stack.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 46,
+        "label": "直线延伸端口 straight_extension",
+        "size": 30,
+        "files": [
+          "test_clean_port_straight_extension.py (16)",
+          "_pcell_straight_extension.py (8)",
+          "_pcell_core.py (6)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 45,
+        "label": "DRC 审计：金属索引与 CT 链",
+        "size": 30,
+        "files": [
+          "drc_audit.py (29)",
+          "02_pcell_modeling_critique.md (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 47,
+        "label": "pcell 回归测试：最小间距发现",
+        "size": 30,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (30)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 48,
+        "label": "env.doctor 环境检查",
+        "size": 29,
+        "files": [
+          "doctor.py (29)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 49,
+        "label": "EMX 设置与命令行",
+        "size": 29,
+        "files": [
+          "emx.py (18)",
+          "spec.py (8)",
+          "test_em_emx.py (3)"
+        ],
+        "area": "EM 量测 / EMX"
+      },
+      {
+        "id": 53,
+        "label": "几何规则适配器测试",
+        "size": 29,
+        "files": [
+          "test_geometry_rule_adapter.py (28)",
+          "rule_adapter.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 52,
+        "label": "ComposedGP 谐振分解模型",
+        "size": 29,
+        "files": [
+          "composed.py (29)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 51,
+        "label": "spec.yaml 模型 Spec",
+        "size": 29,
+        "files": [
+          "spec.py (28)",
+          "? (1)"
+        ],
+        "area": "spec / 空间 / 建议器"
+      },
+      {
+        "id": 50,
+        "label": "库阶段与 Spectre 链测试",
+        "size": 29,
+        "files": [
+          "test_library_stage.py (16)",
+          "test_spectre_chain.py (9)",
+          "fakes.py (2)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 54,
+        "label": "网表导入与块测试",
+        "size": 28,
+        "files": [
+          "test_em_circuit.py (10)",
+          "test_blocks.py (7)",
+          "netlist.py (4)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 55,
+        "label": "EM 量测 measure：sNp 到结果列",
+        "size": 28,
+        "files": [
+          "measure.py (28)"
+        ],
+        "area": "EM 量测 / EMX"
+      },
+      {
+        "id": 57,
+        "label": "migrate-store 测试",
+        "size": 28,
+        "files": [
+          "test_migrate_store.py (25)",
+          "spec.py (3)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 56,
+        "label": "库上限与 suggest 测试",
+        "size": 28,
+        "files": [
+          "test_library_ceiling.py (13)",
+          "test_library_suggest.py (6)",
+          "library_fixtures.py (5)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 59,
+        "label": "EMX 阶段测试",
+        "size": 27,
+        "files": [
+          "test_em_emx.py (22)",
+          "stage.py (3)",
+          "em_chain.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 60,
+        "label": "ic-opt migrate 旧工程迁移",
+        "size": 27,
+        "files": [
+          "migrate.py (26)",
+          "test_blocks.py (1)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 58,
+        "label": "待办总表与 T16 计划",
+        "size": 27,
+        "files": [
+          "BACKLOG_CN.md (14)",
+          "T16_PLAN_CN.md (4)",
+          "N28_DESENSITISATION_AUDIT_2026-09-25_CN.md (2)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 63,
+        "label": "数据集 dataset 构建",
+        "size": 26,
+        "files": [
+          "dataset.py (24)",
+          "cache.py (2)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 64,
+        "label": "StratumGP 模型",
+        "size": 26,
+        "files": [
+          "gp.py (26)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 61,
+        "label": "分析文档：录制数据与假件",
+        "size": 26,
+        "files": [
+          "04_recorded_data_and_fakes.md (25)",
+          "T9_EM_PLAN_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 62,
+        "label": "T10 库嵌入计划",
+        "size": 26,
+        "files": [
+          "T10_LIBRARY_PLAN_CN.md (25)",
+          "stratum_gp.py (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 65,
+        "label": "lib.* 块（blocks/library.py）",
+        "size": 25,
+        "files": [
+          "library.py (25)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 66,
+        "label": "lib.densify 补点核心",
+        "size": 25,
+        "files": [
+          "densify.py (25)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 67,
+        "label": "pcell 回归测试：tw 不变量",
+        "size": 25,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (25)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 68,
+        "label": "T9 EM 并入计划",
+        "size": 25,
+        "files": [
+          "T9_EM_PLAN_CN.md (25)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 70,
+        "label": "锚定量建模对照研究（run）",
+        "size": 24,
+        "files": [
+          "xfm_anchor_model_study.py (24)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 69,
+        "label": "analyze.report 报告块",
+        "size": 24,
+        "files": [
+          "analyze.py (24)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 71,
+        "label": "查询库缓存测试",
+        "size": 24,
+        "files": [
+          "test_library_cache.py (18)",
+          "library_fixtures.py (2)",
+          "test_library_densify.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 73,
+        "label": "配置金属位置测试",
+        "size": 24,
+        "files": [
+          "test_config_metal_positions.py (24)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 72,
+        "label": "执行器 SSH 测试",
+        "size": 24,
+        "files": [
+          "test_executor.py (24)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 75,
+        "label": "ic-opt 命令行 cli.py",
+        "size": 23,
+        "files": [
+          "cli.py (23)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 74,
+        "label": "执行器接口与远程边界 ADR",
+        "size": 23,
+        "files": [
+          "base.py (9)",
+          "REFACTOR_PLAN_CN.md (9)",
+          "CONTRIBUTING.md (2)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 77,
+        "label": "OCEAN 脚本与标量解析",
+        "size": 23,
+        "files": [
+          "ocean.py (10)",
+          "test_netlist_and_ocean.py (7)",
+          "spec.py (6)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 76,
+        "label": "查询库整体测试",
+        "size": 23,
+        "files": [
+          "test_library.py (22)",
+          "library_fixtures.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 78,
+        "label": "配方命令行测试",
+        "size": 23,
+        "files": [
+          "test_cli_recipes.py (23)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 79,
+        "label": "报告清单（决策⑦）",
+        "size": 23,
+        "files": [
+          "REPORT_INVENTORY_CN.md (23)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 84,
+        "label": "几何生成器注册表测试",
+        "size": 22,
+        "files": [
+          "test_geometry_registry_plugin.py (18)",
+          "registry.py (4)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 83,
+        "label": "Library 装载与拟合计划",
+        "size": 22,
+        "files": [
+          "query.py (22)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 81,
+        "label": "Library 拟合：谐振分解与校准",
+        "size": 22,
+        "files": [
+          "query.py (22)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 80,
+        "label": "查询库使用说明与 T13 方案",
+        "size": 22,
+        "files": [
+          "library.md (10)",
+          "T13_LIBRARY_MODULE_PLAN_CN.md (9)",
+          "SKILL.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 82,
+        "label": "T15 无默认资源计划",
+        "size": 22,
+        "files": [
+          "T15_NO_DEFAULT_RESOURCES_PLAN_CN.md (13)",
+          "T14_LIBRARY_REGION_PLAN_CN.md (1)",
+          "site.py (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 85,
+        "label": "分析证据脚本",
+        "size": 21,
+        "files": [
+          "test_repro_corner_rc_check.py (8)",
+          "import_graph.py (5)",
+          "count_config_reloads.py (3)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 86,
+        "label": "几何规则适配器",
+        "size": 21,
+        "files": [
+          "rule_adapter.py (19)",
+          "profile_validation.py (1)",
+          "02_pcell_modeling_critique.md (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 87,
+        "label": "SSH 执行器",
+        "size": 21,
+        "files": [
+          "ssh.py (19)",
+          "base.py (2)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 88,
+        "label": "报告页对照表与 manifest",
+        "size": 21,
+        "files": [
+          "INDEX_CN.md (13)",
+          "manifest.py (4)",
+          "BACKLOG_CN.md (3)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 89,
+        "label": "Library 模型文件与缓存名",
+        "size": 21,
+        "files": [
+          "query.py (21)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 91,
+        "label": "pcell 阶段与 DRC 门测试",
+        "size": 20,
+        "files": [
+          "test_plugin_drc_gate.py (9)",
+          "test_em_pcell.py (9)",
+          "stack.py (2)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 90,
+        "label": "T14 lib.region 计划",
+        "size": 20,
+        "files": [
+          "T14_LIBRARY_REGION_PLAN_CN.md (9)",
+          "query.py (2)",
+          "library.py (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 92,
+        "label": "重构方案：块层与决策",
+        "size": 20,
+        "files": [
+          "REFACTOR_PLAN_CN.md (19)",
+          "DESIGN_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 95,
+        "label": "lib_signoff 与文档测试",
+        "size": 19,
+        "files": [
+          "test_library_signoff.py (9)",
+          "test_library_docs.py (6)",
+          "recipe.py (2)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 96,
+        "label": "site.py 主机限额",
+        "size": 19,
+        "files": [
+          "site.py (17)",
+          "test_executor.py (2)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 93,
+        "label": "README 与 0.3.0 发布说明",
+        "size": 19,
+        "files": [
+          "README.md (14)",
+          "RELEASE_NOTES_v0.3.0.md (3)",
+          "0001-remote-filesystem-boundary.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 94,
+        "label": "旧需求样例（0.2.0 legacy）",
+        "size": 19,
+        "files": [
+          "RELEASE_NOTES_v0.2.0.md (2)",
+          "opt_requirement.md (2)",
+          "opt_requirement.history_warm_start.md (2)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 98,
+        "label": "锚定量建模对照研究（page）",
+        "size": 18,
+        "files": [
+          "xfm_anchor_model_study.py (18)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 99,
+        "label": "变压器谐振分解验收脚本",
+        "size": 18,
+        "files": [
+          "xfm_composed_acceptance.py (18)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 102,
+        "label": "变压器建库提案脚本",
+        "size": 18,
+        "files": [
+          "xfm_proposal.py (18)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 97,
+        "label": "pcell 建模评审与 D4 状态",
+        "size": 18,
+        "files": [
+          "02_pcell_modeling_critique.md (6)",
+          "_pcell_guards.py (3)",
+          "03_d4_status.md (3)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 100,
+        "label": "执行器基类与错误",
+        "size": 18,
+        "files": [
+          "base.py (12)",
+          "test_executor.py (4)",
+          "local.py (2)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 105,
+        "label": "lib_signoff 配方",
+        "size": 18,
+        "files": [
+          "lib_signoff.py (18)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 103,
+        "label": "干净端口插件测试：xfm_bs 与 PGS",
+        "size": 18,
+        "files": [
+          "test_clean_port_generator_plugin.py (13)",
+          "test_clean_port_pgs.py (5)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 104,
+        "label": "profile 校验生成测试",
+        "size": 18,
+        "files": [
+          "test_profile_validation_generation.py (18)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 101,
+        "label": "执行器超时/中断测试",
+        "size": 18,
+        "files": [
+          "test_executor.py (18)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 110,
+        "label": "锚定量研究：发现与表格",
+        "size": 17,
+        "files": [
+          "xfm_anchor_model_study.py (17)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 111,
+        "label": "生成器插件：配置与结果类型",
+        "size": 17,
+        "files": [
+          "generator_plugin.py (13)",
+          "base.py (1)",
+          "? (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 107,
+        "label": "本地执行器",
+        "size": 17,
+        "files": [
+          "local.py (10)",
+          "test_executor.py (7)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 109,
+        "label": "Library 线程预算与拟合计划",
+        "size": 17,
+        "files": [
+          "query.py (17)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 106,
+        "label": "网表模板 netlist.py",
+        "size": 17,
+        "files": [
+          "netlist.py (17)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 108,
+        "label": "EM 回放一致性测试",
+        "size": 17,
+        "files": [
+          "test_em_replay.py (12)",
+          "test_replay_parity.py (3)",
+          "fakes.py (2)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 114,
+        "label": "锚定量研究：方法表",
+        "size": 16,
+        "files": [
+          "xfm_anchor_model_study.py (16)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 112,
+        "label": "进程组 process_group",
+        "size": 16,
+        "files": [
+          "process_group.py (16)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 113,
+        "label": "库缓存目录 cache.py",
+        "size": 16,
+        "files": [
+          "cache.py (16)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 115,
+        "label": "随机器件自检 random50",
+        "size": 15,
+        "files": [
+          "random50.py (13)",
+          "library_drift_scan.py (2)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 117,
+        "label": "生成器插件：il/tw 配置与 CT 契约",
+        "size": 15,
+        "files": [
+          "generator_plugin.py (10)",
+          "02_pcell_geometry_layer.md (5)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 118,
+        "label": "Spec 角点与路径工具",
+        "size": 15,
+        "files": [
+          "spec.py (12)",
+          "ssh.py (3)"
+        ],
+        "area": "spec / 空间 / 建议器"
+      },
+      {
+        "id": 120,
+        "label": "库清单 manifest.py",
+        "size": 15,
+        "files": [
+          "manifest.py (14)",
+          "? (1)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 121,
+        "label": "Library 预测与覆盖",
+        "size": 15,
+        "files": [
+          "query.py (15)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 119,
+        "label": "测试假件 fakes.py",
+        "size": 15,
+        "files": [
+          "fakes.py (15)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 122,
+        "label": "干净端口插件测试：xfm_tw",
+        "size": 15,
+        "files": [
+          "test_clean_port_generator_plugin.py (15)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 123,
+        "label": "黄金 GDS 端口/栈/连通测试",
+        "size": 15,
+        "files": [
+          "test_connectivity.py (4)",
+          "test_ports.py (4)",
+          "test_stack.py (4)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 116,
+        "label": "分析文档：EM 评估链（缓存）",
+        "size": 15,
+        "files": [
+          "01_em_evaluation_chain.md (5)",
+          "emx_runner.py (2)",
+          "em_cache.py (2)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 125,
+        "label": "变压器网格 xfm_grid",
+        "size": 14,
+        "files": [
+          "xfm_grid.py (14)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 127,
+        "label": "制造网格测试",
+        "size": 14,
+        "files": [
+          "test_manufacturing_grid.py (11)",
+          "drc_audit.py (3)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 126,
+        "label": "器件参数参考 devices.md",
+        "size": 14,
+        "files": [
+          "devices.md (10)",
+          "README.md (4)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 124,
+        "label": "旧工程产物类别（分析）",
+        "size": 14,
+        "files": [
+          "file_contract_artifacts.txt (2)",
+          "package.py (1)",
+          "cli.py (1)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 128,
+        "label": "块自描述与 ic-opt call",
+        "size": 13,
+        "files": [
+          "__init__.py (5)",
+          "REFACTOR_PLAN_CN.md (5)",
+          "DESIGN_CN.md (3)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 131,
+        "label": "库回放 replay.py",
+        "size": 13,
+        "files": [
+          "replay.py (11)",
+          "generator_plugin.py (2)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 129,
+        "label": "opt.optimize 测试",
+        "size": 13,
+        "files": [
+          "test_optimize.py (11)",
+          "fakes.py (2)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 132,
+        "label": "干净端口插件测试：xfm_ms",
+        "size": 13,
+        "files": [
+          "test_clean_port_generator_plugin.py (13)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 134,
+        "label": "pcell 回归测试：HUD 交叉",
+        "size": 13,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (13)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 133,
+        "label": "pcell 回归测试：端口在引线区",
+        "size": 13,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (13)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 130,
+        "label": "远程 .proc profile 测试",
+        "size": 13,
+        "files": [
+          "test_profile_remote_proc.py (13)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 146,
+        "label": "变压器库报告脚本",
+        "size": 12,
+        "files": [
+          "xfm_library_report.py (12)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 136,
+        "label": "T13 查询库模块概览",
+        "size": 12,
+        "files": [
+          "profile.py (6)",
+          "EXECUTION_PLAN_CN.md (1)",
+          "__init__.py (1)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 135,
+        "label": "生成器基类与 EMX 端口读取",
+        "size": 12,
+        "files": [
+          "base.py (11)",
+          "? (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 145,
+        "label": "生成器插件：配置基类校验",
+        "size": 12,
+        "files": [
+          "generator_plugin.py (12)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 144,
+        "label": "生成器插件：generate 与夹具",
+        "size": 12,
+        "files": [
+          "generator_plugin.py (12)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 140,
+        "label": "参数参考生成 reference.py",
+        "size": 12,
+        "files": [
+          "reference.py (10)",
+          "generator_plugin.py (2)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 138,
+        "label": "生成器插件：写出与结构审计",
+        "size": 12,
+        "files": [
+          "generator_plugin.py (9)",
+          "path_safety.py (2)",
+          "02_pcell_geometry_layer.md (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 139,
+        "label": "Touchstone 读写",
+        "size": 12,
+        "files": [
+          "touchstone.py (12)"
+        ],
+        "area": "EM 量测 / EMX"
+      },
+      {
+        "id": 142,
+        "label": "Dataset 查找与峰值",
+        "size": 12,
+        "files": [
+          "dataset.py (12)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 143,
+        "label": "densify 选择与评分",
+        "size": 12,
+        "files": [
+          "densify.py (12)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 147,
+        "label": "pcell 回归测试：balun",
+        "size": 12,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (12)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 141,
+        "label": "gdsfactory v10 方法论",
+        "size": 12,
+        "files": [
+          "01_gdsfactory_v10_methodology.md (12)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 148,
+        "label": "执行计划：T8/T9/0.3.0",
+        "size": 12,
+        "files": [
+          "EXECUTION_PLAN_CN.md (7)",
+          "T9_EM_PLAN_CN.md (1)",
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 137,
+        "label": "设计文档：决策②③与迁移",
+        "size": 12,
+        "files": [
+          "DESIGN_CN.md (6)",
+          "01_em_evaluation_chain.md (3)",
+          "04_recorded_data_and_fakes.md (2)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 149,
+        "label": "变压器库完成检查",
+        "size": 11,
+        "files": [
+          "xfm_library_check.py (11)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 151,
+        "label": "干净安装检查脚本",
+        "size": 11,
+        "files": [
+          "check_clean_install.sh (10)",
+          "T15_NO_DEFAULT_RESOURCES_PLAN_CN.md (1)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 150,
+        "label": "指纹与 physics_key（T15.2）",
+        "size": 11,
+        "files": [
+          "cli.py (7)",
+          "emx.py (2)",
+          "T15_NO_DEFAULT_RESOURCES_PLAN_CN.md (1)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 152,
+        "label": "干净端口插件测试：balun 与 stub",
+        "size": 11,
+        "files": [
+          "test_clean_port_generator_plugin.py (11)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 153,
+        "label": "干净端口插件测试：端口格点",
+        "size": 11,
+        "files": [
+          "test_clean_port_generator_plugin.py (11)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 154,
+        "label": "端口间距测试",
+        "size": 11,
+        "files": [
+          "test_port_spacing.py (11)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 157,
+        "label": "锚定量研究：回流行",
+        "size": 10,
+        "files": [
+          "xfm_anchor_model_study.py (10)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 158,
+        "label": "EMX 内存模型与渲染",
+        "size": 10,
+        "files": [
+          "xfm_memory.py (6)",
+          "render.py (4)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 164,
+        "label": "打包测试 test_packaging",
+        "size": 10,
+        "files": [
+          "test_packaging.py (10)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 162,
+        "label": "待办 R-23 / N-1..N-5",
+        "size": 10,
+        "files": [
+          "BACKLOG_CN.md (7)",
+          "T16_PLAN_CN.md (1)",
+          "query.py (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 160,
+        "label": "N28 脱敏审计 O-1..O-4",
+        "size": 10,
+        "files": [
+          "BACKLOG_CN.md (5)",
+          "N28_DESENSITISATION_AUDIT_2026-09-25_CN.md (3)",
+          "generator_plugin.py (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 155,
+        "label": "旧工程模块：多 TB 聚合与 nport",
+        "size": 10,
+        "files": [
+          "file_contract_artifacts.txt (2)",
+          "01_em_evaluation_chain.md (2)",
+          "validate.py (1)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 163,
+        "label": "gdsfactory 组件与 DRC 引擎",
+        "size": 10,
+        "files": [
+          "01_gdsfactory_v10_methodology.md (10)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 161,
+        "label": "执行计划：T11/T12 pcell 与建库",
+        "size": 10,
+        "files": [
+          "EXECUTION_PLAN_CN.md (7)",
+          "__init__.py (1)",
+          "PCELL_IMPROVEMENT_PLAN_CN.html (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 165,
+        "label": "执行计划：T14/T15/T16",
+        "size": 10,
+        "files": [
+          "EXECUTION_PLAN_CN.md (5)",
+          "T14_LIBRARY_REGION_PLAN_CN.md (1)",
+          "XFM_BS_40G_REGION_CN.html (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 156,
+        "label": "T13 分层与结果列决策",
+        "size": 10,
+        "files": [
+          "T13_LIBRARY_MODULE_PLAN_CN.md (10)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 159,
+        "label": "pcell 指纹与 profile 搜索路径",
+        "size": 10,
+        "files": [
+          "02_pcell_geometry_layer.md (10)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 174,
+        "label": "GDS 物理比较 gds_compare",
+        "size": 9,
+        "files": [
+          "gds_compare.py (8)",
+          "test_golden.py (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 169,
+        "label": "插件模块注册 registry.py",
+        "size": 9,
+        "files": [
+          "registry.py (8)",
+          "02_pcell_geometry_layer.md (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 171,
+        "label": "SSH 执行器脚本细节",
+        "size": 9,
+        "files": [
+          "ssh.py (9)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 173,
+        "label": "库作为流水线阶段 stage.py",
+        "size": 9,
+        "files": [
+          "stage.py (9)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 175,
+        "label": "回放测试 test_replay",
+        "size": 9,
+        "files": [
+          "test_replay.py (9)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 170,
+        "label": "录制数据与假件（模块）",
+        "size": 9,
+        "files": [
+          "04_recorded_data_and_fakes.md (7)",
+          "test_replay_parity.py (2)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 172,
+        "label": "spec/space/objective 测试",
+        "size": 9,
+        "files": [
+          "test_spec_space_objective.py (9)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 167,
+        "label": "author-process-rule 技能",
+        "size": 9,
+        "files": [
+          "README.md (3)",
+          "SKILL.md (3)",
+          "T13_LIBRARY_MODULE_PLAN_CN.md (2)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 166,
+        "label": "旧工程产物：runs/ledger/state",
+        "size": 9,
+        "files": [
+          "file_contract_artifacts.txt (4)",
+          "real_run.py (1)",
+          "real_run_recovery.py (1)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 168,
+        "label": "pcell 几何层分析",
+        "size": 9,
+        "files": [
+          "02_pcell_geometry_layer.md (9)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 182,
+        "label": "变压器复核报告脚本",
+        "size": 8,
+        "files": [
+          "xfm_signoff_report.py (8)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 177,
+        "label": "随机器件报告脚本",
+        "size": 8,
+        "files": [
+          "random50_report.py (8)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 176,
+        "label": "analyze：目标函数 AST 评分",
+        "size": 8,
+        "files": [
+          "analyze.py (8)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 179,
+        "label": "nport.py 网表补丁",
+        "size": 8,
+        "files": [
+          "nport.py (7)",
+          "? (1)"
+        ],
+        "area": "EM 量测 / EMX"
+      },
+      {
+        "id": 181,
+        "label": "Library 模型读写",
+        "size": 8,
+        "files": [
+          "query.py (8)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 183,
+        "label": "author-process-rule 技能测试",
+        "size": 8,
+        "files": [
+          "test_author_process_rule_skill.py (8)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 180,
+        "label": "库验收门测试 G1/G2",
+        "size": 8,
+        "files": [
+          "test_library_gates.py (8)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 184,
+        "label": "B-1/B-12/N-17 与加密页",
+        "size": 8,
+        "files": [
+          "T16_PLAN_CN.md (4)",
+          "BACKLOG_CN.md (3)",
+          "XFM_DENSIFY_B12_CN.html (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 178,
+        "label": "分析文档：EM 失败分类",
+        "size": 8,
+        "files": [
+          "01_em_evaluation_chain.md (3)",
+          "em_optimizer_evaluator.py (2)",
+          "schemas.py (1)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 187,
+        "label": "电感数据集脚本",
+        "size": 7,
+        "files": [
+          "ind_dataset.py (7)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 188,
+        "label": "电感网格脚本",
+        "size": 7,
+        "files": [
+          "ind_grid.py (7)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 189,
+        "label": "电感建库脚本",
+        "size": 7,
+        "files": [
+          "ind_library.py (7)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 195,
+        "label": "电感库报告脚本",
+        "size": 7,
+        "files": [
+          "ind_library_report.py (7)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 196,
+        "label": "变压器加密脚本",
+        "size": 7,
+        "files": [
+          "xfm_densify.py (7)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 185,
+        "label": "cli 主入口与版本",
+        "size": 7,
+        "files": [
+          "cli.py (7)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 194,
+        "label": "Library 谐振分解折叠",
+        "size": 7,
+        "files": [
+          "query.py (7)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 192,
+        "label": "Spec 指纹与问题标识",
+        "size": 7,
+        "files": [
+          "spec.py (7)"
+        ],
+        "area": "spec / 空间 / 建议器"
+      },
+      {
+        "id": 197,
+        "label": "干净端口插件测试：端口格点失败",
+        "size": 7,
+        "files": [
+          "test_clean_port_generator_plugin.py (7)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 199,
+        "label": "pcell 回归测试：连通性",
+        "size": 7,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (7)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 198,
+        "label": "pcell 回归测试：地环模式",
+        "size": 7,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (7)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 193,
+        "label": "运行存储测试",
+        "size": 7,
+        "files": [
+          "test_store.py (7)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 200,
+        "label": "T16.4 doctor/Spectre 组",
+        "size": 7,
+        "files": [
+          "BACKLOG_CN.md (5)",
+          "T16_PLAN_CN.md (1)",
+          "spectre_chain.py (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 186,
+        "label": "gdsfactory 路径与截面",
+        "size": 7,
+        "files": [
+          "01_gdsfactory_v10_methodology.md (7)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 190,
+        "label": "分析文档：EM 电路评估步骤",
+        "size": 7,
+        "files": [
+          "01_em_evaluation_chain.md (5)",
+          "m3_circuit_preparation.py (1)",
+          "em_circuit_evaluator.py (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 191,
+        "label": "pcell 六族与 PGS 概念",
+        "size": 7,
+        "files": [
+          "02_pcell_geometry_layer.md (7)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 203,
+        "label": "region 验收脚本",
+        "size": 6,
+        "files": [
+          "region_acceptance.py (6)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 204,
+        "label": "profile 校验报告类",
+        "size": 6,
+        "files": [
+          "profile_validation.py (6)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 201,
+        "label": "Stage 指纹与记录",
+        "size": 6,
+        "files": [
+          "stage.py (5)",
+          "01_em_evaluation_chain.md (1)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 202,
+        "label": "ComposedGP 留出与合并",
+        "size": 6,
+        "files": [
+          "composed.py (6)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 205,
+        "label": "过孔审计测试",
+        "size": 6,
+        "files": [
+          "test_clean_port_generator_plugin.py (6)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 211,
+        "label": "电感复核报告脚本",
+        "size": 5,
+        "files": [
+          "ind_signoff_report.py (5)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 212,
+        "label": "T13 方案页脚本",
+        "size": 5,
+        "files": [
+          "t13_plan_page.py (5)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 206,
+        "label": "锚定量研究：单次拟合",
+        "size": 5,
+        "files": [
+          "xfm_anchor_model_study.py (5)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 207,
+        "label": "电感库完成检查",
+        "size": 5,
+        "files": [
+          "ind_library_check.py (5)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 208,
+        "label": "电感先导批报告",
+        "size": 5,
+        "files": [
+          "ind_pilot_report.py (5)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 209,
+        "label": "变压器先导批报告",
+        "size": 5,
+        "files": [
+          "xfm_pilot_report.py (5)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 213,
+        "label": "pcell 核心：金属区域",
+        "size": 5,
+        "files": [
+          "_pcell_core.py (5)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 210,
+        "label": "pcell README 与许可",
+        "size": 5,
+        "files": [
+          "pcell_inductor_port_clean.py (2)",
+          "README.md (1)",
+          "02_pcell_modeling_critique.md (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 215,
+        "label": "pcell 回归测试：tw 腿 45°",
+        "size": 5,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (5)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 214,
+        "label": "pcell 回归测试：add_emx_port 不变量",
+        "size": 5,
+        "files": [
+          "test_pcell_inductor_python_port_clean.py (5)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 216,
+        "label": "渲染测试 test_render",
+        "size": 5,
+        "files": [
+          "test_render.py (5)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 219,
+        "label": "D4 网格脚本",
+        "size": 4,
+        "files": [
+          "d4_grid.py (4)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 217,
+        "label": "render_gds 脚本",
+        "size": 4,
+        "files": [
+          "render_gds.py (4)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 220,
+        "label": "加密选点脚本",
+        "size": 4,
+        "files": [
+          "xfm_densify_select.py (4)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 218,
+        "label": "连通性 connectivity.py",
+        "size": 4,
+        "files": [
+          "connectivity.py (4)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 221,
+        "label": "地环夹具测试",
+        "size": 4,
+        "files": [
+          "test_fixture.py (4)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 222,
+        "label": "参数参考测试",
+        "size": 4,
+        "files": [
+          "test_reference.py (4)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 223,
+        "label": "重构方案：D1 WHAT/HOW",
+        "size": 4,
+        "files": [
+          "REFACTOR_PLAN_CN.md (4)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 224,
+        "label": "隔离 SSH 冒烟脚本",
+        "size": 3,
+        "files": [
+          "isolated_ssh_smoke.sh (3)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 227,
+        "label": "电感复核候选脚本",
+        "size": 3,
+        "files": [
+          "ind_signoff_candidates.py (3)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 228,
+        "label": "变压器复核候选脚本",
+        "size": 3,
+        "files": [
+          "xfm_signoff_candidates.py (3)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 226,
+        "label": "示例配方 sweep",
+        "size": 3,
+        "files": [
+          "sweep.py (3)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 229,
+        "label": "pcell 包入口",
+        "size": 3,
+        "files": [
+          "__init__.py (3)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 225,
+        "label": "GDS 写出确定性",
+        "size": 3,
+        "files": [
+          "test_clean_port_generator_plugin.py (2)",
+          "02_pcell_geometry_layer.md (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 230,
+        "label": "生成-审计契约测试",
+        "size": 3,
+        "files": [
+          "test_generate_audit_contract.py (3)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 231,
+        "label": "B-6 / RT-3 / T16",
+        "size": 3,
+        "files": [
+          "BACKLOG_CN.md (2)",
+          "T16_PLAN_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 232,
+        "label": "outline.py",
+        "size": 2,
+        "files": [
+          "outline.py (2)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 242,
+        "label": "xfm_srf_jump_fig.py",
+        "size": 2,
+        "files": [
+          "xfm_srf_jump_fig.py (2)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 243,
+        "label": "d4_probe.py",
+        "size": 2,
+        "files": [
+          "d4_probe.py (2)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 244,
+        "label": "demo_families.py",
+        "size": 2,
+        "files": [
+          "demo_families.py (2)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 237,
+        "label": "ind_progress.sh script",
+        "size": 2,
+        "files": [
+          "ind_progress.sh (2)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 245,
+        "label": "wps_locate.py",
+        "size": 2,
+        "files": [
+          "wps_locate.py (2)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 238,
+        "label": "xfm_progress.sh script",
+        "size": 2,
+        "files": [
+          "xfm_progress.sh (2)"
+        ],
+        "area": "报告脚本"
+      },
+      {
+        "id": 239,
+        "label": "IC-Opt 0.3: composable blocks ",
+        "size": 2,
+        "files": [
+          "__init__.py (2)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 235,
+        "label": "__init__.py",
+        "size": 2,
+        "files": [
+          "__init__.py (2)"
+        ],
+        "area": "EM 量测 / EMX"
+      },
+      {
+        "id": 241,
+        "label": "__init__.py",
+        "size": 2,
+        "files": [
+          "__init__.py (2)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 240,
+        "label": ".unavailable_nt()",
+        "size": 2,
+        "files": [
+          "composed.py (2)"
+        ],
+        "area": "器件查询库"
+      },
+      {
+        "id": 249,
+        "label": ".identity()",
+        "size": 2,
+        "files": [
+          "em_chain.py (2)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 236,
+        "label": "executor/base.py",
+        "size": 2,
+        "files": [
+          "base.py (1)",
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 246,
+        "label": "B-4: N28 desensitisation befor",
+        "size": 2,
+        "files": [
+          "BACKLOG_CN.md (2)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 247,
+        "label": "B-5: v0.2.0-era project store ",
+        "size": 2,
+        "files": [
+          "BACKLOG_CN.md (2)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 248,
+        "label": "B-9: O-3: public git history s",
+        "size": 2,
+        "files": [
+          "BACKLOG_CN.md (1)",
+          "N28_DESENSITISATION_AUDIT_2026-09-25_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 234,
+        "label": "license_probe module",
+        "size": 2,
+        "files": [
+          "remote_ssh.py (1)",
+          "license_probe.py (1)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 233,
+        "label": "fix_run_models module",
+        "size": 2,
+        "files": [
+          "fix_run_models.py (1)",
+          "metric_results.py (1)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 253,
+        "label": "__init__.py",
+        "size": 1,
+        "files": [
+          "__init__.py (1)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 254,
+        "label": "__init__.py",
+        "size": 1,
+        "files": [
+          "__init__.py (1)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 259,
+        "label": "__init__.py",
+        "size": 1,
+        "files": [
+          "__init__.py (1)"
+        ],
+        "area": "块 / 配方 / 命令行"
+      },
+      {
+        "id": 276,
+        "label": "__init__.py",
+        "size": 1,
+        "files": [
+          "__init__.py (1)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 278,
+        "label": "__init__.py",
+        "size": 1,
+        "files": [
+          "__init__.py (1)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 257,
+        "label": "__init__.py",
+        "size": 1,
+        "files": [
+          "__init__.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 279,
+        "label": "__init__.py",
+        "size": 1,
+        "files": [
+          "__init__.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 280,
+        "label": "__init__.py",
+        "size": 1,
+        "files": [
+          "__init__.py (1)"
+        ],
+        "area": "测试"
+      },
+      {
+        "id": 277,
+        "label": "site.py (Site resource default",
+        "size": 1,
+        "files": [
+          "site.py (1)"
+        ],
+        "area": "引擎 / 阶段 / 执行器 / 存储"
+      },
+      {
+        "id": 260,
+        "label": "B-3: TuRBO long-term dependenc",
+        "size": 1,
+        "files": [
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 263,
+        "label": "W-1: git push origin main",
+        "size": 1,
+        "files": [
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 264,
+        "label": "W-2: Bump version to 0.3.0 (T1",
+        "size": 1,
+        "files": [
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 265,
+        "label": "W-3: Gitignore .claude/worktre",
+        "size": 1,
+        "files": [
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 266,
+        "label": "W-4: Update EXECUTION_PLAN_CN.",
+        "size": 1,
+        "files": [
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 267,
+        "label": "W-5: Retain N28 library migrat",
+        "size": 1,
+        "files": [
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 268,
+        "label": "W-6: Memory cleanup",
+        "size": 1,
+        "files": [
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 261,
+        "label": "RT-4: Claude merges and accept",
+        "size": 1,
+        "files": [
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 262,
+        "label": "RT-5: User pushes origin main ",
+        "size": 1,
+        "files": [
+          "BACKLOG_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 274,
+        "label": "N28 process-fact scope definit",
+        "size": 1,
+        "files": [
+          "N28_DESENSITISATION_AUDIT_2026-09-25_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 273,
+        "label": "S-01..S-12: source-code sensit",
+        "size": 1,
+        "files": [
+          "N28_DESENSITISATION_AUDIT_2026-09-25_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 275,
+        "label": "T-01..T-05: test-suite sensiti",
+        "size": 1,
+        "files": [
+          "N28_DESENSITISATION_AUDIT_2026-09-25_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 272,
+        "label": "D-01..D-08: doc/report-script ",
+        "size": 1,
+        "files": [
+          "N28_DESENSITISATION_AUDIT_2026-09-25_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 270,
+        "label": "B-01..B-09: reviewed and judge",
+        "size": 1,
+        "files": [
+          "N28_DESENSITISATION_AUDIT_2026-09-25_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 271,
+        "label": "Build-artifact desensitisation",
+        "size": 1,
+        "files": [
+          "N28_DESENSITISATION_AUDIT_2026-09-25_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 250,
+        "label": "History Artifact Category",
+        "size": 1,
+        "files": [
+          "file_contract_artifacts.txt (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 252,
+        "label": "reports module",
+        "size": 1,
+        "files": [
+          "reports.py (1)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 251,
+        "label": "optimizer_continuation_flow mo",
+        "size": 1,
+        "files": [
+          "optimizer_continuation_flow.py (1)"
+        ],
+        "area": "技能 / 脚本 / 其他"
+      },
+      {
+        "id": 256,
+        "label": "gdsfactory v10.0.0rc0",
+        "size": 1,
+        "files": [
+          "01_gdsfactory_v10_methodology.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 255,
+        "label": "gdsfactory from_yaml declarati",
+        "size": 1,
+        "files": [
+          "01_gdsfactory_v10_methodology.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      },
+      {
+        "id": 258,
+        "label": "_pcell_demo.py (offline demo/r",
+        "size": 1,
+        "files": [
+          "_pcell_demo.py (1)"
+        ],
+        "area": "pcell 几何库"
+      },
+      {
+        "id": 269,
+        "label": "ic-opt doctor",
+        "size": 1,
+        "files": [
+          "DESIGN_CN.md (1)"
+        ],
+        "area": "文档 / 计划 / 分析"
+      }
+    ],
+    "god_nodes": [
+      {
+        "node": "Spec",
+        "edges": 218
+      },
+      {
+        "node": "RunStore",
+        "edges": 212
+      },
+      {
+        "node": "Point",
+        "edges": 163
+      },
+      {
+        "node": "FakeSpectreExecutor",
+        "edges": 118
+      },
+      {
+        "node": "HostLimits",
+        "edges": 114
+      },
+      {
+        "node": "_load_plugin()",
+        "edges": 113
+      },
+      {
+        "node": "StageFailure",
+        "edges": 109
+      },
+      {
+        "node": "PortError",
+        "edges": 106
+      },
+      {
+        "node": "Deck",
+        "edges": 97
+      },
+      {
+        "node": "StageContext",
+        "edges": 86
+      }
+    ],
+    "surprises": [
+      {
+        "a": "CommandRunner",
+        "rel": "semantically_similar_to",
+        "b": "LocalExecutor",
+        "conf": "INFERRED",
+        "fa": "docs/refactor/analysis/em/04_recorded_data_and_fakes.md",
+        "fb": "src/ic_opt/executor/local.py"
+      },
+      {
+        "a": "DomainGuard",
+        "rel": "semantically_similar_to",
+        "b": "T14.4 root cause: short Matern length-scale on bs anchor quantities",
+        "conf": "INFERRED",
+        "fa": "src/ic_opt/library/domain.py",
+        "fb": "docs/refactor/T16_PLAN_CN.md"
+      },
+      {
+        "a": "_run()",
+        "rel": "implements",
+        "b": "ic-opt run --plan",
+        "conf": "INFERRED",
+        "fa": "src/ic_opt/cli.py",
+        "fb": "docs/refactor/REFACTOR_PLAN_CN.md"
+      },
+      {
+        "a": "describe()",
+        "rel": "implements",
+        "b": "ic-opt blocks describe",
+        "conf": "INFERRED",
+        "fa": "src/ic_opt/cli.py",
+        "fb": "docs/refactor/REFACTOR_PLAN_CN.md"
+      },
+      {
+        "a": "Top cell = GDS file stem",
+        "rel": "references",
+        "b": "write_gds()",
+        "conf": "INFERRED",
+        "fa": "docs/refactor/analysis/em/02_pcell_geometry_layer.md",
+        "fb": "src/ic_opt/em/pcell/_pcell_core.py"
+      }
+    ],
+    "hyperedges": [
+      {
+        "label": "Clean-port passive device generator family",
+        "n": 7,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "Device library query-design-signoff workflow",
+        "n": 7,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "0.1 opt_requirement.md to spec.yaml migration set (11/11 legacy templates)",
+        "n": 13,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "T16 wave 1: four parallel worktrees",
+        "n": 4,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "The audit's three highest-priority fixes",
+        "n": 3,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "N28 desensitisation: decisions left to the user",
+        "n": 5,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "SCC-cycle module pairs in the em_ic_opt_workflow dependency graph",
+        "n": 4,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "Six pcell device families sharing (and bounded by) the octagon-ring primitive vocabulary",
+        "n": 8,
+        "conf": "INFERRED 0.85"
+      },
+      {
+        "label": "D4 crossunder-landing-pad diagnosis-to-fix pipeline across the two pcell reports",
+        "n": 5,
+        "conf": "INFERRED 0.90"
+      },
+      {
+        "label": "EM circuit pipeline stages",
+        "n": 3,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "Library query pipeline (T13)",
+        "n": 5,
+        "conf": "INFERRED 0.85"
+      },
+      {
+        "label": "Three pipelines run by one engine",
+        "n": 4,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "B-class kept charts (four total)",
+        "n": 4,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "Same-measurement identity triple",
+        "n": 3,
+        "conf": "INFERRED 0.85"
+      },
+      {
+        "label": "Consumers of the active metal stack",
+        "n": 6,
+        "conf": "INFERRED 0.75"
+      },
+      {
+        "label": "T13.2 Model Kernel vs Gate G1",
+        "n": 3,
+        "conf": "INFERRED 0.75"
+      },
+      {
+        "label": "Library Block Interface Table",
+        "n": 4,
+        "conf": "INFERRED 0.75"
+      },
+      {
+        "label": "lib.region Feature Components",
+        "n": 5,
+        "conf": "INFERRED 0.85"
+      },
+      {
+        "label": "Explicit Resource Envelope Enforcement",
+        "n": 4,
+        "conf": "INFERRED 0.85"
+      },
+      {
+        "label": "EM per-candidate pipeline",
+        "n": 5,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "pcell three-layer DRC checks",
+        "n": 3,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "Device DB data-integrity layer",
+        "n": 4,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "Complementary EM replay datasets",
+        "n": 3,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "Recipe / Block / Kernel Layers",
+        "n": 3,
+        "conf": "EXTRACTED 1.00"
+      },
+      {
+        "label": "Guardrail enforcement points",
+        "n": 6,
+        "conf": "INFERRED 0.85"
+      }
+    ],
+    "questions": [
+      "Why does `requires_profile()` connect `工艺规则 profile 测试与夹具` to `pcell 回归测试：tw 与工艺不变量`, `干净端口插件测试：xfm_bs 与 PGS`, `profile 校验生成测试`, `直线延伸端口 straight_extension`, `几何生成器注册表测试`, `几何规则适配器测试`, `干净端口插件测试：stub 宽度`?",
+      "Why does `Spec` connect `建议器：TuRBO / OpenBox / Sobol` to `阶段流水线：EM 链与 Spectre 链`, `运行存储、优化块与评估块`, `参数空间、目标与点集`, `site.yaml 与 Run/配方装载`, `设计文档：决策②③与迁移`, `Dataset 查找与峰值`, `migrate-store 存储迁移`, `EM 量测 measure 测试`, `查询库测试夹具（变压器/谐振）`, `评估引擎 engine.run 与资源包络`, `EM 引擎测试`, `评估引擎测试`, `库作为流水线阶段 stage.py`, `env.doctor 环境检查`, `analyze：目标函数 AST 评分`, `库阶段与 Spectre 链测试`, `spec.yaml 模型 Spec`, `migrate-store 测试`, `EMX 阶段测试`, `ic-opt migrate 旧工程迁移`, `电感建库脚本`, `数据集 dataset 构建`, `Spec 指纹与问题标识`, `analyze.report 报告块`, `Stage 指纹与记录`, `执行器接口与远程边界 ADR`, `查询库整体测试`, `OCEAN 脚本与标量解析`, `T15 无默认资源计划`, `Spec 角点与路径工具`, `测试假件 fakes.py`?",
+      "Why does `DomainGuard` connect `域守卫与电感查询验证脚本` to `待办总表与 T16 计划`, `分析文档：器件库与代理模型`, `查询库使用说明与 T13 方案`, `lib.region 可行域核心`, `T14 lib.region 计划`, `T10 库嵌入计划`?",
+      "Are the 194 inferred relationships involving `Spec` (e.g. with `Check` and `DoctorReport`) actually correct?"
+    ],
+    "area_nodes": [
+      [
+        "测试",
+        1920
+      ],
+      [
+        "pcell 几何库",
+        763
+      ],
+      [
+        "文档 / 计划 / 分析",
+        557
+      ],
+      [
+        "报告脚本",
+        475
+      ],
+      [
+        "器件查询库",
+        427
+      ],
+      [
+        "引擎 / 阶段 / 执行器 / 存储",
+        410
+      ],
+      [
+        "块 / 配方 / 命令行",
+        251
+      ],
+      [
+        "spec / 空间 / 建议器",
+        208
+      ],
+      [
+        "技能 / 脚本 / 其他",
+        82
+      ],
+      [
+        "EM 量测 / EMX",
+        72
+      ]
+    ],
+    "chunks": 14,
+    "input_tokens": 1520202,
+    "output_tokens": 158973,
+    "cost_note": "分块 01/06/08 的 token 用量未能从会话记录恢复，未计入"
+  }
+}
