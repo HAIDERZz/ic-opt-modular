@@ -1,0 +1,475 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "IC-Opt 0.3 系统结构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "run-path",
+        "label": "一次优化运行",
+        "focus": [
+          "designer",
+          "cli",
+          "recipes",
+          "blocks",
+          "engine",
+          "executor",
+          "spectre",
+          "store"
+        ],
+        "note": "从命令行到仿真主机再回到运行存储：sim.evaluate / opt.optimize 走的主路径。"
+      },
+      {
+        "id": "em-path",
+        "label": "电磁器件路径",
+        "focus": [
+          "engine",
+          "pcell",
+          "executor",
+          "emx",
+          "store"
+        ],
+        "note": "pcell 生成几何并审计，EMX 全波仿真，结果按代际写入运行存储。"
+      },
+      {
+        "id": "library-path",
+        "label": "器件查询库",
+        "focus": [
+          "blocks",
+          "library",
+          "store"
+        ],
+        "note": "查询库只读运行存储建数据集与模型；lib_signoff 用真实 EMX 复核并回流。"
+      }
+    ],
+    "repository": {
+      "url": "https://github.com/HAIDERZz/ic-opt-modular",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "a26ab9e3116b614c9b01263bf56e715d63da330b"
+    },
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "frontend": {
+          "label": "命令行入口"
+        },
+        "backend": {
+          "label": "Python 模块"
+        },
+        "database": {
+          "label": "存储"
+        },
+        "cloud": {
+          "label": "执行器"
+        },
+        "external": {
+          "label": "外部工具 / 使用者"
+        }
+      }
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      40,
+      60
+    ],
+    "cols": 4,
+    "cellW": 160,
+    "cellH": 60,
+    "gapX": 64,
+    "gapY": 48
+  },
+  "components": [
+    {
+      "id": "designer",
+      "type": "external",
+      "label": "设计者 / Agent",
+      "sublabel": "spec · profile · skills",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "skills/ic-opt/SKILL.md",
+          "label": "ic-opt 技能"
+        },
+        {
+          "path": "examples/spec.yaml",
+          "label": "spec 示例"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "ic-opt 命令行",
+      "sublabel": "run · call · doctor",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "src/ic_opt/cli.py"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "recipes",
+      "type": "backend",
+      "label": "配方 recipes",
+      "sublabel": "optimize · lib_signoff",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "src/ic_opt/recipes/lib_signoff.py",
+          "label": "lib_signoff 配方"
+        },
+        {
+          "path": "src/ic_opt/recipe.py",
+          "label": "Run 与 site 解析"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "blocks",
+      "type": "backend",
+      "label": "可组合块 blocks",
+      "sublabel": "sim · opt · lib · em",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "src/ic_opt/blocks/__init__.py",
+          "label": "块注册表"
+        },
+        {
+          "path": "src/ic_opt/blocks/library.py",
+          "label": "lib.* 块"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "suggesters",
+      "type": "backend",
+      "label": "建议器",
+      "sublabel": "TuRBO · OpenBox · Sobol",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        {
+          "path": "src/ic_opt/suggesters/base.py"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "评估引擎 + 阶段流水线",
+      "sublabel": "spectre 链 · EM 链",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        {
+          "path": "src/ic_opt/eval/engine.py"
+        },
+        {
+          "path": "src/ic_opt/stages/em_chain.py",
+          "label": "EM 阶段"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "executor",
+      "type": "cloud",
+      "label": "执行器",
+      "sublabel": "本地 / SSH · 进程组",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "src/ic_opt/executor/base.py"
+        },
+        {
+          "path": "src/ic_opt/site.py",
+          "label": "HostLimits"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "运行存储 .icopt/",
+      "sublabel": "观测 · sims · cache",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        {
+          "path": "src/ic_opt/store.py"
+        },
+        {
+          "path": "src/ic_opt/migrate_store.py",
+          "label": "指纹迁移"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "pcell",
+      "type": "backend",
+      "label": "pcell 几何与工艺",
+      "sublabel": "六族生成器 · DRC",
+      "row": 2,
+      "col": 1,
+      "sources": [
+        {
+          "path": "src/ic_opt/em/pcell/__init__.py"
+        },
+        {
+          "path": "src/ic_opt/em/pcell/profiles/demo_6m/rule.yaml",
+          "label": "随包 profile"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "library",
+      "type": "backend",
+      "label": "器件查询库",
+      "sublabel": "数据集 · 模型 · 查询",
+      "row": 2,
+      "col": 3,
+      "sources": [
+        {
+          "path": "src/ic_opt/library/query.py"
+        },
+        {
+          "path": "docs/em/library.md",
+          "label": "使用说明"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "spectre",
+      "type": "external",
+      "label": "Spectre / OCEAN",
+      "sublabel": "电路仿真",
+      "row": 3,
+      "col": 2,
+      "sources": [
+        {
+          "path": "src/ic_opt/stages/spectre_chain.py"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "emx",
+      "type": "external",
+      "label": "EMX",
+      "sublabel": "全波电磁仿真",
+      "row": 3,
+      "col": 1,
+      "sources": [
+        {
+          "path": "src/ic_opt/em/emx.py"
+        },
+        {
+          "path": "src/ic_opt/stages/em_chain.py"
+        }
+      ],
+      "size": [
+        160,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "控制端（Linux / Windows / macOS）",
+      "wraps": [
+        "cli",
+        "recipes",
+        "blocks",
+        "suggesters",
+        "engine",
+        "executor",
+        "store",
+        "pcell",
+        "library"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "仿真主机（Linux，site.yaml 限定线程与内存）",
+      "wraps": [
+        "spectre",
+        "emx"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "designer-cli",
+      "from": "designer",
+      "to": "cli",
+      "label": "spec + 命令",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cli-recipes",
+      "from": "cli",
+      "to": "recipes",
+      "label": "run RECIPE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "recipes-blocks",
+      "from": "recipes",
+      "to": "blocks",
+      "label": "组合块",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cli-blocks",
+      "from": "cli",
+      "to": "blocks",
+      "label": "call 单个块",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "top"
+    },
+    {
+      "id": "blocks-engine",
+      "from": "blocks",
+      "to": "engine",
+      "label": "sim.evaluate",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "blocks-suggesters",
+      "from": "blocks",
+      "to": "suggesters",
+      "label": "opt.optimize 取下一批点",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "top",
+      "labelAt": [
+        688,
+        134
+      ]
+    },
+    {
+      "id": "engine-executor",
+      "from": "engine",
+      "to": "executor",
+      "label": "阶段任务",
+      "variant": "emphasis"
+    },
+    {
+      "id": "executor-store",
+      "from": "executor",
+      "to": "store",
+      "label": "结果与观测"
+    },
+    {
+      "id": "executor-spectre",
+      "from": "executor",
+      "to": "spectre",
+      "label": "spectre / ocean",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        627,
+        264
+      ]
+    },
+    {
+      "id": "executor-emx",
+      "from": "executor",
+      "to": "emx",
+      "label": "emx（.proc 在主机）",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "engine-pcell",
+      "from": "engine",
+      "to": "pcell",
+      "label": "生成 GDS + 端口",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        344,
+        350
+      ]
+    },
+    {
+      "id": "blocks-library",
+      "from": "blocks",
+      "to": "library",
+      "label": "lib.* 查询 · 补点 · 复核回流",
+      "fromSide": "right",
+      "toSide": "right",
+      "labelAt": [
+        896,
+        350
+      ]
+    },
+    {
+      "id": "library-store",
+      "from": "library",
+      "to": "store",
+      "label": "只读运行存储建数据集",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ]
+}

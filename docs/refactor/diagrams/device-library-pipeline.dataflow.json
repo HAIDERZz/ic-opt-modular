@@ -1,0 +1,284 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "器件查询库数据流",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "build",
+        "label": "建库",
+        "focus": [
+          "spec",
+          "profile",
+          "pcell",
+          "emx",
+          "store"
+        ],
+        "note": "几何参数与工艺规则生成 GDS，EMX 全波仿真，结果按代际写入运行存储。"
+      },
+      {
+        "id": "model",
+        "label": "建模",
+        "focus": [
+          "store",
+          "dataset",
+          "models"
+        ],
+        "note": "数据集从 sNp 按清单口径重算，模型带校准区间与域守卫，缓存落盘。"
+      },
+      {
+        "id": "use",
+        "label": "使用与回流",
+        "focus": [
+          "models",
+          "query",
+          "signoff",
+          "store"
+        ],
+        "note": "查询、建议、区域、补点都走同一预测路径；复核用真实 EMX，回流写回运行存储。"
+      }
+    ],
+    "viewBox": [
+      1080,
+      500
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "emphasis": {
+          "label": "主路径"
+        },
+        "security": {
+          "label": "工艺规则"
+        },
+        "dashed": {
+          "label": "回流 / 缓存"
+        },
+        "default": {
+          "label": "一般流向"
+        }
+      }
+    }
+  },
+  "stages": [
+    {
+      "label": "定义"
+    },
+    {
+      "label": "生成与仿真"
+    },
+    {
+      "label": "存储"
+    },
+    {
+      "label": "建模"
+    },
+    {
+      "label": "使用与回流"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "spec",
+      "type": "frontend",
+      "label": "spec.yaml",
+      "sublabel": "器件族与参数",
+      "stage": 0,
+      "row": 0,
+      "tag": "问题定义"
+    },
+    {
+      "id": "profile",
+      "type": "security",
+      "label": "工艺 profile",
+      "sublabel": "规则与金属栈",
+      "stage": 0,
+      "row": 2,
+      "tag": "仓库外"
+    },
+    {
+      "id": "pcell",
+      "type": "backend",
+      "label": "pcell 生成器",
+      "sublabel": "GDS · 端口 · 审计",
+      "stage": 1,
+      "row": 0,
+      "tag": "几何代际"
+    },
+    {
+      "id": "emx",
+      "type": "external",
+      "label": "EMX",
+      "sublabel": "全波仿真 sNp",
+      "stage": 1,
+      "row": 2,
+      "tag": "仿真主机"
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "运行存储",
+      "sublabel": "观测 + sims",
+      "stage": 2,
+      "row": 1,
+      "tag": "按代际"
+    },
+    {
+      "id": "dataset",
+      "type": "backend",
+      "label": "数据集",
+      "sublabel": "从 sNp 重算",
+      "stage": 3,
+      "row": 0,
+      "tag": "library.yaml 口径"
+    },
+    {
+      "id": "models",
+      "type": "backend",
+      "label": "模型",
+      "sublabel": "GP · 校准 · 域守卫",
+      "stage": 3,
+      "row": 2,
+      "tag": "缓存落盘 .cache/"
+    },
+    {
+      "id": "query",
+      "type": "backend",
+      "label": "查询块",
+      "sublabel": "query · region · densify",
+      "stage": 4,
+      "row": 1,
+      "tag": "严格 JSON"
+    },
+    {
+      "id": "signoff",
+      "type": "backend",
+      "label": "lib_signoff",
+      "sublabel": "真实 EMX 复核 · 回流",
+      "stage": 4,
+      "row": 2,
+      "tag": "--plan 批准"
+    }
+  ],
+  "flows": [
+    {
+      "id": "spec-pcell",
+      "from": "spec",
+      "to": "pcell",
+      "label": "几何参数",
+      "classification": "问题",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "profile-pcell",
+      "from": "profile",
+      "to": "pcell",
+      "label": "规则与层号",
+      "classification": "工艺",
+      "variant": "security",
+      "route": "vertical-channel",
+      "channelX": 240
+    },
+    {
+      "id": "pcell-emx",
+      "from": "pcell",
+      "to": "emx",
+      "label": "GDS + 端口",
+      "classification": "几何",
+      "variant": "emphasis",
+      "labelAt": [
+        315,
+        200
+      ]
+    },
+    {
+      "id": "emx-store",
+      "from": "emx",
+      "to": "store",
+      "label": "sNp + 标量",
+      "classification": "仿真结果",
+      "variant": "emphasis"
+    },
+    {
+      "id": "store-dataset",
+      "from": "store",
+      "to": "dataset",
+      "label": "同一代际的 ok 行",
+      "classification": "训练数据",
+      "variant": "emphasis"
+    },
+    {
+      "id": "dataset-models",
+      "from": "dataset",
+      "to": "models",
+      "label": "结果列",
+      "classification": "训练",
+      "variant": "emphasis",
+      "labelAt": [
+        745,
+        200
+      ]
+    },
+    {
+      "id": "models-query",
+      "from": "models",
+      "to": "query",
+      "label": "预测 + 校准区间",
+      "classification": "答案",
+      "variant": "emphasis"
+    },
+    {
+      "id": "query-signoff",
+      "from": "query",
+      "to": "signoff",
+      "label": "候选清单",
+      "classification": "待复核",
+      "variant": "default",
+      "labelAt": [
+        960,
+        314
+      ]
+    },
+    {
+      "id": "signoff-store",
+      "from": "signoff",
+      "to": "store",
+      "label": "adopt 回流新行",
+      "classification": "回流",
+      "variant": "dashed",
+      "route": "bottom-channel"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "主路径",
+      "items": [
+        "几何与工艺分开：spec 只写参数，profile 给规则",
+        "结果列一律从 sNp 重算，口径由 library.yaml 决定",
+        "预测都经同一条路径：一次 GP 预测、SRF 单位只在一处换算"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "模型",
+      "items": [
+        "每个结果列一个模型，留出校准让 2σ 区间覆盖 95%",
+        "锚定的电感列可用低频值 × 谐振因子 × 残差建模",
+        "域守卫按凸包判定，σ/μ 超上限的答案标为不确定"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "回流",
+      "items": [
+        "lib_signoff 先 --plan 再跑真实 EMX，逐量比较预测与实测",
+        "adopt 把 ok 观测复制进部件存储，下一次建数据集自动包含",
+        "lib.densify 按不确定度给出补点清单，走同一回流路径"
+      ]
+    }
+  ]
+}

@@ -1,2 +1,14 @@
-# Third-party vendored optimizers (TuRBO, open-box) are out of refactor scope
+# graphify scope: the product and its documentation, not third-party code, rendered pages, figures or data dumps
 vendor/
+.claude/
+graphify-out/
+smoke/
+*.png
+*.html
+*.svg
+*.gds
+*.pkl
+docs/refactor/reports/**/*.json
+docs/refactor/diagrams/
+docs/refactor/reports/**/*.log
+docs/toolchain_evidence/
