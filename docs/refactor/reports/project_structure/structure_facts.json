@@ -1,10 +1,10 @@
 {
   "date": "2026-09-25",
   "git": {
-    "head": "fbf33a20c4f41105fd010bb07b0d46df07df6f5d",
-    "head_date": "2026-09-25 17:36:13 +0800",
-    "origin_main": "fbf33a20c4f41105fd010bb07b0d46df07df6f5d",
-    "ahead": 0,
+    "head": "56d8f3e2b086669833d418b4266bb27ad46b3e66",
+    "head_date": "2026-09-25 23:43:02 +0800",
+    "origin_main": "aceebbfc672a316991bbc5730416b9521ff11daf",
+    "ahead": 1,
     "tags": [
       "v0.1.1",
       "v0.1.10",
@@ -20,8 +20,8 @@
       "v0.3.0"
     ],
     "v030": "ba1895bf9bd185ccd5b1ed0a5f09049a4339e569",
-    "commits_total": 169,
-    "commits_since_0922": 158
+    "commits_total": 172,
+    "commits_since_0922": 172
   },
   "version": "0.3.0",
   "packages": [
@@ -194,7 +194,7 @@
       "label": "library 器件查询库",
       "desc": "清单、数据集、StratumGP / ComposedGP、域守卫、query / suggest / region / densify、缓存、阶段",
       "files": 12,
-      "lines": 3418,
+      "lines": 3436,
       "modules": [
         "cache.py",
         "composed.py",
@@ -212,10 +212,10 @@
   ],
   "totals": {
     "src_files": 96,
-    "src_lines": 24119,
+    "src_lines": 24137,
     "test_files": 70,
-    "test_lines": 20143,
-    "test_functions": 900
+    "test_lines": 20195,
+    "test_functions": 903
   },
   "test_dirs": [
     {
@@ -226,7 +226,7 @@
     {
       "dir": "tests/ic_opt",
       "files": 38,
-      "lines": 7806
+      "lines": 7858
     },
     {
       "dir": "tests/ic_opt/pcell",
@@ -388,7 +388,7 @@
       },
       {
         "path": "docs/em/library.md",
-        "lines": 489
+        "lines": 491
       },
       {
         "path": "docs/em/devices.md",
@@ -429,7 +429,7 @@
       },
       {
         "path": "docs/refactor/EXECUTION_PLAN_CN.md",
-        "lines": 126,
+        "lines": 137,
         "title": "执行计划（ic-opt 0.2 重构）"
       },
       {
@@ -576,8 +576,23 @@
     },
     {
       "page": "XFM_DENSIFY_N17_CN.html",
-      "artifact": null,
+      "artifact": "229i2uKvcfDBk3pFLjk13X",
       "note": "N-17 第二轮补点：中心偏移 8–24 µm × 外径比 0.8–1.25，ap 与 m10 各 60 选点回流（1641→1701、1581→1641 行）+ 10 独立测试点前后对比"
+    },
+    {
+      "page": "XFM_BS_Q_MAP_ACCEPTANCE_CN.html",
+      "artifact": "1CrNf1XnBGspsqU68Me4fh",
+      "note": "N-19 方案 1 验收：未采用（偏移带更自信但不更准）"
+    },
+    {
+      "page": "XFM_DENSIFY_CORNER_CN.html",
+      "artifact": null,
+      "note": "N-19 方案 3：角落定向补点两表各 25 点回流，N-17 测试点前后对比"
+    },
+    {
+      "page": "XFM_BS_Q_RATIO_ACCEPTANCE_CN.html",
+      "artifact": null,
+      "note": "N-19 方案 2 验收：Q 列改 Q 峰值 × 比值，采用"
     },
     {
       "page": "arch/region-60g.workflow.html",

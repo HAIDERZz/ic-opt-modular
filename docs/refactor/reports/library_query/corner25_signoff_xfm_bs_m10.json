@@ -1,0 +1,6068 @@
+{
+ "stratum": "xfm_bs_m10",
+ "signed_off": 25,
+ "ok": 25,
+ "coverage": 0.979539641943734,
+ "median_abs_z": 0.4974710944319708,
+ "points": [
+  {
+   "obs_id": "obs_0076",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "200",
+    "secondary_outer_diameter_um": "228",
+    "primary_width_um": "9.8",
+    "secondary_width_um": "9.7",
+    "center_spacing_um": "15.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.0976815620505437e-10,
+     "predicted": 4.066010423704419e-10,
+     "lo": 3.955614475240401e-10,
+     "hi": 4.1794873765265613e-10,
+     "status": "predicted",
+     "z": 0.5827969077601399,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.751942128356286e-10,
+     "predicted": 4.715952990999204e-10,
+     "lo": 4.601396326165574e-10,
+     "hi": 4.83336166607659e-10,
+     "status": "predicted",
+     "z": 0.6183013825420823,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.5480674774450242,
+     "predicted": 0.5365776482836937,
+     "lo": 0.5076099906959067,
+     "hi": 0.5671983962390931,
+     "status": "predicted",
+     "z": 0.7635295748124117,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 11.35450315584619,
+     "predicted": 11.378797105439231,
+     "lo": 9.05500717277143,
+     "hi": 14.298942131828667,
+     "status": "predicted",
+     "z": -0.020707901036223792,
+     "inside": true
+    },
+    "Qs_peak": {
+     "measured": 10.11853740235869,
+     "predicted": 10.05244307640726,
+     "lo": 8.299350863358821,
+     "hi": 12.175845252011888,
+     "status": "predicted",
+     "z": 0.07212509273867711,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 43108572294.006584,
+     "predicted": 45936284528.46121,
+     "lo": 40380795141.703964,
+     "hi": 52256084331.05022,
+     "status": "predicted",
+     "z": -0.9857711018540173,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 43108572294.006584,
+     "predicted": 46263726870.49601,
+     "lo": 34458994774.10693,
+     "hi": 62112445182.415375,
+     "status": "predicted",
+     "z": -0.4795599885356976,
+     "inside": true
+    },
+    "SRF_s": {
+     "measured": 43158588220.26476,
+     "predicted": 47033127189.38263,
+     "lo": 33084901634.875557,
+     "hi": 66861769082.027504,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 4.032965223786304e-10,
+     "predicted": 3.961692531350191e-10,
+     "lo": 3.840016201568302e-10,
+     "hi": 4.087224347268609e-10,
+     "status": "predicted",
+     "z": 1.143176281732534,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 6.164456979554894e-10,
+     "predicted": 5.641726204381914e-10,
+     "lo": 4.813775018244778e-10,
+     "hi": 6.612081878478655e-10,
+     "status": "predicted",
+     "z": 1.116638106852052,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": null,
+     "predicted": 1.3588516644922408e-09,
+     "lo": 6.045139108173381e-10,
+     "hi": 3.0544836323068022e-09,
+     "status": "uncertain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Ls@10": {
+     "measured": 4.461449598319134e-10,
+     "predicted": 4.42222211004025e-10,
+     "lo": 4.293186648063186e-10,
+     "hi": 4.5551358451539247e-10,
+     "status": "predicted",
+     "z": 0.5964551085163212,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 5.729231826947842e-10,
+     "predicted": 5.309660437356503e-10,
+     "lo": 4.535049708004451e-10,
+     "hi": 6.216578819471053e-10,
+     "status": "predicted",
+     "z": 0.9645847777302646,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": null,
+     "predicted": 1.4588078072945884e-09,
+     "lo": 6.487595536849193e-10,
+     "hi": 3.2802911441319617e-09,
+     "status": "uncertain"
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 8.154867216992328,
+     "predicted": 7.803047619145284,
+     "lo": 6.807360169965687,
+     "hi": 8.94437059688525,
+     "status": "predicted",
+     "z": 0.6656181779471987,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 10.475511803257788,
+     "predicted": 11.10243570436942,
+     "lo": 8.68575977866983,
+     "hi": 14.191513662669358,
+     "status": "predicted",
+     "z": -0.4735561212183526,
+     "inside": true
+    },
+    "Qp@40": {
+     "measured": null,
+     "predicted": 10.247305299355181,
+     "lo": 6.644928868964383,
+     "hi": 15.802616998450768,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qs@10": {
+     "measured": 7.270639428658253,
+     "predicted": 7.0469089438918555,
+     "lo": 6.33979384529342,
+     "hi": 7.832892815650332,
+     "status": "predicted",
+     "z": 0.6209963944001995,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 9.679051689221248,
+     "predicted": 9.721278795919845,
+     "lo": 7.751452973204552,
+     "hi": 12.191683514649757,
+     "status": "predicted",
+     "z": -0.03844994627431806,
+     "inside": true
+    },
+    "Qs@40": {
+     "measured": null,
+     "predicted": 8.474585430911656,
+     "lo": 5.426523870824167,
+     "hi": 13.234733677659554,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "k@10": {
+     "measured": 0.5540998018872407,
+     "predicted": 0.5435384327841093,
+     "lo": 0.510540403381239,
+     "hi": 0.5786692413700987,
+     "status": "predicted",
+     "z": 0.6222509538208948,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.6734930391794104,
+     "predicted": 0.6572660795244727,
+     "lo": 0.613352497288109,
+     "hi": 0.7043236983684251,
+     "status": "predicted",
+     "z": 0.7053952946311847,
+     "inside": true
+    },
+    "k@40": {
+     "measured": null,
+     "predicted": 0.7113400193482429,
+     "lo": 0.6441330908318889,
+     "hi": 0.7855591186486953,
+     "status": "predicted"
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0077",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "157",
+    "secondary_outer_diameter_um": "196",
+    "primary_width_um": "9.7",
+    "secondary_width_um": "8.7",
+    "center_spacing_um": "22"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.028477688428788e-10,
+     "predicted": 3.166686037332935e-10,
+     "lo": 2.9114004205232776e-10,
+     "hi": 3.444356327061673e-10,
+     "status": "predicted",
+     "z": -1.0977279236452728,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.06373162321435e-10,
+     "predicted": 4.2337346232101836e-10,
+     "lo": 3.9141831000212756e-10,
+     "hi": 4.579374138034382e-10,
+     "status": "predicted",
+     "z": -1.0444431276153097,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.440225012088036,
+     "predicted": 0.43215178847756713,
+     "lo": 0.40856131596733347,
+     "hi": 0.4571043830769625,
+     "status": "predicted",
+     "z": 0.6594508359044255,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 13.823365501637566,
+     "predicted": 13.968705866742942,
+     "lo": 8.555396259666512,
+     "hi": 22.807212859499344,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 11.442487123414764,
+     "predicted": 11.895943983761498,
+     "lo": 7.645879662086349,
+     "hi": 18.508463318683233,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 61050598185.531906,
+     "predicted": 64643906727.38729,
+     "lo": 56729702162.95769,
+     "hi": 73662200181.75533,
+     "status": "predicted",
+     "z": -0.8758443252527303,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 61050598185.531906,
+     "predicted": 80214830187.15202,
+     "lo": 45271909824.296936,
+     "hi": 142128286766.0324,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 61092452430.157715,
+     "predicted": 81641007621.25444,
+     "lo": 43664748881.962524,
+     "hi": 152646111476.14032,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 2.9378343913586557e-10,
+     "predicted": 3.0607715327836033e-10,
+     "lo": 2.8191574435908957e-10,
+     "hi": 3.3230930032646937e-10,
+     "status": "predicted",
+     "z": -0.997077231868917,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 3.441407511634325e-10,
+     "predicted": 3.5038298472582664e-10,
+     "lo": 3.1468281725030047e-10,
+     "hi": 3.901332683434327e-10,
+     "status": "predicted",
+     "z": -0.33455792407689333,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 4.5580531368882414e-10,
+     "predicted": 4.4206643348990595e-10,
+     "lo": 3.6711438517921465e-10,
+     "hi": 5.323210952986375e-10,
+     "status": "predicted",
+     "z": 0.3294703266669643,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 1.146033534259615e-09,
+     "lo": 4.010415119835521e-10,
+     "hi": 3.274954892204402e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.7808935589724163e-10,
+     "predicted": 3.9095178930682993e-10,
+     "lo": 3.610522978221063e-10,
+     "hi": 4.233273198486032e-10,
+     "status": "predicted",
+     "z": -0.8409524729613864,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 4.0818056899487163e-10,
+     "predicted": 4.1086657466506763e-10,
+     "lo": 3.7016203443711694e-10,
+     "hi": 4.5604715360316955e-10,
+     "status": "predicted",
+     "z": -0.125736104638328,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 4.83263797528526e-10,
+     "predicted": 4.832528920692464e-10,
+     "lo": 4.010627427667019e-10,
+     "hi": 5.822863427359968e-10,
+     "status": "predicted",
+     "z": 0.00024210118449696373,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 1.4573691557273322e-09,
+     "lo": 5.099589611240016e-10,
+     "hi": 4.164893683570243e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 7.844313822752272,
+     "predicted": 7.017254586089582,
+     "lo": 5.016406973354159,
+     "hi": 9.816161684559317,
+     "status": "uncertain"
+    },
+    "Qp@28": {
+     "measured": 13.641819910256544,
+     "predicted": 12.717982008502927,
+     "lo": 7.354636243696633,
+     "hi": 21.99253110678739,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 12.704859763039517,
+     "predicted": 12.925378548678895,
+     "lo": 6.763225762720699,
+     "hi": 24.702030730294844,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 10.991102920799426,
+     "lo": 5.953111152900782,
+     "hi": 20.29264032080791,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 6.913023159895412,
+     "predicted": 7.139357979576663,
+     "lo": 5.209830127371698,
+     "hi": 9.783511384133936,
+     "status": "predicted",
+     "z": -0.21481883137245897,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 11.287043222386592,
+     "predicted": 11.928236542295563,
+     "lo": 6.946015356602463,
+     "hi": 20.484093354862758,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 10.796335416388875,
+     "predicted": 10.91381084335236,
+     "lo": 5.509258227540888,
+     "hi": 21.62020043443163,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 9.025011374740389,
+     "lo": 4.540337949707084,
+     "hi": 17.939376146977818,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.4386941725684744,
+     "predicted": 0.43687916492172285,
+     "lo": 0.4101817153713057,
+     "hi": 0.4653142682626115,
+     "status": "predicted",
+     "z": 0.1331482777824352,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.49579442158719705,
+     "predicted": 0.4975627877617278,
+     "lo": 0.4628742011825575,
+     "hi": 0.5348509965185575,
+     "status": "predicted",
+     "z": -0.09853500200586866,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.578959364225361,
+     "predicted": 0.5907363816432621,
+     "lo": 0.5572608798258866,
+     "hi": 0.6262228073609036,
+     "status": "predicted",
+     "z": -0.6903950924311926,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 0.6218510635940204,
+     "lo": 0.5395999037831337,
+     "hi": 0.7166397595364091,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0078",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "200",
+    "secondary_outer_diameter_um": "224",
+    "primary_width_um": "5.6",
+    "secondary_width_um": "9.8",
+    "center_spacing_um": "14"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.76684608861279e-10,
+     "predicted": 4.739606800635148e-10,
+     "lo": 4.6254337088406764e-10,
+     "hi": 4.856598113532863e-10,
+     "status": "predicted",
+     "z": 0.48591356473206854,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.682128617148466e-10,
+     "predicted": 4.683908745727672e-10,
+     "lo": 4.576425878604713e-10,
+     "hi": 4.793915977285108e-10,
+     "status": "predicted",
+     "z": -0.032748651495945344,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.5733435956403717,
+     "predicted": 0.5603791034109639,
+     "lo": 0.5325454163306098,
+     "hi": 0.5896675286464691,
+     "status": "predicted",
+     "z": 0.8978899457338163,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 9.406040607150967,
+     "predicted": 8.932858190489787,
+     "lo": 7.073224018171335,
+     "hi": 11.281412160339068,
+     "status": "predicted",
+     "z": 0.48941171367788566,
+     "inside": true
+    },
+    "Qs_peak": {
+     "measured": 10.537037639353034,
+     "predicted": 9.991078373074062,
+     "lo": 8.071507283411572,
+     "hi": 12.367163102492645,
+     "status": "predicted",
+     "z": 0.5259524113690169,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 44457553901.12243,
+     "predicted": 46097714160.46354,
+     "lo": 40959760880.453674,
+     "hi": 51880167392.13601,
+     "status": "predicted",
+     "z": -0.6131418754118118,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 44457553901.12243,
+     "predicted": 43645594965.54836,
+     "lo": 32178270517.771793,
+     "hi": 59199513499.167694,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 44514476751.87635,
+     "predicted": 43825429652.50228,
+     "lo": 31213798593.87868,
+     "hi": 61532667305.76929,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 4.671086537816989e-10,
+     "predicted": 4.6359070525837657e-10,
+     "lo": 4.5080169761751186e-10,
+     "hi": 4.767425303360489e-10,
+     "status": "predicted",
+     "z": 0.5404799289666052,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 6.816663841627364e-10,
+     "predicted": 6.510803174001766e-10,
+     "lo": 5.638874929531714e-10,
+     "hi": 7.517555984188468e-10,
+     "status": "predicted",
+     "z": 0.638585495125496,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": null,
+     "predicted": 1.5032728850100366e-09,
+     "lo": 7.303007966510321e-10,
+     "hi": 3.09438162626877e-09,
+     "status": "uncertain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Ls@10": {
+     "measured": 4.429238190913111e-10,
+     "predicted": 4.4243411455044364e-10,
+     "lo": 4.302531803581661e-10,
+     "hi": 4.549599042012517e-10,
+     "status": "predicted",
+     "z": 0.07924924582981037,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 5.663744779447593e-10,
+     "predicted": 5.39230459241405e-10,
+     "lo": 4.672950115267485e-10,
+     "hi": 6.222396580346386e-10,
+     "status": "predicted",
+     "z": 0.6860127649473354,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": null,
+     "predicted": 1.4420593323802383e-09,
+     "lo": 7.001473431701918e-10,
+     "hi": 2.970139269098741e-09,
+     "status": "uncertain"
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 6.428561801330213,
+     "predicted": 6.313957978539523,
+     "lo": 5.6194053402524675,
+     "hi": 7.094356598410428,
+     "status": "predicted",
+     "z": 0.3180294757683235,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 9.053173654076717,
+     "predicted": 7.450976884077933,
+     "lo": 5.907929603746859,
+     "hi": 9.397040968777677,
+     "status": "predicted",
+     "z": 1.6786940649452933,
+     "inside": true
+    },
+    "Qp@40": {
+     "measured": null,
+     "predicted": 9.380596529186658,
+     "lo": 6.649443720900762,
+     "hi": 13.2335267334917,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qs@10": {
+     "measured": 7.498827434170786,
+     "predicted": 7.3411290397211895,
+     "lo": 6.566252612079854,
+     "hi": 8.207447803438598,
+     "status": "predicted",
+     "z": 0.4003059329076972,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 10.13875178272646,
+     "predicted": 7.938227443922686,
+     "lo": 6.300131179511696,
+     "hi": 10.002244898705653,
+     "status": "predicted",
+     "z": 2.117301496096405,
+     "inside": false
+    },
+    "Qs@40": {
+     "measured": null,
+     "predicted": 9.102441529485628,
+     "lo": 6.192424681871965,
+     "hi": 13.379967630491684,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "k@10": {
+     "measured": 0.5794017620938958,
+     "predicted": 0.565030577889801,
+     "lo": 0.53289971454656,
+     "hi": 0.5990987520459414,
+     "status": "predicted",
+     "z": 0.8687636171671899,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.6898428446414456,
+     "predicted": 0.6739320808283419,
+     "lo": 0.6332076331146532,
+     "hi": 0.7172757020245534,
+     "status": "predicted",
+     "z": 0.7487283176351754,
+     "inside": true
+    },
+    "k@40": {
+     "measured": null,
+     "predicted": 0.7482803633716897,
+     "lo": 0.6750753327769485,
+     "hi": 0.8294237324661249,
+     "status": "predicted"
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0079",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "140",
+    "secondary_outer_diameter_um": "171",
+    "primary_width_um": "9",
+    "secondary_width_um": "9.2",
+    "center_spacing_um": "22"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 2.677869893700447e-10,
+     "predicted": 2.7395208503535877e-10,
+     "lo": 2.497106666576638e-10,
+     "hi": 3.005468124359641e-10,
+     "status": "predicted",
+     "z": -0.5079345500156384,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 3.38460232788087e-10,
+     "predicted": 3.3971792648505524e-10,
+     "lo": 3.1202431878196485e-10,
+     "hi": 3.6986947051377093e-10,
+     "status": "predicted",
+     "z": -0.08723611810220491,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.4544968975096452,
+     "predicted": 0.44395453071788593,
+     "lo": 0.4196910735037019,
+     "hi": 0.4696207229272887,
+     "status": "predicted",
+     "z": 0.8351452831116074,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 13.677049540876665,
+     "predicted": 14.487681585272309,
+     "lo": 8.99462716209814,
+     "hi": 23.335366095071965,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 12.355230671949094,
+     "predicted": 12.600150612871834,
+     "lo": 8.189417009249775,
+     "hi": 19.386458802590475,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 65844744443.42656,
+     "predicted": 71486304863.75145,
+     "lo": 62749284338.43694,
+     "hi": 81439841696.21698,
+     "status": "predicted",
+     "z": -1.2612317499636523,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 65844744443.42656,
+     "predicted": 97565369196.18639,
+     "lo": 56098959542.25941,
+     "hi": 169682313969.07602,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 65884768558.19275,
+     "predicted": 88918835730.98807,
+     "lo": 48437746884.87445,
+     "hi": 163231360999.23352,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 2.5857807888344827e-10,
+     "predicted": 2.629317926647745e-10,
+     "lo": 2.402112744995302e-10,
+     "hi": 2.878013437876629e-10,
+     "status": "predicted",
+     "z": -0.3695006665495882,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 2.9227808147320053e-10,
+     "predicted": 2.8920607221442055e-10,
+     "lo": 2.589757895088484e-10,
+     "hi": 3.229651403489009e-10,
+     "status": "predicted",
+     "z": 0.19140809250266694,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 3.629818092571196e-10,
+     "predicted": 3.4480813021721863e-10,
+     "lo": 2.9588976133733703e-10,
+     "hi": 4.018139935850894e-10,
+     "status": "predicted",
+     "z": 0.6714276206895025,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 7.106263704261641e-10,
+     "lo": 3.786322449316329e-10,
+     "hi": 1.3337211637541497e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.1675291035619395e-10,
+     "predicted": 3.149553789446369e-10,
+     "lo": 2.890048800960218e-10,
+     "hi": 3.432360404890107e-10,
+     "status": "predicted",
+     "z": 0.1323689902621601,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 3.364585011151195e-10,
+     "predicted": 3.2564121750539727e-10,
+     "lo": 2.9323321376651544e-10,
+     "hi": 3.6163093933428936e-10,
+     "status": "predicted",
+     "z": 0.6234710141966624,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 3.8473822715577093e-10,
+     "predicted": 3.807593097417026e-10,
+     "lo": 3.2708917820981967e-10,
+     "hi": 4.432358561920327e-10,
+     "status": "predicted",
+     "z": 0.13684482053365615,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 7.889334967972461e-10,
+     "lo": 4.2052000870498434e-10,
+     "hi": 1.4801104572538569e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 7.138702598355268,
+     "predicted": 6.467632724165454,
+     "lo": 4.574357921772182,
+     "hi": 9.144512469301944,
+     "status": "uncertain"
+    },
+    "Qp@28": {
+     "measured": 13.040581853548524,
+     "predicted": 13.032550369773267,
+     "lo": 7.65598534529559,
+     "hi": 22.184913042583634,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 13.418066603966915,
+     "predicted": 14.079051744198814,
+     "lo": 7.9643005959662,
+     "hi": 24.888525442676414,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 11.856037116738458,
+     "lo": 6.8503982708205635,
+     "hi": 20.519334870239962,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 6.915102178375222,
+     "predicted": 6.609295590619194,
+     "lo": 4.811091124550161,
+     "hi": 9.07960108701177,
+     "status": "uncertain"
+    },
+    "Qs@28": {
+     "measured": 11.85605479427623,
+     "predicted": 12.33139551724475,
+     "lo": 7.212308909106473,
+     "hi": 21.083860566582818,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 12.177525336148872,
+     "predicted": 13.558180626947637,
+     "lo": 7.4336744878276795,
+     "hi": 24.728586409580146,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 9.774095335918908,
+     "lo": 5.336203691236903,
+     "hi": 17.90279104085094,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.45467466073526286,
+     "predicted": 0.45052583355333126,
+     "lo": 0.4236187470548891,
+     "hi": 0.4791419834699248,
+     "status": "predicted",
+     "z": 0.30144702167699833,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.5048693548598765,
+     "predicted": 0.5032796725090012,
+     "lo": 0.4667625856081584,
+     "hi": 0.5426536671330416,
+     "status": "predicted",
+     "z": 0.08373465289651758,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.5731868389390452,
+     "predicted": 0.5673892069532159,
+     "lo": 0.538846503920334,
+     "hi": 0.5974438171628097,
+     "status": "predicted",
+     "z": 0.39392750705916857,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 0.6298117699504042,
+     "lo": 0.5752999237848148,
+     "hi": 0.6894888199505981,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0080",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "200",
+    "secondary_outer_diameter_um": "238",
+    "primary_width_um": "7.3",
+    "secondary_width_um": "10",
+    "center_spacing_um": "16"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.4695809400467153e-10,
+     "predicted": 4.481431885342038e-10,
+     "lo": 4.4072215810443183e-10,
+     "hi": 4.556891768124227e-10,
+     "status": "predicted",
+     "z": -0.32786793282990984,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.987669626252669e-10,
+     "predicted": 4.975507518565049e-10,
+     "lo": 4.898233641944584e-10,
+     "hi": 5.054000457493367e-10,
+     "status": "predicted",
+     "z": 0.31194740313827307,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.49055511964186255,
+     "predicted": 0.49057578234167465,
+     "lo": 0.46199618409213283,
+     "hi": 0.5209233463542028,
+     "status": "predicted",
+     "z": -0.001403464470976456,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 11.243367504162,
+     "predicted": 11.64137591468313,
+     "lo": 9.822814816235645,
+     "hi": 13.796618965366978,
+     "status": "predicted",
+     "z": -0.4532782810200579,
+     "inside": true
+    },
+    "Qs_peak": {
+     "measured": 10.405394452777172,
+     "predicted": 10.61617407412236,
+     "lo": 9.108213812425877,
+     "hi": 12.373792962382211,
+     "status": "predicted",
+     "z": -0.2760855051529899,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 49074258352.85688,
+     "predicted": 48229634400.7313,
+     "lo": 42009936964.8111,
+     "hi": 55370176736.43785,
+     "status": "predicted",
+     "z": 0.25148536325634463,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 49074258352.85688,
+     "predicted": 51735001727.057686,
+     "lo": 40516912809.50214,
+     "hi": 66059090342.90881,
+     "status": "predicted",
+     "z": -0.4320514155102151,
+     "inside": true
+    },
+    "SRF_s": {
+     "measured": 49130816683.31284,
+     "predicted": 52559301257.73641,
+     "lo": 40281093473.56764,
+     "hi": 68580068475.90237,
+     "status": "predicted",
+     "z": -0.5561117810314369,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 4.3624470494762944e-10,
+     "predicted": 4.388365130474975e-10,
+     "lo": 4.2933267507636896e-10,
+     "hi": 4.4855073085092143e-10,
+     "status": "predicted",
+     "z": -0.5410952750529953,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 5.843369602352312e-10,
+     "predicted": 5.982803278782015e-10,
+     "lo": 5.157430091934324e-10,
+     "hi": 6.940265681658539e-10,
+     "status": "predicted",
+     "z": -0.31770274184831165,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": null,
+     "predicted": 1.1937370459715332e-09,
+     "lo": 6.487369235144101e-10,
+     "hi": 2.1965886066807004e-09,
+     "status": "uncertain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Ls@10": {
+     "measured": 4.6432628271170274e-10,
+     "predicted": 4.653280914483503e-10,
+     "lo": 4.5526072154337684e-10,
+     "hi": 4.756180852960614e-10,
+     "status": "predicted",
+     "z": -0.19707240420004757,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 5.475354703486834e-10,
+     "predicted": 5.486077034554956e-10,
+     "lo": 4.737843541607742e-10,
+     "hi": 6.352476810337674e-10,
+     "status": "predicted",
+     "z": -0.026684263586338592,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": null,
+     "predicted": 1.0506325154639959e-09,
+     "lo": 5.706324746996893e-10,
+     "hi": 1.934395134330767e-09,
+     "status": "uncertain"
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 7.452146492920313,
+     "predicted": 6.961038102503037,
+     "lo": 6.3993496664386535,
+     "hi": 7.572027470014103,
+     "status": "predicted",
+     "z": 1.669545942187925,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 11.063893845943342,
+     "predicted": 11.837081086914473,
+     "lo": 10.027608666722246,
+     "hi": 13.97307107956663,
+     "status": "predicted",
+     "z": -0.8143717964190126,
+     "inside": true
+    },
+    "Qp@40": {
+     "measured": null,
+     "predicted": 8.845924181515219,
+     "lo": 6.694546057966582,
+     "hi": 11.688675221226823,
+     "status": "predicted"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qs@10": {
+     "measured": 7.352101018083425,
+     "predicted": 7.368663285795291,
+     "lo": 6.822829797253515,
+     "hi": 7.958164021808727,
+     "status": "predicted",
+     "z": -0.06142729133249054,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 10.264654868241886,
+     "predicted": 10.977058257886036,
+     "lo": 9.33369873056358,
+     "hi": 12.909759729275974,
+     "status": "predicted",
+     "z": -0.8275084858635949,
+     "inside": true
+    },
+    "Qs@40": {
+     "measured": null,
+     "predicted": 8.072079197629176,
+     "lo": 6.064094724568365,
+     "hi": 10.744961207286481,
+     "status": "predicted"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "k@10": {
+     "measured": 0.49614569211562465,
+     "predicted": 0.4900311136505554,
+     "lo": 0.45926759136488715,
+     "hi": 0.5228552958243037,
+     "status": "predicted",
+     "z": 0.38732903215765135,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.5883759890677094,
+     "predicted": 0.5829039720971821,
+     "lo": 0.5394515520536084,
+     "hi": 0.6298564521562576,
+     "status": "predicted",
+     "z": 0.241223286883516,
+     "inside": true
+    },
+    "k@40": {
+     "measured": null,
+     "predicted": 0.6627056948425593,
+     "lo": 0.6152010508761446,
+     "hi": 0.7138785562074356,
+     "status": "predicted"
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0081",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "175",
+    "secondary_outer_diameter_um": "217",
+    "primary_width_um": "9.9",
+    "secondary_width_um": "9.3",
+    "center_spacing_um": "21.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.455760656060122e-10,
+     "predicted": 3.510700967496504e-10,
+     "lo": 3.2894947428476905e-10,
+     "hi": 3.7467824838386e-10,
+     "status": "predicted",
+     "z": -0.5010890221375005,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.5144903694577336e-10,
+     "predicted": 4.549458148006219e-10,
+     "lo": 4.287716975207913e-10,
+     "hi": 4.827177157479369e-10,
+     "status": "predicted",
+     "z": -0.2604336748652543,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.4464433811069713,
+     "predicted": 0.4439472893406394,
+     "lo": 0.4286294750541141,
+     "hi": 0.4598125121657093,
+     "status": "predicted",
+     "z": 0.31935469609688416,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 13.257062928580643,
+     "predicted": 13.501738699658121,
+     "lo": 9.01690020154381,
+     "hi": 20.217252474706793,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 10.900357309783999,
+     "predicted": 11.429355027534834,
+     "lo": 8.032961360811704,
+     "hi": 16.261768291667227,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 55147077950.32185,
+     "predicted": 57055796985.437225,
+     "lo": 52506388682.892204,
+     "hi": 61999388099.3019,
+     "status": "predicted",
+     "z": -0.8189660421134566,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 55147077950.32185,
+     "predicted": 65844464562.68858,
+     "lo": 41301930159.90755,
+     "hi": 104970724049.9788,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 55192106704.285164,
+     "predicted": 68201031166.96086,
+     "lo": 39612375610.22474,
+     "hi": 117422411066.81198,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 3.3626828145562127e-10,
+     "predicted": 3.408678160005067e-10,
+     "lo": 3.198742928994031e-10,
+     "hi": 3.6323915539375967e-10,
+     "status": "predicted",
+     "z": -0.4274398882242602,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 4.156083644285417e-10,
+     "predicted": 4.135522200295717e-10,
+     "lo": 3.799565133871692e-10,
+     "hi": 4.5011845478515394e-10,
+     "status": "predicted",
+     "z": 0.11707228174519381,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 6.200371629652819e-10,
+     "predicted": 5.880397174411366e-10,
+     "lo": 4.938903524897332e-10,
+     "hi": 7.001365941754044e-10,
+     "status": "predicted",
+     "z": 0.6073433428209857,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 1.1954391820439673e-09,
+     "lo": 6.107377645241891e-10,
+     "hi": 2.3399156249643524e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 4.191861164457268e-10,
+     "predicted": 4.201603335985184e-10,
+     "lo": 3.9567790073681353e-10,
+     "hi": 4.4615760850146874e-10,
+     "status": "predicted",
+     "z": -0.07733280626754933,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 4.663872037816779e-10,
+     "predicted": 4.5653989852141427e-10,
+     "lo": 4.205645958723412e-10,
+     "hi": 4.955925462760779e-10,
+     "status": "predicted",
+     "z": 0.5199955669510169,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 5.957976428774705e-10,
+     "predicted": 5.717300175900998e-10,
+     "lo": 4.804108552865244e-10,
+     "hi": 6.804076332093337e-10,
+     "status": "predicted",
+     "z": 0.473887714553084,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 1.5215828892196555e-09,
+     "lo": 7.772340842838759e-10,
+     "hi": 2.9787866172894557e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 8.20466917788132,
+     "predicted": 7.818781626929557,
+     "lo": 5.89610460134412,
+     "hi": 10.368429711317333,
+     "status": "predicted",
+     "z": 0.3516821138374852,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 13.257062928580643,
+     "predicted": 15.933991149861203,
+     "lo": 10.03732518409681,
+     "hi": 25.294794111694525,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 10.486911165104463,
+     "predicted": 13.722827496197986,
+     "lo": 8.167871550076423,
+     "hi": 23.05569980329153,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 9.42074606290072,
+     "lo": 5.379551413118578,
+     "hi": 16.497742946601925,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 7.12791915626915,
+     "predicted": 7.482209900135612,
+     "lo": 5.893988580533368,
+     "hi": 9.498400654285154,
+     "status": "predicted",
+     "z": -0.42714688156315284,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 10.900357309783999,
+     "predicted": 13.580793574249906,
+     "lo": 8.656565275998869,
+     "hi": 21.306135658418572,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 9.216082739561521,
+     "predicted": 11.476866406735684,
+     "lo": 6.7473741778962975,
+     "hi": 19.521440347795465,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 7.585867614698529,
+     "lo": 4.093294959434374,
+     "hi": 14.058451208139607,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.4484391114786552,
+     "predicted": 0.4488522312067008,
+     "lo": 0.4314872286867341,
+     "hi": 0.46691608016399144,
+     "status": "predicted",
+     "z": -0.047261716037784444,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.5193552452910452,
+     "predicted": 0.5223115758881679,
+     "lo": 0.499535347038018,
+     "hi": 0.5461262830035903,
+     "status": "predicted",
+     "z": -0.25461701114255797,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.6295391203412268,
+     "predicted": 0.6336633826562721,
+     "lo": 0.6125383567051312,
+     "hi": 0.6555169617119677,
+     "status": "predicted",
+     "z": -0.38517167226700855,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 0.684159731349402,
+     "lo": 0.5857368741879231,
+     "hi": 0.7991208316004237,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0082",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "180",
+    "secondary_outer_diameter_um": "200",
+    "primary_width_um": "4.6",
+    "secondary_width_um": "8.7",
+    "center_spacing_um": "22"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.390487315193486e-10,
+     "predicted": 4.4518040561910437e-10,
+     "lo": 4.2620292176461584e-10,
+     "hi": 4.6500289750862995e-10,
+     "status": "predicted",
+     "z": -0.6582325358088456,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.2254631514775186e-10,
+     "predicted": 4.273475735851435e-10,
+     "lo": 4.10274156187009e-10,
+     "hi": 4.4513149535518415e-10,
+     "status": "predicted",
+     "z": -0.5542329137931387,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.46087684030714615,
+     "predicted": 0.47746987770704913,
+     "lo": 0.4486514322274997,
+     "hi": 0.508139432400124,
+     "status": "predicted",
+     "z": -1.1363049955337194,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 11.489189636468584,
+     "predicted": 10.488605242514394,
+     "lo": 7.521866669492764,
+     "hi": 14.625470613495866,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 12.11208947165928,
+     "predicted": 11.96285856782623,
+     "lo": 8.846306040400465,
+     "hi": 16.177372166443266,
+     "status": "predicted",
+     "z": 0.0866363610291316,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 68569706733.56979,
+     "predicted": 59496190041.86613,
+     "lo": 51495590604.956635,
+     "hi": 68739800590.9487,
+     "status": "predicted",
+     "z": 1.9656890578547122,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 68581488943.07624,
+     "predicted": 60531916718.37031,
+     "lo": 40041570835.77656,
+     "hi": 91507722227.66763,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 68569706733.56979,
+     "predicted": 62952139291.48889,
+     "lo": 39699631844.73745,
+     "hi": 99823894006.72356,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 4.2128878682196447e-10,
+     "predicted": 4.31782242856449e-10,
+     "lo": 4.128296311456029e-10,
+     "hi": 4.516049507608879e-10,
+     "status": "predicted",
+     "z": -1.0962269218967677,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 4.6180828511757084e-10,
+     "predicted": 4.923386206342641e-10,
+     "lo": 4.4654828467952157e-10,
+     "hi": 5.42824428363919e-10,
+     "status": "predicted",
+     "z": -1.3115636382617692,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 5.481892276000934e-10,
+     "predicted": 6.502575837226039e-10,
+     "lo": 5.065725539089035e-10,
+     "hi": 8.346976596461977e-10,
+     "status": "predicted",
+     "z": -1.3676199005733922,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 1.4814159463848878e-09,
+     "lo": 4.6534103037653247e-10,
+     "hi": 4.716096503305692e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.9779660574459876e-10,
+     "predicted": 4.0353316462397707e-10,
+     "lo": 3.862684051883615e-10,
+     "hi": 4.2156959452076927e-10,
+     "status": "predicted",
+     "z": -0.6548862390153255,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 4.303746150159941e-10,
+     "predicted": 4.4003868073048317e-10,
+     "lo": 3.9944409887518924e-10,
+     "hi": 4.847587962478004e-10,
+     "status": "predicted",
+     "z": -0.4588672505885841,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 5.021003074495567e-10,
+     "predicted": 6.099529758067292e-10,
+     "lo": 4.736454850966669e-10,
+     "hi": 7.854875521922346e-10,
+     "status": "predicted",
+     "z": -1.5386670725100515,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 1.34932222261993e-09,
+     "lo": 4.2370612288455965e-10,
+     "hi": 4.297012391657216e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 5.942852132800877,
+     "predicted": 5.551982222939265,
+     "lo": 4.566498612682403,
+     "hi": 6.750140363171385,
+     "status": "predicted",
+     "z": 0.7173470654399442,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 10.892088360531238,
+     "predicted": 10.757263921083963,
+     "lo": 7.558545552306955,
+     "hi": 15.309655312262558,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 11.343057947199837,
+     "predicted": 9.422289009990909,
+     "lo": 5.49531702381627,
+     "hi": 16.155488355454647,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 8.836148155333772,
+     "lo": 4.8808193917761065,
+     "hi": 15.996804625584886,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 7.315805475355514,
+     "predicted": 7.239622466061307,
+     "lo": 6.040012405516258,
+     "hi": 8.6774877156266,
+     "status": "predicted",
+     "z": 0.1213991758701026,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 11.94307375233832,
+     "predicted": 13.660859547583103,
+     "lo": 9.600108449223725,
+     "hi": 19.43926827137902,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 11.571342170433612,
+     "predicted": 9.809152359716522,
+     "lo": 5.532691252249444,
+     "hi": 17.39107888534571,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 8.18978368428364,
+     "lo": 4.2238349497494205,
+     "hi": 15.879540179319173,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.4603568724973884,
+     "predicted": 0.47731766952140336,
+     "lo": 0.44357121172877917,
+     "hi": 0.5136315243484538,
+     "status": "predicted",
+     "z": -0.9992497258886825,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.5112112980737049,
+     "predicted": 0.5415731336976184,
+     "lo": 0.5025729812817776,
+     "hi": 0.5835997358931102,
+     "status": "predicted",
+     "z": -1.543945266293131,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.5764930001122366,
+     "predicted": 0.6643720876110315,
+     "lo": 0.5748585160367895,
+     "hi": 0.7678241836612059,
+     "status": "predicted",
+     "z": -1.9607617847522978,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 0.846390732530345,
+     "lo": 0.734094864049885,
+     "hi": 0.9758647106739232,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0083",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "149",
+    "secondary_outer_diameter_um": "186",
+    "primary_width_um": "4.5",
+    "secondary_width_um": "9.1",
+    "center_spacing_um": "19.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.530500843516536e-10,
+     "predicted": 3.744275098905023e-10,
+     "lo": 3.4595010067206834e-10,
+     "hi": 4.0524908040335044e-10,
+     "status": "predicted",
+     "z": -1.5365630585132022,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 3.7944816355039427e-10,
+     "predicted": 3.861857193569591e-10,
+     "lo": 3.5913998982782786e-10,
+     "hi": 4.152681797054947e-10,
+     "status": "predicted",
+     "z": -0.48481841777381046,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.45225111876125784,
+     "predicted": 0.45247235286582144,
+     "lo": 0.4246478701032245,
+     "hi": 0.48211999758332896,
+     "status": "predicted",
+     "z": -0.015411769491970404,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 11.174363944750354,
+     "predicted": 11.858797472376265,
+     "lo": 7.592388592767886,
+     "hi": 18.522639584701388,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 12.310844009575586,
+     "predicted": 12.596086614698397,
+     "lo": 8.42645229455879,
+     "hi": 18.828967691116755,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 65702778112.46814,
+     "predicted": 68999438133.18515,
+     "lo": 59511915824.922104,
+     "hi": 79999482401.16124,
+     "status": "predicted",
+     "z": -0.6619328743581279,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 65702778112.46814,
+     "predicted": 94542098667.64186,
+     "lo": 55259877531.67549,
+     "hi": 161748610741.28625,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 65774611247.45246,
+     "predicted": 89511804304.0776,
+     "lo": 49862513663.431496,
+     "hi": 160689113345.8369,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 3.438989683668803e-10,
+     "predicted": 3.6372003163832534e-10,
+     "lo": 3.3659383914192447e-10,
+     "hi": 3.9303233164408415e-10,
+     "status": "predicted",
+     "z": -1.445964500384677,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 3.8966265175833017e-10,
+     "predicted": 4.05419169751795e-10,
+     "lo": 3.6623016988100156e-10,
+     "hi": 4.4880164639532965e-10,
+     "status": "predicted",
+     "z": -0.7798611671112998,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 4.86183445033271e-10,
+     "predicted": 4.911555309151171e-10,
+     "lo": 4.136074304000319e-10,
+     "hi": 5.832432829245708e-10,
+     "status": "predicted",
+     "z": -0.11841968390287487,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Ls@10": {
+     "measured": 3.5608877138329466e-10,
+     "predicted": 3.5967129701942595e-10,
+     "lo": 3.34035533072438e-10,
+     "hi": 3.8727449355390203e-10,
+     "status": "predicted",
+     "z": -0.27076177605354596,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 3.8030795346822864e-10,
+     "predicted": 3.7646460245896273e-10,
+     "lo": 3.4105504071355964e-10,
+     "hi": 4.155505123397818e-10,
+     "status": "predicted",
+     "z": 0.2056547350097832,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 4.375905259185969e-10,
+     "predicted": 4.4757459529142135e-10,
+     "lo": 3.770583690912467e-10,
+     "hi": 5.312785360873457e-10,
+     "status": "predicted",
+     "z": -0.2631730421771361,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 5.688471412967771,
+     "predicted": 4.391439811826205,
+     "lo": 3.228445790157628,
+     "hi": 5.973383130571506,
+     "status": "predicted",
+     "z": 1.7330759579863473,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 10.603075927517608,
+     "predicted": 9.539489512975338,
+     "lo": 5.883610261552424,
+     "hi": 15.46701024077606,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 10.98338743714455,
+     "predicted": 10.578896550418676,
+     "lo": 6.2274930733438305,
+     "hi": 17.970803163714937,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qs@10": {
+     "measured": 7.191353703531658,
+     "predicted": 7.25185507428179,
+     "lo": 5.473191745546343,
+     "hi": 9.60854369138076,
+     "status": "predicted",
+     "z": -0.06255114249350487,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 12.00698633627711,
+     "predicted": 12.738570693827837,
+     "lo": 7.883734834601816,
+     "hi": 20.58303414892128,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 11.941738550533799,
+     "predicted": 12.008615701952133,
+     "lo": 6.909909832062495,
+     "hi": 20.869570599610544,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "k@10": {
+     "measured": 0.44931205087902115,
+     "predicted": 0.4555693434437948,
+     "lo": 0.4244172947895655,
+     "hi": 0.4890079391998255,
+     "status": "predicted",
+     "z": -0.39541914142110224,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.49881417718821125,
+     "predicted": 0.5092659554898311,
+     "lo": 0.47023320020787995,
+     "hi": 0.5515387116569327,
+     "status": "predicted",
+     "z": -0.5200983832731103,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.5674065758292363,
+     "predicted": 0.5713456204008741,
+     "lo": 0.5383147156497761,
+     "hi": 0.6064032961782093,
+     "status": "predicted",
+     "z": -0.2323457160923806,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0084",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "200",
+    "secondary_outer_diameter_um": "220",
+    "primary_width_um": "9.4",
+    "secondary_width_um": "9.2",
+    "center_spacing_um": "14.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.1405704630382704e-10,
+     "predicted": 4.1281022833678105e-10,
+     "lo": 4.0065580257395006e-10,
+     "hi": 4.253333747438037e-10,
+     "status": "predicted",
+     "z": 0.2086394528963655,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.6342342860741504e-10,
+     "predicted": 4.5958020631937517e-10,
+     "lo": 4.469890443456034e-10,
+     "hi": 4.725260466949003e-10,
+     "status": "predicted",
+     "z": 0.5995588872048101,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.587540902194639,
+     "predicted": 0.5778353505168966,
+     "lo": 0.5558240852540227,
+     "hi": 0.6007182868917756,
+     "status": "predicted",
+     "z": 0.8577823690617102,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 10.67988448481696,
+     "predicted": 10.669821386513942,
+     "lo": 8.144495419645155,
+     "hi": 13.978163477814366,
+     "status": "predicted",
+     "z": 0.007725256471269941,
+     "inside": true
+    },
+    "Qs_peak": {
+     "measured": 9.895774556617047,
+     "predicted": 9.538712046639345,
+     "lo": 7.486566371829069,
+     "hi": 12.1533721855555,
+     "status": "predicted",
+     "z": 0.3199555654858806,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 41546760982.385994,
+     "predicted": 44813582559.33121,
+     "lo": 40910402342.0697,
+     "hi": 49089157447.29375,
+     "status": "predicted",
+     "z": -1.661237343585286,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 41546760982.385994,
+     "predicted": 42365193508.787506,
+     "lo": 29915099418.58785,
+     "hi": 59996779416.4107,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 41583140442.50757,
+     "predicted": 43404763762.761635,
+     "lo": 29275173727.24438,
+     "hi": 64353965406.116844,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 4.0692179133971463e-10,
+     "predicted": 3.9973086482589616e-10,
+     "lo": 3.872677036315458e-10,
+     "hi": 4.1259511907680603e-10,
+     "status": "predicted",
+     "z": 1.1257687880361753,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 6.477715707925439e-10,
+     "predicted": 5.826885284894326e-10,
+     "lo": 5.154394249602586e-10,
+     "hi": 6.58711586253532e-10,
+     "status": "predicted",
+     "z": 1.7268652751801887,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": null,
+     "predicted": 1.5650395811931485e-09,
+     "lo": 7.64699320779075e-10,
+     "hi": 3.2030221868195604e-09,
+     "status": "uncertain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 1.275301632181018e-09,
+     "lo": 6.134927249851159e-10,
+     "hi": 2.651040814025997e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 4.3750881882852985e-10,
+     "predicted": 4.299011236052726e-10,
+     "lo": 4.168564420125795e-10,
+     "hi": 4.4335401219851775e-10,
+     "status": "predicted",
+     "z": 1.1385735334151272,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 5.93255837964573e-10,
+     "predicted": 5.351620302533731e-10,
+     "lo": 4.736215101128762e-10,
+     "hi": 6.046988840448906e-10,
+     "status": "predicted",
+     "z": 1.687218073944488,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": null,
+     "predicted": 1.6549793721019765e-09,
+     "lo": 8.081446517798869e-10,
+     "hi": 3.38919117518216e-09,
+     "status": "uncertain"
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 1.3420965603522176e-09,
+     "lo": 6.453815396860189e-10,
+     "hi": 2.790943134483762e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 7.779801261771753,
+     "predicted": 7.713724218351506,
+     "lo": 6.6795649370001495,
+     "hi": 8.907996535400883,
+     "status": "predicted",
+     "z": 0.12208769098787091,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 9.651913752482097,
+     "predicted": 9.207073499427816,
+     "lo": 6.987873643356488,
+     "hi": 12.131043969929067,
+     "status": "predicted",
+     "z": 0.34216746955681454,
+     "inside": true
+    },
+    "Qp@40": {
+     "measured": null,
+     "predicted": 10.499205180947325,
+     "lo": 7.210627701535147,
+     "hi": 15.287616278976989,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 9.21313364179057,
+     "lo": 5.002529693478531,
+     "hi": 16.967781642985155,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 7.0915618444608075,
+     "predicted": 6.9507226517437015,
+     "lo": 6.113072392313568,
+     "hi": 7.903152830679716,
+     "status": "predicted",
+     "z": 0.32819263353114586,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 9.324079252340974,
+     "predicted": 8.232604839182077,
+     "lo": 6.290203432213907,
+     "hi": 10.774815658747258,
+     "status": "predicted",
+     "z": 0.9252587191037707,
+     "inside": true
+    },
+    "Qs@40": {
+     "measured": null,
+     "predicted": 9.212965550603474,
+     "lo": 6.125481571053426,
+     "hi": 13.856663064290213,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 8.070358059656968,
+     "lo": 4.101381146085109,
+     "hi": 15.880182038979568,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.5994575665579804,
+     "predicted": 0.594827941763208,
+     "lo": 0.5682043190106282,
+     "hi": 0.6226990335419047,
+     "status": "predicted",
+     "z": 0.3428755821092024,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.7260983839479584,
+     "predicted": 0.7143073360313204,
+     "lo": 0.6809344213338141,
+     "hi": 0.7493158728981765,
+     "status": "predicted",
+     "z": 0.6843523246009259,
+     "inside": true
+    },
+    "k@40": {
+     "measured": null,
+     "predicted": 0.7805648311859895,
+     "lo": 0.7048969259909509,
+     "hi": 0.8643553876020649,
+     "status": "predicted"
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 1.0581861266666677,
+     "lo": 0.9509547217520053,
+     "hi": 1.1775091421879715,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0085",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "141",
+    "secondary_outer_diameter_um": "160",
+    "primary_width_um": "4",
+    "secondary_width_um": "8.3",
+    "center_spacing_um": "22"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.382916132498749e-10,
+     "predicted": 3.4167373795762e-10,
+     "lo": 3.1647500705240897e-10,
+     "hi": 3.688788707115814e-10,
+     "status": "predicted",
+     "z": -0.2684699360387321,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 3.2450609289774516e-10,
+     "predicted": 3.232651011898734e-10,
+     "lo": 3.012796046252705e-10,
+     "hi": 3.4685496144777495e-10,
+     "status": "predicted",
+     "z": 0.10879915861019075,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.41616576619292145,
+     "predicted": 0.4374824738534035,
+     "lo": 0.4059146415599278,
+     "hi": 0.47150532484706537,
+     "status": "predicted",
+     "z": -1.3339694643198188,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 12.642956252281232,
+     "predicted": 11.185558625781905,
+     "lo": 7.572018339402593,
+     "hi": 16.52356296071455,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 13.759940450669108,
+     "predicted": 12.930028876103222,
+     "lo": 9.074257595485212,
+     "hi": 18.4241680355255,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 90650009781.13737,
+     "predicted": 80749071159.6195,
+     "lo": 67944982865.235176,
+     "hi": 95966062808.11261,
+     "status": "predicted",
+     "z": 1.3398299480150422,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 90674654155.7867,
+     "predicted": 85295469127.02779,
+     "lo": 53674398385.7508,
+     "hi": 135545386113.37585,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 90650009781.13737,
+     "predicted": 82601531359.5162,
+     "lo": 49750527347.0448,
+     "hi": 137144535882.84283,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 3.2520984686743844e-10,
+     "predicted": 3.286904395657599e-10,
+     "lo": 3.0477860918325584e-10,
+     "hi": 3.544783059134318e-10,
+     "status": "predicted",
+     "z": -0.28189148327923524,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 3.3644418151953636e-10,
+     "predicted": 3.4337094256252967e-10,
+     "lo": 3.1059080376014077e-10,
+     "hi": 3.7961073788692466e-10,
+     "status": "predicted",
+     "z": -0.4062205020989195,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 3.6243653507313317e-10,
+     "predicted": 3.856136680410861e-10,
+     "lo": 3.3277994573081803e-10,
+     "hi": 4.4683552265610686e-10,
+     "status": "predicted",
+     "z": -0.8413261837698888,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": 4.69065261559887e-10,
+     "predicted": 5.802011797773042e-10,
+     "lo": 3.7522016376566205e-10,
+     "hi": 8.971623636548882e-10,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.0601473359901176e-10,
+     "predicted": 3.05114253959113e-10,
+     "lo": 2.8391144992865883e-10,
+     "hi": 3.279005055710818e-10,
+     "status": "predicted",
+     "z": 0.08183226805355982,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 3.154745321680318e-10,
+     "predicted": 3.123966778377512e-10,
+     "lo": 2.838893252613107e-10,
+     "hi": 3.4376665707396294e-10,
+     "status": "predicted",
+     "z": 0.20491676369534256,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 3.389921095255281e-10,
+     "predicted": 3.5877949839904525e-10,
+     "lo": 3.0845559691248227e-10,
+     "hi": 4.1731364176864927e-10,
+     "status": "predicted",
+     "z": -0.7507592752001382,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": 4.345347922838442e-10,
+     "predicted": 5.099606740584719e-10,
+     "lo": 3.297942899036456e-10,
+     "hi": 7.885518247212571e-10,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 5.1860973892740905,
+     "predicted": 4.710877636803035,
+     "lo": 3.5740766689618777,
+     "hi": 6.209259107857057,
+     "status": "predicted",
+     "z": 0.7170163525665458,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 10.340446771744455,
+     "predicted": 9.149907069049297,
+     "lo": 5.903851876472003,
+     "hi": 14.180707972346317,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 12.164598353542123,
+     "predicted": 8.892130682003739,
+     "lo": 5.5990979469942,
+     "hi": 14.121915496813182,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": 11.90077632648698,
+     "predicted": 10.342250521986566,
+     "lo": 6.415242873687957,
+     "hi": 16.673124925361034,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 6.829586676505538,
+     "predicted": 6.727401378449885,
+     "lo": 5.216477223014624,
+     "hi": 8.675956468686481,
+     "status": "predicted",
+     "z": 0.1245149231347818,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 12.389323896830593,
+     "predicted": 11.917302108843012,
+     "lo": 7.637369531245834,
+     "hi": 18.595681271201624,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 13.695290398117463,
+     "predicted": 11.252727336748391,
+     "lo": 6.9297255057257745,
+     "hi": 18.27256684418163,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": 12.100991894220655,
+     "predicted": 10.065451679172309,
+     "lo": 5.958005463053,
+     "hi": 17.004569420760095,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.41277920990604006,
+     "predicted": 0.4359783765309431,
+     "lo": 0.40051977293159996,
+     "hi": 0.474576182372444,
+     "status": "predicted",
+     "z": -1.3053529397817136,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.4425554976366422,
+     "predicted": 0.4749345712243078,
+     "lo": 0.4317556432104203,
+     "hi": 0.5224317284350743,
+     "status": "predicted",
+     "z": -1.4816030823274224,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.47738120505459364,
+     "predicted": 0.5495756646815838,
+     "lo": 0.48596739760117036,
+     "hi": 0.6215096171082676,
+     "status": "predicted",
+     "z": -2.289845224460703,
+     "inside": false
+    },
+    "k@60": {
+     "measured": 0.5779722362838977,
+     "predicted": 0.634904940885095,
+     "lo": 0.5644296486585682,
+     "hi": 0.7141798538016731,
+     "status": "predicted",
+     "z": -1.632317049663524,
+     "inside": true
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0086",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "165",
+    "secondary_outer_diameter_um": "206",
+    "primary_width_um": "9.9",
+    "secondary_width_um": "8.9",
+    "center_spacing_um": "21.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.205982884658923e-10,
+     "predicted": 3.3133322074911426e-10,
+     "lo": 3.0811436555539583e-10,
+     "hi": 3.563018003853625e-10,
+     "status": "predicted",
+     "z": -0.9372727013035217,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.28808641451405e-10,
+     "predicted": 4.433566601938205e-10,
+     "lo": 4.14520514730477e-10,
+     "hi": 4.741987939150039e-10,
+     "status": "predicted",
+     "z": -0.9922008336389402,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.43809948044044633,
+     "predicted": 0.4347130758369954,
+     "lo": 0.4137850430233978,
+     "hi": 0.4566995871162399,
+     "status": "predicted",
+     "z": 0.3145461836810717,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 13.677601740918767,
+     "predicted": 13.853081060006245,
+     "lo": 8.82812750868962,
+     "hi": 21.73822870888609,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 11.165454299617705,
+     "predicted": 11.783627213392657,
+     "lo": 7.848223309089689,
+     "hi": 17.692395442340388,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 59072264876.226456,
+     "predicted": 61338085974.04968,
+     "lo": 54666117781.13585,
+     "hi": 68824364042.51527,
+     "status": "predicted",
+     "z": -0.6537071796725612,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 59072264876.226456,
+     "predicted": 74632390216.44215,
+     "lo": 42885044379.01305,
+     "hi": 129881961184.23781,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 59113336839.07401,
+     "predicted": 77461155868.06238,
+     "lo": 42489715674.47124,
+     "hi": 141216070128.26697,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 3.11133127014293e-10,
+     "predicted": 3.209157024921643e-10,
+     "lo": 2.988624487697984e-10,
+     "hi": 3.4459628009461287e-10,
+     "status": "predicted",
+     "z": -0.8696559109174591,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 3.704563603358625e-10,
+     "predicted": 3.758879763535842e-10,
+     "lo": 3.410717382868232e-10,
+     "hi": 4.1425821874568163e-10,
+     "status": "predicted",
+     "z": -0.29950126669719696,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 5.072783239900514e-10,
+     "predicted": 4.939948706952291e-10,
+     "lo": 4.093460203450637e-10,
+     "hi": 5.96148295438385e-10,
+     "status": "predicted",
+     "z": 0.282337430209522,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 1.165255829738946e-09,
+     "lo": 4.6136292216753004e-10,
+     "hi": 2.943065173857962e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.980752723664175e-10,
+     "predicted": 4.091260646399045e-10,
+     "lo": 3.8210530101531694e-10,
+     "hi": 4.3805761480662007e-10,
+     "status": "predicted",
+     "z": -0.8015038884213846,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 4.3384426987093394e-10,
+     "predicted": 4.347204755537867e-10,
+     "lo": 3.954714319058218e-10,
+     "hi": 4.778648383145787e-10,
+     "status": "predicted",
+     "z": -0.04264415828751445,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 5.247823201829619e-10,
+     "predicted": 5.216000233043434e-10,
+     "lo": 4.320484552705334e-10,
+     "hi": 6.297131282201509e-10,
+     "status": "predicted",
+     "z": 0.06458256810867354,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 1.5124666151982903e-09,
+     "lo": 5.987668682264943e-10,
+     "hi": 3.820443954865025e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 8.040974333312056,
+     "predicted": 7.125084542958694,
+     "lo": 5.2784909754936,
+     "hi": 9.617678609285038,
+     "status": "predicted",
+     "z": 0.8305778358706877,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 13.608090637834955,
+     "predicted": 14.844829154086089,
+     "lo": 9.162681716977584,
+     "hi": 24.05070474135115,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 12.040160481260369,
+     "predicted": 13.830653161970769,
+     "lo": 7.994959939384371,
+     "hi": 23.925944387091143,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 10.365763084521113,
+     "lo": 6.127999825904117,
+     "hi": 17.534113475365146,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 6.975414880677987,
+     "predicted": 7.387199687089385,
+     "lo": 5.605071408749164,
+     "hi": 9.735954323749034,
+     "status": "predicted",
+     "z": -0.43648954458046046,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 11.09966298653464,
+     "predicted": 13.567413525955951,
+     "lo": 8.397980985711039,
+     "hi": 21.91892433401447,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 10.214245963831987,
+     "predicted": 11.047579147243185,
+     "lo": 6.214410936358641,
+     "hi": 19.639674019709673,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 7.859718360315374,
+     "lo": 4.475239073030746,
+     "hi": 13.803770412123004,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.43883777110360295,
+     "predicted": 0.4391516416131925,
+     "lo": 0.4152777091857247,
+     "hi": 0.4643980643933663,
+     "status": "predicted",
+     "z": -0.025902901111197068,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.5001454636303948,
+     "predicted": 0.5046553448739659,
+     "lo": 0.47416435359958187,
+     "hi": 0.5371070498583469,
+     "status": "predicted",
+     "z": -0.28807705234503245,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.5911651858438307,
+     "predicted": 0.6058147042178998,
+     "lo": 0.5751928056918845,
+     "hi": 0.6380668398749405,
+     "status": "predicted",
+     "z": -0.9438682274243321,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 0.641652075238662,
+     "lo": 0.552138573444758,
+     "hi": 0.7456776350353544,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0087",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "199",
+    "secondary_outer_diameter_um": "234",
+    "primary_width_um": "9.7",
+    "secondary_width_um": "8.2",
+    "center_spacing_um": "22"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.104189419786185e-10,
+     "predicted": 4.068572484918263e-10,
+     "lo": 3.9660071441674925e-10,
+     "hi": 4.1737902790663477e-10,
+     "status": "predicted",
+     "z": 0.7058063926584653,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 5.165238367095289e-10,
+     "predicted": 5.156700793290681e-10,
+     "lo": 5.036443634568829e-10,
+     "hi": 5.279829379804277e-10,
+     "status": "predicted",
+     "z": 0.14021044221396822,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.49102151441275693,
+     "predicted": 0.4759097741165395,
+     "lo": 0.45443894160807347,
+     "hi": 0.49839503696184095,
+     "status": "predicted",
+     "z": 1.3542660277932381,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 12.184133847736158,
+     "predicted": 12.47339767747791,
+     "lo": 10.542173150706917,
+     "hi": 14.758403926431274,
+     "status": "predicted",
+     "z": -0.3087178737198163,
+     "inside": true
+    },
+    "Qs_peak": {
+     "measured": 10.033169255373215,
+     "predicted": 10.39863416838463,
+     "lo": 9.03735935357856,
+     "hi": 11.964954400654541,
+     "status": "predicted",
+     "z": -0.5378173228404303,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 45635533227.7862,
+     "predicted": 47426320765.27125,
+     "lo": 42471051128.57276,
+     "hi": 52959741790.26601,
+     "status": "predicted",
+     "z": -0.6975819708531739,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 45635533227.7862,
+     "predicted": 49412039184.115616,
+     "lo": 40050479666.21609,
+     "hi": 60961807116.43524,
+     "status": "predicted",
+     "z": -0.7570211409645784,
+     "inside": true
+    },
+    "SRF_s": {
+     "measured": 45679274715.95791,
+     "predicted": 49328420795.557915,
+     "lo": 38405976163.33984,
+     "hi": 63357147539.61425,
+     "status": "predicted",
+     "z": -0.6735358047051473,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 4.043331268274506e-10,
+     "predicted": 3.980031119560266e-10,
+     "lo": 3.868336783846466e-10,
+     "hi": 4.0949505169291545e-10,
+     "status": "predicted",
+     "z": 1.1086799904577032,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 5.772582243636075e-10,
+     "predicted": 5.466911942434137e-10,
+     "lo": 4.837123661016969e-10,
+     "hi": 6.178697978551461e-10,
+     "status": "predicted",
+     "z": 0.8890264388374698,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": null,
+     "predicted": 1.1709243924329822e-09,
+     "lo": 6.780192275788798e-10,
+     "hi": 2.0221608429755643e-09,
+     "status": "uncertain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Ls@10": {
+     "measured": 4.846505606317912e-10,
+     "predicted": 4.848799274156027e-10,
+     "lo": 4.717535515646215e-10,
+     "hi": 4.983715400356761e-10,
+     "status": "predicted",
+     "z": -0.03448041944529697,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 5.859733093238222e-10,
+     "predicted": 5.723497619284816e-10,
+     "lo": 5.066049404569345e-10,
+     "hi": 6.46626639061442e-10,
+     "status": "predicted",
+     "z": 0.38557939373146377,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": null,
+     "predicted": 1.217359375700066e-09,
+     "lo": 7.043001835790941e-10,
+     "hi": 2.1041650764221715e-09,
+     "status": "uncertain"
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 8.485780988574446,
+     "predicted": 8.289571079712953,
+     "lo": 7.379637702712218,
+     "hi": 9.31170220732625,
+     "status": "predicted",
+     "z": 0.414536676505506,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 11.614219781754988,
+     "predicted": 13.200869139378161,
+     "lo": 10.833949280215473,
+     "hi": 16.084895870171625,
+     "status": "predicted",
+     "z": -1.296090755504636,
+     "inside": true
+    },
+    "Qp@40": {
+     "measured": null,
+     "predicted": 9.535194961200729,
+     "lo": 6.254756325906517,
+     "hi": 14.536128701213716,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qs@10": {
+     "measured": 7.056616990599284,
+     "predicted": 7.075637746955613,
+     "lo": 6.402078304935947,
+     "hi": 7.820062039469854,
+     "status": "predicted",
+     "z": -0.056534444420843336,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 9.813639625538256,
+     "predicted": 11.199285823511863,
+     "lo": 9.292245789119438,
+     "hi": 13.497706130801706,
+     "status": "predicted",
+     "z": -1.415085176085777,
+     "inside": true
+    },
+    "Qs@40": {
+     "measured": null,
+     "predicted": 7.885385419749521,
+     "lo": 5.130324799173952,
+     "hi": 12.119954515942146,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "k@10": {
+     "measured": 0.49176634426795984,
+     "predicted": 0.4779646663688136,
+     "lo": 0.45340523141533595,
+     "hi": 0.5038544032320227,
+     "status": "predicted",
+     "z": 1.092851325772167,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.598345715517603,
+     "predicted": 0.5779508300136842,
+     "lo": 0.5481650631910452,
+     "hi": 0.6093550726655707,
+     "status": "predicted",
+     "z": 1.310843858080654,
+     "inside": true
+    },
+    "k@40": {
+     "measured": null,
+     "predicted": 0.662929007160286,
+     "lo": 0.601194053849774,
+     "hi": 0.7310033519465551,
+     "status": "predicted"
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0088",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "156",
+    "secondary_outer_diameter_um": "172",
+    "primary_width_um": "4.7",
+    "secondary_width_um": "8.8",
+    "center_spacing_um": "21.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.6698978607479544e-10,
+     "predicted": 3.634455829763184e-10,
+     "lo": 3.398268857557871e-10,
+     "hi": 3.887058302971441e-10,
+     "status": "predicted",
+     "z": 0.2986075178705451,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 3.4860786166080003e-10,
+     "predicted": 3.434639624312287e-10,
+     "lo": 3.2273397555323344e-10,
+     "hi": 3.655254867007403e-10,
+     "status": "predicted",
+     "z": 0.47757689221355776,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.44942898012045673,
+     "predicted": 0.461687883029817,
+     "lo": 0.4302640447854578,
+     "hi": 0.49540672505609806,
+     "status": "predicted",
+     "z": -0.763547689231922,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 12.118910081383953,
+     "predicted": 11.667085112708554,
+     "lo": 7.696431810207014,
+     "hi": 17.686231540005586,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 12.965183780349351,
+     "predicted": 13.024132040625048,
+     "lo": 8.94060051409439,
+     "hi": 18.97277650916471,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 77349867059.41418,
+     "predicted": 72692707517.11423,
+     "lo": 61787732211.64969,
+     "hi": 85522312229.6825,
+     "status": "predicted",
+     "z": 0.7641100913762666,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 77362450506.80579,
+     "predicted": 76553403578.4407,
+     "lo": 45914447860.37516,
+     "hi": 127637897710.65176,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 77349867059.41418,
+     "predicted": 76846907221.48091,
+     "lo": 43938685799.20293,
+     "hi": 134401997740.54285,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 3.5084475888968674e-10,
+     "predicted": 3.486414334018094e-10,
+     "lo": 3.2615508005269424e-10,
+     "hi": 3.726780802090536e-10,
+     "status": "predicted",
+     "z": 0.18898351154122797,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 3.718952047741918e-10,
+     "predicted": 3.7030170692769075e-10,
+     "lo": 3.36464866506141e-10,
+     "hi": 4.0754137446044063e-10,
+     "status": "predicted",
+     "z": 0.08962250079799444,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 4.174450938330473e-10,
+     "predicted": 4.232573385662143e-10,
+     "lo": 3.583675869005953e-10,
+     "hi": 4.998967015949659e-10,
+     "status": "predicted",
+     "z": -0.1661728456138747,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": 6.638281350769004e-10,
+     "predicted": 8.07946841993246e-10,
+     "lo": 4.0104430075987936e-10,
+     "hi": 1.6276957389744897e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.2819867727839414e-10,
+     "predicted": 3.2368961991735464e-10,
+     "lo": 3.035700782490333e-10,
+     "hi": 3.4514261302225414e-10,
+     "status": "predicted",
+     "z": 0.431151394414776,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 3.460651650834975e-10,
+     "predicted": 3.3841715130140153e-10,
+     "lo": 3.0824913972541976e-10,
+     "hi": 3.715376737043698e-10,
+     "status": "predicted",
+     "z": 0.47868814995942593,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 3.859785519688805e-10,
+     "predicted": 3.918846175423218e-10,
+     "lo": 3.306472316059118e-10,
+     "hi": 4.644634486138126e-10,
+     "status": "predicted",
+     "z": -0.1787436490956769,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": 5.996521190772938e-10,
+     "predicted": 7.130421399230772e-10,
+     "lo": 3.538351383113742e-10,
+     "hi": 1.436909561137664e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 5.656030420617781,
+     "predicted": 5.395945696946314,
+     "lo": 4.121878714143923,
+     "hi": 7.063825013696605,
+     "status": "predicted",
+     "z": 0.3601068968577241,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 10.802455856864972,
+     "predicted": 10.946962710674539,
+     "lo": 6.982074733195662,
+     "hi": 17.16337867584675,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 12.093693417463465,
+     "predicted": 11.84604554945529,
+     "lo": 7.225045925905086,
+     "hi": 19.42254715041004,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": 8.976437027924174,
+     "predicted": 9.846308399442588,
+     "lo": 5.834041006840454,
+     "hi": 16.61794783123042,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 7.036526505575232,
+     "predicted": 7.073198319948923,
+     "lo": 5.523171809632709,
+     "hi": 9.058225273034784,
+     "status": "predicted",
+     "z": -0.044150199557736455,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 12.262778663769954,
+     "predicted": 13.37500390956401,
+     "lo": 8.510892791955385,
+     "hi": 21.019032192479568,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 12.926887628947258,
+     "predicted": 13.743040475121855,
+     "lo": 8.197592773041638,
+     "hi": 23.039832147060743,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": 8.841698240679637,
+     "predicted": 9.228863238840757,
+     "lo": 5.1787337420324215,
+     "hi": 16.446475320779893,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.4493174857247357,
+     "predicted": 0.4623926749302961,
+     "lo": 0.4264778627310149,
+     "hi": 0.5013319670569756,
+     "status": "predicted",
+     "z": -0.7184513864956791,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.4903001727425518,
+     "predicted": 0.50546091493611,
+     "lo": 0.4621569635718682,
+     "hi": 0.5528224319145613,
+     "status": "predicted",
+     "z": -0.680009582999788,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.5401111470591068,
+     "predicted": 0.6230049517059829,
+     "lo": 0.5456037592060086,
+     "hi": 0.7113865388592793,
+     "status": "predicted",
+     "z": -2.1525393959745878,
+     "inside": false
+    },
+    "k@60": {
+     "measured": 0.6945327509901907,
+     "predicted": 0.7570321344830456,
+     "lo": 0.6689898017222247,
+     "hi": 0.8566612692220313,
+     "status": "predicted",
+     "z": -1.424712383214117,
+     "inside": true
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0089",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "199",
+    "secondary_outer_diameter_um": "235",
+    "primary_width_um": "4",
+    "secondary_width_um": "8.6",
+    "center_spacing_um": "19.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 5.131830936396232e-10,
+     "predicted": 5.153329978854432e-10,
+     "lo": 5.037311443966202e-10,
+     "hi": 5.272020633699377e-10,
+     "status": "predicted",
+     "z": -0.37959478836184574,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 5.171299941457463e-10,
+     "predicted": 5.178933148763827e-10,
+     "lo": 5.073152763011332e-10,
+     "hi": 5.286919162955411e-10,
+     "status": "predicted",
+     "z": -0.14294819617312796,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.4902330949587815,
+     "predicted": 0.4780454681079516,
+     "lo": 0.4530161874362028,
+     "hi": 0.5044576240683089,
+     "status": "predicted",
+     "z": 0.93626154746483,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 9.347042786026275,
+     "predicted": 9.982610078931511,
+     "lo": 8.287091337422856,
+     "hi": 12.025027833104012,
+     "status": "predicted",
+     "z": -0.7821717676886031,
+     "inside": true
+    },
+    "Qs_peak": {
+     "measured": 10.602440697981262,
+     "predicted": 10.7385087345015,
+     "lo": 9.210506488395366,
+     "hi": 12.520003105828659,
+     "status": "predicted",
+     "z": -0.17522434473425164,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 48806630316.55896,
+     "predicted": 48725670238.16609,
+     "lo": 42984583828.52926,
+     "hi": 55233544882.72915,
+     "status": "predicted",
+     "z": 0.0264854948143609,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 48806630316.55896,
+     "predicted": 51863986398.71825,
+     "lo": 40646945781.12317,
+     "hi": 66176511751.976036,
+     "status": "predicted",
+     "z": -0.4986314218465862,
+     "inside": true
+    },
+    "SRF_s": {
+     "measured": 48895038042.9867,
+     "predicted": 52773946452.83188,
+     "lo": 39428306511.21378,
+     "hi": 70636800579.15399,
+     "status": "predicted",
+     "z": -0.5743764248475948,
+     "inside": true
+    },
+    "Lp@10": {
+     "measured": 5.068012552647499e-10,
+     "predicted": 5.092356810433997e-10,
+     "lo": 4.959832368479555e-10,
+     "hi": 5.228422244585464e-10,
+     "status": "predicted",
+     "z": -0.36346062961955705,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 6.767286634341291e-10,
+     "predicted": 6.806463499830655e-10,
+     "lo": 5.975216191261005e-10,
+     "hi": 7.753350488352783e-10,
+     "status": "predicted",
+     "z": -0.08863501299460239,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": null,
+     "predicted": 1.3192697944143548e-09,
+     "lo": 7.839766549459682e-10,
+     "hi": 2.2200569104625283e-09,
+     "status": "uncertain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Ls@10": {
+     "measured": 4.881407627444223e-10,
+     "predicted": 4.903737953943464e-10,
+     "lo": 4.781589788110341e-10,
+     "hi": 5.029006457379261e-10,
+     "status": "predicted",
+     "z": -0.3618785784272387,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 5.761441937306582e-10,
+     "predicted": 5.761089773268844e-10,
+     "lo": 5.064605862730572e-10,
+     "hi": 6.553354056611317e-10,
+     "status": "predicted",
+     "z": 0.0009487931334531261,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": null,
+     "predicted": 1.1136486049003488e-09,
+     "lo": 6.612630460987377e-10,
+     "hi": 1.8755217345251567e-09,
+     "status": "uncertain"
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 5.911479435896484,
+     "predicted": 5.598770571140681,
+     "lo": 4.992963291539565,
+     "hi": 6.278081787900636,
+     "status": "predicted",
+     "z": 0.9778357924286246,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 9.293803849337763,
+     "predicted": 9.308721910437805,
+     "lo": 7.622118610024233,
+     "hi": 11.368532561524828,
+     "status": "predicted",
+     "z": -0.01604698055609164,
+     "inside": true
+    },
+    "Qp@40": {
+     "measured": null,
+     "predicted": 8.066783900028751,
+     "lo": 5.4459191950546755,
+     "hi": 11.948947488764523,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qs@10": {
+     "measured": 7.442185324269904,
+     "predicted": 7.456745458808471,
+     "lo": 6.801258337106271,
+     "hi": 8.175406679393708,
+     "status": "predicted",
+     "z": -0.04462896955626434,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 10.446118810805899,
+     "predicted": 10.109984814035752,
+     "lo": 8.406357203237024,
+     "hi": 12.15886863583134,
+     "status": "predicted",
+     "z": 0.35447930608504974,
+     "inside": true
+    },
+    "Qs@40": {
+     "measured": null,
+     "predicted": 8.374961679272715,
+     "lo": 5.6204593391395425,
+     "hi": 12.479404065936084,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "k@10": {
+     "measured": 0.48920750760439996,
+     "predicted": 0.47302886852019016,
+     "lo": 0.44560190279748213,
+     "hi": 0.5021439743608647,
+     "status": "predicted",
+     "z": 1.1402059251578227,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.5814078627249568,
+     "predicted": 0.561003756785405,
+     "lo": 0.5251518863793178,
+     "hi": 0.599303217393399,
+     "status": "predicted",
+     "z": 1.081916103024573,
+     "inside": true
+    },
+    "k@40": {
+     "measured": null,
+     "predicted": 0.6337656293581992,
+     "lo": 0.5735818669323592,
+     "hi": 0.700264244934997,
+     "status": "predicted"
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0090",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "180",
+    "secondary_outer_diameter_um": "213",
+    "primary_width_um": "4",
+    "secondary_width_um": "8.4",
+    "center_spacing_um": "22"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.552201444366084e-10,
+     "predicted": 4.64303610001274e-10,
+     "lo": 4.4076406607350533e-10,
+     "hi": 4.891003120573437e-10,
+     "status": "predicted",
+     "z": -0.7851344022706073,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.6161871444151186e-10,
+     "predicted": 4.654805284807418e-10,
+     "lo": 4.4347120261201944e-10,
+     "hi": 4.885821697520032e-10,
+     "status": "predicted",
+     "z": -0.3439907933069634,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.46643608505786577,
+     "predicted": 0.4695152317442488,
+     "lo": 0.45213781430695155,
+     "hi": 0.4875605310247247,
+     "status": "predicted",
+     "z": -0.34893090678451155,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 10.178199351583725,
+     "predicted": 10.662949329139405,
+     "lo": 7.342988583089696,
+     "hi": 15.483952767900641,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 11.421575626412817,
+     "predicted": 11.619088061451455,
+     "lo": 8.270796900458166,
+     "hi": 16.322877832036372,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 57320928707.56683,
+     "predicted": 54628389403.044716,
+     "lo": 50012542822.59007,
+     "hi": 59670249908.24368,
+     "status": "predicted",
+     "z": 1.0899903935601551,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 57320928707.56683,
+     "predicted": 62701659608.7261,
+     "lo": 41406122658.94069,
+     "hi": 94949680511.55203,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 57384187427.08703,
+     "predicted": 64610444230.240234,
+     "lo": 39954350688.1651,
+     "hi": 104481975848.14005,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 4.452022167971154e-10,
+     "predicted": 4.5461330887620783e-10,
+     "lo": 4.318180413235564e-10,
+     "hi": 4.786119171257978e-10,
+     "status": "predicted",
+     "z": -0.8132742560594313,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 5.308766073528557e-10,
+     "predicted": 5.569503999634825e-10,
+     "lo": 5.127132374432112e-10,
+     "hi": 6.05004367678025e-10,
+     "status": "predicted",
+     "z": -1.1586966308781201,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 7.41328574225329e-10,
+     "predicted": 8.496988534376682e-10,
+     "lo": 6.852249084001207e-10,
+     "hi": 1.0536513379512181e-09,
+     "status": "predicted",
+     "z": -1.2683954396842745,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Ls@10": {
+     "measured": 4.354967852994122e-10,
+     "predicted": 4.3906414201862486e-10,
+     "lo": 4.178522357395117e-10,
+     "hi": 4.6135285231961326e-10,
+     "status": "predicted",
+     "z": -0.32950263236545063,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 4.853182753609819e-10,
+     "predicted": 4.880433825417869e-10,
+     "lo": 4.498839390254743e-10,
+     "hi": 5.294395344692264e-10,
+     "status": "predicted",
+     "z": -0.1375522956178073,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 6.123037475599228e-10,
+     "predicted": 7.423499375463357e-10,
+     "lo": 5.97645305369346e-10,
+     "hi": 9.220911213122936e-10,
+     "status": "predicted",
+     "z": -1.7764904835045994,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 5.744073060300935,
+     "predicted": 5.366773485156606,
+     "lo": 4.275031334904865,
+     "hi": 6.7373208251866386,
+     "status": "predicted",
+     "z": 0.6154932662095199,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 10.073967221288566,
+     "predicted": 10.861244362296974,
+     "lo": 7.276097060537764,
+     "hi": 16.212899321715355,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 9.030551537689968,
+     "predicted": 10.961604014222116,
+     "lo": 7.003154064617346,
+     "hi": 17.157520947838208,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qs@10": {
+     "measured": 7.340523897524332,
+     "predicted": 7.384105307609649,
+     "lo": 5.9836436579736665,
+     "hi": 9.112342631100736,
+     "status": "predicted",
+     "z": -0.05913803362643512,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 11.417797989297748,
+     "predicted": 13.041995105036436,
+     "lo": 8.76682199307582,
+     "hi": 19.401972168949833,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 9.778039625945853,
+     "predicted": 11.510122406122411,
+     "lo": 7.248688130131297,
+     "hi": 18.276813048862877,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "k@10": {
+     "measured": 0.46256105679608106,
+     "predicted": 0.4673644948496665,
+     "lo": 0.4471729330090549,
+     "hi": 0.48846778264564805,
+     "status": "predicted",
+     "z": -0.4737147211791315,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.5297296893625443,
+     "predicted": 0.5433355457325103,
+     "lo": 0.5197137262938312,
+     "hi": 0.5680310146158032,
+     "status": "predicted",
+     "z": -1.1410944203571702,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.6297342411312852,
+     "predicted": 0.6145457151304177,
+     "lo": 0.5551911287157001,
+     "hi": 0.6802458044652048,
+     "status": "predicted",
+     "z": 0.4807395250192433,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0091",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "160",
+    "secondary_outer_diameter_um": "199",
+    "primary_width_um": "4.1",
+    "secondary_width_um": "8.9",
+    "center_spacing_um": "18"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.929648816384019e-10,
+     "predicted": 4.0845460985273547e-10,
+     "lo": 3.785890875719742e-10,
+     "hi": 4.406761150457962e-10,
+     "status": "predicted",
+     "z": -1.0527235475115002,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.155903412624134e-10,
+     "predicted": 4.2504630824600657e-10,
+     "lo": 3.960682112776402e-10,
+     "hi": 4.561445705798265e-10,
+     "status": "predicted",
+     "z": -0.6372346957571723,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.4482471314168664,
+     "predicted": 0.45482279539435505,
+     "lo": 0.4292901064328177,
+     "hi": 0.48187408027934314,
+     "status": "predicted",
+     "z": -0.5041343574554383,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 10.803651569986968,
+     "predicted": 10.713713762545943,
+     "lo": 6.798249801431492,
+     "hi": 16.884296096562473,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 11.829866854384344,
+     "predicted": 11.937395576017686,
+     "lo": 7.928136831980594,
+     "hi": 17.974136440670783,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 64352480088.5147,
+     "predicted": 63838100051.25277,
+     "lo": 55848120802.20034,
+     "hi": 72971175388.11075,
+     "status": "predicted",
+     "z": 0.12003624868631564,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 64352480088.5147,
+     "predicted": 81781076305.68282,
+     "lo": 47646548228.36926,
+     "hi": 140369967823.47647,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 64422406929.655815,
+     "predicted": 79844728928.37064,
+     "lo": 44185574155.753525,
+     "hi": 144281948564.7638,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 3.8328654707501104e-10,
+     "predicted": 3.9880500422665377e-10,
+     "lo": 3.702793602258493e-10,
+     "hi": 4.2952821161625824e-10,
+     "status": "predicted",
+     "z": -1.069589673619076,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 4.384462458000754e-10,
+     "predicted": 4.5770054080325675e-10,
+     "lo": 4.127480032153488e-10,
+     "hi": 5.07548875874982e-10,
+     "status": "predicted",
+     "z": -0.8314720659530805,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 5.559748645049972e-10,
+     "predicted": 5.819325485602635e-10,
+     "lo": 4.814636185952262e-10,
+     "hi": 7.033667301008425e-10,
+     "status": "predicted",
+     "z": -0.48153784875963723,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Ls@10": {
+     "measured": 3.890352237415469e-10,
+     "predicted": 3.966241449334843e-10,
+     "lo": 3.69213772555631e-10,
+     "hi": 4.2606945904358134e-10,
+     "status": "predicted",
+     "z": -0.5395424651364223,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 4.185297800800708e-10,
+     "predicted": 4.202916723683872e-10,
+     "lo": 3.800957930758216e-10,
+     "hi": 4.6473834512285313e-10,
+     "status": "predicted",
+     "z": -0.08357833100271181,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 4.884020787838653e-10,
+     "predicted": 5.180351082122265e-10,
+     "lo": 4.2875012844944943e-10,
+     "hi": 6.259132196903667e-10,
+     "status": "predicted",
+     "z": -0.6227670029387774,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 5.61776697445854,
+     "predicted": 4.442873086202263,
+     "lo": 3.2664934161685513,
+     "hi": 6.042908631744164,
+     "status": "predicted",
+     "z": 1.571702523752681,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 10.374922496322553,
+     "predicted": 8.847771421509655,
+     "lo": 5.3228595216147925,
+     "hi": 14.706955689774487,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 10.488973323371237,
+     "predicted": 9.101456562764579,
+     "lo": 5.017388990176613,
+     "hi": 16.509884269701512,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qs@10": {
+     "measured": 7.1647354916483055,
+     "predicted": 7.186241861869136,
+     "lo": 5.412003401549505,
+     "hi": 9.542135927426578,
+     "status": "predicted",
+     "z": -0.022207821069330533,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 11.661871701684403,
+     "predicted": 12.048648978821472,
+     "lo": 7.299650605825934,
+     "hi": 19.887245301712646,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 11.25420400890082,
+     "predicted": 10.280146965688834,
+     "lo": 5.472463120219025,
+     "hi": 19.311490879801788,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "k@10": {
+     "measured": 0.4466218822344407,
+     "predicted": 0.45502463457182973,
+     "lo": 0.4272836953550676,
+     "hi": 0.484566624746056,
+     "status": "predicted",
+     "z": -0.6000699693146035,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.49875191847620703,
+     "predicted": 0.5126842521524145,
+     "lo": 0.47624700032201406,
+     "hi": 0.5519092870450796,
+     "status": "predicted",
+     "z": -0.7474234127331013,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.571544025395022,
+     "predicted": 0.5757580871549692,
+     "lo": 0.5512701561519797,
+     "hi": 0.6013337947374002,
+     "status": "predicted",
+     "z": -0.3380410178929035,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0092",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "172",
+    "secondary_outer_diameter_um": "190",
+    "primary_width_um": "4.2",
+    "secondary_width_um": "8.2",
+    "center_spacing_um": "21.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.2459628359951447e-10,
+     "predicted": 4.357217941319653e-10,
+     "lo": 4.1582466099316034e-10,
+     "hi": 4.5657100141230327e-10,
+     "status": "predicted",
+     "z": -1.144142449562739,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.038977413457992e-10,
+     "predicted": 4.086193163965372e-10,
+     "lo": 3.910566924992645e-10,
+     "hi": 4.269706897617853e-10,
+     "status": "predicted",
+     "z": -0.5291077467544724,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.4524487706665214,
+     "predicted": 0.4668511296372933,
+     "lo": 0.43719042117740275,
+     "hi": 0.49852413659167816,
+     "status": "predicted",
+     "z": -0.9547571485689532,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 11.610815656192457,
+     "predicted": 10.317149546362316,
+     "lo": 7.384735105234514,
+     "hi": 14.414000400170599,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 12.416198816729468,
+     "predicted": 11.776257032771793,
+     "lo": 8.706866943522876,
+     "hi": 15.927684504823254,
+     "status": "predicted",
+     "z": 0.3695926914030825,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 73175834953.2484,
+     "predicted": 64559567001.46783,
+     "lo": 55453289835.2227,
+     "hi": 75161233964.69133,
+     "status": "predicted",
+     "z": 1.6478680813764535,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 73195636128.09262,
+     "predicted": 62760340899.27948,
+     "lo": 41196666774.01286,
+     "hi": 95611142799.50514,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 73175834953.2484,
+     "predicted": 65026471722.89727,
+     "lo": 40939171136.759125,
+     "hi": 103285970558.69693,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 4.0796360395288735e-10,
+     "predicted": 4.221958732809455e-10,
+     "lo": 4.0251016505445325e-10,
+     "hi": 4.4284435746199324e-10,
+     "status": "predicted",
+     "z": -1.436318651402777,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 4.3903031225974123e-10,
+     "predicted": 4.64462063207919e-10,
+     "lo": 4.2412740808727776e-10,
+     "hi": 5.086325572125361e-10,
+     "status": "predicted",
+     "z": -1.2397119257380664,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 5.042828119674575e-10,
+     "predicted": 5.697733259882478e-10,
+     "lo": 4.646586343575015e-10,
+     "hi": 6.986669761482051e-10,
+     "status": "predicted",
+     "z": -1.1974502484950162,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 1.4879993436652236e-09,
+     "lo": 4.3980722860895013e-10,
+     "hi": 5.034346647168951e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.80711854837366e-10,
+     "predicted": 3.861579316691245e-10,
+     "lo": 3.685582330808597e-10,
+     "hi": 4.0459806566920606e-10,
+     "status": "predicted",
+     "z": -0.6089745072590893,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 4.0648806230841883e-10,
+     "predicted": 4.129733297637536e-10,
+     "lo": 3.774926785109106e-10,
+     "hi": 4.517888181803047e-10,
+     "status": "predicted",
+     "z": -0.35240183112996365,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 4.626915291412673e-10,
+     "predicted": 5.238892910195163e-10,
+     "lo": 4.256916357942754e-10,
+     "hi": 6.447389757443346e-10,
+     "status": "predicted",
+     "z": -1.196923381053013,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 1.3238593042791e-09,
+     "lo": 3.911776342018266e-10,
+     "hi": 4.480326338448312e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 5.671870913631941,
+     "predicted": 5.212632755097569,
+     "lo": 4.26566660322819,
+     "hi": 6.369822765556285,
+     "status": "predicted",
+     "z": 0.8677151915807739,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 10.68352216292114,
+     "predicted": 9.478391755287857,
+     "lo": 6.647295178881911,
+     "hi": 13.515258138697567,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 11.601443382556933,
+     "predicted": 8.116950010637796,
+     "lo": 5.137274009784708,
+     "hi": 12.824871196222995,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 9.19948906705496,
+     "lo": 5.1559397492926955,
+     "hi": 16.414194736560603,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 7.124107757896476,
+     "predicted": 7.0778688467056945,
+     "lo": 5.857401907228417,
+     "hi": 8.55263616951826,
+     "status": "predicted",
+     "z": 0.07228267728930703,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 12.049666054041811,
+     "predicted": 11.54576548655219,
+     "lo": 8.121473254203913,
+     "hi": 16.41385700574182,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 12.18232821546045,
+     "predicted": 9.063066242531308,
+     "lo": 5.592841927007859,
+     "hi": 14.686481539887644,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 8.711753376845046,
+     "lo": 4.569261461718598,
+     "hi": 16.609827985292277,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.44990900346600154,
+     "predicted": 0.46508096103539187,
+     "lo": 0.43073501837724787,
+     "hi": 0.5021655799718675,
+     "status": "predicted",
+     "z": -0.8754745772112561,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.49451348766334186,
+     "predicted": 0.5182281057309088,
+     "lo": 0.4781098445939909,
+     "hi": 0.5617126955365382,
+     "status": "predicted",
+     "z": -1.1626702912009583,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.550756784250723,
+     "predicted": 0.6386515236195057,
+     "lo": 0.5542583667094001,
+     "hi": 0.7358946533239559,
+     "status": "predicted",
+     "z": -2.0894338372393095,
+     "inside": false
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 0.8004452516890547,
+     "lo": 0.6991737881724029,
+     "hi": 0.9163853276398377,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0093",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "148",
+    "secondary_outer_diameter_um": "183",
+    "primary_width_um": "10",
+    "secondary_width_um": "8.9",
+    "center_spacing_um": "21.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 2.7752902814167386e-10,
+     "predicted": 2.937028668783252e-10,
+     "lo": 2.7248742474105304e-10,
+     "hi": 3.1657010995836624e-10,
+     "status": "predicted",
+     "z": -1.5619959754715382,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 3.70419003773925e-10,
+     "predicted": 3.825650738256144e-10,
+     "lo": 3.574178351029098e-10,
+     "hi": 4.094816244104274e-10,
+     "status": "predicted",
+     "z": -0.9490339974091694,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.4497996835481428,
+     "predicted": 0.43836040883402205,
+     "lo": 0.41441895971871834,
+     "hi": 0.4636849823752201,
+     "status": "predicted",
+     "z": 0.9173463928796646,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 13.981577456686832,
+     "predicted": 14.89203294672848,
+     "lo": 9.51698017183894,
+     "hi": 23.30283779960782,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 11.817754204705933,
+     "predicted": 12.538900922413523,
+     "lo": 8.384306348730295,
+     "hi": 18.752181731278515,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 63025369561.43221,
+     "predicted": 67601150899.8792,
+     "lo": 59283714656.13165,
+     "hi": 77085513778.87683,
+     "status": "predicted",
+     "z": -1.0676742449403298,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 63025369561.43221,
+     "predicted": 92146433365.47356,
+     "lo": 52973129781.347534,
+     "hi": 160288153957.01663,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 63067080651.99748,
+     "predicted": 88347873448.4308,
+     "lo": 48498582199.17425,
+     "hi": 160939689139.87845,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 2.687765503078835e-10,
+     "predicted": 2.828551355496839e-10,
+     "lo": 2.627973103003415e-10,
+     "hi": 3.044438606140714e-10,
+     "status": "predicted",
+     "z": -1.3882595236218802,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 3.100556200881257e-10,
+     "predicted": 3.180018246618736e-10,
+     "lo": 2.878352833961107e-10,
+     "hi": 3.5132996655283376e-10,
+     "status": "predicted",
+     "z": -0.5077905163716487,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 3.9903566437843707e-10,
+     "predicted": 3.909523679054093e-10,
+     "lo": 3.3200720105178544e-10,
+     "hi": 4.603627676949284e-10,
+     "status": "predicted",
+     "z": 0.2504458430403897,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 1.037418603978931e-09,
+     "lo": 3.897994388749546e-10,
+     "hi": 2.7610028454321213e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.4523023055457636e-10,
+     "predicted": 3.5347146632326e-10,
+     "lo": 3.298223175233647e-10,
+     "hi": 3.788163228095218e-10,
+     "status": "predicted",
+     "z": -0.6813482295667959,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 3.696294684517238e-10,
+     "predicted": 3.669958806797899e-10,
+     "lo": 3.338053155414948e-10,
+     "hi": 4.034866137989705e-10,
+     "status": "predicted",
+     "z": 0.15086487564552387,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 4.302087764595411e-10,
+     "predicted": 4.3218571947577743e-10,
+     "lo": 3.6703935522630915e-10,
+     "hi": 5.088950093747515e-10,
+     "status": "predicted",
+     "z": -0.05612201085579878,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 1.2364006483269306e-09,
+     "lo": 4.6460505485607435e-10,
+     "hi": 3.290292576900206e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 7.662796772746812,
+     "predicted": 6.728002801797956,
+     "lo": 4.991979585427961,
+     "hi": 9.06774976266665,
+     "status": "predicted",
+     "z": 0.8981580310771485,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 13.62464976507923,
+     "predicted": 13.50380661432651,
+     "lo": 8.559546452162467,
+     "hi": 21.304025171924753,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 13.295831736082159,
+     "predicted": 15.811666779972494,
+     "lo": 9.714257460713238,
+     "hi": 25.736275507621727,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 11.629971563672171,
+     "lo": 7.111561218997205,
+     "hi": 19.019204701565613,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 6.866420275039091,
+     "predicted": 7.115400702312719,
+     "lo": 5.43038429548144,
+     "hi": 9.323267820400865,
+     "status": "predicted",
+     "z": -0.27690267712462524,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 11.515150238364125,
+     "predicted": 12.755846942329258,
+     "lo": 8.165650175064412,
+     "hi": 19.92635341065749,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 11.436584772431955,
+     "predicted": 13.555410497825632,
+     "lo": 8.215358163967835,
+     "hi": 22.366542042010572,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 9.430089913810509,
+     "lo": 5.616360135333546,
+     "hi": 15.833492447020491,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.4475708206842698,
+     "predicted": 0.4442724455734496,
+     "lo": 0.41756187866773664,
+     "hi": 0.4726916320176628,
+     "status": "predicted",
+     "z": 0.24158116618604916,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.501352174493107,
+     "predicted": 0.5011634580358442,
+     "lo": 0.46504924109108864,
+     "hi": 0.5400821880306004,
+     "status": "predicted",
+     "z": 0.010067944092394459,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.5775864420120619,
+     "predicted": 0.5779922137292273,
+     "lo": 0.5480069825821617,
+     "hi": 0.6096181431073743,
+     "status": "predicted",
+     "z": -0.026365758065684083,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 0.6274370101348934,
+     "lo": 0.5601780206802548,
+     "hi": 0.7027715960882409,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0094",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "200",
+    "secondary_outer_diameter_um": "220",
+    "primary_width_um": "9.9",
+    "secondary_width_um": "9.8",
+    "center_spacing_um": "20.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 4.0489212886730665e-10,
+     "predicted": 4.0679279840675286e-10,
+     "lo": 3.9218585322812434e-10,
+     "hi": 4.21943778628194e-10,
+     "status": "predicted",
+     "z": -0.2647911794342261,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.5366038933086423e-10,
+     "predicted": 4.529230544773626e-10,
+     "lo": 4.376884465861791e-10,
+     "hi": 4.686879328826717e-10,
+     "status": "predicted",
+     "z": 0.09508274797894706,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.5412288134855675,
+     "predicted": 0.5393036730465257,
+     "lo": 0.5143354802279154,
+     "hi": 0.5654839359567249,
+     "status": "predicted",
+     "z": 0.1503413762882432,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 11.396539938689857,
+     "predicted": 11.141923822223898,
+     "lo": 8.325541562343469,
+     "hi": 14.911037982410463,
+     "status": "predicted",
+     "z": 0.1716211671765194,
+     "inside": true
+    },
+    "Qs_peak": {
+     "measured": 10.383520671628492,
+     "predicted": 10.082997706533005,
+     "lo": 7.776995760809378,
+     "hi": 13.072765612433486,
+     "status": "predicted",
+     "z": 0.23853700691141855,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 47409536283.74103,
+     "predicted": 47307738159.24926,
+     "lo": 42381457568.35307,
+     "hi": 52806633328.610596,
+     "status": "predicted",
+     "z": 0.039095288462280865,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 47409536283.74103,
+     "predicted": 43328531130.73672,
+     "lo": 30901027894.81619,
+     "hi": 60754018162.03526,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 47433243762.98463,
+     "predicted": 44288199915.27531,
+     "lo": 29590279169.784035,
+     "hi": 66286791026.23374,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 3.9012181660091643e-10,
+     "predicted": 3.923159564041505e-10,
+     "lo": 3.775509053146822e-10,
+     "hi": 4.076584309101854e-10,
+     "status": "predicted",
+     "z": -0.2923970842139979,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 5.277358192419708e-10,
+     "predicted": 5.287878345000055e-10,
+     "lo": 4.659960547050949e-10,
+     "hi": 6.000406464646149e-10,
+     "status": "predicted",
+     "z": -0.03150802082592011,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": null,
+     "predicted": 1.096503202588367e-09,
+     "lo": 6.292341019485025e-10,
+     "hi": 1.9107662308247636e-09,
+     "status": "uncertain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Ls@10": {
+     "measured": 4.2480006032298413e-10,
+     "predicted": 4.2435397405218767e-10,
+     "lo": 4.087592791457045e-10,
+     "hi": 4.4054362672876615e-10,
+     "status": "predicted",
+     "z": 0.056122737304970506,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 5.20922796091844e-10,
+     "predicted": 5.125600411044815e-10,
+     "lo": 4.5195272364481487e-10,
+     "hi": 5.812948611490061e-10,
+     "status": "predicted",
+     "z": 0.257214773610427,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": null,
+     "predicted": 1.147979570285133e-09,
+     "lo": 6.579826014091623e-10,
+     "hi": 2.00287529027312e-09,
+     "status": "uncertain"
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qp@10": {
+     "measured": 7.760287044028159,
+     "predicted": 8.155010938179286,
+     "lo": 6.891538345049511,
+     "hi": 9.650124554497564,
+     "status": "predicted",
+     "z": -0.607239772608703,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 11.142625039187628,
+     "predicted": 9.809193615870855,
+     "lo": 7.135013481925435,
+     "hi": 13.48564787402137,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": null,
+     "predicted": 10.436237153805015,
+     "lo": 6.782160672051754,
+     "hi": 16.05904831763754,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "Qs@10": {
+     "measured": 7.21503200102574,
+     "predicted": 7.405051277504243,
+     "lo": 6.370531997672602,
+     "hi": 8.60756753792312,
+     "status": "predicted",
+     "z": -0.3629471274367265,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 10.226193960024675,
+     "predicted": 8.76894646923278,
+     "lo": 6.404350220612733,
+     "hi": 12.006592321072848,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": null,
+     "predicted": 9.22522774740906,
+     "lo": 5.830075575678531,
+     "hi": 14.597551247294273,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    },
+    "k@10": {
+     "measured": 0.5546423895712139,
+     "predicted": 0.5548900457448868,
+     "lo": 0.5247634880467796,
+     "hi": 0.5867461625670776,
+     "status": "predicted",
+     "z": -0.01619493923538796,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.6566974699675698,
+     "predicted": 0.6610513538504068,
+     "lo": 0.6234024187703262,
+     "hi": 0.7009740085536162,
+     "status": "predicted",
+     "z": -0.22538091744424016,
+     "inside": true
+    },
+    "k@40": {
+     "measured": null,
+     "predicted": 0.7797562878378176,
+     "lo": 0.684081637636048,
+     "hi": 0.888811853690039,
+     "status": "predicted"
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": null,
+     "lo": null,
+     "hi": null,
+     "status": "out_of_domain"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0095",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "150",
+    "secondary_outer_diameter_um": "165",
+    "primary_width_um": "9.7",
+    "secondary_width_um": "8.4",
+    "center_spacing_um": "21"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 2.8257586874528517e-10,
+     "predicted": 2.8393880862665434e-10,
+     "lo": 2.644758414449576e-10,
+     "hi": 3.0483406954620707e-10,
+     "status": "predicted",
+     "z": -0.1401006468142204,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 3.315341486076709e-10,
+     "predicted": 3.284594196427461e-10,
+     "lo": 3.074547908179922e-10,
+     "hi": 3.5089903808301995e-10,
+     "status": "predicted",
+     "z": 0.2819848499594271,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.47876520590068966,
+     "predicted": 0.485880846154783,
+     "lo": 0.44806566122420216,
+     "hi": 0.5268875012985175,
+     "status": "predicted",
+     "z": -0.36416830135918465,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 13.62186541068521,
+     "predicted": 14.152146565159676,
+     "lo": 9.487555174572144,
+     "hi": 21.11010146623921,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 12.02763992305104,
+     "predicted": 12.033932785114752,
+     "lo": 8.355509043948752,
+     "hi": 17.331743346210413,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 71366401661.99207,
+     "predicted": 69616081268.7945,
+     "lo": 57605373629.545265,
+     "hi": 84131018789.84648,
+     "status": "predicted",
+     "z": 0.2622413628469186,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 71366401661.99207,
+     "predicted": 77549194436.45944,
+     "lo": 49758829228.518654,
+     "hi": 120860511611.41495,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 71367485961.18085,
+     "predicted": 76598017664.72339,
+     "lo": 46161701665.084694,
+     "hi": 127102253567.98512,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 2.667844510702433e-10,
+     "predicted": 2.698988889221454e-10,
+     "lo": 2.514697253057145e-10,
+     "hi": 2.8967864880295076e-10,
+     "status": "predicted",
+     "z": -0.3282121910087491,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 2.906971781051898e-10,
+     "predicted": 2.940762767610923e-10,
+     "lo": 2.633363835524784e-10,
+     "hi": 3.284045120807715e-10,
+     "status": "predicted",
+     "z": -0.209354200411497,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 3.409881562308187e-10,
+     "predicted": 3.508976321288303e-10,
+     "lo": 2.853945005108232e-10,
+     "hi": 4.314349015598863e-10,
+     "status": "predicted",
+     "z": -0.27728680014682977,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 7.961279759602462e-10,
+     "lo": 2.6569020875906793e-10,
+     "hi": 2.385559321387398e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.0809940650986537e-10,
+     "predicted": 3.06194639917352e-10,
+     "lo": 2.8598833849536225e-10,
+     "hi": 3.278286031080152e-10,
+     "status": "predicted",
+     "z": 0.1816758939591256,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 3.2630916099187136e-10,
+     "predicted": 3.1865195385277835e-10,
+     "lo": 2.8616591818297415e-10,
+     "hi": 3.548258588546146e-10,
+     "status": "predicted",
+     "z": 0.44166908039305264,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 3.697401977112864e-10,
+     "predicted": 3.8439105949039023e-10,
+     "lo": 3.118487228273062e-10,
+     "hi": 4.738082146899427e-10,
+     "status": "predicted",
+     "z": -0.371611523455972,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 8.269798897891223e-10,
+     "lo": 2.759416390173615e-10,
+     "hi": 2.4784071753397105e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 6.920603305225111,
+     "predicted": 7.2190550589888645,
+     "lo": 5.48911634633076,
+     "hi": 9.494197728118701,
+     "status": "predicted",
+     "z": -0.31753599640330293,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 12.664028036352892,
+     "predicted": 13.451196058416944,
+     "lo": 8.598576996007319,
+     "hi": 21.042397536939784,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 13.590381031048869,
+     "predicted": 13.151834456580467,
+     "lo": 8.209056940380744,
+     "hi": 21.070721135145966,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 11.432893027591732,
+     "lo": 6.959180079081189,
+     "hi": 18.78253493874428,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 6.398477053715189,
+     "predicted": 6.206504506787298,
+     "lo": 4.8161816739150485,
+     "hi": 7.99818212867742,
+     "status": "predicted",
+     "z": 0.2523487930682184,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 11.299079564402135,
+     "predicted": 11.45214931396543,
+     "lo": 7.2515494925124315,
+     "hi": 18.086027551046744,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 11.994729229451979,
+     "predicted": 11.638008813009002,
+     "lo": 7.078467029221805,
+     "hi": 19.1345454563155,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 9.394935992778429,
+     "lo": 5.443366576382139,
+     "hi": 16.21511633836493,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.4903808241652866,
+     "predicted": 0.4952598372559876,
+     "lo": 0.45197587189384425,
+     "hi": 0.5426889390600852,
+     "status": "predicted",
+     "z": -0.2192266808487477,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.5390670133668819,
+     "predicted": 0.5454514044315307,
+     "lo": 0.4922018617421504,
+     "hi": 0.6044618229261992,
+     "status": "predicted",
+     "z": -0.22923042959298515,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.5973999983764657,
+     "predicted": 0.6162512768943353,
+     "lo": 0.5471029176499068,
+     "hi": 0.6941392999788609,
+     "status": "predicted",
+     "z": -0.5220711150742499,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 0.7649349447016763,
+     "lo": 0.6897015216598267,
+     "hi": 0.8483749147277526,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0096",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "187",
+    "secondary_outer_diameter_um": "206",
+    "primary_width_um": "10",
+    "secondary_width_um": "9.8",
+    "center_spacing_um": "17"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.707186043356925e-10,
+     "predicted": 3.7373793558917035e-10,
+     "lo": 3.619551726440222e-10,
+     "hi": 3.8590426399522186e-10,
+     "status": "predicted",
+     "z": -0.5235310053813319,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.170862130777371e-10,
+     "predicted": 4.214825828245922e-10,
+     "lo": 4.0893732731370256e-10,
+     "hi": 4.3441269788564166e-10,
+     "status": "predicted",
+     "z": -0.6940243172395262,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.5680583697024714,
+     "predicted": 0.5640439896543951,
+     "lo": 0.5398750759993233,
+     "hi": 0.5892948876670241,
+     "status": "predicted",
+     "z": 0.3238734178472504,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 11.241424501025204,
+     "predicted": 11.777494584748412,
+     "lo": 8.789863227644174,
+     "hi": 15.780607172309157,
+     "status": "predicted",
+     "z": -0.3523825950491051,
+     "inside": true
+    },
+    "Qs_peak": {
+     "measured": 10.384556788798243,
+     "predicted": 11.074885880265946,
+     "lo": 8.48146591905018,
+     "hi": 14.461308744449882,
+     "status": "predicted",
+     "z": -0.508788552051498,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 46522308229.452126,
+     "predicted": 48377234617.71844,
+     "lo": 43715968643.45211,
+     "hi": 53535513494.982796,
+     "status": "predicted",
+     "z": -0.7717920298429403,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 46522308229.452126,
+     "predicted": 50958737868.78097,
+     "lo": 35814871009.42424,
+     "hi": 72505997983.23488,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 46552122555.08641,
+     "predicted": 51993393206.943375,
+     "lo": 34575091056.689095,
+     "hi": 78186719240.72423,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 3.5867865304490455e-10,
+     "predicted": 3.589640883706741e-10,
+     "lo": 3.4699189961183184e-10,
+     "hi": 3.7134935104806525e-10,
+     "status": "predicted",
+     "z": -0.04690205523743726,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 4.967392264960023e-10,
+     "predicted": 4.81624585157286e-10,
+     "lo": 4.3151921610566166e-10,
+     "hi": 5.375478828528684e-10,
+     "status": "predicted",
+     "z": 0.5625750789769194,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": null,
+     "predicted": 9.158633676965201e-10,
+     "lo": 5.888126294503912e-10,
+     "hi": 1.4245715297774237e-09,
+     "status": "uncertain"
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 1.1910798570602394e-09,
+     "lo": 5.282595197698963e-10,
+     "hi": 2.685557330822163e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.9046827638716996e-10,
+     "predicted": 3.927041791734391e-10,
+     "lo": 3.798189164823704e-10,
+     "hi": 4.060265712106592e-10,
+     "status": "predicted",
+     "z": -0.3422981911481031,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 4.834671666512314e-10,
+     "predicted": 4.649095998385574e-10,
+     "lo": 4.167334261617833e-10,
+     "hi": 5.186551460792536e-10,
+     "status": "predicted",
+     "z": 0.7155717994073291,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": null,
+     "predicted": 9.746673535046175e-10,
+     "lo": 6.258323569570071e-10,
+     "hi": 1.5179407702835597e-09,
+     "status": "uncertain"
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 1.23159201940287e-09,
+     "lo": 5.459985526570055e-10,
+     "hi": 2.778063961663467e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 7.6143388584870175,
+     "predicted": 7.5848075292656585,
+     "lo": 6.503537466559736,
+     "hi": 8.845848209810818,
+     "status": "predicted",
+     "z": 0.05205716635177057,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 10.990112200468396,
+     "predicted": 12.943882619406066,
+     "lo": 9.58186577396695,
+     "hi": 17.485539999961635,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": null,
+     "predicted": 9.108501574204881,
+     "lo": 6.10092530611611,
+     "hi": 13.598724253208198,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 8.04001224290197,
+     "lo": 4.915410996953678,
+     "hi": 13.150842707980118,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 7.028973443919935,
+     "predicted": 7.318958478692098,
+     "lo": 6.3440982789542275,
+     "hi": 8.443619700930777,
+     "status": "predicted",
+     "z": -0.5941970223261003,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 10.282697821085767,
+     "predicted": 12.376267471223338,
+     "lo": 9.188197009717554,
+     "hi": 16.67051722522539,
+     "status": "predicted",
+     "z": -1.2443258199539398,
+     "inside": true
+    },
+    "Qs@40": {
+     "measured": null,
+     "predicted": 7.547794799705139,
+     "lo": 5.003214225915941,
+     "hi": 11.38652149719345,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 7.163321930042824,
+     "lo": 4.20105330447613,
+     "hi": 12.214360864871527,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.5823174756676894,
+     "predicted": 0.5828664001231237,
+     "lo": 0.5534606732847169,
+     "hi": 0.6138344724227953,
+     "status": "predicted",
+     "z": -0.036858751939384315,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.6846783979941047,
+     "predicted": 0.6853200078441846,
+     "lo": 0.6478948190712267,
+     "hi": 0.7249070363378232,
+     "status": "predicted",
+     "z": -0.03335823082635228,
+     "inside": true
+    },
+    "k@40": {
+     "measured": null,
+     "predicted": 0.7709003867203262,
+     "lo": 0.6882341051311857,
+     "hi": 0.8634960136598727,
+     "status": "predicted"
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 1.021885280957576,
+     "lo": 0.9130593596698743,
+     "hi": 1.1436819702667558,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0097",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "182",
+    "secondary_outer_diameter_um": "223",
+    "primary_width_um": "10",
+    "secondary_width_um": "8.2",
+    "center_spacing_um": "14.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.6243617576944456e-10,
+     "predicted": 3.6242568525738414e-10,
+     "lo": 3.437378911924565e-10,
+     "hi": 3.821294675388032e-10,
+     "status": "predicted",
+     "z": 0.0011304295447268672,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 4.836357827636099e-10,
+     "predicted": 4.807612804512414e-10,
+     "lo": 4.5873163201231407e-10,
+     "hi": 5.038488577018661e-10,
+     "status": "predicted",
+     "z": 0.25418176532347364,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.4114267642632126,
+     "predicted": 0.43698680716271493,
+     "lo": 0.4111498689285079,
+     "hi": 0.4644473562205321,
+     "status": "predicted",
+     "z": -1.9779067461533886,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 14.37116210746553,
+     "predicted": 13.46603954466307,
+     "lo": 9.602712777040567,
+     "hi": 18.883645197843197,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 10.815480447916915,
+     "predicted": 10.739190216138102,
+     "lo": 8.122453669173778,
+     "hi": 14.198936823252794,
+     "status": "predicted",
+     "z": 0.053461272980694335,
+     "inside": true
+    },
+    "SRF": {
+     "measured": 68567489498.77344,
+     "predicted": 56740068185.91001,
+     "lo": 49319151401.90045,
+     "hi": 65277589865.78306,
+     "status": "predicted",
+     "z": 2.7015818533909446,
+     "inside": false
+    },
+    "SRF_p": {
+     "measured": 68609624715.17548,
+     "predicted": 62925964966.75282,
+     "lo": 43608200487.13665,
+     "hi": 90801203048.15173,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 68567489498.77344,
+     "predicted": 64632243818.58909,
+     "lo": 40647219037.158394,
+     "hi": 102770301141.80179,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 3.4821918752023735e-10,
+     "predicted": 3.5215633515470274e-10,
+     "lo": 3.3413028871978256e-10,
+     "hi": 3.711548715465164e-10,
+     "status": "predicted",
+     "z": -0.4279474628304379,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 3.89139556468692e-10,
+     "predicted": 4.3034916192251503e-10,
+     "lo": 3.8391032857020057e-10,
+     "hi": 4.824053623593664e-10,
+     "status": "predicted",
+     "z": -1.763039114597224,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 4.704758901530738e-10,
+     "predicted": 6.117159382687907e-10,
+     "lo": 4.6122252574439164e-10,
+     "hi": 8.113142100510627e-10,
+     "status": "predicted",
+     "z": -1.8593132244081083,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 1.2263754740348002e-09,
+     "lo": 3.9857880474229517e-10,
+     "hi": 3.773398849661622e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 4.4637287464049006e-10,
+     "predicted": 4.439484586940408e-10,
+     "lo": 4.2292439881779996e-10,
+     "hi": 4.660176488463199e-10,
+     "status": "predicted",
+     "z": 0.2245148489656243,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 4.792499785075161e-10,
+     "predicted": 4.784334886345929e-10,
+     "lo": 4.286669388906611e-10,
+     "hi": 5.339777395463001e-10,
+     "status": "predicted",
+     "z": 0.031048487080731445,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 5.536897105138548e-10,
+     "predicted": 6.096289126637664e-10,
+     "lo": 4.5981936497154425e-10,
+     "hi": 8.082465408532878e-10,
+     "status": "predicted",
+     "z": -0.6825552533659912,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 1.6219880942099466e-09,
+     "lo": 5.271324817476945e-10,
+     "hi": 4.990861820991021e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 8.316686837187591,
+     "predicted": 7.899421067277382,
+     "lo": 6.2102205971080275,
+     "hi": 10.048089632629884,
+     "status": "predicted",
+     "z": 0.44081281788812066,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 14.158172613844894,
+     "predicted": 15.405024777892672,
+     "lo": 10.314243526697055,
+     "hi": 23.00845309626724,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 13.606356034679953,
+     "predicted": 12.800122220034698,
+     "lo": 8.179476479023698,
+     "hi": 20.031004339703447,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 9.704523813080627,
+     "lo": 5.337330729781829,
+     "hi": 17.645108989245376,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 6.768693407719209,
+     "predicted": 6.8148887560752165,
+     "lo": 5.676774362488223,
+     "hi": 8.181179274020645,
+     "status": "predicted",
+     "z": -0.07820455240510162,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 10.729739172226054,
+     "predicted": 12.304307725155578,
+     "lo": 8.540144082101286,
+     "hi": 17.72756842740206,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 10.226912105846544,
+     "predicted": 10.026041364739593,
+     "lo": 6.528421953804949,
+     "hi": 15.397519669953715,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 7.713820944401914,
+     "lo": 3.9239011072506873,
+     "hi": 15.164254127695107,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.4090629672990543,
+     "predicted": 0.43485965739643423,
+     "lo": 0.40753014138879406,
+     "hi": 0.4640219272776076,
+     "status": "predicted",
+     "z": -1.9079782122646542,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.4555426137860593,
+     "predicted": 0.5028050971623649,
+     "lo": 0.46426122580340734,
+     "hi": 0.5445489558059916,
+     "status": "predicted",
+     "z": -2.4754074025912516,
+     "inside": false
+    },
+    "k@40": {
+     "measured": 0.5191777630899354,
+     "predicted": 0.5865782055542592,
+     "lo": 0.5663165155424333,
+     "hi": 0.6075648189452701,
+     "status": "predicted",
+     "z": -6.944507392984378,
+     "inside": false
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 0.6717531165493833,
+     "lo": 0.5935511329357478,
+     "hi": 0.7602584251871989,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0098",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "153",
+    "secondary_outer_diameter_um": "191",
+    "primary_width_um": "9.8",
+    "secondary_width_um": "8.5",
+    "center_spacing_um": "14"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 2.916665024248566e-10,
+     "predicted": 3.052356344735778e-10,
+     "lo": 2.8478803180893757e-10,
+     "hi": 3.2715136222786887e-10,
+     "status": "predicted",
+     "z": -1.3559168113562772,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 3.9462324753306336e-10,
+     "predicted": 4.038648049528075e-10,
+     "lo": 3.7832117237202083e-10,
+     "hi": 4.311331022181828e-10,
+     "status": "predicted",
+     "z": -0.7085965639105309,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.40895029756365725,
+     "predicted": 0.42935016369715384,
+     "lo": 0.3985962859858613,
+     "hi": 0.46247687082892586,
+     "status": "predicted",
+     "z": -1.3099232961429217,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 14.992442651191503,
+     "predicted": 14.50123141549376,
+     "lo": 9.43814960190247,
+     "hi": 22.280396204285143,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 11.670420301818645,
+     "predicted": 11.842449168585055,
+     "lo": 8.02047308549848,
+     "hi": 17.485702004796966,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 78112313117.91605,
+     "predicted": 68308569440.75072,
+     "lo": 57592964704.29324,
+     "hi": 81017893122.87361,
+     "status": "predicted",
+     "z": 1.5719240293026717,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 78147148024.69037,
+     "predicted": 86959998020.82996,
+     "lo": 53704422106.998795,
+     "hi": 140808539764.49844,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 78112313117.91605,
+     "predicted": 87201350115.34557,
+     "lo": 50751559116.6324,
+     "hi": 149829396264.73572,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 2.7932748982934865e-10,
+     "predicted": 2.9464684795644615e-10,
+     "lo": 2.751801933055467e-10,
+     "hi": 3.154906026040616e-10,
+     "status": "predicted",
+     "z": -1.5622982246880917,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 3.0147579751324815e-10,
+     "predicted": 3.3222165013848857e-10,
+     "lo": 2.9830376436480776e-10,
+     "hi": 3.6999608454743754e-10,
+     "status": "predicted",
+     "z": -1.8035579347872919,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 3.4412737613254325e-10,
+     "predicted": 4.0191919272057393e-10,
+     "lo": 3.311729421129851e-10,
+     "hi": 4.877784895302412e-10,
+     "status": "predicted",
+     "z": -1.6036250223151587,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": 5.66671650412882e-10,
+     "predicted": 9.92385516710136e-10,
+     "lo": 3.1254068561559824e-10,
+     "hi": 3.1510425973382233e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.6353961747777585e-10,
+     "predicted": 3.7100404060687467e-10,
+     "lo": 3.470274274710474e-10,
+     "hi": 3.9663723167273627e-10,
+     "status": "predicted",
+     "z": -0.6084399583424326,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 3.792404057559501e-10,
+     "predicted": 3.798828160001757e-10,
+     "lo": 3.421022882290777e-10,
+     "hi": 4.2183568732983797e-10,
+     "status": "predicted",
+     "z": -0.032314215579036284,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 4.177031366555898e-10,
+     "predicted": 4.5041362914302066e-10,
+     "lo": 3.7077381253167846e-10,
+     "hi": 5.471595632187573e-10,
+     "status": "predicted",
+     "z": -0.7749782134352067,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": 6.134504518397782e-10,
+     "predicted": 1.2505891691369331e-09,
+     "lo": 3.938241881887305e-10,
+     "hi": 3.97124736587563e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 7.6262983554037,
+     "predicted": 6.587586457109487,
+     "lo": 4.972749279124642,
+     "hi": 8.726821501350942,
+     "status": "predicted",
+     "z": 1.0727419806118332,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 13.969472370115037,
+     "predicted": 12.742480948032375,
+     "lo": 7.80105502701478,
+     "hi": 20.81395659288181,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 14.975556370724824,
+     "predicted": 13.098119900200107,
+     "lo": 7.390929588909475,
+     "hi": 23.212336534426615,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": 10.140456101152905,
+     "predicted": 11.348718082186169,
+     "lo": 6.411551738838253,
+     "hi": 20.08771157982984,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 6.571990173971569,
+     "predicted": 6.732864858728617,
+     "lo": 5.161062392066987,
+     "hi": 8.783360045323464,
+     "status": "predicted",
+     "z": -0.19111581992670484,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 11.133757721854723,
+     "predicted": 11.682751035407971,
+     "lo": 7.1825051542949385,
+     "hi": 19.00265559485339,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 11.622753610962732,
+     "predicted": 10.923417496740326,
+     "lo": 6.038743413200185,
+     "hi": 19.759251493823516,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": 8.253683700342428,
+     "predicted": 9.263572607656487,
+     "lo": 4.852804957117894,
+     "hi": 17.683335352568722,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.40896404019132,
+     "predicted": 0.43022423514738123,
+     "lo": 0.39668586928622135,
+     "hi": 0.46659814941529676,
+     "status": "predicted",
+     "z": -1.2645234366568154,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.4461951606894386,
+     "predicted": 0.482573168275054,
+     "lo": 0.4380922399680603,
+     "hi": 0.5315703897334537,
+     "status": "predicted",
+     "z": -1.620964375138445,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.492881079072291,
+     "predicted": 0.5458619309051563,
+     "lo": 0.5147399217413692,
+     "hi": 0.5788656271374617,
+     "status": "predicted",
+     "z": -3.4783870481649592,
+     "inside": false
+    },
+    "k@60": {
+     "measured": 0.6436380162512284,
+     "predicted": 0.588448067498571,
+     "lo": 0.526320693400086,
+     "hi": 0.6579090134303017,
+     "status": "predicted",
+     "z": 1.6424743842724594,
+     "inside": true
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0099",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "141",
+    "secondary_outer_diameter_um": "175",
+    "primary_width_um": "4.2",
+    "secondary_width_um": "8.4",
+    "center_spacing_um": "18.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 3.359635425001348e-10,
+     "predicted": 3.4482704876589386e-10,
+     "lo": 3.1845482167971575e-10,
+     "hi": 3.7338324140742606e-10,
+     "status": "predicted",
+     "z": -0.6766982642168351,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 3.6090393752665634e-10,
+     "predicted": 3.615530494366776e-10,
+     "lo": 3.3635655842541036e-10,
+     "hi": 3.886370111791619e-10,
+     "status": "predicted",
+     "z": -0.049751710186885144,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.45091946669710686,
+     "predicted": 0.4515690045212746,
+     "lo": 0.4257655904186537,
+     "hi": 0.47893622789908047,
+     "status": "predicted",
+     "z": -0.0489277974536248,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 11.301286011014314,
+     "predicted": 12.064010063407549,
+     "lo": 7.813410956237168,
+     "hi": 18.626991415806554,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 12.5876518086391,
+     "predicted": 12.894624957371864,
+     "lo": 8.71293511132203,
+     "hi": 19.08327683689689,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 70668151860.92288,
+     "predicted": 72778722261.57176,
+     "lo": 63630669247.45379,
+     "hi": 83241972411.58125,
+     "status": "predicted",
+     "z": -0.438160619333072,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 70668151860.92288,
+     "predicted": 103738664150.50917,
+     "lo": 61007818843.094864,
+     "hi": 176398872207.02023,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 70737983751.1706,
+     "predicted": 92328365177.59322,
+     "lo": 51940869457.688774,
+     "hi": 164119836756.12357,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 3.269519408742337e-10,
+     "predicted": 3.347173434593381e-10,
+     "lo": 3.096633627082407e-10,
+     "hi": 3.6179837043891605e-10,
+     "status": "predicted",
+     "z": -0.6034200558167433,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 3.614186448928969e-10,
+     "predicted": 3.6695049768207047e-10,
+     "lo": 3.3299244686658665e-10,
+     "hi": 4.043715376014753e-10,
+     "status": "predicted",
+     "z": -0.3128500437692749,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 4.31532003944882e-10,
+     "predicted": 4.3355066630819625e-10,
+     "lo": 3.753968482299342e-10,
+     "hi": 5.007132615592708e-10,
+     "status": "predicted",
+     "z": -0.06480808003318622,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": null,
+     "predicted": 8.298712711809021e-10,
+     "lo": 4.656183005359857e-10,
+     "hi": 1.4790791640677376e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.3897286806658224e-10,
+     "predicted": 3.3727401204671304e-10,
+     "lo": 3.134100449535206e-10,
+     "hi": 3.629550521233493e-10,
+     "status": "predicted",
+     "z": 0.1369351368392647,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 3.571826737785588e-10,
+     "predicted": 3.4900930501512373e-10,
+     "lo": 3.180314107339241e-10,
+     "hi": 3.830046054446112e-10,
+     "status": "predicted",
+     "z": 0.4980989649571147,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 4.003435953346475e-10,
+     "predicted": 4.132362040413406e-10,
+     "lo": 3.582413246152108e-10,
+     "hi": 4.766735398656626e-10,
+     "status": "predicted",
+     "z": -0.4438853040777016,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": null,
+     "predicted": 8.304228359547401e-10,
+     "lo": 4.660696223978068e-10,
+     "hi": 1.4796117432569191e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 5.40301549973455,
+     "predicted": 4.362276887069944,
+     "lo": 3.2192529039121776,
+     "hi": 5.911141562174009,
+     "status": "predicted",
+     "z": 1.4508826592259119,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 10.354407537883384,
+     "predicted": 9.777259019556853,
+     "lo": 6.143278856581863,
+     "hi": 15.560874928066513,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 11.29004594831294,
+     "predicted": 11.853729635491979,
+     "lo": 7.219726328448696,
+     "hi": 19.462082062261825,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": null,
+     "predicted": 10.467643878106157,
+     "lo": 6.4142479315534,
+     "hi": 17.082527761336053,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 6.913992786749151,
+     "predicted": 6.840868752222845,
+     "lo": 5.19401249648738,
+     "hi": 9.009890776502226,
+     "status": "predicted",
+     "z": 0.08111090353796913,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 11.987766280247849,
+     "predicted": 12.99778093785863,
+     "lo": 8.174801209087159,
+     "hi": 20.666228448560176,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 12.497820309700938,
+     "predicted": 14.63740866494855,
+     "lo": 8.719024725396105,
+     "hi": 24.57313050170039,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": null,
+     "predicted": 9.901664373538216,
+     "lo": 5.8286280614920445,
+     "hi": 16.820932187101736,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.4470037471030496,
+     "predicted": 0.4542519781406793,
+     "lo": 0.42546080950356846,
+     "hi": 0.4849914611065711,
+     "status": "predicted",
+     "z": -0.4974710944319708,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.49004117745183345,
+     "predicted": 0.5025882311549433,
+     "lo": 0.4641623526736979,
+     "hi": 0.5441952123873062,
+     "status": "predicted",
+     "z": -0.6357253346791429,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.5476522744692641,
+     "predicted": 0.5496571004198257,
+     "lo": 0.5176149619720483,
+     "hi": 0.5836827569490646,
+     "status": "predicted",
+     "z": -0.1216749505916251,
+     "inside": true
+    },
+    "k@60": {
+     "measured": null,
+     "predicted": 0.5437360442405619,
+     "lo": 0.4724207727801218,
+     "hi": 0.625816862511204,
+     "status": "predicted"
+    }
+   }
+  },
+  {
+   "obs_id": "obs_0100",
+   "part": "xfm_bs_m10",
+   "params": {
+    "primary_outer_diameter_um": "140",
+    "secondary_outer_diameter_um": "160",
+    "primary_width_um": "9.6",
+    "secondary_width_um": "8.2",
+    "center_spacing_um": "21.5"
+   },
+   "status": "ok",
+   "quantities": {
+    "Lp_lf": {
+     "measured": 2.60306700491476e-10,
+     "predicted": 2.6504648245803286e-10,
+     "lo": 2.465649271102419e-10,
+     "hi": 2.849133438673008e-10,
+     "status": "predicted",
+     "z": -0.5161639491135334,
+     "inside": true
+    },
+    "Ls_lf": {
+     "measured": 3.220029175305771e-10,
+     "predicted": 3.1957781022424506e-10,
+     "lo": 2.989785933243695e-10,
+     "hi": 3.415962850454653e-10,
+     "status": "predicted",
+     "z": 0.226923610783072,
+     "inside": true
+    },
+    "k_lf": {
+     "measured": 0.4594903894400848,
+     "predicted": 0.4636886620991438,
+     "lo": 0.42803347128437175,
+     "hi": 0.5023139305300963,
+     "status": "predicted",
+     "z": -0.2273489035900956,
+     "inside": true
+    },
+    "Qp_peak": {
+     "measured": 14.288660288343499,
+     "predicted": 14.64406291240339,
+     "lo": 9.954740847430443,
+     "hi": 21.54235673927994,
+     "status": "uncertain"
+    },
+    "Qs_peak": {
+     "measured": 12.525393025307128,
+     "predicted": 12.340554710046328,
+     "lo": 8.69005383063559,
+     "hi": 17.52455088537791,
+     "status": "uncertain"
+    },
+    "SRF": {
+     "measured": 75391677822.75763,
+     "predicted": 73390375626.26517,
+     "lo": 60853563639.6217,
+     "hi": 88509972340.50858,
+     "status": "predicted",
+     "z": 0.2872490123045933,
+     "inside": true
+    },
+    "SRF_p": {
+     "measured": 75391677822.75763,
+     "predicted": 85774008650.69199,
+     "lo": 54237941409.93165,
+     "hi": 135646382748.99184,
+     "status": "uncertain"
+    },
+    "SRF_s": {
+     "measured": 75403721504.5523,
+     "predicted": 82804695430.47873,
+     "lo": 50102298526.64951,
+     "hi": 136852355819.3103,
+     "status": "uncertain"
+    },
+    "Lp@10": {
+     "measured": 2.4755255022419906e-10,
+     "predicted": 2.5315533777073957e-10,
+     "lo": 2.356356332200087e-10,
+     "hi": 2.7197764686964716e-10,
+     "status": "predicted",
+     "z": -0.6241344514164027,
+     "inside": true
+    },
+    "Lp@28": {
+     "measured": 2.6726959608961576e-10,
+     "predicted": 2.731117101521399e-10,
+     "lo": 2.45590000508651e-10,
+     "hi": 3.0371760278407185e-10,
+     "status": "predicted",
+     "z": -0.4071466423156999,
+     "inside": true
+    },
+    "Lp@40": {
+     "measured": 3.0733002002973114e-10,
+     "predicted": 3.222075054322692e-10,
+     "lo": 2.688712399035883e-10,
+     "hi": 3.8612414103536206e-10,
+     "status": "predicted",
+     "z": -0.5224666755019539,
+     "inside": true
+    },
+    "Lp@60": {
+     "measured": 5.416178228316039e-10,
+     "predicted": 6.110183168617607e-10,
+     "lo": 2.857945396347357e-10,
+     "hi": 1.3063349076498677e-09,
+     "status": "uncertain"
+    },
+    "Ls@10": {
+     "measured": 3.0031076693386185e-10,
+     "predicted": 2.987057441187961e-10,
+     "lo": 2.7892099389863977e-10,
+     "hi": 3.1989388938570975e-10,
+     "status": "predicted",
+     "z": 0.156394057115203,
+     "inside": true
+    },
+    "Ls@28": {
+     "measured": 3.137966235793185e-10,
+     "predicted": 3.0512127746506685e-10,
+     "lo": 2.7562339325089015e-10,
+     "hi": 3.377760968103662e-10,
+     "status": "predicted",
+     "z": 0.5514836859577796,
+     "inside": true
+    },
+    "Ls@40": {
+     "measured": 3.469276645475135e-10,
+     "predicted": 3.709051436712084e-10,
+     "lo": 3.0866142632778726e-10,
+     "hi": 4.457007383088572e-10,
+     "status": "predicted",
+     "z": -0.7275944506377671,
+     "inside": true
+    },
+    "Ls@60": {
+     "measured": 5.374709320047959e-10,
+     "predicted": 6.488161857999536e-10,
+     "lo": 3.034712209068894e-10,
+     "hi": 1.3871577070735118e-09,
+     "status": "uncertain"
+    },
+    "Qp@10": {
+     "measured": 6.957637554537753,
+     "predicted": 6.822713150741121,
+     "lo": 5.225485653356272,
+     "hi": 8.908150902184117,
+     "status": "predicted",
+     "z": 0.1512798078322476,
+     "inside": true
+    },
+    "Qp@28": {
+     "measured": 12.983248172160232,
+     "predicted": 13.039141558168254,
+     "lo": 8.472667189245813,
+     "hi": 20.066787562451694,
+     "status": "uncertain"
+    },
+    "Qp@40": {
+     "measured": 14.288660288343499,
+     "predicted": 13.414246597638487,
+     "lo": 8.474137415323401,
+     "hi": 21.234257006131937,
+     "status": "uncertain"
+    },
+    "Qp@60": {
+     "measured": 9.719265802355233,
+     "predicted": 11.912406746857062,
+     "lo": 7.395838412736668,
+     "hi": 19.187200501593523,
+     "status": "uncertain"
+    },
+    "Qs@10": {
+     "measured": 6.427095247080254,
+     "predicted": 6.109988593997637,
+     "lo": 4.7770875046429975,
+     "hi": 7.814795224600167,
+     "status": "predicted",
+     "z": 0.43196525139235664,
+     "inside": true
+    },
+    "Qs@28": {
+     "measured": 11.523917843791434,
+     "predicted": 11.334867725257006,
+     "lo": 7.322072396545146,
+     "hi": 17.546839117528346,
+     "status": "uncertain"
+    },
+    "Qs@40": {
+     "measured": 12.525393025307128,
+     "predicted": 12.402975470829528,
+     "lo": 7.68294132581668,
+     "hi": 20.02277435245762,
+     "status": "uncertain"
+    },
+    "Qs@60": {
+     "measured": 8.996236342969363,
+     "predicted": 9.877668325725217,
+     "lo": 5.860460006934906,
+     "hi": 16.648579025806654,
+     "status": "uncertain"
+    },
+    "k@10": {
+     "measured": 0.46350600794735025,
+     "predicted": 0.46987059765690276,
+     "lo": 0.42943978547555367,
+     "hi": 0.5141078819652658,
+     "status": "predicted",
+     "z": -0.3069534632966171,
+     "inside": true
+    },
+    "k@28": {
+     "measured": 0.5052896417924122,
+     "predicted": 0.5200225076930052,
+     "lo": 0.47114044141805894,
+     "hi": 0.5739762175655937,
+     "status": "predicted",
+     "z": -0.5822829153436281,
+     "inside": true
+    },
+    "k@40": {
+     "measured": 0.5564865206479866,
+     "predicted": 0.566489144780352,
+     "lo": 0.5153636311554906,
+     "hi": 0.6226864523491233,
+     "status": "predicted",
+     "z": -0.37669682084625356,
+     "inside": true
+    },
+    "k@60": {
+     "measured": 0.7178729168115655,
+     "predicted": 0.6831180464841473,
+     "lo": 0.6263954733026053,
+     "hi": 0.7449770717083131,
+     "status": "predicted",
+     "z": 1.170278076920026,
+     "inside": true
+    }
+   }
+  }
+ ],
+ "adopted": [
+  "obs_1642",
+  "obs_1643",
+  "obs_1644",
+  "obs_1645",
+  "obs_1646",
+  "obs_1647",
+  "obs_1648",
+  "obs_1649",
+  "obs_1650",
+  "obs_1651",
+  "obs_1652",
+  "obs_1653",
+  "obs_1654",
+  "obs_1655",
+  "obs_1656",
+  "obs_1657",
+  "obs_1658",
+  "obs_1659",
+  "obs_1660",
+  "obs_1661",
+  "obs_1662",
+  "obs_1663",
+  "obs_1664",
+  "obs_1665",
+  "obs_1666"
+ ]
+}

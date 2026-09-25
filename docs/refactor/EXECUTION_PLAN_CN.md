@@ -130,3 +130,8 @@ T1–T7 每个任务一个提交（在 `refactor/modular-blocks` 分支）。
 - 用户批准方案 1（只给 Qp / Qs 曲线列加 `feature_map: xfm_bs_dimensionless`）。`xfm_bs_q_map_acceptance.py` 在临时副本上做 80 折整档留出 + 30 个从未回流的独立设计 + 完整库校准（24 分钟）。
 - 结果：整档留出 p90 30–45% → 6–19%（插值大幅变好）；但 N-17 偏移带的点上 Q@40 误差不降、区间覆盖从 90% 掉到 40–60%（模型在无量纲坐标里以为离已有行很近）。按"宁可保守不可错误肯定"的原则不采用，真实 manifest 不改。页 `XFM_BS_Q_MAP_ACCEPTANCE_CN.html`。
 - 余下：方案 2（Q 峰值 × 比值建法）或方案 3（角落定向补点 20–30 个），待用户拍板。
+
+### 2026-09-26 · N-19 方案 2 + 3（用户批准并行）
+
+- 方案 3：`make_corner.py`（densify 池限定角落 + 外径比过滤）两表各 25 点，50/50 真实 EMX 回流（23:17–00:04）；N-17 测试点前后对比页 `XFM_DENSIFY_CORNER_CN.html`。
+- 方案 2：子代理在工作树实现 56d8f3e（Qp/Qs 可 `model: ratio` 以 Q 峰值为底；修正组合模型留出校准中 ≤0 值进对数空间的问题），69 定向测试绿；fast-forward 合入 main。验收 `xfm_bs_q_ratio_acceptance.py` 四种建法（81 分钟）：比值建模在偏移带更准且区间诚实（k_scale 1.00），采用；只换坐标档间插值最好但偏移带过于自信，不采用。真实 manifest xfm_bs Qp/Qs 改 `model: ratio`。

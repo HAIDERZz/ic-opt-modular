@@ -871,7 +871,7 @@ a {{ color:var(--accent-2); }}
 <li><b>推送</b>：2026-09-25 由 Claude 推送 <code>origin/main</code>（1128c7f → d512977，58 次提交）与标签 <code>v0.3.0</code>；今后推送由 Claude 负责（RT-5 的 GitHub Release 页仍由用户操作，发布说明用 <code>RELEASE_NOTES_v0.3.0.md</code>）。</li>
 <li><b>用户推迟</b>：B-7 … B-11（脱敏后续）与 0.4.0；B-3 维持 TuRBO 方案 b。</li>
 <li><b>已做</b>：N-17（中心偏移 8–24 µm、外径比 0.8–1.25 一带，xfm_bs_ap 与 xfm_bs_m10 各 60 选点 + 10 测试点，140/140 EMX 成功并回流；页 <code>reports/library_query/XFM_DENSIFY_N17_CN.html</code>）；N-14；N-16（多圈表 Lp/Ls 改比值 + 无量纲坐标，页 <code>XFM_MS_RATIO_ACCEPTANCE_CN.html</code>）。</li>
-<li><b>待拍板</b>：N-19（单圈表 Q@40 两列在偏移带 10–30% 误差，两轮补点都没改善；候选给 Q 列加无量纲坐标或按 Q 峰值 × 比值建模）。N-18（一次 <code>uv run</code> 把 .venv 装坏）已按文档安装命令恢复并关闭：是操作失误，不是安装法的问题。</li>
+<li><b>已做</b>：N-19（单圈表 Q@40 列：角落定向补点两表各 25 行 + Q 列改为 Q 峰值 × 比值建模，页 <code>XFM_DENSIFY_CORNER_CN.html</code>、<code>XFM_BS_Q_RATIO_ACCEPTANCE_CN.html</code>；只换坐标的方案在偏移带过于自信，未采用）。N-18（一次 <code>uv run</code> 把 .venv 装坏）已按文档安装命令恢复并关闭：是操作失误，不是安装法的问题。</li>
 <li><b>进行中</b>：N-15（控制端改为用户的 Windows / macOS 笔记本，本机即仿真服务器；验收包 <code>&lt;EDA_AI_AGENT&gt;/ic-opt-accept/n15/</code>，等两份笔记本报告回传后核对）。</li>
 </ul>
 <p>待办总表：<code>docs/refactor/BACKLOG_CN.md</code>；执行记录：<code>docs/refactor/EXECUTION_PLAN_CN.md</code>。</p>
