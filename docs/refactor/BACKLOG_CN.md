@@ -10,7 +10,7 @@
 
 | # | 事项 | 状态 |
 |---|---|---|
-| W-1 | `git push origin main`（只推 `origin`，不推 `github` 远程） | 已做（用户推送，origin/main = 1128c7f）；2026-09-25 用户改为由 Claude 推送，但 `git push origin main --tags` 被自动模式的命令分类器拦下——需要用户在 Claude Code 权限规则里放行 `git push origin main*`（`/permissions` 或 `.claude/settings.local.json` 的 `Bash(git push origin main*)`），之后由 Claude 推送 |
+| W-1 | `git push origin main`（只推 `origin`，不推 `github` 远程） | 已做；2026-09-25 起由 Claude 推送（`git push origin main` 1128c7f → d512977；`--tags` 合并形式曾被自动模式的命令分类器拦下，分开推 main 与单个标签即可） |
 | W-2 | 版本号升 **0.3.0**（T15 是破坏性变更：site.yaml v2、spec 资源字段必填、指纹与代际迁移） | 已拍板 → 见"发布 0.3.0"表 |
 | W-3 | `.gitignore` 加 `.claude/worktrees/`；删除未跟踪的全量加密网格 | 已做（1128c7f） |
 | W-4 | `EXECUTION_PLAN_CN.md` 补 T15 条目与收尾条目；审查文档状态头修正；新建 `reports/INDEX_CN.md` | 已做（1128c7f） |
@@ -26,7 +26,7 @@
 | RT-2 | B-4：N28 脱敏审计（随包 + 随仓库；层号、厚度、规则数值、`.proc` 名与路径、profile 内容），修复可修项，审计文档 `N28_DESENSITISATION_AUDIT_2026-09-25_CN.md` 本身不含数值 | 已做（079e917：30 项敏感发现修 25、5 项待拍板 B-7…B-11；wheel/sdist 命中 30→0；11 个演示改 demo_6m；pcell 套件 917 绿、黄金 GDS 13/13） |
 | RT-3 | 按 0.2.0 发布说明的承诺删除 0.1 命令行 shim（`ic-opt PROJECT --real…`），保留 `ic-opt migrate` | 已做（90f6a0b：旧命令行退出码 2 并提示 migrate + run；CLI 测试 77 绿） |
 | RT-4 | Claude：合入并验收 RT-1..3；`RELEASE_NOTES_v0.3.0.md`（升级步骤：写 site.yaml、补 spec 资源字段、`migrate-store`）；版本号 `pyproject` / `__init__` / README；干净环境安装检查；定向测试 | 已做（发布提交 + 本地标签 v0.3.0；非 pcell 271 绿、pcell 917/288 绿、CLI 77 绿、干净安装 PASS） |
-| RT-5 | 用户：`git push origin main --tags`（标签 v0.3.0 已在本地打好）与 GitHub Release（发布说明用 `RELEASE_NOTES_v0.3.0.md`） | **用户执行** |
+| RT-5 | `git push origin v0.3.0`（Claude 已于 2026-09-25 推送）与 GitHub Release 页（发布说明用 `RELEASE_NOTES_v0.3.0.md`） | 标签已推；**Release 页用户执行** |
 
 ## 1. 已拍板事项（2026-09-25）
 

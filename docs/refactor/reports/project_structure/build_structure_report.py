@@ -595,7 +595,7 @@ def page() -> None:
         ],
         [
             "自 09-22 重构以来",
-            f"{git['commits_since_0922']} 次提交（仓库共 {git['commits_total']} 次）；生成时本地领先 origin/main {git['ahead']} 次提交（推送被权限分类器拦下，见 §10）",
+            f"{git['commits_since_0922']} 次提交（仓库共 {git['commits_total']} 次）；生成时本地领先 origin/main {git['ahead']} 次提交（main 与标签 v0.3.0 已于 2026-09-25 由 Claude 推送）",
         ],
         [
             "源码规模",
@@ -868,9 +868,7 @@ a {{ color:var(--accent-2); }}
 <h2 id="s10">10 当前状态与待办</h2>
 <ul>
 <li><b>已发布</b>：0.3.0（标签 <code>v0.3.0</code>），T16 七个波次全部合入；B-12 真实加密批完成并回流。</li>
-<li><b>推送</b>：本地领先 origin/main {
-        git["ahead"]
-    } 次提交。用户要求今后由 Claude 推送，但 <code>git push origin main --tags</code> 被自动模式的命令分类器拦下；需要在 Claude Code 权限规则里放行 <code>git push origin main*</code>，之后即可推送（RT-5 的 GitHub Release 仍由用户操作）。</li>
+<li><b>推送</b>：2026-09-25 由 Claude 推送 <code>origin/main</code>（1128c7f → d512977，58 次提交）与标签 <code>v0.3.0</code>；今后推送由 Claude 负责（RT-5 的 GitHub Release 页仍由用户操作，发布说明用 <code>RELEASE_NOTES_v0.3.0.md</code>）。</li>
 <li><b>用户推迟</b>：B-7 … B-11（脱敏后续）与 0.4.0；B-3 维持 TuRBO 方案 b。</li>
 <li><b>待批准</b>：N-17（中心偏移 8–24 µm、外径比 0.8–1.25 一带再补一轮约 60 点，xfm_bs_m10 同样处理；候选把"离最近实测行的缩放距离"计入不确定度）。</li>
 <li><b>小项可做</b>：N-14（4 个报告脚本仍用退役字段名）、N-16（多圈变压器表改 ratio 建模前先做对照）、N-18（新增：<code>uv.lock</code> 与文档安装法不一致，<code>uv run</code> 会把环境装坏，今天实际发生一次并已恢复）。</li>

@@ -1,10 +1,10 @@
 {
   "date": "2026-09-25",
   "git": {
-    "head": "50baac1f4256068bc5d1c237f3ed2d2f9fd92c08",
-    "head_date": "2026-09-25 14:39:11 +0800",
-    "origin_main": "1128c7fad8871679b4c19032c69a76483bf2056b",
-    "ahead": 57,
+    "head": "d512977048f778d65061b7e574c155336cdc162a",
+    "head_date": "2026-09-25 16:17:32 +0800",
+    "origin_main": "d512977048f778d65061b7e574c155336cdc162a",
+    "ahead": 0,
     "tags": [
       "v0.1.1",
       "v0.1.10",
@@ -20,8 +20,8 @@
       "v0.3.0"
     ],
     "v030": "ba1895bf9bd185ccd5b1ed0a5f09049a4339e569",
-    "commits_total": 164,
-    "commits_since_0922": 163
+    "commits_total": 165,
+    "commits_since_0922": 164
   },
   "version": "0.3.0",
   "packages": [
@@ -429,7 +429,7 @@
       },
       {
         "path": "docs/refactor/EXECUTION_PLAN_CN.md",
-        "lines": 105,
+        "lines": 114,
         "title": "执行计划（ic-opt 0.2 重构）"
       },
       {
@@ -603,6 +603,11 @@
       "page": "smoke/pcell_random50/REPORT.html",
       "artifact": "SbcEAt2h18v8eJyYQNSemh",
       "note": "PCell 随机自检"
+    },
+    {
+      "page": "PROJECT_STRUCTURE_2026-09-25_CN.html",
+      "artifact": "GyLKpWNBzn8b4HmHU3z9f2",
+      "note": "阶段性收尾的项目结构总览：archify 两图 + graphify 知识图谱 + 包 / 块 / 配方 / 命令行 / 文档 / 测试 / 待办"
     }
   ],
   "diagrams": [
