@@ -46,5 +46,5 @@
 
 ## 其他
 
-- `docs/refactor/diagrams/*.json`：archify 源文件；渲染的 `.html` / `.png` 不入仓库（`.gitignore`），`*.visual-check.json` 是浏览器检查证据。2026-09-25 的两张：`ic-opt-system-v030.architecture.json`（IC-Opt 0.3 系统结构，[Q2GCRD2WtGwpZHH8LvTFfG](https://claude.ai/artifact/Q2GCRD2WtGwpZHH8LvTFfG)）、`device-library-pipeline.dataflow.json`（器件查询库数据流，[T1NBTvFvkTtoEstp7ZvMqA](https://claude.ai/artifact/T1NBTvFvkTtoEstp7ZvMqA)）。09-22 的五张（`ic-opt-architecture`、`ic-opt-usage`、`ic-opt-evaluate-remote`、`ic-opt-evaluate-stages`、`ic-opt-five-workflows`）是重构初期的图，没有随 0.3.0 更新。
+- `docs/refactor/diagrams/*.json`：archify 源文件；渲染的 `.html` / `.png` 不入仓库（`.gitignore`），`*.visual-check.json` 是浏览器检查证据。2026-09-25 的两张：`ic-opt-system-v030.architecture.json`（IC-Opt 0.3 系统结构，[Q2GCRD2WtGwpZHH8LvTFfG](https://claude.ai/artifact/Q2GCRD2WtGwpZHH8LvTFfG)）、`device-library-pipeline.dataflow.json`（器件查询库数据流，[T1NBTvFvkTtoEstp7ZvMqA](https://claude.ai/artifact/T1NBTvFvkTtoEstp7ZvMqA)）。重构初期（09-22）的五张图没有随 0.3.0 更新，已于 2026-09-25 删除（用户决定），历史可在 git 里找。
 - `docs/refactor/REPORT_INVENTORY_CN.md`：优化运行自身产出的报告文件清单（决策 ⑦），与本文件无关。

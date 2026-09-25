@@ -3,11 +3,7 @@
 - 上游：`REFACTOR_PLAN_CN.md`（方案与证据）、`REPORT_INVENTORY_CN.md`（报告决策）
 - 决策状态（2026-09-22）：①–⑦ **全部按建议通过**。本文件是按这些决策写的实现契约，代码以此为准；改契约先改这里。
 - 图（archify 生成的独立交互 HTML，浏览器直接打开；`.json` 是图源，改图先改源再 `deliver`）：
-  - `diagrams/ic-opt-architecture.html` —— 目标架构：三层 + Executor 接缝 + 护栏边界
-  - `diagrams/ic-opt-usage.html` —— 使用方式：写 spec/recipe → `--plan` → run → Block 依次执行 → 读报告
-  - `diagrams/ic-opt-evaluate-remote.html` —— 一次 `sim.evaluate` 经 SshExecutor 的时序（决策 ③ 的落地）
-  - `diagrams/ic-opt-evaluate-stages.html` —— 评估 = 通用引擎 + 可插阶段：ic-opt 与 em-opt 两条流水线共享引擎与后三段（4.1 节）
-  - `diagrams/ic-opt-five-workflows.html` —— 接线矩阵：单/多 tb × 单/多 corner 四个工况接线相同（差别在 spec 与 evaluate 的参数），fix-run 只把 `opt.suggest` 换成 `points.fixed`
+  - （2026-09-25 说明：重构初期的五张图 `ic-opt-architecture` / `ic-opt-usage` / `ic-opt-evaluate-remote` / `ic-opt-evaluate-stages` / `ic-opt-five-workflows` 没有随 0.3.0 更新，已按用户决定删除，历史在 git；现行的两张图是 `diagrams/ic-opt-system-v030.architecture.json`（系统结构，含电磁器件联合优化视图）与 `diagrams/device-library-pipeline.dataflow.json`（器件查询库数据流），见 `reports/INDEX_CN.md`。）
   - 每张图旁的 `*.visual-check.json` 是浏览器实测回执（1440×900 / 2048×1320 无溢出、字号达标）
 
 ## 1. 已定决策

@@ -14,7 +14,7 @@ od, nt, w, s = (int(x) for x in sys.argv[2:6])
 FIX = {"inner_margin_um": 15.0, "ring_width_um": 20.0, "stub_length_um": 2.0, "stub_chamfer_um": 0.0}
 g = get_generator("clean_port_ind_sym", plugin_module="builtin:clean_port")
 cfg = {"outer_diameter_um": od, "width_um": w, "spacing_um": s, "opening_um": 8.0, "lead_length_um": 20.0, "turns": nt,
-       "top_metal": "6", "bottom_metal": "5", "ground_fixture": FIX, "process_profile": "demo_6m", "port_order": ["P1", "N1"]}
+       "metal": "6", "ground_fixture": FIX, "process_profile": "demo_6m", "port_order": ["P1", "N1"]}
 r = g.generate(g.config_model.model_validate(cfg), outdir=out, gds_name=f"ind_sym_od{od}_nt{nt}_w{w}_s{s}.gds")
 adapter = get_geometry_rule_adapter("demo_6m")
 layout = kdb.Layout(); layout.read(str(r.gds_path)); top = layout.top_cells()[0]; top.flatten(True)

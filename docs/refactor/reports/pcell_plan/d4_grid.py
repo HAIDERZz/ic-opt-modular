@@ -2,7 +2,7 @@
 accepted build, (1) audit it with coordinates and (2) apply the September review's D4 containment predicate: on TOP_ME the
 raw (un-merged) small axis-aligned squares are the crossover landing pads, everything else is the ring, and a pad "hangs"
 by the fraction of its area outside the ring. Optionally replays recorded NT>=3 points too.
-Usage: d4_grid.py PROFILE TOP_METAL BOTTOM_METAL OUT.json [PNG_DIR] [RECORD_DIR]"""
+Usage: d4_grid.py PROFILE METAL OUT.json [PNG_DIR] [RECORD_DIR]   (METAL: the ring metal, "6" or "M6"; N-14: M2.2 names)"""
 import collections
 import itertools
 import json
@@ -40,10 +40,10 @@ def pad_hang(gds_path, drawing, w_um) -> list[float]:
     ring.merge()
     return [(kdb.Region(b) - ring).area() / b.area() for b in pads]
 
-profile, top_metal, bottom_metal, out = sys.argv[1], sys.argv[2], sys.argv[3], Path(sys.argv[4])
-png_dir = Path(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] != "-" else None
-record_dir = Path(sys.argv[6]) if len(sys.argv) > 6 else None
-drawing = get_geometry_rule_adapter(profile).layer(f"M{top_metal}" if top_metal.isdigit() else top_metal).drawing
+profile, metal, out = sys.argv[1], sys.argv[2], Path(sys.argv[3])
+png_dir = Path(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] != "-" else None
+record_dir = Path(sys.argv[5]) if len(sys.argv) > 5 else None
+drawing = get_geometry_rule_adapter(profile).layer(f"M{metal}" if metal.isdigit() else metal).drawing
 FIX = {"inner_margin_um": 15.0, "ring_width_um": 20.0, "stub_length_um": 2.0, "stub_chamfer_um": 0.0}
 g = get_generator("clean_port_ind_sym", plugin_module="builtin:clean_port")
 grid = [(od, nt, w, s, "grid") for od, nt, w, s in itertools.product([60, 65, 70, 80, 90, 100, 120, 150], [3, 4, 5], [4.0, 5.0, 6.0, 8.0, 10.0], [2.0, 2.5, 3.0, 4.0])]
@@ -52,7 +52,7 @@ if record_dir is not None:                        # every recorded NT>=3 point o
         m = point / "geometry_manifest.json"
         if m.exists():
             c = json.loads(m.read_text())["geometry"]["config"]
-            if c["turns"] >= 3 and c["top_metal"] == top_metal:
+            if c["turns"] >= 3 and c.get("metal", c.get("top_metal")) == metal:
                 grid.append((c["outer_diameter_um"], c["turns"], c["width_um"], c["spacing_um"], point.name))
 tally = collections.Counter()
 rows = []
@@ -60,7 +60,7 @@ rendered = 0
 hangs = collections.Counter()
 for od, nt, w, s, origin in grid:
     cfg = {"outer_diameter_um": od, "width_um": w, "spacing_um": s, "opening_um": 8.0, "lead_length_um": 20.0, "turns": nt,
-           "top_metal": top_metal, "bottom_metal": bottom_metal, "ground_fixture": FIX, "process_profile": profile, "port_order": ["P1", "N1"]}
+           "metal": metal, "ground_fixture": FIX, "process_profile": profile, "port_order": ["P1", "N1"]}
     with tempfile.TemporaryDirectory() as tmp:
         try:
             r = g.generate(g.config_model.model_validate(cfg), outdir=Path(tmp), gds_name="x.gds")
@@ -97,5 +97,5 @@ print("pads:", dict(hangs), "worst:", max((row.get("worst_hang", 0.0) for row in
 print({f"{k}:{l}": n for (k, l), n in kind_tally.items()})
 by_kind_nt = collections.Counter((row["nt"], k) for row in rows if row["status"] == "violations" for k, _ in map(tuple, row["kinds"]))
 print(sorted(by_kind_nt.items()))
-out.write_text(json.dumps({"profile": profile, "top_metal": top_metal, "tally": dict(tally), "pads": dict(hangs),
+out.write_text(json.dumps({"profile": profile, "metal": metal, "tally": dict(tally), "pads": dict(hangs),
                            "kinds": {f"{k}:{l}": n for (k, l), n in kind_tally.items()}, "rows": rows}, indent=1))

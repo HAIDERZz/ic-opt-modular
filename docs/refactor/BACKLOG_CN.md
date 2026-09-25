@@ -79,7 +79,7 @@
 | N-11 | Ctrl-C 之后 engine 的线程池仍把排队中的点跑完 | T16.4 发现 | 小，已做（9a009af） |
 | N-12 | `ic-opt migrate` 未为 0.1 工程写回 `license_queue_timeout_s: 900`（0.1 总是传 `+lqtimeout 900`）：按 T15 的做法显式写出旧行为 | T16.4 发现 | 小，已做（176162e） |
 | N-13 | T13.11 遗留的不一致：配置名字检查把 "5" 读成名叫 M5 的金属，pcell 的 `stack.index("5")` 读成第 5 层金属；现有 profile 两者一致，若某 profile 的 M<n> 名字不在第 n 位（如底层叫 LI）就会分歧。修法：`stack.position_in` 优先按名字 M<n> | T16.3 发现 | 小，已做（2776ab8：生成器改传整数位置，黄金 GDS 与三套基线回放 0 差异） |
-| N-14 | 报告脚本里 `d4_grid.py`、`d4_probe.py`、`wps_locate.py` 与 `demo_families.py` 的 5/6 个配置仍用 M2.2 退役的字段名，今天的生成器会拒绝（N-8 只修 ruff，未更新） | T16.7 发现 | 小，可做 |
+| N-14 | 报告脚本里 `d4_grid.py`、`d4_probe.py`、`wps_locate.py` 与 `demo_families.py` 的 5/6 个配置仍用 M2.2 退役的字段名，今天的生成器会拒绝（N-8 只修 ruff，未更新） | T16.7 发现 | 已做（2026-09-25，用户批准）：四个脚本改为 M2.2 字段名（`metal`、primary_* / secondary_*、`port_gap_*`），`d4_grid.py` 用法变为 `PROFILE METAL OUT.json`；四个脚本在 demo_6m 上各跑一遍全部生成，ruff 干净 |
 | N-15 | N-5 的隔离冒烟脚本已绑入 site.yaml，但完整远程运行（实验室主机 + Spectre）未验证；ADR 已注明 | T16.7 | 需实验室主机 |
 | N-16 | 多圈变压器表（xfm_ms）按研究建议用 `model: ratio`（Ls@60 整档留出 p90 23.8/23.5%→7.0/8.8%），需先用库自身模型做一次对照再改真实 manifest | T16.2b | 小，可做 |
 | N-17 | B-12 后续：在中心偏移 8–24 µm、外径比 0.8–1.25 一带再补一轮（约 60 点，需 `--plan` 批准）；xfm_bs_m10 同样处理；未采样区域的校准盲区——候选把"离最近实测行的缩放距离"计入不确定度 | B-12 | 用户 2026-09-25 批准（"N-17可以补充"）；进行中 |

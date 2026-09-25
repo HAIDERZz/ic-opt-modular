@@ -17,7 +17,7 @@ viol = []
 reasons = collections.Counter()
 for od, nt, w, s in itertools.product([60, 70, 80, 90, 100, 120], [3, 4, 5], [3, 4, 5, 6], [2, 3]):
     cfg = {"outer_diameter_um": od, "width_um": w, "spacing_um": s, "opening_um": 8.0, "lead_length_um": 20.0, "turns": nt,
-           "top_metal": "6", "bottom_metal": "5", "ground_fixture": FIX, "process_profile": "demo_6m", "port_order": ["P1", "N1"]}
+           "metal": "6", "ground_fixture": FIX, "process_profile": "demo_6m", "port_order": ["P1", "N1"]}
     with tempfile.TemporaryDirectory() as tmp:
         try:
             r = g.generate(g.config_model.model_validate(cfg), outdir=Path(tmp), gds_name="x.gds")
