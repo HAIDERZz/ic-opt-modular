@@ -103,3 +103,21 @@ def test_the_suggesters_import_turbo_without_touching_sys_path():
     if fresh["turbo"] is not None:                                   # installed: its own editable finder or site-packages
         where = Path(fresh["turbo"]).resolve()
         assert where.parts[-4:-2] == ("vendor", "TuRBO") or "site-packages" in where.parts, where
+
+
+def test_windows_torch_stays_below_the_msvc_runtime_scikit_learn_loads():
+    """On Windows scikit-learn < 1.4 (OpenBox's pin) loads its own msvcp140.dll 14.32 at import; torch 2.9+ is built with
+    MSVC 14.42 and fails to initialise on it (WinError 1114, 2026-09-27 Windows acceptance). The turbo extra keeps
+    Windows below 2.9 and leaves the other platforms alone; lifting the scikit-learn pin is the moment to move the bound."""
+    from packaging.requirements import Requirement
+
+    turbo = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["optional-dependencies"]["turbo"]
+    torch = [Requirement(r) for r in turbo if r.startswith("torch")]
+
+    def allowed(platform, version):
+        return any(r.specifier.contains(version) for r in torch if r.marker is None or r.marker.evaluate({"sys_platform": platform}))
+
+    assert allowed("win32", "2.8.0") and not allowed("win32", "2.9.0")
+    assert allowed("linux", "2.12.0") and allowed("darwin", "2.12.0")
+    openbox = (ROOT / "vendor" / "open-box" / "requirements" / "main.txt").read_text()
+    assert "scikit-learn>=0.24.0,<1.4.0" in openbox, "the scikit-learn pin moved: revisit the Windows torch bound"

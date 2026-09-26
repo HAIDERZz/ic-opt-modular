@@ -29,9 +29,17 @@ dependencies = [
 # opt: OpenBox (the openbox_* strategies, opt.optimize's default) is vendored, not declared -- a path dependency does
 # not survive into a published wheel. Install it from the checkout in the same resolver call, which keeps its
 # numpy < 2 / scipy < 1.13 / scikit-learn < 1.4 pins:  uv pip install -e ".[em,turbo]" -e vendor/open-box -e vendor/TuRBO
-turbo = [                      # torch + gpytorch for the `turbo` strategy and `latin_hypercube` designs. TuRBO itself is
-    "torch>=2.0",              # vendored (vendor/TuRBO, Uber's non-commercial licence, so not copied into the package) and
-    "gpytorch>=1.11",          # installed from the checkout in the same resolver call as OpenBox: -e vendor/TuRBO
+# turbo: torch + gpytorch for the `turbo` strategy and `latin_hypercube` designs. TuRBO itself is vendored (vendor/TuRBO,
+# Uber's non-commercial licence, so not copied into the package) and installed from the checkout in the same resolver
+# call as OpenBox: -e vendor/TuRBO.
+# Windows keeps torch < 2.9: scikit-learn < 1.4 (OpenBox's pin) loads its own msvcp140.dll 14.32 at import, and every
+# later DLL that imports msvcp140.dll by name gets that copy. torch 2.9+ is built with MSVC 14.42, whose constexpr
+# std::mutex needs msvcp140 >= 14.40, so c10.dll fails to initialise (WinError 1114); torch <= 2.8 is built with <= 14.38.
+# Move the bound with the scikit-learn pin: its bundled msvcp140.dll must be at least torch's MSVC (1.6.1 ships 14.42).
+turbo = [
+    "torch>=2.0; sys_platform != 'win32'",
+    "torch>=2.0,<2.9; sys_platform == 'win32'",
+    "gpytorch>=1.11",
 ]
 dev = [
     "pytest>=8.0",
