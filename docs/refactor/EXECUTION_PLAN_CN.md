@@ -135,3 +135,9 @@ T1–T7 每个任务一个提交（在 `refactor/modular-blocks` 分支）。
 
 - 方案 3：`make_corner.py`（densify 池限定角落 + 外径比过滤）两表各 25 点，50/50 真实 EMX 回流（23:17–00:04）；N-17 测试点前后对比页 `XFM_DENSIFY_CORNER_CN.html`。
 - 方案 2：子代理在工作树实现 56d8f3e（Qp/Qs 可 `model: ratio` 以 Q 峰值为底；修正组合模型留出校准中 ≤0 值进对数空间的问题），69 定向测试绿；fast-forward 合入 main。验收 `xfm_bs_q_ratio_acceptance.py` 四种建法（81 分钟）：比值建模在偏移带更准且区间诚实（k_scale 1.00），采用；只换坐标档间插值最好但偏移带过于自信，不采用。真实 manifest xfm_bs Qp/Qs 改 `model: ratio`。
+
+### 2026-09-26 · N-15 Windows 报告核对（FAIL，暴露 N-21）
+
+- Windows 笔记本（Codex 执行，Python 3.11.9、OpenSSH 9.5p2、ic-opt 0.3.0 自 GitHub wheel）：免密钥 SSH、远程 doctor 全 ok、`--plan` 正确；真实运行在 `deck.save` 的 copytree 处失败——Maestro 导出的 `amap/__dspf_information__.`（尾点文件名）Windows 普通路径打不开（`\\?\` 扩展路径可读，报告已用哈希证明）。未进入 evaluate，服务器 scratch 无工作目录。报告质量高：原始日志、退出码、只读取证，未改产品。
+- 附带发现：Windows 本地 doctor 在 executor 一项即停（无 /bin/sh，设计如此）；`--plan` 会建空 `.icopt/sims`；服务器 tar 在 /usr/bin。方案文本相应放宽。
+- 处置：新待办 N-21，子代理在工作树修复（扩展路径 + Windows 用 tarfile 打包 / 解包），修好后请 Windows agent 从 git 提交安装重跑；macOS 报告未回。
