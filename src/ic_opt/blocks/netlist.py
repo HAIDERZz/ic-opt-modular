@@ -30,6 +30,7 @@ def import_netlists(spec: Spec, executor: Executor, store: RunStore) -> Deck:
     staging = store.root / "decks" / ".staging"
     if staging.exists():            # left by an import that stopped part-way: none of it may reach this deck
         shutil.rmtree(literal(staging))
+    staging.mkdir(parents=True)     # always there, so the cleanup below is one plain delete (a devices-only spec fetches nothing)
     deck = Deck()
     names = spec.circuit_variables
     for tb in spec.testbenches:

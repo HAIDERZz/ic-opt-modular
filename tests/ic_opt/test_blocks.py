@@ -153,3 +153,24 @@ def test_report_with_corners_and_bottleneck_objective(tmp_path):
     md = analyze.report(spec, obs, store).read_text()
     assert "## Corners" in md and "- failures per corner: tt " in md and "ss " in md
     assert (store.reports_dir() / "bottleneck_weighted_score.png").exists()
+
+
+def test_an_empty_deck_saves_and_loads(tmp_path):
+    """A deck without templates (a devices-only spec) saves its directory and source.txt and loads back empty (N-22)."""
+    saved = Deck().save(tmp_path / "decks")
+    assert (saved / "source.txt").exists()
+    loaded = Deck.load(saved)
+    assert loaded.templates == {} and loaded.bundles == {} and loaded.source == {}
+
+
+def test_a_devices_only_spec_imports_an_empty_deck(tmp_path):
+    """netlist.import on a spec with devices and no testbenches (the em_only pipeline, run by the same recipes) fetches
+    nothing and returns an empty deck; it used to crash in Deck.save (N-22)."""
+    from tests.ic_opt.test_em_engine import em_spec
+
+    spec = em_spec(testbenches=False)
+    store = RunStore(tmp_path)
+    deck = import_netlists(spec, LocalExecutor(store.root / "sims"), store)
+    assert deck.templates == {} and deck.bundles == {}
+    assert (store.root / "decks" / deck.fingerprint() / "source.txt").exists()
+    assert not (store.root / "decks" / ".staging").exists()

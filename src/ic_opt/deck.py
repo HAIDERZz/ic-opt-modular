@@ -33,6 +33,7 @@ class Deck:
 
     def save(self, root: Path) -> Path:
         target = root / self.fingerprint()
+        target.mkdir(parents=True, exist_ok=True)       # a deck without templates (a devices-only spec) still saves its source.txt
         for (tb, corner), text in self.templates.items():
             path = target / tb / (corner or "nominal") / "template.scs"
             path.parent.mkdir(parents=True, exist_ok=True)
