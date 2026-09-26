@@ -1,6 +1,6 @@
 # 0001: Remote mode treats filesystem separation as mandatory
 
-- **Status**: Accepted (2026-08-07); enforcement and acceptance rewritten for 0.2 (2026-09-22); platforms note (2026-09-24); the acceptance sandbox keeps the controller's site.yaml (2026-09-25)
+- **Status**: Accepted (2026-08-07); enforcement and acceptance rewritten for 0.2 (2026-09-22); platforms note (2026-09-24); the acceptance sandbox keeps the controller's site.yaml (2026-09-25); accepted from a real Windows controller (2026-09-27)
 
 ## Context
 
@@ -82,15 +82,21 @@ only `site.yaml`, readable and not writable; the local doctor read
 `hosts.local` and failed on tools, license and exports; the remote step
 stopped at the missing entry. Without the bind, the local doctor and the
 remote step both stopped at "site.yaml not found". The full remote run with
-the bind is unverified: it has not been repeated (it needs the lab host and
-Spectre).
+the bind was not repeated in the sandbox; it was done instead from a genuinely
+separate controller, the Windows acceptance below, which is the stronger test.
 
 The first Windows-controller acceptance (2026-09-26) failed in `Deck.save` on
 a name no Linux run can catch: every Maestro export carries
 `amap/__dspf_information__.`, whose trailing dot Win32 path normalization
 strips, so on Windows fetched trees, and the trees packed for the host, are now
 handled through extended-length paths (`localpath.literal`; `tarfile` instead
-of `tar`), which the Windows re-run has yet to confirm.
+of `tar`). The re-run on 2026-09-27 (Windows 10.0.26200 controller, Python
+3.11.9, OpenSSH 9.5p2, a build of main@35ff42b) passed: local doctor refused at
+the executor as designed, remote doctor clean, 2 points x 3 testbenches
+simulated on the host through `--ssh-profile`, every recorded value
+bit-identical to the host-local baseline, the trailing-dot file kept under its
+name in the deck and in every child's netlist on both sides, and no psf on the
+controller. Evidence: `ic-opt-accept/n15/reports/` on the host.
 
 ## Alternatives considered
 

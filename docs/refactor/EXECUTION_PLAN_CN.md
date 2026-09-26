@@ -147,3 +147,9 @@ T1–T7 每个任务一个提交（在 `refactor/modular-blocks` 分支）。
 - N-21（11b3482，子代理在工作树实现，169 定向测试绿）：新模块 `ic_opt/localpath.py` 的 `literal()`——Windows 上本地文件树操作一律走 `\\?\` 扩展路径，用于 `Deck.save`、`netlist.import` 的 `.staging`、`render_netlist`、`LocalExecutor` 的目录复制；`SshExecutor` 在 Windows 上用 tarfile 打包 / 解包（拒绝越界成员），Linux / macOS 仍用外部 tar。README 与 ADR-0001 各加一句。Win32 语义 Linux 上验不了，等 Windows 重跑。
 - N-22（35ff42b）：审核 N-21 时发现 `Deck.save` 没有模板时不建目录，只有器件的 spec 经 optimize / signoff / coarse_to_fine / fix_run 会在 `netlist.import` 崩溃；已修并加测试。
 - 重跑包：`dist/n21-35ff42b/` 的 wheel + `ic-opt-accept/n15/N15_RERUN_WINDOWS_CN.md`（Windows 重跑第 5–10 步；macOS 全程用同一 wheel）。
+
+### 2026-09-27 · N-15 Windows 控制端验收通过
+
+- 第 2 次重跑（Codex 在用户的 Windows 10.0.26200 上执行，修复版 wheel main@35ff42b，辅助操作全部经 `n15_tools.py`）：本地 doctor 按设计在 executor 拒绝；远程 doctor 9/9 ok；`--plan` 无仿真；真实运行退出码 0（97 s，服务器上 6 次 Spectre）；v2 比对 PASS。
+- Claude 服务器侧独立复核：scratch 下 6 个子任务工作目录（含 psf 与原名尾点文件）；用服务器脚本与原始基线重比 PASS；40 个记录值逐位相同；zip CRC 通过、9 个尾点文件原名保留；控制端无 psf。
+- ADR-0001 状态与验收段更新为"已由真实 Windows 控制端验收"。N-21 经真机确认。macOS 仍未测。
