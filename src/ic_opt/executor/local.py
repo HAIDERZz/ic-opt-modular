@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ic_opt.executor import process_group
 from ic_opt.executor.base import CommandResult, CommandTimeout, ExecutorError, shell_program
+from ic_opt.localpath import literal
 
 _WINDOWS = os.name == "nt"                                           # no /bin/sh, no csh
 
@@ -68,7 +69,7 @@ def _copy(src: Path, dst: Path, *, dereference: bool = False) -> None:
     if src.resolve() == dst.resolve():
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
-    if src.is_dir():
-        shutil.copytree(src, dst, dirs_exist_ok=True, symlinks=not dereference)
+    if src.is_dir():                     # e.g. a Maestro export, whose names may end in a dot (localpath)
+        shutil.copytree(literal(src), literal(dst), dirs_exist_ok=True, symlinks=not dereference)
     else:
         shutil.copy2(src, dst)

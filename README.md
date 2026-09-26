@@ -44,6 +44,11 @@ The simulation host is Linux: Spectre, OCEAN and EMX run there under `csh` /
 `ic-opt` and holds the project) can be Linux, macOS or Windows 10+. With
 `--ssh-profile` it needs the OpenSSH client (`ssh`, `scp`; on Windows the
 built-in "OpenSSH Client" feature) and `tar` (built into Windows 10+ and macOS).
+On Windows ic-opt packs and unpacks the directory streams with Python's
+`tarfile` instead, and handles the trees it fetches or uploads through
+extended-length paths (`\\?\`), because Maestro exports carry names that Win32
+path normalization would change (`amap/__dspf_information__.` ends in a dot), as
+the 2026-09-26 Windows acceptance found.
 Simulating on the controller itself (no `--ssh-profile`: `LocalExecutor`)
 needs Linux or macOS. The device library (`lib.*`, `lib_design`) runs on all
 three; it fits models in spawned worker processes, so a script that calls it

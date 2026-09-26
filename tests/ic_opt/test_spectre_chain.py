@@ -2,10 +2,12 @@ from pathlib import Path
 
 import pytest
 
+from ic_opt import deck as deck_module
 from ic_opt.deck import Deck
 from ic_opt.eval.stage import StageContext, StageFailure
+from ic_opt.localpath import literal
 from ic_opt.space import Point
-from ic_opt.stages import spectre_pipeline
+from ic_opt.stages import spectre_chain, spectre_pipeline
 from ic_opt.stages.spectre_chain import Spectre
 from ic_opt.store import RunStore
 from tests.ic_opt.fakes import FakeSpectreExecutor, make_spec, minimal_spec
@@ -13,10 +15,10 @@ from tests.ic_opt.fakes import FakeSpectreExecutor, make_spec, minimal_spec
 TEMPLATE = "simulator lang=spectre\nparameters temperature=27 F={{F}} W={{W}}\ntran tran stop=10n\n"
 
 
-def run_chain(tmp_path: Path, executor, corner=None, spec=None):
+def run_chain(tmp_path: Path, executor, corner=None, spec=None, deck=None):
     spec = spec or make_spec()
     store = RunStore(tmp_path)
-    deck = Deck(templates={("tb", corner): TEMPLATE})
+    deck = deck if deck is not None else Deck(templates={("tb", corner): TEMPLATE})
     workdir = store.sim_dir("obs_0001", "tb", corner)
     ctx = StageContext(
         spec=spec, executor=executor, store=store, obs_id="obs_0001", workdir=workdir,
@@ -37,6 +39,33 @@ def test_chain_produces_child_result_from_point(tmp_path):
     assert (ctx.workdir / "netlist" / "input.scs").read_text().splitlines()[1] == "parameters temperature=27 F=24 W=0.8u"
     assert executor.commands[0].startswith("spectre -64 input.scs +escchars +preset=ax +mt=2")    # the fixture's threads_per_run
     assert (ctx.workdir / "metrics" / "probe.ocn").exists()
+
+
+def test_a_bundle_with_names_windows_would_change_is_saved_and_rendered_through_literal_paths(tmp_path, monkeypatch):
+    """N-21: every Maestro export carries amap/__dspf_information__. (a trailing dot, which ordinary Win32 paths strip),
+    and a name may end in a space. Deck.save and render_netlist copy such a bundle through localpath.literal and keep
+    every byte. On Linux these are ordinary names, so this guards the plumbing only; the Windows re-run checks Windows."""
+    taken: list[Path] = []
+
+    def spy(path, **kwargs):
+        taken.append(Path(path))
+        return literal(path, **kwargs)
+
+    monkeypatch.setattr(deck_module, "literal", spy)
+    monkeypatch.setattr(spectre_chain, "literal", spy)
+    files = {".modelFiles": b"/pdk/models.scs\n", "amap/__dspf_information__.": bytes(range(38)), "trailing space ": b"x\n"}
+    export = tmp_path / "export"
+    for name, data in files.items():
+        (export / name).parent.mkdir(parents=True, exist_ok=True)
+        (export / name).write_bytes(data)
+    saved = Deck(templates={("tb", None): TEMPLATE}, bundles={"tb": export}).save(RunStore(tmp_path).root / "decks")
+
+    executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {"NF": 8.0})
+    child, ctx = run_chain(tmp_path, executor, deck=Deck.load(saved))
+    assert child.status == "ok"
+    for name, data in files.items():
+        assert (saved / "tb" / "bundle" / name).read_bytes() == data and (ctx.workdir / "netlist" / name).read_bytes() == data
+    assert {export, saved / "tb" / "bundle", ctx.workdir / "netlist"} <= set(taken)
 
 
 def test_the_license_queue_wait_is_passed_only_when_the_spec_states_it(tmp_path):

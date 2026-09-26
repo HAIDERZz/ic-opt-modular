@@ -9,11 +9,14 @@ Files are uploaded to a temporary name and ``mv``-ed into place so a partial
 transfer never masquerades as a complete file. Directories move as tar streams.
 
 The controller may be Linux, macOS or Windows 10+: it needs the OpenSSH client
-(``ssh``, ``scp``) and ``tar`` (which packs and unpacks the directory streams
-locally), and all three platforms have them. Everything past ``ssh`` runs on
-the Linux host under its ``/bin/sh`` or ``csh``; remote paths are POSIX strings
-(``PurePosixPath``), never a local ``Path``, and remote output is decoded as
-UTF-8 whatever the controller's locale.
+(``ssh``, ``scp``) and, on Linux and macOS, ``tar``, which packs and unpacks the
+directory streams locally. On Windows Python's ``tarfile`` does that, opening
+every local file through its extended-length path (``localpath.literal``): each
+Maestro export carries ``amap/__dspf_information__.``, whose trailing dot
+ordinary Win32 paths strip. Everything past ``ssh`` runs on the Linux host under
+its ``/bin/sh`` or ``csh``; remote paths are POSIX strings (``PurePosixPath``),
+never a local ``Path``, and remote output is decoded as UTF-8 whatever the
+controller's locale.
 
 A timeout ends the remote command too, not only the local client. A command
 run with a timeout starts on the host as the leader of a session of its own
@@ -29,8 +32,13 @@ ran) ends the remote group the same way, and the error or result says so.
 
 from __future__ import annotations
 
+import io
+import os
+import posixpath
 import shlex
+import shutil
 import subprocess
+import tarfile
 import threading
 import time
 import uuid
@@ -47,9 +55,11 @@ from ic_opt.executor.base import (
     TransportError,
     shell_program,
 )
+from ic_opt.localpath import literal
 
 Execute = Callable[..., subprocess.CompletedProcess]
 TERM_GRACE_S = 3                  # seconds a timed-out remote group has between SIGTERM and SIGKILL
+_WINDOWS = os.name == "nt"        # tree streams go through tarfile and literal paths there, not the local tar
 
 
 def _default_execute(argv: list[str], *, input: str | bytes | None = None, timeout: float | None = None,
@@ -233,10 +243,13 @@ class SshExecutor:
             temporary.unlink(missing_ok=True)
 
     def _put_tree(self, local: Path, remote: str) -> None:
-        pack = subprocess.run(["tar", "-C", str(local), "-cf", "-", "."], check=True, capture_output=True)
+        if _WINDOWS:
+            stream = _pack(local)
+        else:
+            stream = subprocess.run(["tar", "-C", str(local), "-cf", "-", "."], check=True, capture_output=True).stdout
         unpack = f"mkdir -p {shlex.quote(remote)} && tar -C {shlex.quote(remote)} -xf -"
         argv = self._ssh_argv(f"exec /bin/sh -c {shlex.quote(unpack)}")
-        done = self._execute(argv, input=pack.stdout, capture_output=True, timeout=self.transfer_timeout_s)
+        done = self._execute(argv, input=stream, capture_output=True, timeout=self.transfer_timeout_s)
         result = CommandResult(done.returncode, "", (done.stderr or b"").decode(errors="replace"), argv, 0.0)
         if result.returncode == 255:
             raise TransportError(f"SSH transport failed while uploading tree to {remote}: {result.stderr.strip()}")
@@ -251,4 +264,44 @@ class SshExecutor:
         if result.returncode == 255:
             raise TransportError(f"SSH transport failed while downloading tree {remote}: {result.stderr.strip()}")
         self._checked(result, f"download tree {remote}")
-        subprocess.run(["tar", "-C", str(local), "-xf", "-"], input=done.stdout, check=True)
+        if _WINDOWS:
+            _unpack(done.stdout, local)
+        else:
+            subprocess.run(["tar", "-C", str(local), "-xf", "-"], input=done.stdout, check=True)
+
+
+def _pack(local: Path) -> bytes:
+    """The Windows side of ``_put_tree``: what ``tar -C local -cf - .`` writes, by ``tarfile``, reading every file
+    through its literal path (``localpath``). Members are named as that command names them (``./``, ``./input.scs``,
+    ``./amap/__dspf_information__.``), which the host's ``tar -xf -`` unpacks under the remote directory."""
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w") as archive:
+        archive.add(literal(local), arcname=".")
+    return stream.getvalue()
+
+
+def _unpack(stream: bytes, local: Path) -> None:
+    """The Windows side of ``_get_tree``: ``tar -C local -xf -`` by ``tarfile``, creating every member through its
+    literal path (``localpath``), so a name that ends in a dot or a space keeps it. Directories and files come through
+    with their modification times -- a hard link, which ``tar -h`` writes for a file it reaches twice, as a copy of that
+    file -- but not their permissions: Windows could keep only a read-only flag, and that would stop the tree's later
+    ``rmtree``. A member of any other kind, or one whose name would leave ``local`` as a Windows path, is an
+    ``ExecutorError``."""
+    root = literal(local)
+    with tarfile.open(fileobj=io.BytesIO(stream)) as archive:
+        for member in archive:
+            parts = posixpath.normpath(member.name).split("/")
+            if parts == ["."]:
+                continue                                                  # the tree itself, "./"
+            if parts[0] in ("", "..") or any("\\" in part or ":" in part for part in parts):     # /x, ../x, a\x, C:x
+                raise ExecutorError(f"refusing tar member {member.name!r}: it would not land inside {local}")
+            target = os.path.join(root, *parts)
+            if member.isdir():
+                os.makedirs(target, exist_ok=True)
+            elif member.isfile() or member.islnk():
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with archive.extractfile(member) as source, open(target, "wb") as sink:
+                    shutil.copyfileobj(source, sink)
+                os.utime(target, (member.mtime, member.mtime))
+            else:
+                raise ExecutorError(f"refusing tar member {member.name!r}: neither a file nor a directory")

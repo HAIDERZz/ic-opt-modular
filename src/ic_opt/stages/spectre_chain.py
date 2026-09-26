@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from ic_opt.deck import Deck
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
+from ic_opt.localpath import literal
 from ic_opt.observation import ChildResult
 from ic_opt.sim import netlist as netlist_kernel
 from ic_opt.sim import ocean as ocean_kernel
@@ -60,7 +61,7 @@ def render_netlist(deck: Deck, point: Point, ctx: StageContext) -> Netlist:
         raise StageFailure(f"deck has no template for {ctx.unit}/{ctx.corner}") from exc
     bundle = deck.bundle(ctx.unit)
     if bundle is not None:   # Maestro's support files (.modelFiles, .designVariables, ...) travel with the deck
-        shutil.copytree(bundle, ctx.workdir / "netlist", dirs_exist_ok=True)
+        shutil.copytree(literal(bundle), literal(ctx.workdir / "netlist"), dirs_exist_ok=True)     # names may end in a dot
     circuit = {name: point.params[name] for name in ctx.spec.circuit_variables}
     return Netlist(netlist_kernel.render(template, circuit))
 

@@ -85,6 +85,13 @@ remote step both stopped at "site.yaml not found". The full remote run with
 the bind is unverified: it has not been repeated (it needs the lab host and
 Spectre).
 
+The first Windows-controller acceptance (2026-09-26) failed in `Deck.save` on
+a name no Linux run can catch: every Maestro export carries
+`amap/__dspf_information__.`, whose trailing dot Win32 path normalization
+strips, so on Windows fetched trees, and the trees packed for the host, are now
+handled through extended-length paths (`localpath.literal`; `tarfile` instead
+of `tar`), which the Windows re-run has yet to confirm.
+
 ## Alternatives considered
 
 - **Shared-path fallback** when the transport is slow or briefly unavailable:

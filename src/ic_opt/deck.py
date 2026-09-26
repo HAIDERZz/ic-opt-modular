@@ -7,6 +7,8 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ic_opt.localpath import literal
+
 Key = tuple[str, str | None]  # (testbench id, corner id or None)
 
 
@@ -37,9 +39,9 @@ class Deck:
             path.write_text(text, encoding="utf-8")
         for tb, bundle in self.bundles.items():
             dst = target / tb / "bundle"
-            if bundle.resolve() != dst.resolve():
-                shutil.rmtree(dst, ignore_errors=True)
-                shutil.copytree(bundle, dst, symlinks=False)
+            if bundle.resolve() != dst.resolve():        # literal: an export's names may end in a dot (localpath)
+                shutil.rmtree(literal(dst), ignore_errors=True)
+                shutil.copytree(literal(bundle), literal(dst), symlinks=False)
         (target / "source.txt").write_text("".join(f"{tb}\t{src}\n" for tb, src in sorted(self.source.items())), encoding="utf-8")
         return target
 

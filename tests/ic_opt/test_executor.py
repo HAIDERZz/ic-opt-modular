@@ -1,10 +1,12 @@
 import contextlib
+import io
 import os
 import shlex
 import shutil
 import signal
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 import uuid
@@ -202,6 +204,88 @@ def test_ssh_scratch_resolves_tilde_once_even_from_parallel_jobs():
     assert sorted(paths) == [f"/home/lab/.ic-opt/scratch/p/obs_{i:04d}" for i in range(1, 5)]
     assert sum("$HOME" in call[-1] for call in fake.calls) == 1
     assert all("~" not in call[-1] for call in fake.calls if "mkdir" in call[-1])
+
+
+# -- directory transfers keep the names Windows would change (N-21) --------------------------------------------------------
+
+EXPORT = {                                   # a Maestro export in miniature: every real one carries amap/__dspf_information__.
+    "input.scs": b"simulator lang=spectre\nparameters F=20\n",
+    ".modelFiles": b"/pdk/models.scs\n",
+    "amap/__dspf_information__.": bytes(range(38)),                  # the name ends with a dot (38 bytes, as on the host)
+    "amap/trailing space ": b"\x00\xff the name ends with a space\n",
+}
+
+
+def tree(root: Path) -> dict[str, bytes | None]:
+    """Everything under ``root`` by its relative name: a file's bytes, None for a directory."""
+    return {p.relative_to(root).as_posix(): None if p.is_dir() else p.read_bytes() for p in sorted(root.rglob("*"))}
+
+
+@pytest.mark.skipif(os.name == "nt" or shutil.which("tar") is None, reason="this machine plays the Linux host: /bin/sh, tar")
+@pytest.mark.parametrize("windows", [False, True], ids=["local-tar", "windows-tarfile"])
+def test_tree_transfers_carry_names_windows_would_change_byte_for_byte(tmp_path, monkeypatch, windows):
+    """A Windows controller packs and unpacks directory streams with ``tarfile`` through ``localpath.literal`` paths, never
+    its own tar; any other controller runs its tar exactly as before. This machine plays the host (its /bin/sh and tar
+    run the remote side) and each branch sends a tree with ``amap/__dspf_information__.``, a name ending in a space and a
+    hard link (a file tar reaches twice) there and back, byte for byte, then fetches it again over what came back. Here
+    those names are ordinary: that Windows keeps them is for the Windows acceptance re-run to show."""
+    real_run = subprocess.run
+    local_runs: list[list[str]] = []
+
+    def controller_run(argv, *args, **kwargs):                           # what the controller itself starts
+        local_runs.append(list(argv))
+        return real_run(argv, *args, **kwargs)
+
+    def host(argv, *, input=None, timeout=None, encoding=None, errors=None, capture_output=True):
+        assert argv[:4] == ["ssh", "-o", "BatchMode=yes", "lab"]
+        return real_run(["/bin/sh", "-c", argv[4]], input=input, capture_output=True, timeout=timeout, encoding=encoding,
+                        errors=errors, check=False)
+
+    monkeypatch.setattr(ssh_module, "_WINDOWS", windows)
+    monkeypatch.setattr(ssh_module.subprocess, "run", controller_run)
+    sent, back, remote = tmp_path / "netlist", tmp_path / "back", tmp_path / "host" / "obs_0001" / "netlist"
+    for name, data in EXPORT.items():
+        (sent / name).parent.mkdir(parents=True, exist_ok=True)
+        (sent / name).write_bytes(data)
+    (sent / "empty").mkdir()
+    os.link(sent / "input.scs", sent / "amap" / "input.hardlink")
+    ex = SshExecutor("lab", str(tmp_path / "host"), execute=host)
+
+    ex.put(sent, str(remote))
+    assert tree(remote) == tree(sent)
+    ex.get(str(remote), back, dereference=True)
+    assert tree(back) == tree(sent)
+    (remote / "amap" / "__dspf_information__.").write_bytes(b"rewritten on the host")
+    ex.get(str(remote), back)                                            # into the tree already there, as metrics/ comes back
+    assert tree(back) == tree(remote)
+    assert local_runs == ([] if windows else [["tar", "-C", str(sent), "-cf", "-", "."], ["tar", "-C", str(back), "-xf", "-"],
+                                              ["tar", "-C", str(back), "-xf", "-"]])
+
+
+@pytest.mark.parametrize("member", ["../outside", "/tmp/outside", "C:outside", "amap\\..\\..\\outside", "link"])
+def test_on_windows_a_fetched_tree_refuses_members_that_would_leave_it(tmp_path, monkeypatch, member):
+    """The tarfile unpacking keeps what the controller's tar enforced: a member stays inside the directory it is unpacked
+    into (no absolute name, no climb above it, no Windows drive or separator inside a name), and only files and
+    directories come through, so a symbolic link is refused; nothing is unpacked from such a stream."""
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w") as archive:
+        info = tarfile.TarInfo(member)
+        if member == "link":
+            info.type, info.linkname = tarfile.SYMTYPE, "input.scs"
+            archive.addfile(info)
+        else:
+            info.size = 4
+            archive.addfile(info, io.BytesIO(b"evil"))
+
+    def host(argv, **kwargs):                                            # `test -d` says directory; the tar sends the stream
+        if "tar -C" in argv[-1]:
+            return subprocess.CompletedProcess(argv, 0, stdout=stream.getvalue(), stderr=b"")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(ssh_module, "_WINDOWS", True)
+    with pytest.raises(ExecutorError, match="refusing tar member"):
+        SshExecutor("lab", "/tmp/icopt", execute=host).get("/r/obs/metrics", tmp_path / "metrics")
+    assert list((tmp_path / "metrics").iterdir()) == [] and not (tmp_path / "outside").exists()
 
 
 # -- a timeout ends the whole job, not its first process (N-2) ------------------------------------------------------------

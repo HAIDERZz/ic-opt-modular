@@ -29,6 +29,8 @@ def maestro_export(root: Path, tb: str, params: str = "F=20 W=0.6u") -> Path:
         f'simulator lang=spectre\ninclude "/pdk/models.scs" section=tt\nparameters temperature=27 {params}\ntran tran stop=10n\n'
     )
     (netlist / ".modelFiles").write_text("/pdk/models.scs\n")
+    (netlist / "amap").mkdir()
+    (netlist / "amap" / "__dspf_information__.").write_text("dspf\n")     # in every export: the name ends with a dot (N-21)
     (root / tb / "shared.txt").write_text("shared")
     (netlist / "link").symlink_to(root / tb / "shared.txt")        # Maestro exports carry symlinks; import dereferences them
     return root / tb
@@ -41,6 +43,9 @@ def test_import_netlists_builds_a_deck_with_corners_and_support_files(tmp_path):
         corners=[{"id": "tt", "model_section": "tt"}, {"id": "ss", "model_section": "ss", "variables": {"temperature": "125"}}],
     )
     store = RunStore(tmp_path / "proj")
+    staging = store.root / "decks" / ".staging"
+    (staging / "tb").mkdir(parents=True)
+    (staging / "tb" / "stale.scs").write_text("left by an import that stopped part-way")
     deck = import_netlists(spec, LocalExecutor(store.root / "sims"), store)
 
     assert set(deck.templates) == {("tb", "tt"), ("tb", "ss")}
@@ -48,6 +53,8 @@ def test_import_netlists_builds_a_deck_with_corners_and_support_files(tmp_path):
     assert "temperature=125" in deck.template("tb", "ss")
     bundle = deck.bundle("tb")
     assert (bundle / ".modelFiles").exists() and (bundle / "link").read_text() == "shared" and not (bundle / "link").is_symlink()
+    assert (bundle / "amap" / "__dspf_information__.").read_text() == "dspf\n" and not (bundle / "stale.scs").exists()
+    assert not staging.exists()                              # removed after the import, not left behind in silence (N-21)
     assert Deck.load(store.root / "decks" / deck.fingerprint()).templates == deck.templates
 
     # the render stage carries the support files into every simulation directory
@@ -55,6 +62,7 @@ def test_import_netlists_builds_a_deck_with_corners_and_support_files(tmp_path):
     obs = evaluate(spec, [Point({"F": "22", "W": "0.8u"}, "user")], ex, store, deck=deck, limits=FAKE_HOST)[0]
     assert obs.status == "ok"
     assert (tmp_path / "proj" / obs.children["tb/tt"].sim_dir / "netlist" / ".modelFiles").exists()
+    assert (tmp_path / "proj" / obs.children["tb/tt"].sim_dir / "netlist" / "amap" / "__dspf_information__.").exists()
 
 
 def test_import_rejects_variable_not_in_top_level_parameters(tmp_path):

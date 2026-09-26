@@ -6,6 +6,7 @@ import shutil
 
 from ic_opt.deck import Deck
 from ic_opt.executor import Executor
+from ic_opt.localpath import literal
 from ic_opt.sim import netlist as kernel
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
@@ -27,7 +28,8 @@ def import_netlists(spec: Spec, executor: Executor, store: RunStore) -> Deck:
                   f"corners {[c or 'nominal' for c in spec.corner_ids]}")
         return Deck()
     staging = store.root / "decks" / ".staging"
-    shutil.rmtree(staging, ignore_errors=True)
+    if staging.exists():            # left by an import that stopped part-way: none of it may reach this deck
+        shutil.rmtree(literal(staging))
     deck = Deck()
     names = spec.circuit_variables
     for tb in spec.testbenches:
@@ -42,6 +44,6 @@ def import_netlists(spec: Spec, executor: Executor, store: RunStore) -> Deck:
         deck.bundles[tb.id] = local
         deck.source[tb.id] = f"{executor.host}:{tb.maestro_point_root}/netlist"
     saved = deck.save(store.root / "decks")
-    shutil.rmtree(staging, ignore_errors=True)
+    shutil.rmtree(literal(staging))     # a tree that cannot be removed is an error, not one left behind in silence
     store.log_step("netlist.import", "ok", deck=deck.fingerprint(), testbenches=len(spec.testbenches), corners=len(spec.corner_ids))
     return Deck.load(saved)
