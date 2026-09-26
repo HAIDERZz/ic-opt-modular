@@ -141,3 +141,9 @@ T1–T7 每个任务一个提交（在 `refactor/modular-blocks` 分支）。
 - Windows 笔记本（Codex 执行，Python 3.11.9、OpenSSH 9.5p2、ic-opt 0.3.0 自 GitHub wheel）：免密钥 SSH、远程 doctor 全 ok、`--plan` 正确；真实运行在 `deck.save` 的 copytree 处失败——Maestro 导出的 `amap/__dspf_information__.`（尾点文件名）Windows 普通路径打不开（`\\?\` 扩展路径可读，报告已用哈希证明）。未进入 evaluate，服务器 scratch 无工作目录。报告质量高：原始日志、退出码、只读取证，未改产品。
 - 附带发现：Windows 本地 doctor 在 executor 一项即停（无 /bin/sh，设计如此）；`--plan` 会建空 `.icopt/sims`；服务器 tar 在 /usr/bin。方案文本相应放宽。
 - 处置：新待办 N-21，子代理在工作树修复（扩展路径 + Windows 用 tarfile 打包 / 解包），修好后请 Windows agent 从 git 提交安装重跑；macOS 报告未回。
+
+### 2026-09-26 · N-21 / N-22 修复（Windows 控制端）
+
+- N-21（11b3482，子代理在工作树实现，169 定向测试绿）：新模块 `ic_opt/localpath.py` 的 `literal()`——Windows 上本地文件树操作一律走 `\\?\` 扩展路径，用于 `Deck.save`、`netlist.import` 的 `.staging`、`render_netlist`、`LocalExecutor` 的目录复制；`SshExecutor` 在 Windows 上用 tarfile 打包 / 解包（拒绝越界成员），Linux / macOS 仍用外部 tar。README 与 ADR-0001 各加一句。Win32 语义 Linux 上验不了，等 Windows 重跑。
+- N-22（35ff42b）：审核 N-21 时发现 `Deck.save` 没有模板时不建目录，只有器件的 spec 经 optimize / signoff / coarse_to_fine / fix_run 会在 `netlist.import` 崩溃；已修并加测试。
+- 重跑包：`dist/n21-35ff42b/` 的 wheel + `ic-opt-accept/n15/N15_RERUN_WINDOWS_CN.md`（Windows 重跑第 5–10 步；macOS 全程用同一 wheel）。
