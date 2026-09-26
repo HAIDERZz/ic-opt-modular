@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -261,9 +263,22 @@ def is_01_command_line(argv: list[str]) -> bool:
     return any(arg.split("=", 1)[0] in _01_FLAGS for arg in argv[1:])
 
 
-def main() -> None:
-    import sys
+def _utf8_streams() -> None:
+    """ic-opt writes UTF-8 to stdout and stderr on every platform. Python's default text streams follow the Windows code
+    page when they go to a file or a pipe (cp936 on a Chinese controller), and `ic-opt blocks` crashed there on the first
+    summary with a glyph outside it (UnicodeEncodeError, the 2026-09-27 Windows acceptance). Same handlers as Python's
+    UTF-8 mode (the default from 3.15, PEP 686): surrogateescape on stdout, backslashreplace on stderr. An explicit
+    PYTHONIOENCODING wins, as it does over UTF-8 mode; a stream already on UTF-8 (the Windows console, pytest's capture)
+    is left alone."""
+    if os.environ.get("PYTHONIOENCODING"):
+        return
+    for stream, errors in ((sys.stdout, "surrogateescape"), (sys.stderr, "backslashreplace")):
+        if hasattr(stream, "reconfigure") and (stream.encoding or "").lower().replace("-", "") != "utf8":
+            stream.reconfigure(encoding="utf-8", errors=errors)
 
+
+def main() -> None:
+    _utf8_streams()
     if is_01_command_line(sys.argv[1:]):              # refused before anything runs: the project is not touched
         typer.echo(_01_REFUSED, err=True)
         raise SystemExit(2)

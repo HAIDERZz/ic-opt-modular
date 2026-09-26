@@ -844,7 +844,7 @@ def _write_coordinates_json(cell, gds_path, json_path, mode_metadata):
         "emx_ports": cell.emx_ports,
         "instantiation_log": cell.instantiation_log(),
     }
-    json_path.write_text(json.dumps(doc, indent=2))
+    json_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
 
 
 def _render_png(gds_path, png_path, title, process: ProcessRuleContext | None = None):
@@ -929,7 +929,7 @@ def _write_report(out_dir, manifest):
         "outputs": manifest,
     }
     (out_dir / "pcell_inductor_python_port_report.json").write_text(
-        json.dumps(report, indent=2)
+        json.dumps(report, indent=2), encoding="utf-8"
     )
 
     lines = [
@@ -973,7 +973,7 @@ def _write_report(out_dir, manifest):
             f"`{entry['function']}({entry['params']})`"
         )
     lines.append("")
-    (out_dir / "pcell_inductor_python_port_report.md").write_text("\n".join(lines))
+    (out_dir / "pcell_inductor_python_port_report.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def generate_all(out_dir):
@@ -1007,7 +1007,7 @@ def generate_all(out_dir):
         )
         if cell.emx_ports:
             (out_dir / f"{basename}.emx_ports").write_text(
-                "\n".join(emx_port_lines(cell.emx_ports)) + "\n"
+                "\n".join(emx_port_lines(cell.emx_ports)) + "\n", encoding="utf-8"
             )
         manifest.append(
             {

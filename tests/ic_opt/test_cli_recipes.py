@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -68,6 +71,42 @@ def test_version_blocks_and_describe():
     described = runner.invoke(app, ["describe", "sim.evaluate"])
     assert described.exit_code == 0 and described.output.startswith("sim.evaluate(spec:") and "pipeline" in described.output
     assert runner.invoke(app, ["describe", "no.such"]).exit_code == 2
+
+
+def test_cli_streams_are_utf8_whatever_the_console_locale(monkeypatch):
+    """A Chinese Windows controller redirecting output to a file gives Python cp936 streams; `ic-opt blocks` crashed there
+    on the first summary with a glyph outside that code page (2026-09-27, N-26). main() puts stdout / stderr on UTF-8."""
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+    out, err = io.TextIOWrapper(io.BytesIO(), encoding="cp936"), io.TextIOWrapper(io.BytesIO(), encoding="cp936")
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+    with pytest.raises(UnicodeEncodeError):
+        out.write("suggest \u21c4 evaluate")
+    cli._utf8_streams()
+    assert (sys.stdout.encoding, sys.stdout.errors) == ("utf-8", "surrogateescape")
+    assert (sys.stderr.encoding, sys.stderr.errors) == ("utf-8", "backslashreplace")
+    sys.stdout.write("suggest \u21c4 evaluate")
+    sys.stdout.flush()
+    assert out.buffer.getvalue() == "suggest \u21c4 evaluate".encode("utf-8")
+    monkeypatch.setenv("PYTHONIOENCODING", "cp936")                   # explicit: wins, as it does over Python's UTF-8 mode
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="cp936"))
+    cli._utf8_streams()
+    assert sys.stdout.encoding == "cp936"
+
+
+def test_blocks_survives_a_gbk_console_locale():
+    """The Windows failure reproduced on Linux: under the zh_CN.gbk locale a piped stdout is gbk (skipped where that
+    locale is not installed), and a bare print of the glyph fails exactly as the controller did."""
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONIOENCODING", "PYTHONUTF8", "LC_ALL", "LC_CTYPE", "LANG")}
+    env.update({"LC_ALL": "zh_CN.gbk", "LANG": "zh_CN.gbk", "PYTHONUTF8": "0"})
+    probe = subprocess.run([sys.executable, "-c", "print('\\u21c4')"], env=env, capture_output=True, text=True, encoding="utf-8", check=False)
+    if "'gbk' codec can't encode character '\\u21c4'" not in probe.stderr:
+        pytest.skip("no zh_CN.gbk locale here: " + probe.stderr.strip()[-120:])
+    done = subprocess.run([sys.executable, "-m", "ic_opt.cli", "blocks"], env=env, capture_output=True, check=False)
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")[-800:]
+    listing = done.stdout.decode("utf-8")
+    assert "suggest \u21c4 evaluate" in listing
+    assert set(blocks.REGISTRY) == {line.split()[0] for line in listing.splitlines()}
 
 
 def test_run_plan_prints_shape_and_simulates_nothing(tmp_path):

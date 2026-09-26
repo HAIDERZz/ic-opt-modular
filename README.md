@@ -51,7 +51,11 @@ path normalization would change (`amap/__dspf_information__.` ends in a dot), as
 the 2026-09-26 Windows acceptance found. On Windows the `turbo` extra installs
 torch < 2.9: scikit-learn < 1.4 (OpenBox's pin) loads its own older
 `msvcp140.dll` at import, and torch 2.9+ cannot initialise on it (`WinError 1114`
-from `c10.dll`), as the 2026-09-27 Windows acceptance found.
+from `c10.dll`), as the 2026-09-27 Windows acceptance found. ic-opt writes UTF-8
+to stdout and stderr on every platform: Python's own streams follow the Windows
+code page when redirected to a file, and `ic-opt blocks` crashed on a Chinese
+controller's cp936 in the same acceptance; an explicit `PYTHONIOENCODING` still
+wins. Every text file ic-opt reads or writes names its encoding (UTF-8).
 Simulating on the controller itself (no `--ssh-profile`: `LocalExecutor`)
 needs Linux or macOS. The device library (`lib.*`, `lib_design`) runs on all
 three; it fits models in spawned worker processes, so a script that calls it

@@ -121,3 +121,35 @@ def test_windows_torch_stays_below_the_msvc_runtime_scikit_learn_loads():
     assert allowed("linux", "2.12.0") and allowed("darwin", "2.12.0")
     openbox = (ROOT / "vendor" / "open-box" / "requirements" / "main.txt").read_text()
     assert "scikit-learn>=0.24.0,<1.4.0" in openbox, "the scikit-learn pin moved: revisit the Windows torch bound"
+
+
+BINARY_MODULES = {"os", "tarfile", "zipfile", "gzip", "bz2", "lzma"}
+
+
+def _text_io_without_encoding():
+    """Every `read_text` / `write_text` / text-mode `open` call under src/ic_opt that names no encoding."""
+    found = []
+    for path in sorted(PACKAGE.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), filename=str(path))):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Attribute) and func.attr in ("read_text", "write_text"):
+                mode = None
+            elif (isinstance(func, ast.Name) and func.id == "open") or (isinstance(func, ast.Attribute) and func.attr == "open"
+                    and not (isinstance(func.value, ast.Name) and func.value.id in BINARY_MODULES)):
+                positional = node.args[1:] if isinstance(func, ast.Name) else node.args[:1]
+                mode = next((k.value for k in node.keywords if k.arg == "mode"), positional[0] if positional else None)
+                if isinstance(mode, ast.Constant) and isinstance(mode.value, str) and "b" in mode.value:
+                    continue
+            else:
+                continue
+            if not any(k.arg == "encoding" for k in node.keywords):
+                found.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+    return found
+
+
+def test_every_text_read_and_write_names_its_encoding():
+    """Text I/O without an encoding follows the locale: cp936 on a Chinese Windows controller, where the 2026-09-27
+    acceptance crashed the CLI's stdout (N-26). Every text file ic-opt reads or writes is UTF-8, said explicitly."""
+    assert _text_io_without_encoding() == []

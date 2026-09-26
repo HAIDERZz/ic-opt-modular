@@ -254,12 +254,12 @@ def recipe_command(hints: dict[str, Any], new_project: Path) -> tuple[str, dict[
     optimizer = hints.get("Optimizer Settings") or {}
     if workflow == "fix_run":
         points = (hints.get("Fixed Points") or {}).get("points", [])
-        (new_project / "points.json").write_text(json.dumps([p["parameters"] for p in points], indent=2))
+        (new_project / "points.json").write_text(json.dumps([p["parameters"] for p in points], indent=2), encoding="utf-8")
         params: dict[str, Any] = {"points": "points.json"}
         waves = (hints.get("Waveform Exports") or {}).get("exports", [])
         if waves:
             (new_project / "waveforms.json").write_text(json.dumps(
-                [{"name": w["name"], "expression": w["expression"], **({"testbench": w["testbench"]} if w.get("testbench") else {})} for w in waves], indent=2))
+                [{"name": w["name"], "expression": w["expression"], **({"testbench": w["testbench"]} if w.get("testbench") else {})} for w in waves], indent=2), encoding="utf-8")
             params["waveforms"] = "waveforms.json"
         return "fix_run", params
     strategy = optimizer.get("strategy") or {"turbo": "turbo", "openbox": "openbox_gp_eic", "random": "random"}.get(optimizer.get("algorithm"), "openbox_gp_eic")
