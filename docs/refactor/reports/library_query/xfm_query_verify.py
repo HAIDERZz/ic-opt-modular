@@ -11,13 +11,22 @@
                         windows +-5 % around a held-out design, maximise k_lf; first / top-3 precision and k regret
   5 example queries     lib.suggest on the full library (Sobol pool, calibrated conservative bounds, built and audited)
 
-Usage: xfm_query_verify.py LIBRARY_ROOT OUT_JSON [STRATUM ...]      (cap BLAS threads when EMX shares the host)
+Usage: xfm_query_verify.py LIBRARY_ROOT OUT_JSON [STRATUM ...] [--workers 16] [--threads 2] [--columns Lp_lf,Lp@60]
+       [--steps forward,srf,guard,inverse,examples]
+Parallel by default (N-20, 2026-09-26): every (stratum, column, variant) of step 1 is one job in a process pool of
+``--workers`` processes with ``--threads`` BLAS threads each (16 x 2 = the 32-thread budget of library compute; the
+128-thread / 256 GB envelope is the simulators'); steps 2-5 then run per stratum in parallel. ``--columns`` restricts
+step 1 to the columns named (verify what changed), ``--steps`` picks the steps. Results are identical to the serial run
+(seeded splits, same kernels).
 """
 from __future__ import annotations
 
+import argparse
 import json
-import sys
+import multiprocessing
+import os
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -56,10 +65,13 @@ def evaluate(x: np.ndarray, y: np.ndarray, st: dict) -> dict:
             "k_scale_all": gp.calibration_scale({"z": z.tolist()})}
 
 
-def forward(lib: query.Library, stratum: str) -> dict:
-    ds, out = lib.dataset(stratum), {}
+def forward_jobs(lib: query.Library, stratum: str, columns: set[str] | None) -> list[tuple]:
+    """Step 1 as independent jobs: (stratum, column, variant name, model settings) -- what forward() used to loop over."""
+    ds, jobs = lib.dataset(stratum), []
     for q in ds.columns:
-        x, y = xy(lib, stratum, q)
+        if columns and q not in columns:
+            continue
+        _x, y = xy(lib, stratum, q)
         base = settings(lib, stratum, q, y)
         variants = {"library": base}
         if q.split("@")[0] in ("k", "k_lf") and base["feature_map"]:
@@ -67,13 +79,54 @@ def forward(lib: query.Library, stratum: str) -> dict:
             if ds.nt_dim:
                 variants["identity-joint"] = {**base, "feature_map": None, "nt_mode": "joint"}
         for name, st in variants.items():
-            t0 = time.time()
-            out[f"{q}|{name}"] = {**evaluate(x, y, st), "feature_map": st["feature_map"], "nt_mode": st["nt_mode"], "seconds": round(time.time() - t0, 1)}
-            r = out[f"{q}|{name}"]
-            print(f"  {stratum} {q:8s} {name:15s} n={r['n']:5d} median={r['median_rel'] * 100:.3f}% p90={r['p90_rel'] * 100:.3f}% "
-                  f"cov2s={r['coverage_2sigma']:.3f} k={r['k_scale_seeds_0_2']:.2f} cov_cal={r['coverage_calibrated_seeds_3_4']:.3f} ({r['seconds']:.0f}s)",
-                  flush=True)
-    return out
+            jobs.append((stratum, q, name, st))
+    return jobs
+
+
+_LIBS: dict[str, query.Library] = {}
+
+
+def _lib(root: str) -> query.Library:
+    if root not in _LIBS:
+        _LIBS[root] = query.Library(root, calibrate=False)
+    return _LIBS[root]
+
+
+def _worker_init(threads: int) -> None:
+    os.environ["OMP_NUM_THREADS"] = os.environ["OPENBLAS_NUM_THREADS"] = os.environ["MKL_NUM_THREADS"] = str(threads)
+    from threadpoolctl import threadpool_limits
+
+    threadpool_limits(threads, user_api="blas")
+
+
+def forward_job(root: str, stratum: str, q: str, name: str, st: dict) -> tuple:
+    """One (column, variant) of step 1 in a worker process."""
+    lib = _lib(root)
+    x, y = xy(lib, stratum, q)
+    t0 = time.time()
+    r = {**evaluate(x, y, st), "feature_map": st["feature_map"], "nt_mode": st["nt_mode"], "seconds": round(time.time() - t0, 1)}
+    return stratum, q, name, r
+
+
+def print_forward(stratum: str, q: str, name: str, r: dict) -> None:
+    print(f"  {stratum} {q:8s} {name:15s} n={r['n']:5d} median={r['median_rel'] * 100:.3f}% p90={r['p90_rel'] * 100:.3f}% "
+          f"cov2s={r['coverage_2sigma']:.3f} k={r['k_scale_seeds_0_2']:.2f} cov_cal={r['coverage_calibrated_seeds_3_4']:.3f} ({r['seconds']:.0f}s)",
+          flush=True)
+
+
+def rest_job(root: str, stratum: str, steps: set[str]) -> tuple:
+    """Steps 2-5 of one stratum in a worker process."""
+    lib = _lib(root)
+    out = {}
+    if "srf" in steps:
+        out["srf_knn"] = srf_knn(lib, stratum)
+    if "guard" in steps:
+        out["guard"] = guard_cases(lib, stratum)
+    if "inverse" in steps:
+        out["inverse"] = inverse_offline(lib, stratum)
+    if "examples" in steps:
+        out["examples"] = examples(query.Library(root), stratum)
+    return stratum, out
 
 
 def srf_knn(lib: query.Library, stratum: str) -> dict:
@@ -200,23 +253,51 @@ def examples(lib: query.Library, stratum: str) -> list[dict]:
 
 
 def main() -> None:
-    root, out_path = Path(sys.argv[1]), Path(sys.argv[2])
+    ap = argparse.ArgumentParser()
+    ap.add_argument("root", type=Path)
+    ap.add_argument("out", type=Path)
+    ap.add_argument("strata", nargs="*")
+    ap.add_argument("--workers", type=int, default=16)
+    ap.add_argument("--threads", type=int, default=2, help="BLAS threads per worker (workers x threads = the compute budget, 32)")
+    ap.add_argument("--columns", default="", help="comma list: restrict step 1 to these columns")
+    ap.add_argument("--steps", default="forward,srf,guard,inverse,examples")
+    args = ap.parse_args()
+    root, out_path = args.root, args.out
+    columns = {c for c in args.columns.split(",") if c} or None
+    steps = {s for s in args.steps.split(",") if s}
     lib = query.Library(root, calibrate=False)
-    strata = sys.argv[3:] or [s for s in lib.strata() if s.startswith("xfm_")]
-    report, t0 = {"library": str(root), "strata": strata}, time.time()
+    strata = args.strata or [s for s in lib.strata() if s.startswith("xfm_")]
+    report, t0 = {"library": str(root), "strata": strata, "workers": args.workers, "threads_per_worker": args.threads,
+                  "columns": sorted(columns) if columns else "all", "steps": sorted(steps)}, time.time()
+    jobs = []
     for stratum in strata:
         ds = lib.dataset(stratum)
-        report[stratum] = {"integrity": dataset.check(ds)}
+        report[stratum] = {"integrity": dataset.check(ds), "forward": {}}
         print(f"{stratum}: {len(ds.rows)} rows, generation {ds.generations}", flush=True)
-        report[stratum]["forward"] = forward(lib, stratum)
-        report[stratum]["srf_knn"] = srf_knn(lib, stratum)
-        report[stratum]["guard"] = guard_cases(lib, stratum)
-        report[stratum]["inverse"] = inverse_offline(lib, stratum)
-        print(f"{stratum}: forward / SRF / guard / inverse done at {time.time() - t0:.0f} s", flush=True)
-        report[stratum]["examples"] = examples(query.Library(root), stratum)
+        if "forward" in steps:
+            jobs += forward_jobs(lib, stratum, columns)
+    ctx = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=args.workers, mp_context=ctx, initializer=_worker_init, initargs=(args.threads,)) as pool:
+        futures = [pool.submit(forward_job, str(root), *job) for job in jobs]
+        for fut in as_completed(futures):
+            stratum, q, name, r = fut.result()
+            report[stratum]["forward"][f"{q}|{name}"] = r
+            print_forward(stratum, q, name, r)
+        for stratum in strata:                          # the dict in column order, as the serial run wrote it
+            order = [f"{q}|{name}" for _s, q, name, _st in jobs if _s == stratum]
+            report[stratum]["forward"] = {k: report[stratum]["forward"][k] for k in order if k in report[stratum]["forward"]}
+        print(f"forward done at {time.time() - t0:.0f} s ({len(jobs)} jobs, {args.workers} x {args.threads} threads)", flush=True)
         out_path.write_text(json.dumps(report, indent=1, default=float), encoding="utf-8")
+    rest = steps - {"forward"}
+    if rest:
+        per = max(1, min(args.workers * args.threads // max(1, len(strata)), args.workers * args.threads))
+        with ProcessPoolExecutor(max_workers=len(strata), mp_context=ctx, initializer=_worker_init, initargs=(per,)) as pool:
+            for stratum, out in (f.result() for f in as_completed([pool.submit(rest_job, str(root), st, rest) for st in strata])):
+                report[stratum].update(out)
+                print(f"{stratum}: {' / '.join(sorted(out))} done at {time.time() - t0:.0f} s", flush=True)
     report["seconds"] = round(time.time() - t0, 1)
     out_path.write_text(json.dumps(report, indent=1, default=float), encoding="utf-8")
+    print("wrote", out_path, f"{report['seconds']:.0f} s", flush=True)
 
 
 if __name__ == "__main__":
