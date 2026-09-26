@@ -1,6 +1,6 @@
 # 0001: Remote mode treats filesystem separation as mandatory
 
-- **Status**: Accepted (2026-08-07); enforcement and acceptance rewritten for 0.2 (2026-09-22); platforms note (2026-09-24); the acceptance sandbox keeps the controller's site.yaml (2026-09-25); accepted from a real Windows controller (2026-09-27)
+- **Status**: Accepted (2026-08-07); enforcement and acceptance rewritten for 0.2 (2026-09-22); platforms note (2026-09-24); the acceptance sandbox keeps the controller's site.yaml (2026-09-25); accepted from a real Windows controller (2026-09-27); full acceptance from it, optimization loop and EM chain (2026-09-27)
 
 ## Context
 
@@ -97,6 +97,30 @@ simulated on the host through `--ssh-profile`, every recorded value
 bit-identical to the host-local baseline, the trailing-dot file kept under its
 name in the deck and in every child's netlist on both sides, and no psf on the
 controller. Evidence: `ic-opt-accept/n15/reports/` on the host.
+
+The full acceptance from the same Windows controller (2026-09-27, a source
+install of main@28193ba: OpenBox, TuRBO, klayout and torch from the documented
+`pip install`) exercised what the fix_run above did not. Optimization loop:
+`coarse_to_fine` on the three-testbench mixer, OpenBox 12 points then TuRBO 12,
+continued with a larger budget for 4 more; the host re-simulated all 28 points
+and every recorded value (428) was bit-identical, and the 28 points were the
+host-local reference run's own set (their order differs, which is only the order
+in which the six workers finished). EM chain: pcell on the controller, EMX on
+the host, the sNp bound into the LO_XFMR_TB netlist, Spectre, and device
+measurements, 12 OpenBox points; every GDS the controller wrote was
+byte-identical to the one generated on the host (24 of 24), the host's
+re-evaluation hit the controller's EMX cache entries at every stage (the cache
+key -- GDS bytes, ports, physics, process-file content -- is the same across
+operating systems), and 240 circuit and device metrics were bit-identical. Two
+platform defects surfaced before the run and were fixed first, both invisible
+to a Linux host: torch 2.9+ cannot initialise on the msvcp140.dll scikit-learn
+< 1.4 preloads (torch is bounded below 2.9 on Windows), and Python's default
+text streams follow the console code page when redirected (the CLI now writes
+UTF-8). Evidence: `ic-opt-accept/n23/verify_windows/` and
+`ic-opt-accept/n23/reports/full/` on the host. Not covered: macOS, and a
+genuine joint optimization where the EM device sits inside the circuit under
+optimization (the mixer testbench with an nport in place of its ideal balun is
+still to be built).
 
 ## Alternatives considered
 
