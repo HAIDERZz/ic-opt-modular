@@ -44,7 +44,7 @@ def run_one(problem: Problem, method: str, seed: int, *, budget: int = DEFAULT_B
     if n_init is None:
         n_init = min(2 * dim, 20)
     kwargs: dict = {}
-    if method.startswith("openbox"):
+    if method.startswith("openbox") or method == "metric_gp":
         kwargs["initial_trials"] = n_init
     if method in ("turbo", "turbo_trust_region"):
         kwargs["n_init"] = n_init                            # the same initial design size for every model-based method

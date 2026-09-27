@@ -2,10 +2,12 @@
 small grid, a multimodal one, a mostly-infeasible one, a partly-undefined one, an analytic amplifier), each on a
 grid exactly as a real spec would state it.
 
-Every problem's ``start`` is the grid point nearest the midpoint of every variable's range (``_start``, via
-``ic_opt.space.bounds`` + ``snap``): a neutral "current design" in the absence of any domain-specific one, chosen the
-same way for all eight so the choice needs stating once. Some problems (2, 6) turn out to make that point infeasible
--- documented per problem, not avoided, since a benchmark should include a run that starts outside the feasible set.
+The two ``around_design`` problems have a ``start``, the grid point nearest the midpoint of every variable's range
+(``_start``, via ``ic_opt.space.bounds`` + ``snap``): a neutral "current design" in the absence of any domain-specific
+one. In both it is infeasible: a design that does not meet its specification yet. The six ``wide_range`` problems
+have none, as the scenario says (plan section 4.2) -- with the midpoint as a start, two of them (``syn_levy20_c1``,
+``syn_mostly_infeasible``) handed every method a feasible first point, and the second of those exists to measure how
+a method finds one.
 
 Two grids (``syn_small_tight``, 504 points; ``syn_multimodal_small``, 1089) are small enough to enumerate exactly at
 problem-build time (:func:`icopt_bench._gridsearch.enumerate_grid`), so their ``reference`` is the true grid optimum,
@@ -173,7 +175,7 @@ def _build_ackley10() -> Problem:
         return {"tb1/nominal": child("tb1", {"f": float(sm.ackley10(x)), "c1": float(c1), "c2": float(c2)})}
 
     return Problem(name="syn_ackley10_c2", family="synthetic", scenario="wide_range", spec=spec, evaluate=evaluate,
-                    start=_start(spec), reference=0.0,
+                    reference=0.0,
                     notes="exact: x=0 is the analytic global optimum and lies on the grid; cross-checked by a 2e5-point "
                           "random search + coordinate descent (calibrate_synthetic.calibrate_ackley10)",
                     tags=("ackley", "scbo"))
@@ -206,7 +208,7 @@ def _build_hartmann6() -> Problem:
         return {"tb1/nominal": child("tb1", {"f": float(sm.hartmann6(x)), "c": float(np.sum(x) - _HARTMANN_BOUND)})}
 
     return Problem(name="syn_hartmann6_c1", family="synthetic", scenario="wide_range", spec=spec, evaluate=evaluate,
-                    start=_start(spec), reference=-3.3007706130601644,
+                    reference=-3.3007706130601644,
                     notes="best known: 4e5-point random search + coordinate descent, plus the unconstrained optimum as a "
                           "seed (calibrate_synthetic.calibrate_hartmann6); the constraint is active there (sum(x) = 2.0)",
                     tags=("hartmann6",))
@@ -236,7 +238,7 @@ def _build_levy20() -> Problem:
         return {"tb1/nominal": child("tb1", {"f": float(sm.levy20(x)), "c": float(np.sum(x) / 20 - 0.5)})}
 
     return Problem(name="syn_levy20_c1", family="synthetic", scenario="wide_range", spec=spec, evaluate=evaluate,
-                    start=_start(spec), reference=0.9251748848613778,
+                    reference=0.9251748848613778,
                     notes="best known: 5e5-point random search + coordinate descent, seeded also with x=0 and x=0.5 "
                           "everywhere (calibrate_synthetic.calibrate_levy20)",
                     tags=("levy", "high_dim"))
@@ -275,7 +277,7 @@ def _build_mostly_infeasible() -> Problem:
         return {"tb1/nominal": child("tb1", {"r1": float(r1), "r2": float(r2), "f": float(sm.infeasible_objective(u))})}
 
     return Problem(name="syn_mostly_infeasible", family="synthetic", scenario="wide_range", spec=spec, evaluate=evaluate,
-                    start=_start(spec), reference=0.9116,
+                    reference=0.9116,
                     notes="calibrated: 2e6-point random sample, feasible share 0.0999% (target 0.1%); reference is best "
                           "known (4e5-point random search + coordinate descent, calibrate_synthetic.calibrate_mostly_infeasible)",
                     tags=("mostly_infeasible", "lens"))
@@ -317,7 +319,7 @@ def _build_failure_region() -> Problem:
         return {"tb1/nominal": child("tb1", {"f": f, "q": q}), "tb2/nominal": tb2}
 
     return Problem(name="syn_failure_region", family="synthetic", scenario="wide_range", spec=spec, evaluate=evaluate,
-                    start=_start(spec), reference=0.18,
+                    reference=0.18,
                     notes="calibrated: 2e6-point random sample, feasible share 4.30% (target 3-5%); reference is exact "
                           "(closed form, u0=u1=0.7 on the boundary), cross-checked by best-known search (0.1808)",
                     tags=("failure_region", "missing_metric"))
@@ -364,7 +366,7 @@ def _build_amplifier() -> Problem:
                 "tb2/nominal": child("tb2", {"POWER": float(power), "AREA": float(area)})}
 
     return Problem(name="syn_amplifier_like", family="synthetic", scenario="wide_range", spec=spec, evaluate=evaluate,
-                    start=_start(spec), reference=-2996.460372658108,
+                    reference=-2996.460372658108,
                     notes="calibrated: 2e5-point random sample, feasible share 1.07% (target 1%); reference is best known "
                           "(5e5-point random search + coordinate descent, calibrate_synthetic.calibrate_amplifier)",
                     tags=("amplifier", "log_scale"))

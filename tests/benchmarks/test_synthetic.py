@@ -18,10 +18,13 @@ def test_problem_builds_and_start_is_on_grid(name):
     assert problem.name == name
     assert problem.family == "synthetic"
     assert problem.scenario in ("around_design", "wide_range")
+    if problem.scenario == "wide_range":                           # nothing to start from: that is the scenario
+        assert problem.start == ()
+        return
     assert len(problem.start) == 1
     space.check(problem.spec, problem.start[0])                    # raises ValueError if off-grid
     obs = observe(problem, Point(problem.start[0], "start"), 0)
-    assert obs.status in ("ok", "metric_failed", "constraint_failed")
+    assert obs.status == "constraint_failed"                       # a design that does not meet its specification yet
 
 
 @pytest.mark.parametrize("name", sorted(PROBLEMS))
