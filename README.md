@@ -198,10 +198,17 @@ em:
   timeout_s: 3600                       # required, placeholder: one EMX run's limit
 bindings:
   - {testbench: lo_xfmr_tb, instance: NPORT0, device: xfmr_in, terminals: [P1, N1, P2, N2]}   # sNp columns follow this order
+  # a null keeps the export's wiring but drops that nport terminal (a tap wired to two terminals, a grounded one):
+  # - {testbench: mixer_tb, instance: NPORT0, device: xfmr_ct, terminals: [P1, N1, CTP, null, P2, N2, CTS, null, null, null]}
 metrics:
   - {name: gain, unit: dB, testbench: lo_xfmr_tb, expression: 'value(db20(getData("gain" ?result "sp")) <f0_hz>)'}   # placeholder: your frequency
   - {name: Qp, unit: ratio, device: xfmr_in, quantity: Qp_peak}        # Lp/Qp/Ls/Qs/k at frequency_hz, or L*_lf L*_res Q*_peak SRF_* k_lf
 ```
+
+A binding lists the device's ports in the order of the instance's terminals; a `null` entry stands for a terminal the
+device does not have, and `bind_nport` rewrites the instance to the kept terminals (their order stays the sNp column
+order). That binds a six-port tapped transformer into a ten-terminal export whose p3 = p4 are the primary tap,
+p7 = p8 the secondary tap and p9 = p10 ground, as in the example above.
 
 A device's `topology` states how its S-parameters are measured: `drives`, one `[plus, minus]` port pair
 per differential drive (the primary, then the secondary), and `grounded` ports. A device without one gets

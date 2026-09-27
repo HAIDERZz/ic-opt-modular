@@ -81,7 +81,7 @@ def device_config(spec: Spec, device: Device, point: Point) -> dict[str, object]
 
 def snp_order(spec: Spec, device: Device) -> list[str]:
     """sNp column order for a device: the nport bindings' terminal order when it is bound, else the device's port order."""
-    orders = {tuple(b.terminals) for b in spec.bindings if b.device == device.id}
+    orders = {tuple(b.kept) for b in spec.bindings if b.device == device.id}
     if len(orders) > 1:
         raise StageFailure(f"device {device.id}: its bindings disagree on terminal order {sorted(orders)}")
     return list(orders.pop()) if orders else list(device.ports)
@@ -245,18 +245,20 @@ class BindNport:
             sp = geometry.sparams.get(binding.device)
             if sp is None:
                 raise StageFailure(f"{binding.instance}: device {binding.device} has no S-parameters")
-            if sp.port_labels != list(binding.terminals):        # by construction (snp_order) unless the spec changed under the cache
-                raise StageFailure(f"{binding.instance}: sNp columns are {sp.port_labels} but the instance's terminals are {binding.terminals}")
+            if sp.port_labels != binding.kept:                    # by construction (snp_order) unless the spec changed under the cache
+                raise StageFailure(f"{binding.instance}: sNp columns are {sp.port_labels} but the instance's terminals are {binding.kept}")
             models.mkdir(parents=True, exist_ok=True)
             target = models / f"{binding.device}{sp.path.suffix}"
             target.write_bytes(sp.path.read_bytes())
             try:
-                patched = nport_kernel.patch(text, instance=binding.instance, replacement=f"models/{target.name}", n_ports=len(binding.terminals))
+                patched = nport_kernel.patch(text, instance=binding.instance, replacement=f"models/{target.name}",
+                                             n_ports=len(binding.terminals), keep=binding.kept_positions)
             except nport_kernel.NportError as exc:
                 raise StageFailure(f"{ctx.unit}: {exc}") from exc
             text = patched.text
             ctx.trace.append({"label": f"bind:{binding.instance}", "device": binding.device, "signal_nodes": patched.signal_nodes,
-                              "terminals": list(binding.terminals), "replaced": patched.original_file})
+                              "terminals": binding.kept, "dropped_ports": [i + 1 for i, t in enumerate(binding.terminals) if t is None],
+                              "replaced": patched.original_file})
         return Netlist(text)
 
 

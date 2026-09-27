@@ -27,7 +27,11 @@ class Patch:
     signal_nodes: list[str]      # the instance's signal-side node names, in terminal order
 
 
-def patch(text: str, *, instance: str, replacement: str, n_ports: int) -> Patch:
+def patch(text: str, *, instance: str, replacement: str, n_ports: int, keep: list[int] | None = None) -> Patch:
+    """Point the instance at ``replacement``. ``n_ports`` is the instance's port count (two nodes each). ``keep`` lists
+    the instance's ports, 0-based and in order, that the new file drives: the others leave the terminal list (the
+    statement keeps its line count: the pairs before the last sit on the first line, the last pair on the last), so
+    a 6-port device replaces a 10-port instance whose extra ports were a tap wired twice and grounded spares (N-49)."""
     lines = text.splitlines(keepends=True)
     matches = [s for s in _logical_statements(lines) if _first_token(_join(lines, s)) == instance and " nport" in _join(lines, s)]
     if len(matches) != 1:
@@ -44,6 +48,23 @@ def patch(text: str, *, instance: str, replacement: str, n_ports: int) -> Patch:
     if len(nodes) != 2 * n_ports:
         raise NportError(f"nport instance {instance} has {len(nodes)} terminal nodes, expected {2 * n_ports} for {n_ports} ports")
     patched = statement_text[: file_match.start("path")] + replacement + statement_text[file_match.end("path"):]
+    if keep is not None and list(keep) != list(range(n_ports)):
+        if not keep or sorted(set(keep)) != sorted(keep) or min(keep) < 0 or max(keep) >= n_ports:
+            raise NportError(f"nport instance {instance}: keep must list distinct ports out of {n_ports}, got {keep}")
+        nodes = [n for i in keep for n in nodes[2 * i:2 * i + 2]]
+        original = nodes_match.group("nodes")
+        lead, trail = original[: len(original) - len(original.lstrip())], original[len(original.rstrip()):]
+        breaks = original.count("\n")
+        pairs = [" ".join(nodes[2 * i:2 * i + 2]) for i in range(len(keep))]
+        if breaks == 0:
+            new_nodes = lead + " ".join(pairs) + trail
+        else:
+            last = original.split("\n")[-1]
+            indent = last[: len(last) - len(last.lstrip())]
+            new_nodes = (lead + " ".join(pairs[:-1]) + " \\\n" + "".join(indent + "\\\n" for _ in range(breaks - 1))
+                         + indent + pairs[-1] + trail)
+        span = TERMINALS_RE.search(patched)
+        patched = patched[: span.start("nodes")] + new_nodes + patched[span.end("nodes"):]
     patched_lines = patched.splitlines(keepends=True)
     if len(patched_lines) != len(statement):
         raise NportError("patch changed the statement's line count")

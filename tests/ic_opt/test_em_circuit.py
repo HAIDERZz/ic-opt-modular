@@ -14,7 +14,7 @@ from ic_opt.em import nport
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec
 from tests.ic_opt.test_blocks import maestro_export
 from tests.ic_opt.test_em_pcell import demo_spec
 
@@ -139,3 +139,42 @@ def test_two_devices_bound_into_two_testbenches(tmp_path):
     tb_b = (store.root / "sims" / "obs_0001" / "tb_b" / "nominal" / "netlist")
     assert 'file="models/ind.s2p"' in (tb_b / "input.scs").read_text() and 'file="models/xfm.s4p"' in (tb_b / "input.scs").read_text()
     assert {p.name for p in (tb_b / "models").iterdir()} == {"ind.s2p", "xfm.s4p"}
+
+
+TAPPED = (
+    "subckt CS_Mixer_XFMR GND P1 P2 P_Com S1 S2 S_Com\n"
+    "NPORT0 ( P1 GND P2 GND P_Com GND P_Com GND S1 GND S2 GND S_Com GND S_Com \\\n"
+    "        GND GND GND GND GND) nport \\\n"
+    '        file="/host/XFMR_CS_Switch_5.s10p" \\\n'
+    "        interp=bbspice\n"
+    "ends CS_Mixer_XFMR\n"
+)
+
+
+def test_patch_keeps_a_subset_of_the_instance_ports_for_a_smaller_device():
+    """N-49 (2026-09-27): the mixer's tapped transformer is a 10-port nport (each tap wired to two ports, two spares
+    grounded); a 6-port device takes ports 1, 2, 3, 5, 6, 7 and the instance loses the rest, on the same lines."""
+    out = nport.patch(TAPPED, instance="NPORT0", replacement="models/xfm.s6p", n_ports=10, keep=[0, 1, 2, 4, 5, 6])
+    assert out.signal_nodes == ["P1", "P2", "P_Com", "S1", "S2", "S_Com"] and out.original_file == "/host/XFMR_CS_Switch_5.s10p"
+    assert "NPORT0 ( P1 GND P2 GND P_Com GND S1 GND S2 GND \\\n        S_Com GND) nport \\\n" in out.text
+    assert 'file="models/xfm.s6p"' in out.text and "interp=bbspice" in out.text and out.text.count("\n") == TAPPED.count("\n")
+    with pytest.raises(nport.NportError, match="keep must list distinct ports"):
+        nport.patch(TAPPED, instance="NPORT0", replacement="m.s6p", n_ports=10, keep=[0, 0, 1])
+    assert nport.patch(TAPPED, instance="NPORT0", replacement="m.s10p", n_ports=10, keep=list(range(10))).signal_nodes[2:4] == ["P_Com", "P_Com"]
+
+
+def test_binding_terminals_may_drop_instance_ports():
+    from ic_opt.spec import Spec
+
+    d = make_spec().model_dump(mode="json")
+    d["devices"] = [{"id": "xfm", "generator": "clean_port_xfm_bs", "profile": "demo_6m", "ports": ["P1", "N1", "P2", "N2", "CTP", "CTS"],
+                     "fixed": {"primary_metal": "6", "secondary_metal": "5", "ct_primary_metal": "4", "ct_secondary_metal": "4"}}]
+    d["bindings"] = [{"testbench": "tb", "instance": "NPORT0", "device": "xfm",
+                      "terminals": ["P1", "N1", "CTP", None, "P2", "N2", "CTS", None, None, None]}]
+    d["em"] = {"process_file": "/p/x.proc", "frequencies": {"start_hz": 0, "stop_hz": 1e11, "step_hz": 1e9}, "threads": 1, "memory_gb": 1, "timeout_s": 60}
+    spec = Spec.model_validate(d)
+    b = spec.bindings[0]
+    assert b.kept == ["P1", "N1", "CTP", "P2", "N2", "CTS"] and b.kept_positions == [0, 1, 2, 4, 5, 6]
+    d["bindings"][0]["terminals"] = ["P1", "N1", "CTP", None, "P2", "N2", "CTS", None, "CTS", None]      # a port twice
+    with pytest.raises(ValueError, match="permutation of device ports"):
+        Spec.model_validate(d)

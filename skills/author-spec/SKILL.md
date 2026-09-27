@@ -191,6 +191,11 @@ One per nport instance that takes a device's S-parameters: `testbench`,
 `instance` (the nport's name in that netlist), `device`, `terminals` (the
 device's ports in the order of the nport's terminals = the sNp column order;
 a permutation of `ports`). Read the instance line in the export to order them.
+A `null` entry drops that nport terminal (a tap the export wired to two
+terminals, a grounded terminal): the instance is rewritten to the kept ones,
+so a six-port tapped transformer binds into a ten-terminal nport as
+`[P1, N1, CTP, null, P2, N2, CTS, null, null, null]`; every port of the
+device still appears exactly once.
 
 ### `simulator`
 `preset` (`ax` default; `cx`, `mx`, `lx`, `vx`), `threads_per_run`,

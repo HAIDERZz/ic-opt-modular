@@ -393,12 +393,25 @@ class EmSettings(Model):
 
 
 class Binding(Model):
-    """A Spectre nport instance in a testbench that takes a device's S-parameters."""
+    """A Spectre nport instance in a testbench that takes a device's S-parameters. ``terminals`` names the device port at
+    each of the instance's ports, in the instance's order; a ``null`` entry is a port of the instance the device does not
+    take (a tap the schematic wires twice, a grounded spare), which the bound instance loses. The sNp's columns follow
+    the named entries in order (``kept``). N-49, 2026-09-27: the mixer's tapped transformer is a 10-port nport around a
+    6-port device."""
 
     testbench: str
     instance: str = Field(min_length=1)
     device: str
-    terminals: list[str] = Field(min_length=1)                # circuit terminal order == sNp port order (semantic labels)
+    terminals: list[str | None] = Field(min_length=1)         # instance port -> device port label, or null (dropped)
+
+    @property
+    def kept(self) -> list[str]:
+        """The device ports the instance takes, in the instance's order: the sNp column order."""
+        return [t for t in self.terminals if t is not None]
+
+    @property
+    def kept_positions(self) -> list[int]:
+        return [i for i, t in enumerate(self.terminals) if t is not None]
 
     @field_validator("instance")
     @classmethod
@@ -468,8 +481,9 @@ class Spec(Model):
             if binding.device not in device_ids:
                 raise ValueError(f"binding {binding.instance} references unknown device {binding.device}")
             ports = next(d for d in self.devices if d.id == binding.device).ports
-            if sorted(binding.terminals) != sorted(ports):
-                raise ValueError(f"binding {binding.instance}: terminals must be a permutation of device ports {ports}")
+            if sorted(binding.kept) != sorted(ports):
+                raise ValueError(f"binding {binding.instance}: the named terminals must be a permutation of device ports {ports} "
+                                 f"(null marks an instance port the device does not take)")
         metric_names = {m.name for m in self.metrics}
         for constraint in self.constraints:
             if constraint.metric not in metric_names:
