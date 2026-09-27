@@ -269,3 +269,18 @@ def test_coverage_names_each_part_device_and_the_stratum_note(library):
         assert set(part) == {"generator", "profile", "metals"} and part["generator"] == stratum.generator
         assert all(k.endswith("metal") for k in part["metals"])
     assert answer["note"] == stratum.note == ""
+
+
+def test_a_stratum_note_does_not_change_the_dataset_key(library):
+    """The note documents the parts; the cache files are keyed by what the dataset is made of (N-33, 2026-09-27: a note
+    written into the N28 manifest must not orphan every fitted model)."""
+    from ic_opt.library import query
+
+    lib = query.Library(library, calibrate=False)
+    name = lib.strata()[0]
+    before = lib.dataset(name).key
+    text = (library / "library.yaml").read_text(encoding="utf-8")
+    (library / "library.yaml").write_text(text.replace(f"  {name}:\n", f"  {name}:\n    note: windings on the top metal\n", 1), encoding="utf-8")
+    noted = query.Library(library, calibrate=False)
+    assert noted.manifest.strata[name].note == "windings on the top metal"
+    assert noted.dataset(name).key == before
