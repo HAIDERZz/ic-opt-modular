@@ -38,7 +38,7 @@ def with_ap(base: dict) -> dict:
     cat, emx, rules = d["layer_catalog"], d["emx_stack"], d["layout_rules"]
     cat["conductors"]["AP"] = {"drawing": [95, 0], "pin": [95, 2], "emx_name": "AP", "class": "aluminum_pad"}
     cat["vias"]["VAP"] = {"drawing": [96, 0], "emx_name": "VAP", "connects": ["M6", "AP"]}
-    emx["conductors"]["AP"] = {"thickness_um": 2.8}
+    emx["conductors"]["AP"] = {"thickness_um": 2.4}
     emx["via_models"]["VAP"] = {"via": "VAP", "emx_effective_size_um": 1.02}
     rules["metal_width_space"]["AP"] = {"min_width_um": 1.5, "max_width_um": 30.0, "min_space_um": 1.5}
     rules["via_primitives"]["VAP"] = {"cut_size_um": [1.0, 1.0], "min_cut_space_um": 1.0, "min_enclosure_um": {"M6": 0.3, "AP": 0.3}}

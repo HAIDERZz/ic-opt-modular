@@ -1,6 +1,6 @@
 ---
 name: author-spec
-description: Turn a user's design request (natural language, Maestro exports, device geometry, process) into a validated ic-opt 0.3 `spec.yaml` -- decide the shape (circuit, EM device in a circuit, device only), read the facts off the exports, fill every section, then prove it with `ic-opt doctor` and `--plan`.
+description: Turn a user's design request (natural language, Maestro exports, device geometry, process) into a validated ic-opt `spec.yaml` -- decide the shape (circuit, EM device in a circuit, device only), read the facts off the exports, fill every section, then prove it with `ic-opt doctor` and `--plan`.
 ---
 
 # /author-spec

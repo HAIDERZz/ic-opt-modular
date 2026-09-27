@@ -1,3 +1,3 @@
-"""IC-Opt 0.3: composable blocks for Spectre/OCEAN design optimization and the device query library."""
+"""IC-Opt 0.4: composable blocks for Spectre/OCEAN design optimization and the device query library."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
