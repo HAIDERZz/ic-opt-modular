@@ -52,6 +52,9 @@ on the host with `ssh HOST cat ...` or through `--plan`, which fetches it):
 - the `nport` instances (`NPORT0 ( P1 0 P2 0 net6 0 net4 0 ) nport ...`): their
   names go in `bindings.instance`, and their terminal order says which device
   port each terminal takes;
+- the analyses' sweeps (`pac ... start= stop=`, `sp` / `noise` ranges): a metric
+  can only report what the sweep covers -- a bandwidth beyond the window is
+  censored at the window's edge, a value at a frequency outside it is nil;
 - `simulatorOptions options temp=27 ...`: ADE exports write the simulation
   temperature there as a literal and leave the `temperature` parameter
   declared but unused, so a corner `variables: {temperature: ...}` changes
@@ -107,9 +110,12 @@ point, corner-independent, and count for every corner.
 `name`, `kind` (`integer`: whole numbers without units; `continuous_step`:
 values with one shared SI suffix such as `0.6u`, `40n`, `280m`, or plain),
 `lower`, `upper`, `step` (strings; the grid is `lower + k*step`, so the range
-must divide by the step). Circuit variables are top-level parameters of every
-testbench; device variables are `<device>.<field>` (or listed under the
-device's `variables`).
+must divide by the step). Put the bounds around the export's current values
+and make sure the current design sits on the grid, so it can be evaluated as
+a point and compared with (an exported `VB_RF=0` outside a `300m..440m` range
+cannot). Circuit variables are top-level parameters of every testbench;
+device variables are `<device>.<field>` (or listed under the device's
+`variables`).
 
 ### `metrics`
 Testbench metric: `name`, `unit`, `expression` (OCEAN, must evaluate to a
@@ -131,6 +137,12 @@ width, 32 GHz on a 80-112 GHz sweep), so that value means "at least", a
 constraint on it stops discriminating there, and its normalized score sits at
 full marks. Widen the sweep or say so in the report (N-42: 49 of 80 points).
 
+YAML: an OCEAN expression carries quotes, so write it as a plain scalar on its
+own line (`expression: value(getData("NF" ?result "pnoise") 3e+09)`) or as a
+block scalar; inside a flow mapping (`{ name: ..., expression: "..." }`) the
+inner quotes end the string early. Copy the expression verbatim; do not
+normalize `'-1` into `(quote -1)` or the like.
+
 A metric that fails on some points does not just lose a number: the point is
 `metric_failed`, has no objective, and the optimizer scores it with the failure
 penalty, so it steers the search away from exactly those points (N-35: the
@@ -148,7 +160,12 @@ number, then the unit). Every metric named must exist.
 ### `objective`
 `direction` (`minimize` / `maximize`) and `expression` over metric names with
 `+ - * / ** %`, `min(...)`, `max(...)`, `ln(...)` and numbers; nothing else.
-Omit the section for a pure feasibility / waveform run.
+Omit the section for a pure feasibility / waveform run. A bottleneck form with
+clipped margins (`max(0, min(1, ...))`) is flat wherever a constraint is far
+violated: with targets most of the space cannot meet, most objective values tie
+(N-35: 37 of 50) and the surrogate has no gradient to follow. Set the targets
+so a fair share of the space is feasible, or keep the margins unclipped until
+it is.
 
 ### `devices`
 `id`, `generator` (`clean_port_ind_sym`, `clean_port_xfm_bs`,
@@ -183,9 +200,11 @@ threads_per_run` must fit the host's site.yaml entry), `license_check`
 `keep_failed_runs` / `keep_successful_runs` (raw psf retention).
 
 ### `budget`
-`max_simulations`: the ceiling on simulations the project may hold. It is not
-part of the problem's identity, so raising it continues a run; every
-simulation ever recorded in the store counts against it.
+`max_simulations`: the ceiling on simulations the project may hold. Size it
+as points × simulations per point (testbenches × corners, plus EMX runs and
+device measurements) with headroom for a re-run of a few points; a spec edit
+keeps the earlier simulations counted. It is not part of the problem's
+identity, so raising it continues a run.
 
 ## 5. Complete examples (kept valid by `tests/ic_opt/test_skill_author_spec.py`)
 
@@ -334,7 +353,8 @@ budget: { max_simulations: 400 }
    surrogate proposes (a warning means every batch starts inside the initial
    design: use a smaller batch or a larger budget).
 3. Show the user the plan and the resource numbers they gave; the plan is the
-   approval point. No placeholder may remain: a path, a resource or a bound
+   approval point (what every plan line means: `skills/ic-opt/SKILL.md`,
+   Procedure step 3). No placeholder may remain: a path, a resource or a bound
    you did not get from the user or the export is a question, not a guess.
 
 A 0.1 `opt_requirement.md` is converted, not rewritten: `ic-opt migrate OLD
