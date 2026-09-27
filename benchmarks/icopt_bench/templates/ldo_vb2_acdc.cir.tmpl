@@ -1,0 +1,100 @@
+Test {subckt} ACDC
+
+.include "{netlist}"
+.param mc_mm_switch=0
+.param mc_pr_switch=0
+.include {pdk}/libs.tech/ngspice/corners/tt.spice
+.include {pdk}/libs.tech/ngspice/r+c/res_typical__cap_typical.spice
+.include {pdk}/libs.tech/ngspice/r+c/res_typical__cap_typical__lin.spice
+.include {pdk}/libs.tech/ngspice/corners/tt/specialized_cells.spice
+
+.include {vars}
+.PARAM supply_voltage = {supply}
+.PARAM vref = {vref}
+
+V1 vdd 0 'supply_voltage'
+V2 vss 0 0
+Vindc vref_in 0 'vref'
+Vin signal_in 0 dc 'vref' ac 1 sin('vref' 100m 500)
+
+* pins: Vdd vinp Vb2 vinn Vb1 Vss Vreg -- Vreg is fed back into vinp (voltage-follower loop).
+x1 vdd vinp1 Vb2_1 vref_in Vb1_1 vss Vreg1 {subckt}
+Vb1 Vb1_1 0 'Vb1'
+Vb2 Vb2_1 0 'Vb2'
+XCL Vreg1 0 sky130_fd_pr__cap_mim_m3_1 W=30 L=30 MF=M_CL m=M_CL
+Iload1 Vreg1 0 {iload_max_val}
+Lfb vinp1 Vreg1 1T
+Cfb vinp1 signal_in 1T
+
+x2 vddpsrr Vreg2 Vb2_2 vref_in Vb1_2 vss Vreg2 {subckt}
+VVDDApsrr vddpsrr 0 'supply_voltage' AC=1
+Vb3 Vb1_2 0 'Vb1'
+Vb4 Vb2_2 0 'Vb2'
+XCL2 Vreg2 0 sky130_fd_pr__cap_mim_m3_1 W=30 L=30 MF=M_CL m=M_CL
+Iload2 Vreg2 0 {iload_max_val}
+
+x3 VDDdc Vreg3 Vb2_3 vref_in Vb1_3 vss Vreg3 {subckt}
+VVDDdc VDDdc 0 'supply_voltage'
+Vb5 Vb1_3 0 'Vb1'
+Vb6 Vb2_3 0 'Vb2'
+XCL3 Vreg3 0 sky130_fd_pr__cap_mim_m3_1 W=30 L=30 MF=M_CL m=M_CL
+Iload3 Vreg3 0 {iload_max_val}
+
+.nodeset v(Vreg1)={vref_target}
+.nodeset v(Vreg2)={vref_target}
+.nodeset v(Vreg3)={vref_target}
+
+.control
+save all
+.options savecurrents
+set filetype=ascii
+set units=degrees
+set num_threads=1
+
+alter Iload3 dc={iload_max_val}
+dc VVDDdc {lnr_lo} {lnr_hi} 0.01
+meas dc maxval1 MAX V(Vreg3) from={lnr_lo} to={lnr_hi}
+meas dc minval1 MIN V(Vreg3) from={lnr_lo} to={lnr_hi}
+meas dc avgval1 AVG V(Vreg3) from={lnr_lo} to={lnr_hi}
+meas dc ppavl1  PP V(Vreg3) from={lnr_lo} to={lnr_hi}
+let lnr_maxload_out = abs(ppavl1/avgval1/{lnr_span})
+wrdata {out_lnr_max} lnr_maxload_out
+
+alter Iload3 dc={iload_min_val}
+dc VVDDdc {lnr_lo} {lnr_hi} 0.01
+meas dc maxval2 MAX V(Vreg3) from={lnr_lo} to={lnr_hi}
+meas dc minval2 MIN V(Vreg3) from={lnr_lo} to={lnr_hi}
+meas dc avgval2 AVG V(Vreg3) from={lnr_lo} to={lnr_hi}
+meas dc ppavl2  PP V(Vreg3) from={lnr_lo} to={lnr_hi}
+let lnr_minload_out = abs(ppavl2/avgval2/{lnr_span})
+wrdata {out_lnr_min} lnr_minload_out
+
+dc Iload3 {iload_min_val} {iload_sweep_stop} {iload_step_val}
+meas dc maxval MAX V(Vreg3) from={iload_min_val} to={iload_max_val}
+meas dc minval MIN V(Vreg3) from={iload_min_val} to={iload_max_val}
+meas dc avgval AVG V(Vreg3) from={iload_min_val} to={iload_max_val}
+meas dc ppavl  PP V(Vreg3) from={iload_min_val} to={iload_max_val}
+let ldr_out = abs(ppavl/avgval/{iload_span})
+
+meas dc ivdd1 FIND I(VVDDDC) AT={iload_max_val}
+let power_maxload_out = -1e3*ivdd1*{supply}
+meas dc ivdd2 FIND I(VVDDDC) AT={iload_min_val}
+let power_minload_out = -1e3*ivdd2*{supply}
+meas dc vout_x FIND V(Vreg3) AT={iload_max_val}
+let vos_maxload_out = abs(vout_x - {vref_target})
+meas dc vout_y FIND V(Vreg3) AT={iload_min_val}
+let vos_minload_out = abs(vout_y - {vref_target})
+wrdata {out_dc} ldr_out power_maxload_out power_minload_out vos_maxload_out vos_minload_out
+
+alter Iload1 dc={iload_max_val}
+ac dec 10 0.1 1G
+meas ac psrp1 find vdb(Vreg2) at = 0.1
+let psrr_out = -1*psrp1
+meas ac gain1 find vdb(Vreg1) at = 0.1
+let gain_out = gain1
+meas ac gbw_out when vdb(Vreg1)=0
+meas ac pm_out find vp(Vreg1) when vdb(Vreg1)=0
+wrdata {out_ac} gain_out gbw_out pm_out psrr_out
+
+.endc
+.end

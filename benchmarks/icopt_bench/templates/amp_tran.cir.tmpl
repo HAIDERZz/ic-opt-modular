@@ -1,0 +1,40 @@
+Test {subckt} Tran
+
+.include "{netlist}"
+.param mc_mm_switch=0
+.param mc_pr_switch=0
+.include {pdk}/libs.tech/ngspice/corners/tt.spice
+.include {pdk}/libs.tech/ngspice/r+c/res_typical__cap_typical.spice
+.include {pdk}/libs.tech/ngspice/r+c/res_typical__cap_typical__lin.spice
+.include {pdk}/libs.tech/ngspice/corners/tt/specialized_cells.spice
+
+.PARAM supply_voltage = 1.8
+.PARAM val0 = 0.3
+.PARAM val1 = 0.5
+.PARAM GBW_ideal = 5e4
+.PARAM STEP_TIME = '10/GBW_ideal'
+.include {vars}
+
+V1 vdd 0 'supply_voltage'
+V2 vss 0 0
+
+* Unity-gain buffer step response: output tied directly to the inverting input, visr drives the non-inverting
+* input (the same wiring proven on Leung_NMCF_Pin_3 in optimizer_research/benchmarks_data/trial_nmcf).
+VVISR visr 0 pulse('val0' 'val1' 1u 1p 1p '1*STEP_TIME' 1)
+x1 vss vdd vout3 visr vout3 {subckt}
+CLoad6 vout3 0 'CLOAD'
+
+.control
+save all
+.options savecurrents
+set filetype=ascii
+set units=degrees
+set num_threads=1
+
+tran 1u 4.01e-4
+* SR and TS are computed in Python from this waveform, porting AnalogGym's own
+* RGNN_RL/utils.py:analyze_amplifier_performance (icopt_bench.analoggym._step_response).
+wrdata {out_wave} v(vout3) v(visr)
+
+.endc
+.end

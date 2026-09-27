@@ -1,0 +1,98 @@
+Test {subckt} ACDC
+
+.include "{netlist}"
+.param mc_mm_switch=0
+.param mc_pr_switch=0
+.include {pdk}/libs.tech/ngspice/corners/tt.spice
+.include {pdk}/libs.tech/ngspice/r+c/res_typical__cap_typical.spice
+.include {pdk}/libs.tech/ngspice/r+c/res_typical__cap_typical__lin.spice
+.include {pdk}/libs.tech/ngspice/corners/tt/specialized_cells.spice
+
+.include {vars}
+.PARAM supply_voltage = {supply}
+.PARAM vref = {vref}
+
+V1 vdd 0 'supply_voltage'
+V2 vss 0 0
+Vindc vref_in 0 'vref'
+Vin signal_in 0 dc 'vref' ac 1 sin('vref' 100m 500)
+
+* pins: gnda vdda vinn vout vfb vinp Ib
+
+* loop-gain / PM testbench
+x1 vss vdd vref_in vout1 vfb1 vinp1 Ib {subckt}
+Ib vdd Ib DC='current_0_bias'
+Lfb vinp1 vfb1 1T
+Cfb vinp1 signal_in 1T
+XCL vout1 0 sky130_fd_pr__cap_mim_m3_1 W=30 L=30 MF=M_CL m=M_CL
+Iload1 vout1 0 {iload_max_val}
+
+* PSRR testbench
+VVDDApsrr vddpsrr 0 'supply_voltage' AC=1
+Ib2 vdd Ib2 DC='current_0_bias'
+XCL2 ppsr1 0 sky130_fd_pr__cap_mim_m3_1 W=30 L=30 MF=M_CL m=M_CL
+x2 vss vddpsrr vref_in ppsr1 vfb2 vfb2 Ib2 {subckt}
+Iload2 ppsr1 0 {iload_max_val}
+
+* DC / load-line testbench
+VVDDdc VDDdc 0 'supply_voltage'
+Ib3 vdd Ib3 DC='current_0_bias'
+XCL3 vout6 0 sky130_fd_pr__cap_mim_m3_1 W=30 L=30 MF=M_CL m=M_CL
+x3 vss vdddc vref_in vout6 vfb3 vfb3 Ib3 {subckt}
+Iload3 vout6 0 {iload_max_val}
+
+.control
+save all
+.options savecurrents
+set filetype=ascii
+set units=degrees
+set num_threads=1
+
+alter Iload3 dc={iload_max_val}
+dc VVDDdc {lnr_lo} {lnr_hi} 0.01
+meas dc maxval1 MAX V(vout6) from={lnr_lo} to={lnr_hi}
+meas dc minval1 MIN V(vout6) from={lnr_lo} to={lnr_hi}
+meas dc avgval1 AVG V(vout6) from={lnr_lo} to={lnr_hi}
+meas dc ppavl1  PP V(vout6) from={lnr_lo} to={lnr_hi}
+let lnr_maxload_out = abs(ppavl1/avgval1/{lnr_span})
+wrdata {out_lnr_max} lnr_maxload_out
+
+alter Iload3 dc={iload_min_val}
+dc VVDDdc {lnr_lo} {lnr_hi} 0.01
+meas dc maxval2 MAX V(vout6) from={lnr_lo} to={lnr_hi}
+meas dc minval2 MIN V(vout6) from={lnr_lo} to={lnr_hi}
+meas dc avgval2 AVG V(vout6) from={lnr_lo} to={lnr_hi}
+meas dc ppavl2  PP V(vout6) from={lnr_lo} to={lnr_hi}
+let lnr_minload_out = abs(ppavl2/avgval2/{lnr_span})
+wrdata {out_lnr_min} lnr_minload_out
+
+dc Iload3 {iload_min_val} {iload_sweep_stop} {iload_step_val}
+meas dc maxval MAX V(vout6) from={iload_min_val} to={iload_max_val}
+meas dc minval MIN V(vout6) from={iload_min_val} to={iload_max_val}
+meas dc avgval AVG V(vout6) from={iload_min_val} to={iload_max_val}
+meas dc ppavl  PP V(vout6) from={iload_min_val} to={iload_max_val}
+let ldr_out = abs(ppavl/avgval/{iload_span})
+
+meas dc ivdd1 FIND I(VVDDDC) AT={iload_max_val}
+let power_maxload_out = -1e3*ivdd1*{supply}
+meas dc ivdd2 FIND I(VVDDDC) AT={iload_min_val}
+let power_minload_out = -1e3*ivdd2*{supply}
+meas dc vout_x FIND V(vout6) AT={iload_max_val}
+let vos_maxload_out = abs(vout_x - {vref_target})
+meas dc vout_y FIND V(vout6) AT={iload_min_val}
+let vos_minload_out = abs(vout_y - {vref_target})
+wrdata {out_dc} ldr_out power_maxload_out power_minload_out vos_maxload_out vos_minload_out
+
+alter Iload1 dc={iload_max_val}
+alter Iload2 dc={iload_max_val}
+ac dec 10 0.1 1G
+meas ac psrp1 find vdb(ppsr1) at = 0.1
+let psrr_out = -1*psrp1
+meas ac gain1 find vdb(vout1) at = 0.1
+let gain_out = gain1
+meas ac gbw_out when vdb(vout1)=0
+meas ac pm_out find vp(vout1) when vdb(vout1)=0
+wrdata {out_ac} gain_out gbw_out pm_out psrr_out
+
+.endc
+.end

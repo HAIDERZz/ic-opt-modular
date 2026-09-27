@@ -1,0 +1,84 @@
+Test {subckt} ACDC
+
+.include "{netlist}"
+.param mc_mm_switch=0
+.param mc_pr_switch=0
+.include {pdk}/libs.tech/ngspice/corners/tt.spice
+.include {pdk}/libs.tech/ngspice/r+c/res_typical__cap_typical.spice
+.include {pdk}/libs.tech/ngspice/r+c/res_typical__cap_typical__lin.spice
+.include {pdk}/libs.tech/ngspice/corners/tt/specialized_cells.spice
+
+.PARAM supply_voltage = 1.8
+.PARAM VCM_ratio = 0.25
+.include {vars}
+
+V1 vdd 0 'supply_voltage'
+V2 vss 0 0
+
+Vindc opin 0 'supply_voltage*VCM_ratio'
+Vin signal_in 0 dc 'supply_voltage*VCM_ratio' ac 1 sin('supply_voltage*VCM_ratio' 100m 500)
+
+Lfb opout opout_dc 1T
+Cin opout_dc signal_in 1T
+
+* Loop-gain / phase-margin testbench: the loop is broken through the ideal Lfb/Cin pair, so vp(opout) at the
+* unity-loop-gain crossing already reads as the standard 0..90deg phase margin for this negative-feedback loop
+* (verified on Leung_NMCF_Pin_3's authors' design: 43.98deg, matching optimizer_research/benchmarks_data/trial_nmcf).
+x1 vss vdd opout_dc opin opout {subckt}
+Cload1 opout 0 'CLOAD'
+
+* CMRR testbench.
+vcmdc cm0 0 'supply_voltage*VCM_ratio'
+vcmac1 cm1 cm0 0 ac=1
+vcmac2 cm2 cm3 0 ac=1
+x2 vss vdd cm2 cm1 cm3 {subckt}
+Cload2 cm3 0 'CLOAD'
+
+* PSRR testbenches (supply and ground injection).
+VGNDApsrr gndpsrr 0 0 AC=1
+VVDDApsrr vddpsrr 0 'supply_voltage' AC=1
+x3 vss vddpsrr ppsr1 opin ppsr1 {subckt}
+Cload3 ppsr1 0 'CLOAD'
+x4 gndpsrr vdd npsr1 opin npsr1 {subckt}
+Cload4 npsr1 0 'CLOAD'
+
+* Temperature-sweep testbench (TC, power, offset).
+VVDDdc VDDdc 0 'supply_voltage'
+x5 vss vdddc vout6 opin vout6 {subckt}
+Cload5 vout6 0 'CLOAD'
+
+.control
+save all
+.options savecurrents
+set filetype=ascii
+set units=degrees
+set num_threads=1
+
+DC temp -40 125 1
+meas dc maxval MAX V(vout6) from=-40 to=125
+meas dc minval MIN V(vout6) from=-40 to=125
+meas dc avgval AVG V(vout6) from=-40 to=125
+meas dc ppavl  PP V(vout6) from=-40 to=125
+let tc_out = abs(ppavl/avgval/165)
+meas dc ivdd25 FIND I(VVDDDC) AT=25
+let power_out = -1.8e3 * ivdd25
+meas dc vout25 FIND V(vout6) AT=25
+let vos_out = abs(vout25 - 0.45)
+wrdata {out_dc} tc_out power_out vos_out
+
+ac dec 10 0.1 1G
+meas ac cmrrdc_raw find vdb(cm3) at = 0.1
+let cmrr_out = -1*cmrrdc_raw
+meas ac dcgain_raw find vdb(opout) at = 0.1
+let gain_out = dcgain_raw
+meas ac gbw_out when vdb(opout)=0
+meas ac pm_out find vp(opout) when vdb(opout)=0
+meas ac psrp_raw find vdb(ppsr1) at = 0.1
+let psrp_out = -1*psrp_raw
+meas ac psrn_raw find vdb(npsr1) at = 0.1
+let psrn_out = -1*psrn_raw
+wrdata {out_ac} cmrr_out psrp_out psrn_out gain_out
+wrdata {out_gbwpm} gbw_out pm_out
+
+.endc
+.end

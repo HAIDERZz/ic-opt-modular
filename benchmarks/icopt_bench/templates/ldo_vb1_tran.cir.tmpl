@@ -1,0 +1,40 @@
+Test {subckt} Tran
+
+.include "{netlist}"
+.param mc_mm_switch=0
+.param mc_pr_switch=0
+.include {pdk}/libs.tech/ngspice/corners/tt.spice
+.include {pdk}/libs.tech/ngspice/r+c/res_typical__cap_typical.spice
+.include {pdk}/libs.tech/ngspice/r+c/res_typical__cap_typical__lin.spice
+.include {pdk}/libs.tech/ngspice/corners/tt/specialized_cells.spice
+
+.include {vars}
+.PARAM supply_voltage = {supply}
+.PARAM vref = {vref}
+
+V1 vdd 0 'supply_voltage'
+V2 vss 0 0
+Vindc vref_in 0 'vref'
+
+* pins: Vdd vinp vinn Vb Vss Vreg -- Vreg is fed back into vinp (voltage-follower loop).
+x1 vdd Vreg1 vref_in net1 vss Vreg1 {subckt}
+Vb net1 0 'Vb'
+XCL Vreg1 0 sky130_fd_pr__cap_mim_m3_1 W=30 L=30 MF=M_CL m=M_CL
+Iload1 Vreg1 0 pulse({iload_min_val} {iload_max_val} 1u 1p 1p 12.5u 1)
+
+.control
+save all
+.options savecurrents
+set filetype=ascii
+set units=degrees
+set num_threads=1
+
+tran 10n 100u
+meas tran v_min MIN v(Vreg1) from=0 to=50u
+meas tran v_max MAX v(Vreg1) from=50u to=100u
+let undershoot_out = {vref_target} - v_min
+let overshoot_out = v_max - {vref_target}
+wrdata {out_tran} undershoot_out overshoot_out
+
+.endc
+.end

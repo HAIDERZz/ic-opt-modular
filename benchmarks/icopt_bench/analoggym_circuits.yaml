@@ -1,0 +1,5462 @@
+# AnalogGym benchmark registry (T17.0a-B2). AnalogGym (Chen et al., CODA-Team/AnalogGym, BSD-3-Clause,
+# https://github.com/CODA-Team/AnalogGym, commit 0a9d1390ade361e2b4a2d33181e22367edbb8afc) is not vendored here --
+# `benchmarks/fetch_analoggym.py` fetches it. This file quotes AnalogGym's own variable ranges, targets and
+# authors' designs (with attribution below) for the circuits whose 5-pin netlist under Amplifier/spice_netlist/ or
+# Low Dropout Regulator/spice_netlist/ we can actually simulate with ngspice.
+#
+# Every amplifier's 5-pin subckt is `gnda vdda vinn vinp vout`; bias is the internal source
+# `I0 ... 'CURRENT_0_BIAS'`. `case` says where a circuit's ranges/targets come from:
+#   rl            -- RGNN_RL/AMP_<x>.py + RGNN_RL/ckt_graphs.py give per-circuit ranges, targets, and (mostly
+#                    placeholder, see below) authors_design.
+#   graph_only    -- RGNN_RL/ckt_graphs.py has a class with real ranges+targets but no AMP_<x>.py script, so no
+#                    authors_design.
+#   generic_fallback -- neither exists; ranges follow the task's fallback rule (W 0.5..10um, L 0.5..5um step
+#                    0.01, M 1..50 integer step 1, bias current 1..30uA step 0.1u, cap 0.5..30pF step 0.1p,
+#                    resistor a decade around its design_variables placeholder), targets are the mode/median of
+#                    the 13 RL amplifiers' own targets.
+#
+# `authors_design` for the 13 "rl" amplifiers is the literal `_initialize_simulation` array in AMP_<x>.py, mapped
+# to netlist parameter names -- but for 12 of the 13 that array is `(W=1, L=1, M=4, ...)` repeated, i.e. the RL
+# environment's generic reset point, NOT a tuned design (verified against the file; only Leung_NMCF_Pin_3's array
+# holds genuinely fitted floats, matching the working hand-run trial in
+# optimizer_research/benchmarks_data/trial_nmcf/). Role matching for Yan_AZ_Pin_3 is by (role, W/L multiplier)
+# suffix, not by transistor index: AMP_AZ.py's own `.param` lines use transistor indices (e.g. `MOSFET_7_2_..._gm1
+# _PMOS`) that no longer match this netlist's numbering (`MOSFET_9_2_..._gm1_PMOS`), while the role+multiplier
+# pair is unchanged and unambiguous -- a real repo-drift case, not a transcription choice.
+#
+# Peng_TCFC_Pin_3 uses ckt_graphs.py's `GraphAMPTCFC` (no RL script exists for it, so no authors_design).
+# Qu_LEC_Pin_3 is EXCLUDED from this registry entirely: AnalogGym/Amplifier/spice_netlist/Qu_LEC_Pin_3 is a 0-byte
+# file at the pinned commit -- there is no `.subckt` to simulate.
+#
+# LDOs: LDO_TB.py / GraphLDOtestbench's per-transistor ranges name a "Basic_LDO" netlist revision that no longer
+# matches any of the four shipped LDOs by parameter name (verified: ldo_1's own spice_netlist/ldo_1_vars.spice
+# uses W_M0..W_M8, not LDO_TB.py's mosfet_0_8_w_biascm_pmos scheme) -- all four LDOs therefore use the
+# generic-fallback range policy (a decade-ish band around each LDO's own shipped *_vars.spice value; that shipped
+# value is `authors_design`; tied parameters such as `W_M1=W_M0` are left as ties, not separate variables). All
+# four reuse LDO_TB.py's targets (LDR, LNR, PSRR, GBW, PM, Power, VOS, undershoot/overshoot) as the closest
+# available reference, since AnalogGym gives no other LDO targets.
+circuits:
+- name: peng_acbc_pin_3
+  kind: amplifier
+  case: rl
+  subckt: peng_acbc_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Peng_ACBC_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Peng_ACBC_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Peng_ACBC_Pin_3
+  - AnalogGym/Amplifier/design_variables/Peng_ACBC_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_ACBC.py
+  load:
+    capacitance: 100p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_9_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_9_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_9_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_12_1_W_gmf2_PMOS
+    role: width of gmf2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_12_1_L_gmf2_PMOS
+    role: length of gmf2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_12_1_M_gmf2_PMOS
+    role: multiplier of gmf2_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_18_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_22_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_22_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_22_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_24_1_W_gm4_NMOS
+    role: width of gm4_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_24_1_L_gm4_NMOS
+    role: length of gm4_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_24_1_M_gm4_NMOS
+    role: multiplier of gm4_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_25_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_25_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_25_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_59_1_W_ma1_PMOS
+    role: width of ma1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_59_1_L_ma1_PMOS
+    role: length of ma1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_59_1_M_ma1_PMOS
+    role: multiplier of ma1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 0.8152p
+    upper: 24.4152p
+    step: 0.1p
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 200.0
+  - metric: GBW
+    direction: ge
+    value: 1000000.0
+  - metric: SR
+    direction: ge
+    value: 0.4
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '4'
+  - name: MOSFET_9_2_W_gm1_PMOS
+    value: '1'
+  - name: MOSFET_9_2_L_gm1_PMOS
+    value: '1'
+  - name: MOSFET_9_2_M_gm1_PMOS
+    value: '4'
+  - name: MOSFET_11_1_W_gm2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_L_gm2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_M_gm2_PMOS
+    value: '4'
+  - name: MOSFET_12_1_W_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_12_1_L_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_12_1_M_gmf2_PMOS
+    value: '4'
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_18_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_18_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_18_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_22_2_W_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_22_2_L_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_22_2_M_LOAD2_NMOS
+    value: '4'
+  - name: MOSFET_24_1_W_gm4_NMOS
+    value: '1'
+  - name: MOSFET_24_1_L_gm4_NMOS
+    value: '1'
+  - name: MOSFET_24_1_M_gm4_NMOS
+    value: '4'
+  - name: MOSFET_25_1_W_gm3_NMOS
+    value: '1'
+  - name: MOSFET_25_1_L_gm3_NMOS
+    value: '1'
+  - name: MOSFET_25_1_M_gm3_NMOS
+    value: '4'
+  - name: MOSFET_59_1_W_ma1_PMOS
+    value: '1'
+  - name: MOSFET_59_1_L_ma1_PMOS
+    value: '1'
+  - name: MOSFET_59_1_M_ma1_PMOS
+    value: '4'
+  - name: CURRENT_0_BIAS
+    value: 10u
+  - name: CAPACITOR_0
+    value: 18.228p
+  - name: CAPACITOR_1
+    value: 8.152p
+  notes:
+  - 'CAPACITOR_0: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 24.456p -> 24.4152p to divide evenly by step 0.1p'
+- name: hoilee_affc_pin_3
+  kind: amplifier
+  case: rl
+  subckt: hoilee_affc_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/HoiLee_AFFC_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/HoiLee_AFFC_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/HoiLee_AFFC_Pin_3
+  - AnalogGym/Amplifier/design_variables/HoiLee_AFFC_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_AFFC.py
+  load:
+    capacitance: 100p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_9_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_9_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_9_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_12_1_W_gmf2_PMOS
+    role: width of gmf2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_12_1_L_gmf2_PMOS
+    role: length of gmf2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_12_1_M_gmf2_PMOS
+    role: multiplier of gmf2_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_18_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_22_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_22_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_22_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_25_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_25_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_25_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_59_2_W_HSBCM_PMOS
+    role: width of HSBCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_59_2_L_HSBCM_PMOS
+    role: length of HSBCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_59_2_M_HSBCM_PMOS
+    role: multiplier of HSBCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_60_2_W_gma_NMOS
+    role: width of gma_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_60_2_L_gma_NMOS
+    role: length of gma_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_60_2_M_gma_NMOS
+    role: multiplier of gma_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 0.8152p
+    upper: 24.4152p
+    step: 0.1p
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 200.0
+  - metric: GBW
+    direction: ge
+    value: 2000000.0
+  - metric: SR
+    direction: ge
+    value: 2.2
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '4'
+  - name: MOSFET_9_2_W_gm1_PMOS
+    value: '1'
+  - name: MOSFET_9_2_L_gm1_PMOS
+    value: '1'
+  - name: MOSFET_9_2_M_gm1_PMOS
+    value: '4'
+  - name: MOSFET_11_1_W_gm2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_L_gm2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_M_gm2_PMOS
+    value: '4'
+  - name: MOSFET_12_1_W_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_12_1_L_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_12_1_M_gmf2_PMOS
+    value: '4'
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_18_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_18_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_18_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_22_2_W_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_22_2_L_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_22_2_M_LOAD2_NMOS
+    value: '4'
+  - name: MOSFET_25_1_W_gm3_NMOS
+    value: '1'
+  - name: MOSFET_25_1_L_gm3_NMOS
+    value: '1'
+  - name: MOSFET_25_1_M_gm3_NMOS
+    value: '4'
+  - name: MOSFET_59_2_W_HSBCM_PMOS
+    value: '1'
+  - name: MOSFET_59_2_L_HSBCM_PMOS
+    value: '1'
+  - name: MOSFET_59_2_M_HSBCM_PMOS
+    value: '4'
+  - name: MOSFET_60_2_W_gma_NMOS
+    value: '1'
+  - name: MOSFET_60_2_L_gma_NMOS
+    value: '1'
+  - name: MOSFET_60_2_M_gma_NMOS
+    value: '4'
+  - name: CURRENT_0_BIAS
+    value: 10u
+  - name: CAPACITOR_0
+    value: 18.228p
+  - name: CAPACITOR_1
+    value: 8.152p
+  notes:
+  - 'CAPACITOR_0: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 24.456p -> 24.4152p to divide evenly by step 0.1p'
+- name: qu2017_azc_pin_3
+  kind: amplifier
+  case: rl
+  subckt: qu2017_azc_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Qu2017_AZC_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Qu2017_AZC_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Qu2017_AZC_Pin_3
+  - AnalogGym/Amplifier/design_variables/Qu2017_AZC_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_AZC.py
+  load:
+    capacitance: 1500p
+  variables:
+  - name: MOSFET_0_14_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_14_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_14_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_6_3_W_AZC2_PMOS
+    role: width of AZC2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_6_3_L_AZC2_PMOS
+    role: length of AZC2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_6_3_M_AZC2_PMOS
+    role: multiplier of AZC2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_9_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_9_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_9_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_12_1_W_AZC1_NMOS
+    role: width of AZC1_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_12_1_L_AZC1_NMOS
+    role: length of AZC1_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_12_1_M_AZC1_NMOS
+    role: multiplier of AZC1_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_13_1_W_gmf2_PMOS
+    role: width of gmf2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_13_1_L_gmf2_PMOS
+    role: length of gmf2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_13_1_M_gmf2_PMOS
+    role: multiplier of gmf2_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_14_4_W_LOAD1_NMOS
+    role: width of LOAD1_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_14_4_L_LOAD1_NMOS
+    role: length of LOAD1_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_14_4_M_LOAD1_NMOS
+    role: multiplier of LOAD1_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_18_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_19_16_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_19_16_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_19_16_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_24_8_W_AZC3_NMOS
+    role: width of AZC3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_24_8_L_AZC3_NMOS
+    role: length of AZC3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_24_8_M_AZC3_NMOS
+    role: multiplier of AZC3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 0.2076p
+    upper: 10.3076p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 0.2076p
+    upper: 10.3076p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_2
+    role: compensation/load capacitor
+    lower: 0.2076p
+    upper: 10.3076p
+    step: 0.1p
+    kind: continuous_step
+  - name: RESISTOR_0
+    role: feedback/compensation resistor
+    lower: 4.767429k
+    upper: 95.267429k
+    step: 0.1k
+    kind: continuous_step
+  - name: RESISTOR_1
+    role: feedback/compensation resistor
+    lower: 4.767429k
+    upper: 95.267429k
+    step: 0.1k
+    kind: continuous_step
+  - name: RESISTOR_2
+    role: feedback/compensation resistor
+    lower: 19.069714k
+    upper: 381.369714k
+    step: 0.1k
+    kind: continuous_step
+  - name: RESISTOR_3
+    role: feedback/compensation resistor
+    lower: 4.767429k
+    upper: 95.267429k
+    step: 0.1k
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 500.0
+  - metric: GBW
+    direction: ge
+    value: 3000000.0
+  - metric: SR
+    direction: ge
+    value: 0.3
+  authors_design: null
+  notes:
+  - 'CAPACITOR_0: upper bound moved 10.38p -> 10.3076p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 10.38p -> 10.3076p to divide evenly by step 0.1p'
+  - 'CAPACITOR_2: upper bound moved 10.38p -> 10.3076p to divide evenly by step 0.1p'
+  - 'RESISTOR_0: upper bound moved 95.348571k -> 95.267429k to divide evenly by step 0.1k'
+  - 'RESISTOR_1: upper bound moved 95.348571k -> 95.267429k to divide evenly by step 0.1k'
+  - 'RESISTOR_2: upper bound moved 381.394286k -> 381.369714k to divide evenly by step 0.1k'
+  - 'RESISTOR_3: upper bound moved 95.348571k -> 95.267429k to divide evenly by step 0.1k'
+- name: yan_az_pin_3
+  kind: amplifier
+  case: rl
+  subckt: yan_az_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Yan_AZ_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Yan_AZ_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Yan_AZ_Pin_3
+  - AnalogGym/Amplifier/design_variables/Yan_AZ_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_AZ.py
+  load:
+    capacitance: 15n
+  variables:
+  - name: MOSFET_0_14_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_14_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_14_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_9_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_9_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_9_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_13_1_W_gmf2_PMOS
+    role: width of gmf2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_13_1_L_gmf2_PMOS
+    role: length of gmf2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_13_1_M_gmf2_PMOS
+    role: multiplier of gmf2_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_14_4_W_gm8_NMOS
+    role: width of gm8_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_14_4_L_gm8_NMOS
+    role: length of gm8_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_14_4_M_gm8_NMOS
+    role: multiplier of gm8_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_16_4_W_gm5_NMOS
+    role: width of gm5_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_16_4_L_gm5_NMOS
+    role: length of gm5_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_16_4_M_gm5_NMOS
+    role: multiplier of gm5_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_18_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_19_16_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_19_16_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_19_16_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_22_1_W_gmb1_NMOS
+    role: width of gmb1_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_22_1_L_gmb1_NMOS
+    role: length of gmb1_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_22_1_M_gmb1_NMOS
+    role: multiplier of gmb1_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_23_1_W_gmb2_NMOS
+    role: width of gmb2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_L_gmb2_NMOS
+    role: length of gmb2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_M_gmb2_NMOS
+    role: multiplier of gmb2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 0.2076p
+    upper: 10.3076p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 0.2076p
+    upper: 10.3076p
+    step: 0.1p
+    kind: continuous_step
+  - name: RESISTOR_0
+    role: feedback/compensation resistor
+    lower: 14.302286k
+    upper: 286.002286k
+    step: 0.1k
+    kind: continuous_step
+  - name: RESISTOR_1
+    role: feedback/compensation resistor
+    lower: 4.767429k
+    upper: 95.267429k
+    step: 0.1k
+    kind: continuous_step
+  - name: RESISTOR_2
+    role: feedback/compensation resistor
+    lower: 4.767429k
+    upper: 95.267429k
+    step: 0.1k
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 300.0
+  - metric: GBW
+    direction: ge
+    value: 5000000.0
+  - metric: SR
+    direction: ge
+    value: 0.1
+  authors_design: null
+  notes:
+  - 'CAPACITOR_0: upper bound moved 10.38p -> 10.3076p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 10.38p -> 10.3076p to divide evenly by step 0.1p'
+  - 'RESISTOR_0: upper bound moved 286.045714k -> 286.002286k to divide evenly by step 0.1k'
+  - 'RESISTOR_1: upper bound moved 95.348571k -> 95.267429k to divide evenly by step 0.1k'
+  - 'RESISTOR_2: upper bound moved 95.348571k -> 95.267429k to divide evenly by step 0.1k'
+- name: sau_cfcc_pin_3
+  kind: amplifier
+  case: rl
+  subckt: sau_cfcc_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Sau_CFCC_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Sau_CFCC_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Sau_CFCC_Pin_3
+  - AnalogGym/Amplifier/design_variables/Sau_CFCC_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_CFCC.py
+  load:
+    capacitance: 500p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_7_1_W_gmf1_PMOS
+    role: width of gmf1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_7_1_L_gmf1_PMOS
+    role: length of gmf1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_7_1_M_gmf1_PMOS
+    role: multiplier of gmf1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_10_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gmf2_PMOS
+    role: width of gmf2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gmf2_PMOS
+    role: length of gmf2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gmf2_PMOS
+    role: multiplier of gmf2_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_15_2_W_gmc_NMOS
+    role: width of gmc_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_15_2_L_gmc_NMOS
+    role: length of gmc_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_15_2_M_gmc_NMOS
+    role: multiplier of gmc_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_23_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 0.2076p
+    upper: 6.2076p
+    step: 0.1p
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 200.0
+  - metric: GBW
+    direction: ge
+    value: 4000000.0
+  - metric: SR
+    direction: ge
+    value: 0.8
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '4'
+  - name: MOSFET_7_1_W_gmf1_PMOS
+    value: '1'
+  - name: MOSFET_7_1_L_gmf1_PMOS
+    value: '1'
+  - name: MOSFET_7_1_M_gmf1_PMOS
+    value: '4'
+  - name: MOSFET_8_2_W_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_L_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_M_gm1_PMOS
+    value: '4'
+  - name: MOSFET_10_1_W_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_L_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_M_gm2_PMOS
+    value: '8'
+  - name: MOSFET_11_1_W_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_L_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_M_gmf2_PMOS
+    value: '32'
+  - name: MOSFET_15_2_W_gmc_NMOS
+    value: '1'
+  - name: MOSFET_15_2_L_gmc_NMOS
+    value: '1'
+  - name: MOSFET_15_2_M_gmc_NMOS
+    value: '8'
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    value: '4'
+  - name: MOSFET_23_1_W_gm3_NMOS
+    value: '1'
+  - name: MOSFET_23_1_L_gm3_NMOS
+    value: '1'
+  - name: MOSFET_23_1_M_gm3_NMOS
+    value: '16'
+  - name: CURRENT_0_BIAS
+    value: 10u
+  - name: CAPACITOR_0
+    value: 2.076p
+  notes:
+  - 'CAPACITOR_0: upper bound moved 6.228p -> 6.2076p to divide evenly by step 0.1p'
+- name: leung_dfcfc1_pin_3
+  kind: amplifier
+  case: rl
+  subckt: leung_dfcfc1_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Leung_DFCFC1_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Leung_DFCFC1_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Leung_DFCFC1_Pin_3
+  - AnalogGym/Amplifier/design_variables/Leung_DFCFC1_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_DFCFC1.py
+  load:
+    capacitance: 100p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_9_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_9_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_9_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_12_1_W_gmf2_PMOS
+    role: width of gmf2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_12_1_L_gmf2_PMOS
+    role: length of gmf2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_12_1_M_gmf2_PMOS
+    role: multiplier of gmf2_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_18_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_22_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_22_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_22_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_24_1_W_gm4_NMOS
+    role: width of gm4_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_24_1_L_gm4_NMOS
+    role: length of gm4_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_24_1_M_gm4_NMOS
+    role: multiplier of gm4_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_25_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_25_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_25_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 0.8152p
+    upper: 24.4152p
+    step: 0.1p
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 300.0
+  - metric: GBW
+    direction: ge
+    value: 1050000.0
+  - metric: SR
+    direction: ge
+    value: 1.3
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '4'
+  - name: MOSFET_9_2_W_gm1_PMOS
+    value: '1'
+  - name: MOSFET_9_2_L_gm1_PMOS
+    value: '1'
+  - name: MOSFET_9_2_M_gm1_PMOS
+    value: '4'
+  - name: MOSFET_11_1_W_gm2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_L_gm2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_M_gm2_PMOS
+    value: '4'
+  - name: MOSFET_12_1_W_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_12_1_L_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_12_1_M_gmf2_PMOS
+    value: '16'
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_18_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_18_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_18_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_22_2_W_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_22_2_L_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_22_2_M_LOAD2_NMOS
+    value: '4'
+  - name: MOSFET_24_1_W_gm4_NMOS
+    value: '1'
+  - name: MOSFET_24_1_L_gm4_NMOS
+    value: '1'
+  - name: MOSFET_24_1_M_gm4_NMOS
+    value: '4'
+  - name: MOSFET_25_1_W_gm3_NMOS
+    value: '1'
+  - name: MOSFET_25_1_L_gm3_NMOS
+    value: '1'
+  - name: MOSFET_25_1_M_gm3_NMOS
+    value: '4'
+  - name: CURRENT_0_BIAS
+    value: 5u
+  - name: CAPACITOR_0
+    value: 18.228p
+  - name: CAPACITOR_1
+    value: 8.152p
+  notes:
+  - 'CAPACITOR_0: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 24.456p -> 24.4152p to divide evenly by step 0.1p'
+- name: leung_dfcfc2_pin_3
+  kind: amplifier
+  case: rl
+  subckt: leung_dfcfc2_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Leung_DFCFC2_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Leung_DFCFC2_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Leung_DFCFC2_Pin_3
+  - AnalogGym/Amplifier/design_variables/Leung_DFCFC2_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_DFCFC2.py
+  load:
+    capacitance: 100p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_10_1_W_gm4_PMOS
+    role: width of gm4_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_L_gm4_PMOS
+    role: length of gm4_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_M_gm4_PMOS
+    role: multiplier of gm4_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_12_1_W_gmf2_PMOS
+    role: width of gmf2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_12_1_L_gmf2_PMOS
+    role: length of gmf2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_12_1_M_gmf2_PMOS
+    role: multiplier of gmf2_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_18_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_18_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_23_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_25_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_25_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_25_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 0.8152p
+    upper: 24.4152p
+    step: 0.1p
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 250.0
+  - metric: GBW
+    direction: ge
+    value: 4000000.0
+  - metric: SR
+    direction: ge
+    value: 1.25
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '4'
+  - name: MOSFET_8_2_W_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_L_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_M_gm1_PMOS
+    value: '4'
+  - name: MOSFET_10_1_W_gm4_PMOS
+    value: '1'
+  - name: MOSFET_10_1_L_gm4_PMOS
+    value: '1'
+  - name: MOSFET_10_1_M_gm4_PMOS
+    value: '4'
+  - name: MOSFET_11_1_W_gm2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_L_gm2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_M_gm2_PMOS
+    value: '4'
+  - name: MOSFET_12_1_W_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_12_1_L_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_12_1_M_gmf2_PMOS
+    value: '4'
+  - name: MOSFET_18_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_18_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_18_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_23_2_W_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_23_2_L_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_23_2_M_LOAD2_NMOS
+    value: '4'
+  - name: MOSFET_25_1_W_gm3_NMOS
+    value: '1'
+  - name: MOSFET_25_1_L_gm3_NMOS
+    value: '1'
+  - name: MOSFET_25_1_M_gm3_NMOS
+    value: '4'
+  - name: CURRENT_0_BIAS
+    value: 4u
+  - name: CAPACITOR_0
+    value: 18.228p
+  - name: CAPACITOR_1
+    value: 8.152p
+  notes:
+  - 'CAPACITOR_0: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 24.456p -> 24.4152p to divide evenly by step 0.1p'
+- name: peng_iac_pin_3
+  kind: amplifier
+  case: rl
+  subckt: peng_iac_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Peng_IAC_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Peng_IAC_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Peng_IAC_Pin_3
+  - AnalogGym/Amplifier/design_variables/Peng_IAC_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_IAC.py
+  load:
+    capacitance: 150p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_10_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gmf_PMOS
+    role: width of gmf_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gmf_PMOS
+    role: length of gmf_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gmf_PMOS
+    role: multiplier of gmf_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_23_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_66_1_W_gmt_PMOS
+    role: width of gmt_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_66_1_L_gmt_PMOS
+    role: length of gmt_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_66_1_M_gmt_PMOS
+    role: multiplier of gmt_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_68_1_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_68_1_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_68_1_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_70_3_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_70_3_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_70_3_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 0.2076p
+    upper: 6.2076p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 0.2076p
+    upper: 6.2076p
+    step: 0.1p
+    kind: continuous_step
+  - name: RESISTOR_0
+    role: feedback/compensation resistor
+    lower: 19.069714k
+    upper: 381.369714k
+    step: 0.1k
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 250.0
+  - metric: GBW
+    direction: ge
+    value: 3500000.0
+  - metric: SR
+    direction: ge
+    value: 1.2
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '4'
+  - name: MOSFET_8_2_W_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_L_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_M_gm1_PMOS
+    value: '4'
+  - name: MOSFET_10_1_W_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_L_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_M_gm2_PMOS
+    value: '4'
+  - name: MOSFET_11_1_W_gmf_PMOS
+    value: '1'
+  - name: MOSFET_11_1_L_gmf_PMOS
+    value: '1'
+  - name: MOSFET_11_1_M_gmf_PMOS
+    value: '4'
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_23_1_W_gm3_NMOS
+    value: '1'
+  - name: MOSFET_23_1_L_gm3_NMOS
+    value: '1'
+  - name: MOSFET_23_1_M_gm3_NMOS
+    value: '4'
+  - name: MOSFET_66_1_W_gmt_PMOS
+    value: '1'
+  - name: MOSFET_66_1_L_gmt_PMOS
+    value: '1'
+  - name: MOSFET_66_1_M_gmt_PMOS
+    value: '4'
+  - name: MOSFET_68_1_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_68_1_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_68_1_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_70_3_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_70_3_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_70_3_M_BIASCM_NMOS
+    value: '4'
+  - name: CURRENT_0_BIAS
+    value: 10u
+  - name: CAPACITOR_0
+    value: 2.076p
+  - name: CAPACITOR_1
+    value: 2.076p
+  - name: RESISTOR_0
+    value: 38.1394k
+  notes:
+  - 'CAPACITOR_0: upper bound moved 6.228p -> 6.2076p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 6.228p -> 6.2076p to divide evenly by step 0.1p'
+  - 'RESISTOR_0: upper bound moved 381.394286k -> 381.369714k to divide evenly by step 0.1k'
+- name: leung_nmcf_pin_3
+  kind: amplifier
+  case: rl
+  subckt: leung_nmcf_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Leung_NMCF_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Leung_NMCF_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Leung_NMCF_Pin_3
+  - AnalogGym/Amplifier/design_variables/Leung_NMCF_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_NMCF.py
+  load:
+    capacitance: 10p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_10_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gmf2_PMOS
+    role: width of gmf2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gmf2_PMOS
+    role: length of gmf2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gmf2_PMOS
+    role: multiplier of gmf2_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_23_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 300.0
+  - metric: GBW
+    direction: ge
+    value: 1200000.0
+  - metric: SR
+    direction: ge
+    value: 0.6
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '3.3362978670411754'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '4.742308604047522'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '15'
+  - name: MOSFET_8_2_W_gm1_PMOS
+    value: '4.248077067647905'
+  - name: MOSFET_8_2_L_gm1_PMOS
+    value: '0.502195331105472'
+  - name: MOSFET_8_2_M_gm1_PMOS
+    value: '11'
+  - name: MOSFET_10_1_W_gm2_PMOS
+    value: '3.1794641651469213'
+  - name: MOSFET_10_1_L_gm2_PMOS
+    value: '3.0358051647305397'
+  - name: MOSFET_10_1_M_gm2_PMOS
+    value: '12'
+  - name: MOSFET_11_1_W_gmf2_PMOS
+    value: '1.6729651500310327'
+  - name: MOSFET_11_1_L_gmf2_PMOS
+    value: '2.5908412055522803'
+  - name: MOSFET_11_1_M_gmf2_PMOS
+    value: '336'
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    value: '0.5878148470263471'
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    value: '1.390856319070185'
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    value: '14'
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    value: '6.092117946109758'
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    value: '0.5002226836950241'
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    value: '4'
+  - name: MOSFET_23_1_W_gm3_NMOS
+    value: '0.5019434139098478'
+  - name: MOSFET_23_1_L_gm3_NMOS
+    value: '4.213849479423464'
+  - name: MOSFET_23_1_M_gm3_NMOS
+    value: '44'
+  - name: CURRENT_0_BIAS
+    value: 4.660878u
+  - name: CAPACITOR_0
+    value: 18.228p
+  - name: CAPACITOR_1
+    value: 18.228p
+  notes:
+  - 'CAPACITOR_0: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+- name: leung_nmcnr_pin_3
+  kind: amplifier
+  case: rl
+  subckt: leung_nmcnr_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Leung_NMCNR_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Leung_NMCNR_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Leung_NMCNR_Pin_3
+  - AnalogGym/Amplifier/design_variables/Leung_NMCNR_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_NMCNR.py
+  load:
+    capacitance: 10p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_10_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_23_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  - name: RESISTOR_0
+    role: feedback/compensation resistor
+    lower: 0.476743k
+    upper: 9.476743k
+    step: 0.1k
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 140
+  - metric: PSRP
+    direction: ge
+    value: 90
+  - metric: PSRN
+    direction: ge
+    value: 90
+  - metric: CMRR
+    direction: ge
+    value: 90
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 300.0
+  - metric: GBW
+    direction: ge
+    value: 2500000.0
+  - metric: SR
+    direction: ge
+    value: 0.6
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '4'
+  - name: MOSFET_8_2_W_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_L_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_M_gm1_PMOS
+    value: '4'
+  - name: MOSFET_10_1_W_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_L_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_M_gm2_PMOS
+    value: '4'
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    value: '4'
+  - name: MOSFET_23_1_W_gm3_NMOS
+    value: '1'
+  - name: MOSFET_23_1_L_gm3_NMOS
+    value: '1'
+  - name: MOSFET_23_1_M_gm3_NMOS
+    value: '8'
+  - name: CURRENT_0_BIAS
+    value: 10u
+  - name: CAPACITOR_0
+    value: 18.228p
+  - name: CAPACITOR_1
+    value: 18.228p
+  - name: RESISTOR_0
+    value: 0.9535k
+  notes:
+  - 'CAPACITOR_0: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+  - 'RESISTOR_0: upper bound moved 9.534857k -> 9.476743k to divide evenly by step 0.1k'
+- name: ramos_pfc_pin_3
+  kind: amplifier
+  case: rl
+  subckt: ramos_pfc_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Ramos_PFC_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Ramos_PFC_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Ramos_PFC_Pin_3
+  - AnalogGym/Amplifier/design_variables/Ramos_PFC_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_PFC.py
+  load:
+    capacitance: 100p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_10_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gmf1_PMOS
+    role: width of gmf1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gmf1_PMOS
+    role: length of gmf1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gmf1_PMOS
+    role: multiplier of gmf1_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_23_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 300.0
+  - metric: GBW
+    direction: ge
+    value: 1000000.0
+  - metric: SR
+    direction: ge
+    value: 0.4
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '4'
+  - name: MOSFET_8_2_W_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_L_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_M_gm1_PMOS
+    value: '4'
+  - name: MOSFET_10_1_W_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_L_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_M_gm2_PMOS
+    value: '4'
+  - name: MOSFET_11_1_W_gmf1_PMOS
+    value: '1'
+  - name: MOSFET_11_1_L_gmf1_PMOS
+    value: '1'
+  - name: MOSFET_11_1_M_gmf1_PMOS
+    value: '4'
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    value: '4'
+  - name: MOSFET_23_1_W_gm3_NMOS
+    value: '1'
+  - name: MOSFET_23_1_L_gm3_NMOS
+    value: '1'
+  - name: MOSFET_23_1_M_gm3_NMOS
+    value: '4'
+  - name: CURRENT_0_BIAS
+    value: 10u
+  - name: CAPACITOR_0
+    value: 18.228p
+  - name: CAPACITOR_1
+    value: 18.228p
+  notes:
+  - 'CAPACITOR_0: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+- name: alfio_raffc_pin_3
+  kind: amplifier
+  case: rl
+  subckt: alfio_raffc_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Alfio_RAFFC_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Alfio_RAFFC_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Alfio_RAFFC_Pin_3
+  - AnalogGym/Amplifier/design_variables/Alfio_RAFFC_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_RAFFC.py
+  load:
+    capacitance: 100p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_7_1_W_gm3_PMOS
+    role: width of gm3_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_7_1_L_gm3_PMOS
+    role: length of gm3_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_7_1_M_gm3_PMOS
+    role: multiplier of gm3_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_10_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gmf_PMOS
+    role: width of gmf_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gmf_PMOS
+    role: length of gmf_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gmf_PMOS
+    role: multiplier of gmf_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_15_2_W_gmb_NMOS
+    role: width of gmb_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_15_2_L_gmb_NMOS
+    role: length of gmb_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_15_2_M_gmb_NMOS
+    role: multiplier of gmb_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 0.2076p
+    upper: 6.2076p
+    step: 0.1p
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 300.0
+  - metric: GBW
+    direction: ge
+    value: 1200000.0
+  - metric: SR
+    direction: ge
+    value: 1.2
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '4'
+  - name: MOSFET_7_1_W_gm3_PMOS
+    value: '1'
+  - name: MOSFET_7_1_L_gm3_PMOS
+    value: '1'
+  - name: MOSFET_7_1_M_gm3_PMOS
+    value: '4'
+  - name: MOSFET_8_2_W_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_L_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_M_gm1_PMOS
+    value: '4'
+  - name: MOSFET_10_1_W_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_L_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_M_gm2_PMOS
+    value: '4'
+  - name: MOSFET_11_1_W_gmf_PMOS
+    value: '1'
+  - name: MOSFET_11_1_L_gmf_PMOS
+    value: '1'
+  - name: MOSFET_11_1_M_gmf_PMOS
+    value: '4'
+  - name: MOSFET_15_2_W_gmb_NMOS
+    value: '1'
+  - name: MOSFET_15_2_L_gmb_NMOS
+    value: '1'
+  - name: MOSFET_15_2_M_gmb_NMOS
+    value: '4'
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    value: '4'
+  - name: CURRENT_0_BIAS
+    value: 4u
+  - name: CAPACITOR_0
+    value: 18.228p
+  - name: CAPACITOR_1
+    value: 2.076p
+  notes:
+  - 'CAPACITOR_0: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 6.228p -> 6.2076p to divide evenly by step 0.1p'
+- name: fan_smc_pin_3
+  kind: amplifier
+  case: rl
+  subckt: fan_smc_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Fan_SMC_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Fan_SMC_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Fan_SMC_Pin_3
+  - AnalogGym/Amplifier/design_variables/Fan_SMC_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  - RGNN_RL/AMP_SMC.py
+  load:
+    capacitance: 10p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_10_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gmf2_PMOS
+    role: width of gmf2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gmf2_PMOS
+    role: length of gmf2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gmf2_PMOS
+    role: multiplier of gmf2_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_23_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 54.6228p
+    step: 0.1p
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 200.0
+  - metric: GBW
+    direction: ge
+    value: 1500000.0
+  - metric: SR
+    direction: ge
+    value: 0.4
+  authors_design:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    value: '1'
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    value: '4'
+  - name: MOSFET_8_2_W_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_L_gm1_PMOS
+    value: '1'
+  - name: MOSFET_8_2_M_gm1_PMOS
+    value: '4'
+  - name: MOSFET_10_1_W_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_L_gm2_PMOS
+    value: '1'
+  - name: MOSFET_10_1_M_gm2_PMOS
+    value: '8'
+  - name: MOSFET_11_1_W_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_L_gmf2_PMOS
+    value: '1'
+  - name: MOSFET_11_1_M_gmf2_PMOS
+    value: '32'
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    value: '1'
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    value: '4'
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    value: '1'
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    value: '4'
+  - name: MOSFET_23_1_W_gm3_NMOS
+    value: '1'
+  - name: MOSFET_23_1_L_gm3_NMOS
+    value: '1'
+  - name: MOSFET_23_1_M_gm3_NMOS
+    value: '16'
+  - name: CURRENT_0_BIAS
+    value: 10u
+  - name: CAPACITOR_0
+    value: 18.228p
+  notes:
+  - 'CAPACITOR_0: upper bound moved 54.684p -> 54.6228p to divide evenly by step 0.1p'
+- name: peng_tcfc_pin_3
+  kind: amplifier
+  case: graph_only
+  subckt: peng_tcfc_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Peng_TCFC_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Peng_TCFC_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Peng_TCFC_Pin_3
+  - AnalogGym/Amplifier/design_variables/Peng_TCFC_Pin_3
+  - RGNN_RL/ckt_graphs.py
+  load:
+    capacitance: 150p
+  variables:
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '100'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '100'
+    step: '1'
+    kind: integer
+  - name: MOSFET_10_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '100'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gmf_PMOS
+    role: width of gmf_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gmf_PMOS
+    role: length of gmf_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gmf_PMOS
+    role: multiplier of gmf_PMOS
+    lower: '1'
+    upper: '500'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '100'
+    step: '1'
+    kind: integer
+  - name: MOSFET_23_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '100'
+    step: '1'
+    kind: integer
+  - name: MOSFET_70_3_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_70_3_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_70_3_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '100'
+    step: '1'
+    kind: integer
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 50u
+    step: 0.1u
+    kind: continuous_step
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 91.1228p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 1.8228p
+    upper: 91.1228p
+    step: 0.1p
+    kind: continuous_step
+  targets:
+  - metric: PSRP
+    direction: ge
+    value: 90
+  - metric: PSRN
+    direction: ge
+    value: 90
+  - metric: TC
+    direction: le
+    value: 1.0e-06
+  - metric: POWER
+    direction: le
+    value: 200000.0
+  - metric: VOS
+    direction: le
+    value: 4.0e-05
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: GBW
+    direction: ge
+    value: 1000000.0
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: SR
+    direction: ge
+    value: 400000.0
+  - metric: TS
+    direction: le
+    value: 5.0e-06
+  authors_design: null
+  notes:
+  - 'CAPACITOR_0: upper bound moved 91.14p -> 91.1228p to divide evenly by step 0.1p'
+  - 'CAPACITOR_1: upper bound moved 91.14p -> 91.1228p to divide evenly by step 0.1p'
+- name: song_dacfc_pin_3
+  kind: amplifier
+  case: generic_fallback
+  subckt: song_dacfc_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Song_DACFC_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Song_DACFC_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Song_DACFC_Pin_3
+  - AnalogGym/Amplifier/design_variables/Song_DACFC_Pin_3
+  load:
+    capacitance: 500p
+  variables:
+  - name: MOSFET_58_2_W_gmf1_PMOS
+    role: width of gmf1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_58_2_L_gmf1_PMOS
+    role: length of gmf1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_58_2_M_gmf1_PMOS
+    role: multiplier of gmf1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_10_1_W_gm2_PMOS
+    role: width of gm2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_L_gm2_PMOS
+    role: length of gm2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_10_1_M_gm2_PMOS
+    role: multiplier of gm2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_11_1_W_gmf2_PMOS
+    role: width of gmf2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_L_gmf2_PMOS
+    role: length of gmf2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_11_1_M_gmf2_PMOS
+    role: multiplier of gmf2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_21_2_W_LOAD2_NMOS
+    role: width of LOAD2_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_L_LOAD2_NMOS
+    role: length of LOAD2_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_21_2_M_LOAD2_NMOS
+    role: multiplier of LOAD2_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_23_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_23_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_5_2_W_gma1_PMOS
+    role: width of gma1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_5_2_L_gma1_PMOS
+    role: length of gma1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_5_2_M_gma1_PMOS
+    role: multiplier of gma1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_7_1_W_gma2_PMOS
+    role: width of gma2_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_7_1_L_gma2_PMOS
+    role: length of gma2_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_7_1_M_gma2_PMOS
+    role: multiplier of gma2_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 0.5p
+    upper: 30p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 0.5p
+    upper: 30p
+    step: 0.1p
+    kind: continuous_step
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: GBW
+    direction: ge
+    value: 1500000.0
+  - metric: SR
+    direction: ge
+    value: 0.8
+  authors_design: null
+  notes: []
+- name: tan_clia_pin_3
+  kind: amplifier
+  case: generic_fallback
+  subckt: tan_clia_pin_3
+  netlist: AnalogGym/Amplifier/spice_netlist/Tan_CLIA_Pin_3
+  vars_template: AnalogGym/Amplifier/design_variables/Tan_CLIA_Pin_3
+  source:
+  - AnalogGym/Amplifier/spice_netlist/Tan_CLIA_Pin_3
+  - AnalogGym/Amplifier/design_variables/Tan_CLIA_Pin_3
+  load:
+    capacitance: 560p
+  variables:
+  - name: MOSFET_5_2_W_LOAD1_PMOS
+    role: width of LOAD1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_5_2_L_LOAD1_PMOS
+    role: length of LOAD1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_5_2_M_LOAD1_PMOS
+    role: multiplier of LOAD1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_0_8_W_BIASCM_PMOS
+    role: width of BIASCM_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_L_BIASCM_PMOS
+    role: length of BIASCM_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_0_8_M_BIASCM_PMOS
+    role: multiplier of BIASCM_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_17_7_W_BIASCM_NMOS
+    role: width of BIASCM_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_L_BIASCM_NMOS
+    role: length of BIASCM_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_17_7_M_BIASCM_NMOS
+    role: multiplier of BIASCM_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_68_1_W_gmf_PMOS
+    role: width of gmf_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_68_1_L_gmf_PMOS
+    role: length of gmf_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_68_1_M_gmf_PMOS
+    role: multiplier of gmf_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_69_1_W_gm3_NMOS
+    role: width of gm3_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_69_1_L_gm3_NMOS
+    role: length of gm3_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_69_1_M_gm3_NMOS
+    role: multiplier of gm3_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_70_1_W_gm21_PMOS
+    role: width of gm21_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_70_1_L_gm21_PMOS
+    role: length of gm21_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_70_1_M_gm21_PMOS
+    role: multiplier of gm21_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_71_1_W_gm23_NMOS
+    role: width of gm23_NMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_71_1_L_gm23_NMOS
+    role: length of gm23_NMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_71_1_M_gm23_NMOS
+    role: multiplier of gm23_NMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: MOSFET_8_2_W_gm1_PMOS
+    role: width of gm1_PMOS
+    lower: '0.5'
+    upper: '10'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_L_gm1_PMOS
+    role: length of gm1_PMOS
+    lower: '0.5'
+    upper: '5'
+    step: '0.01'
+    kind: continuous_step
+  - name: MOSFET_8_2_M_gm1_PMOS
+    role: multiplier of gm1_PMOS
+    lower: '1'
+    upper: '50'
+    step: '1'
+    kind: integer
+  - name: CAPACITOR_0
+    role: compensation/load capacitor
+    lower: 0.5p
+    upper: 30p
+    step: 0.1p
+    kind: continuous_step
+  - name: CAPACITOR_1
+    role: compensation/load capacitor
+    lower: 0.5p
+    upper: 30p
+    step: 0.1p
+    kind: continuous_step
+  - name: CURRENT_0_BIAS
+    role: bias current
+    lower: 1u
+    upper: 30u
+    step: 0.1u
+    kind: continuous_step
+  - name: RESISTOR_0
+    role: feedback/compensation resistor
+    lower: 24.756k
+    upper: 2475.556k
+    step: 0.1k
+    kind: continuous_step
+  targets:
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: GAIN
+    direction: ge
+    value: 130
+  - metric: PSRP
+    direction: ge
+    value: 80
+  - metric: PSRN
+    direction: ge
+    value: 80
+  - metric: CMRR
+    direction: ge
+    value: 80
+  - metric: VOS
+    direction: le
+    value: 6.0e-05
+  - metric: TC
+    direction: le
+    value: 1.0e-05
+  - metric: TS
+    direction: le
+    value: 1.0e-06
+  - metric: GBW
+    direction: ge
+    value: 1500000.0
+  - metric: SR
+    direction: ge
+    value: 0.8
+  authors_design: null
+  notes:
+  - 'RESISTOR_0: upper bound moved 2475.6k -> 2475.556k to divide evenly by step 0.1k'
+- name: ldo_1
+  kind: ldo
+  case: generic_fallback
+  subckt: ldo_1
+  family: ib_vfb
+  netlist: AnalogGym/Low Dropout Regulator/design_variables/ldo_1.txt
+  vars_template: AnalogGym/Low Dropout Regulator/spice_netlist/ldo_1_vars.spice
+  supply: '1.8'
+  vref: '0.4'
+  source:
+  - AnalogGym/Low Dropout Regulator/spice_netlist/ldo_1_vars.spice
+  - AnalogGym/Low Dropout Regulator/spice_netlist/ldo_1_dev_params.spice
+  - AnalogGym/Low Dropout Regulator/design_variables/ldo_1.txt
+  - RGNN_RL/LDO_TB.py
+  - RGNN_RL/ckt_graphs.py
+  load:
+    current_max: 100m
+    current_min: 1m
+  variables:
+  - name: W_M0
+    role: width (W_M0)
+    lower: '1'
+    upper: '9'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M0
+    role: length (L_M0)
+    lower: '0.333333'
+    upper: '2.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M0
+    role: multiplier (M_M0)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M2
+    role: width (W_M2)
+    lower: '6.666667'
+    upper: '59.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M2
+    role: length (L_M2)
+    lower: '1.333333'
+    upper: '11.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M2
+    role: multiplier (M_M2)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M4
+    role: width (W_M4)
+    lower: '0.5'
+    upper: '3'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M4
+    role: length (L_M4)
+    lower: '0.166667'
+    upper: '1.496667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M4
+    role: multiplier (M_M4)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M6
+    role: width (W_M6)
+    lower: '8.333333'
+    upper: '74.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M6
+    role: length (L_M6)
+    lower: '0.333333'
+    upper: '2.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M6
+    role: multiplier (M_M6)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M7
+    role: width (W_M7)
+    lower: '1'
+    upper: '9'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M7
+    role: length (L_M7)
+    lower: '0.166667'
+    upper: '1.496667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M7
+    role: multiplier (M_M7)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M8
+    role: width (W_M8)
+    lower: '33.333333'
+    upper: '299.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M8
+    role: length (L_M8)
+    lower: '0.333333'
+    upper: '2.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M8
+    role: multiplier (M_M8)
+    lower: '40'
+    upper: '360'
+    step: '1'
+    kind: integer
+  - name: current_0_bias
+    role: bias current
+    lower: 1.666667u
+    upper: 14.966667u
+    step: 0.1u
+    kind: continuous_step
+  - name: M_CL
+    role: multiplier (M_CL)
+    lower: '67'
+    upper: '600'
+    step: '1'
+    kind: integer
+  targets:
+  - metric: LDR
+    direction: le
+    value: 0.1
+  - metric: LNR_MAXLOAD
+    direction: le
+    value: 0.01
+  - metric: LNR_MINLOAD
+    direction: le
+    value: 0.01
+  - metric: POWER_MAXLOAD
+    direction: le
+    value: 0.09000000000000001
+  - metric: POWER_MINLOAD
+    direction: le
+    value: 0.009000000000000001
+  - metric: VOS_MAXLOAD
+    direction: le
+    value: 0.002
+  - metric: VOS_MINLOAD
+    direction: le
+    value: 0.002
+  - metric: PSRR
+    direction: ge
+    value: 40
+  - metric: GBW
+    direction: ge
+    value: 2000000.0
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: UNDERSHOOT
+    direction: le
+    value: 0.1
+  - metric: OVERSHOOT
+    direction: le
+    value: 0.1
+  authors_design:
+  - name: W_M0
+    value: '3'
+  - name: L_M0
+    value: '1'
+  - name: M_M0
+    value: '1'
+  - name: W_M2
+    value: '20'
+  - name: L_M2
+    value: '4'
+  - name: M_M2
+    value: '1'
+  - name: W_M4
+    value: '1'
+  - name: L_M4
+    value: '0.5'
+  - name: M_M4
+    value: '1'
+  - name: W_M6
+    value: '25'
+  - name: L_M6
+    value: '1'
+  - name: M_M6
+    value: '1'
+  - name: W_M7
+    value: '3'
+  - name: L_M7
+    value: '0.5'
+  - name: M_M7
+    value: '1'
+  - name: W_M8
+    value: '100'
+  - name: L_M8
+    value: '1'
+  - name: M_M8
+    value: '120'
+  - name: current_0_bias
+    value: 5e-06
+  - name: M_CL
+    value: '200'
+  notes:
+  - 'L_M0: upper bound moved 3 -> 2.993333 to divide evenly by step 0.01'
+  - 'W_M2: upper bound moved 60 -> 59.996667 to divide evenly by step 0.01'
+  - 'L_M2: upper bound moved 12 -> 11.993333 to divide evenly by step 0.01'
+  - 'L_M4: upper bound moved 1.5 -> 1.496667 to divide evenly by step 0.01'
+  - 'W_M6: upper bound moved 75 -> 74.993333 to divide evenly by step 0.01'
+  - 'L_M6: upper bound moved 3 -> 2.993333 to divide evenly by step 0.01'
+  - 'L_M7: upper bound moved 1.5 -> 1.496667 to divide evenly by step 0.01'
+  - 'W_M8: upper bound moved 300 -> 299.993333 to divide evenly by step 0.01'
+  - 'L_M8: upper bound moved 3 -> 2.993333 to divide evenly by step 0.01'
+  - 'current_0_bias: upper bound moved 15u -> 14.966667u to divide evenly by step 0.1u'
+  - 'LDO_TB.py/GraphLDOtestbench''s per-transistor ranges reference a ''Basic_LDO'' netlist revision that
+    no longer matches this circuit''s actual parameter names (verified: ldo_1''s shipped spice_netlist/ldo_1_vars.spice
+    uses W_M0..W_M8, not LDO_TB.py''s mosfet_0_8_w_biascm_pmos scheme), so its ranges are not used here;
+    its targets are reused for all four LDOs as the closest available reference (AnalogGym gives no other
+    LDO targets).'
+- name: ldo_2
+  kind: ldo
+  case: generic_fallback
+  subckt: ldo_2
+  family: ib_vfb
+  netlist: AnalogGym/Low Dropout Regulator/design_variables/ldo_2.txt
+  vars_template: AnalogGym/Low Dropout Regulator/spice_netlist/ldo_2_vars.spice
+  supply: '1.8'
+  vref: '1.6'
+  source:
+  - AnalogGym/Low Dropout Regulator/spice_netlist/ldo_2_vars.spice
+  - AnalogGym/Low Dropout Regulator/spice_netlist/ldo_2_dev_params.spice
+  - AnalogGym/Low Dropout Regulator/design_variables/ldo_2.txt
+  - RGNN_RL/LDO_TB.py
+  - RGNN_RL/ckt_graphs.py
+  load:
+    current_max: 100m
+    current_min: 1m
+  variables:
+  - name: W_NM0
+    role: width (W_NM0)
+    lower: '4.333333'
+    upper: '38.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_NM0
+    role: length (L_NM0)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_NM0
+    role: multiplier (M_NM0)
+    lower: '33'
+    upper: '300'
+    step: '1'
+    kind: integer
+  - name: W_NM1
+    role: width (W_NM1)
+    lower: '4.333333'
+    upper: '38.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_NM1
+    role: length (L_NM1)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_NM1
+    role: multiplier (M_NM1)
+    lower: '4'
+    upper: '39'
+    step: '1'
+    kind: integer
+  - name: W_NM2
+    role: width (W_NM2)
+    lower: '0.5'
+    upper: '3'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_NM2
+    role: length (L_NM2)
+    lower: '5'
+    upper: '45'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_NM2
+    role: multiplier (M_NM2)
+    lower: '67'
+    upper: '600'
+    step: '1'
+    kind: integer
+  - name: W_NM3
+    role: width (W_NM3)
+    lower: '33.333333'
+    upper: '299.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_NM3
+    role: length (L_NM3)
+    lower: '0.333333'
+    upper: '2.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_NM3
+    role: multiplier (M_NM3)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_NM6
+    role: width (W_NM6)
+    lower: '4.333333'
+    upper: '38.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_NM6
+    role: length (L_NM6)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_NM6
+    role: multiplier (M_NM6)
+    lower: '33'
+    upper: '300'
+    step: '1'
+    kind: integer
+  - name: W_NM7
+    role: width (W_NM7)
+    lower: '4.333333'
+    upper: '38.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_NM7
+    role: length (L_NM7)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_NM7
+    role: multiplier (M_NM7)
+    lower: '11'
+    upper: '102'
+    step: '1'
+    kind: integer
+  - name: W_NM8
+    role: width (W_NM8)
+    lower: '6.666667'
+    upper: '59.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_NM8
+    role: length (L_NM8)
+    lower: '4'
+    upper: '36'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_NM8
+    role: multiplier (M_NM8)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_NM10
+    role: width (W_NM10)
+    lower: '6.666667'
+    upper: '59.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_NM10
+    role: length (L_NM10)
+    lower: '5'
+    upper: '45'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_NM10
+    role: multiplier (M_NM10)
+    lower: '33'
+    upper: '300'
+    step: '1'
+    kind: integer
+  - name: W_PM0
+    role: width (W_PM0)
+    lower: '0.5'
+    upper: '4.5'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_PM0
+    role: length (L_PM0)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_PM0
+    role: multiplier (M_PM0)
+    lower: '17'
+    upper: '150'
+    step: '1'
+    kind: integer
+  - name: W_PM1
+    role: width (W_PM1)
+    lower: '0.5'
+    upper: '4.5'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_PM1
+    role: length (L_PM1)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_PM1
+    role: multiplier (M_PM1)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_PM2
+    role: width (W_PM2)
+    lower: '6.666667'
+    upper: '59.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_PM2
+    role: length (L_PM2)
+    lower: '0.333333'
+    upper: '2.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_PM2
+    role: multiplier (M_PM2)
+    lower: '18'
+    upper: '165'
+    step: '1'
+    kind: integer
+  - name: W_PM3
+    role: width (W_PM3)
+    lower: '0.5'
+    upper: '3.87'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_PM3
+    role: length (L_PM3)
+    lower: '0.62'
+    upper: '5.58'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_PM3
+    role: multiplier (M_PM3)
+    lower: '33'
+    upper: '300'
+    step: '1'
+    kind: integer
+  - name: W_PM4
+    role: width (W_PM4)
+    lower: '33.333333'
+    upper: '299.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_PM4
+    role: length (L_PM4)
+    lower: '0.333333'
+    upper: '2.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_PM4
+    role: multiplier (M_PM4)
+    lower: '50'
+    upper: '450'
+    step: '1'
+    kind: integer
+  - name: W_PM5
+    role: width (W_PM5)
+    lower: '6.666667'
+    upper: '59.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_PM5
+    role: length (L_PM5)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_PM5
+    role: multiplier (M_PM5)
+    lower: '33'
+    upper: '300'
+    step: '1'
+    kind: integer
+  - name: W_PM6
+    role: width (W_PM6)
+    lower: '3'
+    upper: '27'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_PM6
+    role: length (L_PM6)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_PM6
+    role: multiplier (M_PM6)
+    lower: '33'
+    upper: '300'
+    step: '1'
+    kind: integer
+  - name: W_PM7
+    role: width (W_PM7)
+    lower: '6.666667'
+    upper: '59.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_PM7
+    role: length (L_PM7)
+    lower: '4'
+    upper: '36'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_PM7
+    role: multiplier (M_PM7)
+    lower: '13'
+    upper: '120'
+    step: '1'
+    kind: integer
+  - name: W_PM8
+    role: width (W_PM8)
+    lower: '3.333333'
+    upper: '29.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_PM8
+    role: length (L_PM8)
+    lower: '0.166667'
+    upper: '1.496667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_PM8
+    role: multiplier (M_PM8)
+    lower: '33'
+    upper: '300'
+    step: '1'
+    kind: integer
+  - name: current_0_bias
+    role: bias current
+    lower: 0.166667u
+    upper: 1.466667u
+    step: 0.1u
+    kind: continuous_step
+  - name: M_R0
+    role: multiplier (M_R0)
+    lower: '33'
+    upper: '300'
+    step: '1'
+    kind: integer
+  - name: M_C0
+    role: multiplier (M_C0)
+    lower: '67'
+    upper: '600'
+    step: '1'
+    kind: integer
+  - name: M_C1
+    role: multiplier (M_C1)
+    lower: '53'
+    upper: '480'
+    step: '1'
+    kind: integer
+  - name: M_C4
+    role: multiplier (M_C4)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: M_CL
+    role: multiplier (M_CL)
+    lower: '2'
+    upper: '15'
+    step: '1'
+    kind: integer
+  targets:
+  - metric: LDR
+    direction: le
+    value: 0.1
+  - metric: LNR_MAXLOAD
+    direction: le
+    value: 0.01
+  - metric: LNR_MINLOAD
+    direction: le
+    value: 0.01
+  - metric: POWER_MAXLOAD
+    direction: le
+    value: 0.09000000000000001
+  - metric: POWER_MINLOAD
+    direction: le
+    value: 0.009000000000000001
+  - metric: VOS_MAXLOAD
+    direction: le
+    value: 0.002
+  - metric: VOS_MINLOAD
+    direction: le
+    value: 0.002
+  - metric: PSRR
+    direction: ge
+    value: 40
+  - metric: GBW
+    direction: ge
+    value: 2000000.0
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: UNDERSHOOT
+    direction: le
+    value: 0.1
+  - metric: OVERSHOOT
+    direction: le
+    value: 0.1
+  authors_design:
+  - name: W_NM0
+    value: '13'
+  - name: L_NM0
+    value: '2'
+  - name: M_NM0
+    value: '100'
+  - name: W_NM1
+    value: '13'
+  - name: L_NM1
+    value: '2'
+  - name: M_NM1
+    value: '13'
+  - name: W_NM2
+    value: '1'
+  - name: L_NM2
+    value: '15'
+  - name: M_NM2
+    value: '200'
+  - name: W_NM3
+    value: '100'
+  - name: L_NM3
+    value: '1'
+  - name: M_NM3
+    value: '1'
+  - name: W_NM6
+    value: '13'
+  - name: L_NM6
+    value: '2'
+  - name: M_NM6
+    value: '100'
+  - name: W_NM7
+    value: '13'
+  - name: L_NM7
+    value: '2'
+  - name: M_NM7
+    value: '34'
+  - name: W_NM8
+    value: '20'
+  - name: L_NM8
+    value: '12'
+  - name: M_NM8
+    value: '1'
+  - name: W_NM10
+    value: '20'
+  - name: L_NM10
+    value: '15'
+  - name: M_NM10
+    value: '100'
+  - name: W_PM0
+    value: '1.5'
+  - name: L_PM0
+    value: '2'
+  - name: M_PM0
+    value: '50'
+  - name: W_PM1
+    value: '1.5'
+  - name: L_PM1
+    value: '2'
+  - name: M_PM1
+    value: '1'
+  - name: W_PM2
+    value: '20'
+  - name: L_PM2
+    value: '1'
+  - name: M_PM2
+    value: '55'
+  - name: W_PM3
+    value: '1.29'
+  - name: L_PM3
+    value: '1.86'
+  - name: M_PM3
+    value: '100'
+  - name: W_PM4
+    value: '100'
+  - name: L_PM4
+    value: '1'
+  - name: M_PM4
+    value: '150'
+  - name: W_PM5
+    value: '20'
+  - name: L_PM5
+    value: '2'
+  - name: M_PM5
+    value: '100'
+  - name: W_PM6
+    value: '9'
+  - name: L_PM6
+    value: '2'
+  - name: M_PM6
+    value: '100'
+  - name: W_PM7
+    value: '20'
+  - name: L_PM7
+    value: '12'
+  - name: M_PM7
+    value: '40'
+  - name: W_PM8
+    value: '10'
+  - name: L_PM8
+    value: '0.5'
+  - name: M_PM8
+    value: '100'
+  - name: current_0_bias
+    value: 5e-07
+  - name: M_R0
+    value: '100'
+  - name: M_C0
+    value: '200'
+  - name: M_C1
+    value: '160'
+  - name: M_C4
+    value: '1'
+  - name: M_CL
+    value: '5'
+  notes:
+  - 'W_NM0: upper bound moved 39 -> 38.993333 to divide evenly by step 0.01'
+  - 'L_NM0: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'W_NM1: upper bound moved 39 -> 38.993333 to divide evenly by step 0.01'
+  - 'L_NM1: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'W_NM3: upper bound moved 300 -> 299.993333 to divide evenly by step 0.01'
+  - 'L_NM3: upper bound moved 3 -> 2.993333 to divide evenly by step 0.01'
+  - 'W_NM6: upper bound moved 39 -> 38.993333 to divide evenly by step 0.01'
+  - 'L_NM6: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'W_NM7: upper bound moved 39 -> 38.993333 to divide evenly by step 0.01'
+  - 'L_NM7: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'W_NM8: upper bound moved 60 -> 59.996667 to divide evenly by step 0.01'
+  - 'W_NM10: upper bound moved 60 -> 59.996667 to divide evenly by step 0.01'
+  - 'L_PM0: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'L_PM1: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'W_PM2: upper bound moved 60 -> 59.996667 to divide evenly by step 0.01'
+  - 'L_PM2: upper bound moved 3 -> 2.993333 to divide evenly by step 0.01'
+  - 'W_PM4: upper bound moved 300 -> 299.993333 to divide evenly by step 0.01'
+  - 'L_PM4: upper bound moved 3 -> 2.993333 to divide evenly by step 0.01'
+  - 'W_PM5: upper bound moved 60 -> 59.996667 to divide evenly by step 0.01'
+  - 'L_PM5: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'L_PM6: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'W_PM7: upper bound moved 60 -> 59.996667 to divide evenly by step 0.01'
+  - 'W_PM8: upper bound moved 30 -> 29.993333 to divide evenly by step 0.01'
+  - 'L_PM8: upper bound moved 1.5 -> 1.496667 to divide evenly by step 0.01'
+  - 'current_0_bias: upper bound moved 1.5u -> 1.466667u to divide evenly by step 0.1u'
+- name: ldo_folded_cascode
+  kind: ldo
+  case: generic_fallback
+  subckt: ldo_folded_cascode
+  family: vb2
+  netlist: AnalogGym/Low Dropout Regulator/design_variables/ldo_folded_cascode.txt
+  vars_template: AnalogGym/Low Dropout Regulator/spice_netlist/ldo_folded_cascode_vars.spice
+  supply: '2'
+  vref: '1.8'
+  source:
+  - AnalogGym/Low Dropout Regulator/spice_netlist/ldo_folded_cascode_vars.spice
+  - AnalogGym/Low Dropout Regulator/spice_netlist/ldo_folded_cascode_dev_params.spice
+  - AnalogGym/Low Dropout Regulator/design_variables/ldo_folded_cascode.txt
+  - RGNN_RL/LDO_TB.py
+  - RGNN_RL/ckt_graphs.py
+  load:
+    current_max: 10m
+    current_min: 10u
+  variables:
+  - name: W_M1
+    role: width (W_M1)
+    lower: '6.666667'
+    upper: '59.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M1
+    role: length (L_M1)
+    lower: '0.333333'
+    upper: '2.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M1
+    role: multiplier (M_M1)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M3
+    role: width (W_M3)
+    lower: '10'
+    upper: '90'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M3
+    role: length (L_M3)
+    lower: '0.166667'
+    upper: '1.496667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M3
+    role: multiplier (M_M3)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M5
+    role: width (W_M5)
+    lower: '3.333333'
+    upper: '29.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M5
+    role: length (L_M5)
+    lower: '0.166667'
+    upper: '1.496667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M5
+    role: multiplier (M_M5)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M7
+    role: width (W_M7)
+    lower: '6.666667'
+    upper: '59.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M7
+    role: length (L_M7)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M7
+    role: multiplier (M_M7)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M9
+    role: width (W_M9)
+    lower: '10'
+    upper: '90'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M9
+    role: length (L_M9)
+    lower: '0.166667'
+    upper: '1.496667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M9
+    role: multiplier (M_M9)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M10
+    role: width (W_M10)
+    lower: '3.333333'
+    upper: '29.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M10
+    role: length (L_M10)
+    lower: '0.166667'
+    upper: '1.496667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M10
+    role: multiplier (M_M10)
+    lower: '83'
+    upper: '750'
+    step: '1'
+    kind: integer
+  - name: Vb1
+    role: bias voltage (Vb1)
+    lower: '0.333333'
+    upper: '1.783333'
+    step: '0.01'
+    kind: continuous_step
+  - name: Vb2
+    role: bias voltage (Vb2)
+    lower: '0.05'
+    upper: '0.07'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_Rfb
+    role: multiplier (M_Rfb)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: M_Cfb
+    role: multiplier (M_Cfb)
+    lower: '3'
+    upper: '30'
+    step: '1'
+    kind: integer
+  - name: M_CL
+    role: multiplier (M_CL)
+    lower: '80'
+    upper: '720'
+    step: '1'
+    kind: integer
+  targets:
+  - metric: LDR
+    direction: le
+    value: 0.1
+  - metric: LNR_MAXLOAD
+    direction: le
+    value: 0.01
+  - metric: LNR_MINLOAD
+    direction: le
+    value: 0.01
+  - metric: POWER_MAXLOAD
+    direction: le
+    value: 0.09000000000000001
+  - metric: POWER_MINLOAD
+    direction: le
+    value: 0.009000000000000001
+  - metric: VOS_MAXLOAD
+    direction: le
+    value: 0.002
+  - metric: VOS_MINLOAD
+    direction: le
+    value: 0.002
+  - metric: PSRR
+    direction: ge
+    value: 40
+  - metric: GBW
+    direction: ge
+    value: 2000000.0
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: UNDERSHOOT
+    direction: le
+    value: 0.1
+  - metric: OVERSHOOT
+    direction: le
+    value: 0.1
+  authors_design:
+  - name: W_M1
+    value: '20'
+  - name: L_M1
+    value: '1'
+  - name: M_M1
+    value: '1'
+  - name: W_M3
+    value: '30'
+  - name: L_M3
+    value: '0.5'
+  - name: M_M3
+    value: '1'
+  - name: W_M5
+    value: '10'
+  - name: L_M5
+    value: '0.5'
+  - name: M_M5
+    value: '1'
+  - name: W_M7
+    value: '20'
+  - name: L_M7
+    value: '2'
+  - name: M_M7
+    value: '1'
+  - name: W_M9
+    value: '30'
+  - name: L_M9
+    value: '0.5'
+  - name: M_M9
+    value: '1'
+  - name: W_M10
+    value: '10'
+  - name: L_M10
+    value: '0.5'
+  - name: M_M10
+    value: '250'
+  - name: Vb1
+    value: '1'
+  - name: Vb2
+    value: '0.025'
+  - name: M_Rfb
+    value: '1'
+  - name: M_Cfb
+    value: '10'
+  - name: M_CL
+    value: '240'
+  notes:
+  - 'W_M1: upper bound moved 60 -> 59.996667 to divide evenly by step 0.01'
+  - 'L_M1: upper bound moved 3 -> 2.993333 to divide evenly by step 0.01'
+  - 'L_M3: upper bound moved 1.5 -> 1.496667 to divide evenly by step 0.01'
+  - 'W_M5: upper bound moved 30 -> 29.993333 to divide evenly by step 0.01'
+  - 'L_M5: upper bound moved 1.5 -> 1.496667 to divide evenly by step 0.01'
+  - 'W_M7: upper bound moved 60 -> 59.996667 to divide evenly by step 0.01'
+  - 'L_M7: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'L_M9: upper bound moved 1.5 -> 1.496667 to divide evenly by step 0.01'
+  - 'W_M10: upper bound moved 30 -> 29.993333 to divide evenly by step 0.01'
+  - 'L_M10: upper bound moved 1.5 -> 1.496667 to divide evenly by step 0.01'
+  - 'Vb1: upper bound moved 1.79 -> 1.783333 to divide evenly by step 0.01'
+  - 'Vb2: upper bound moved 0.075 -> 0.07 to divide evenly by step 0.01'
+- name: ldo_simple
+  kind: ldo
+  case: generic_fallback
+  subckt: ldo_simple
+  family: vb1
+  netlist: AnalogGym/Low Dropout Regulator/design_variables/ldo_simple.txt
+  vars_template: AnalogGym/Low Dropout Regulator/spice_netlist/ldo_simple_vars.spice
+  supply: '2'
+  vref: '1.8'
+  source:
+  - AnalogGym/Low Dropout Regulator/spice_netlist/ldo_simple_vars.spice
+  - AnalogGym/Low Dropout Regulator/spice_netlist/ldo_simple_dev_params.spice
+  - AnalogGym/Low Dropout Regulator/design_variables/ldo_simple.txt
+  - RGNN_RL/LDO_TB.py
+  - RGNN_RL/ckt_graphs.py
+  load:
+    current_max: 10m
+    current_min: 10u
+  variables:
+  - name: W_M1
+    role: width (W_M1)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M1
+    role: length (L_M1)
+    lower: '0.666667'
+    upper: '5.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M1
+    role: multiplier (M_M1)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M3
+    role: width (W_M3)
+    lower: '26.666667'
+    upper: '239.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M3
+    role: length (L_M3)
+    lower: '0.166667'
+    upper: '1.496667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M3
+    role: multiplier (M_M3)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M5
+    role: width (W_M5)
+    lower: '33.333333'
+    upper: '299.993333'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M5
+    role: length (L_M5)
+    lower: '0.166667'
+    upper: '1.496667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M5
+    role: multiplier (M_M5)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: W_M6
+    role: width (W_M6)
+    lower: '6.666667'
+    upper: '59.996667'
+    step: '0.01'
+    kind: continuous_step
+  - name: L_M6
+    role: length (L_M6)
+    lower: '0.166667'
+    upper: '1.496667'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_M6
+    role: multiplier (M_M6)
+    lower: '120'
+    upper: '1080'
+    step: '1'
+    kind: integer
+  - name: Vb
+    role: bias voltage (Vb)
+    lower: '0.4'
+    upper: '1.79'
+    step: '0.01'
+    kind: continuous_step
+  - name: M_Rfb
+    role: multiplier (M_Rfb)
+    lower: '1'
+    upper: '3'
+    step: '1'
+    kind: integer
+  - name: M_Cfb
+    role: multiplier (M_Cfb)
+    lower: '2'
+    upper: '15'
+    step: '1'
+    kind: integer
+  - name: M_CL
+    role: multiplier (M_CL)
+    lower: '83'
+    upper: '750'
+    step: '1'
+    kind: integer
+  targets:
+  - metric: LDR
+    direction: le
+    value: 0.1
+  - metric: LNR_MAXLOAD
+    direction: le
+    value: 0.01
+  - metric: LNR_MINLOAD
+    direction: le
+    value: 0.01
+  - metric: POWER_MAXLOAD
+    direction: le
+    value: 0.09000000000000001
+  - metric: POWER_MINLOAD
+    direction: le
+    value: 0.009000000000000001
+  - metric: VOS_MAXLOAD
+    direction: le
+    value: 0.002
+  - metric: VOS_MINLOAD
+    direction: le
+    value: 0.002
+  - metric: PSRR
+    direction: ge
+    value: 40
+  - metric: GBW
+    direction: ge
+    value: 2000000.0
+  - metric: PM
+    direction: ge
+    value: 60
+  - metric: UNDERSHOOT
+    direction: le
+    value: 0.1
+  - metric: OVERSHOOT
+    direction: le
+    value: 0.1
+  authors_design:
+  - name: W_M1
+    value: '2'
+  - name: L_M1
+    value: '2'
+  - name: M_M1
+    value: '1'
+  - name: W_M3
+    value: '80'
+  - name: L_M3
+    value: '0.5'
+  - name: M_M3
+    value: '1'
+  - name: W_M5
+    value: '100'
+  - name: L_M5
+    value: '0.5'
+  - name: M_M5
+    value: '1'
+  - name: W_M6
+    value: '20'
+  - name: L_M6
+    value: '0.5'
+  - name: M_M6
+    value: '360'
+  - name: Vb
+    value: '1.2'
+  - name: M_Rfb
+    value: '1'
+  - name: M_Cfb
+    value: '5'
+  - name: M_CL
+    value: '250'
+  notes:
+  - 'W_M1: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'L_M1: upper bound moved 6 -> 5.996667 to divide evenly by step 0.01'
+  - 'W_M3: upper bound moved 240 -> 239.996667 to divide evenly by step 0.01'
+  - 'L_M3: upper bound moved 1.5 -> 1.496667 to divide evenly by step 0.01'
+  - 'W_M5: upper bound moved 300 -> 299.993333 to divide evenly by step 0.01'
+  - 'L_M5: upper bound moved 1.5 -> 1.496667 to divide evenly by step 0.01'
+  - 'W_M6: upper bound moved 60 -> 59.996667 to divide evenly by step 0.01'
+  - 'L_M6: upper bound moved 1.5 -> 1.496667 to divide evenly by step 0.01'
