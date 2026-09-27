@@ -46,7 +46,13 @@ def run_one(problem: Problem, method: str, seed: int, *, budget: int = DEFAULT_B
     kwargs: dict = {}
     if method.startswith("openbox"):
         kwargs["initial_trials"] = n_init
-    if "start" in inspect.signature(suggest).parameters:      # not yet a parameter of suggest(); future-proof (T17 plan)
+    if method in ("turbo", "turbo_trust_region"):
+        kwargs["n_init"] = n_init                            # the same initial design size for every model-based method
+    # The benchmark drives suggest() as opt.optimize of the code under test does. Since T17.0b suggest() takes the
+    # start points and the run's seed unchanged for every batch (the seed fixes the design); 0.4.0 has neither and its
+    # opt.optimize passed seed + the number of points done.
+    since_0b = "start" in inspect.signature(suggest).parameters
+    if since_0b:
         kwargs["start"] = problem.start
 
     history = Observations()
@@ -58,7 +64,7 @@ def run_one(problem: Problem, method: str, seed: int, *, budget: int = DEFAULT_B
         while len(history) < budget:
             n = min(batch, budget - len(history))
             t0 = time.perf_counter()
-            points = suggest(problem.spec, history, n, strategy=method, seed=seed + len(history), **kwargs)
+            points = suggest(problem.spec, history, n, strategy=method, seed=seed if since_0b else seed + len(history), **kwargs)
             suggest_seconds.append(time.perf_counter() - t0)
             if not points:
                 break

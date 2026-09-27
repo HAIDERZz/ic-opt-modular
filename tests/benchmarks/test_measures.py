@@ -27,8 +27,8 @@ def test_first_feasible_is_none_without_a_hit():
 def test_best_at_takes_the_smallest_feasible_objective_before_n():
     points = [_point(1, feasible=True, objective=5.0), _point(2, feasible=True, objective=1.0),
               _point(3, feasible=True, objective=-9.0)]
-    assert best_at(_result("p", "m", 0, points), n=3) == 1.0            # index 3 excluded (index < n)
-    assert best_at(_result("p", "m", 0, points), n=4) == -9.0
+    assert best_at(_result("p", "m", 0, points), n=2) == 1.0            # the first two points: index 3 not among them
+    assert best_at(_result("p", "m", 0, points), n=3) == -9.0
 
 
 def test_best_at_is_none_without_a_feasible_point():
@@ -61,9 +61,22 @@ def test_summarize_counts_success_rate_and_missing_feasible_as_budget_plus_one()
     assert row["n_seeds"] == 2
     assert row["first_feasible"]["median"] == (2 + 7) / 2               # one run hits at 2, one never (-> 6+1=7)
     assert row["success_rate"][2] == 0.5
-    assert row["best_at"][2]["median"] is None                          # best_at(n=2) only sees index < 2 (index 1)
-    assert row["best_at"][3]["median"] == 1.0                           # best_at(n=3) sees index < 3, including index 2
-    assert row["best_at"][3]["n_missing"] == 1
+    # one run of two has no feasible point: it counts as worse than any value, so the median and the worst quartile
+    # fall on it and are "none" (with two runs every interpolated statistic touches the missing one)
+    assert row["best_at"][2] == {"median": None, "p25": None, "p75": None, "n": 1, "n_missing": 1}
+    assert row["best_at"][6]["n_missing"] == 1
+
+
+def test_a_method_that_rarely_succeeds_is_not_flattered():
+    lucky = [_point(1, feasible=True, objective=-5.0)]
+    miss = [_point(1)]
+    steady = [_point(1, feasible=True, objective=-1.0)]
+    rows = summarize(_seeded_results("p", "rare", [lucky, lucky, miss, miss, miss, miss, miss, miss, miss, miss])
+                     + _seeded_results("p", "steady", [steady] * 10), budgets=(1,))
+    rare, steady_row = rows
+    assert rare["best_at"][1]["median"] is None and steady_row["best_at"][1]["median"] == -1.0
+    verdict = compare(rows, "rare", "steady")[0]["measures"]
+    assert verdict["best_at@1"] == "better" and verdict["success_rate@1"] == "better"
 
 
 def test_summarize_counts_errors():
