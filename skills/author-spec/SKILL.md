@@ -183,6 +183,8 @@ other way (`drives: [[P1, N1], [P2, N2]]`).
 (`quasistatic` default, `full_wave`), `accuracy` (`standard` ... `highest`, or
 a grid `{edge_width_um, max_splits, thickness_um}`), `three_d_metals` (the
 windings' metals by their EMX names), `threads`, `memory_gb`, `timeout_s`
+(optional `parallel_jobs`: EMX runs at once across the workers, when the
+user caps them below `simulator.parallel_jobs`)
 (required, the user's), `simultaneous_frequencies: 0` (keep it). One `em`
 section serves every device.
 

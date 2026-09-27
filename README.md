@@ -195,6 +195,7 @@ em:
   three_d_metals: [M6, M5]              # the windings' metals, by their EMX names
   threads: 4                            # required, placeholder: --parallel of one EMX run
   memory_gb: 32                         # required, placeholder: --max-memory; threads and memory bound the worker count
+  # parallel_jobs: 4                    # optional: EMX runs at once across the workers (else as many as the workers)
   timeout_s: 3600                       # required, placeholder: one EMX run's limit
 bindings:
   - {testbench: lo_xfmr_tb, instance: NPORT0, device: xfmr_in, terminals: [P1, N1, P2, N2]}   # sNp columns follow this order

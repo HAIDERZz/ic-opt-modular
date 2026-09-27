@@ -363,10 +363,19 @@ class EmSettings(Model):
     s_impedance: float = Field(default=50.0, gt=0)
     threads: int = Field(ge=1)                                # --parallel; required
     memory_gb: float = Field(gt=0)                            # --max-memory; required
+    parallel_jobs: int | None = Field(default=None, ge=1)     # EMX runs at once across the workers; unset: the workers
     simultaneous_frequencies: int | None = 0                  # explicit 0 after the 2026-07-09 incident
     timeout_s: int = Field(gt=0)                              # required
     verbose: int | None = 2
     extra_args: list[str] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        """An unset parallel_jobs stays out of the dump: the stamps written before the field existed keep their values."""
+        data = handler(self)
+        if self.parallel_jobs is None:
+            data.pop("parallel_jobs", None)
+        return data
 
     @field_validator("process_file")
     @classmethod
@@ -571,7 +580,7 @@ def _unique(values: list[str], label: str) -> None:
 _NOT_PROBLEM = {
     "simulator": {"parallel_jobs", "threads_per_run", "timeout_s", "license_check", "license_queue_timeout_s",
                   "keep_failed_runs", "keep_successful_runs"},
-    "em": {"threads", "memory_gb", "timeout_s", "verbose", "binary"},      # the binary is a path on the host, not physics
+    "em": {"threads", "memory_gb", "parallel_jobs", "timeout_s", "verbose", "binary"},      # the binary: a path on the host, not physics
     "budget": True,
 }
 

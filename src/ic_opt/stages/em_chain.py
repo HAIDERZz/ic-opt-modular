@@ -8,9 +8,11 @@ Working directory layout for a point: ``<sims/obs>/em/<device>/{<device>.gds, em
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
+import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -166,7 +168,7 @@ class Emx:
     level = "point"
     runs = 1                            # one EMX simulation per point (unless the engine's cache serves it)
 
-    def __init__(self, spec: Spec, device: str) -> None:
+    def __init__(self, spec: Spec, device: str, *, slots: threading.BoundedSemaphore | None = None) -> None:
         if spec.em is None:
             raise ValueError("emx stage needs the spec's em section")
         self.em = spec.em
@@ -174,6 +176,9 @@ class Emx:
         self.name = f"emx:{device}"
         self.resources = Resources(threads=spec.em.threads, memory_gb=spec.em.memory_gb)
         self.proc_sha256: str | None = None          # the process file's sha256 on the executor host, once resolved
+        # ``em.parallel_jobs``: EMX runs at once across the evaluate workers, one semaphore shared by every device's stage
+        # (``emx_stages``); a cached run never takes a slot, the engine serves it through ``load``
+        self.slots = slots if slots is not None else contextlib.nullcontext()
 
     def resolve_identity(self, executor: Executor) -> None:
         """Hash the process file on the executor host, once: the identity carries its content, not its path."""
@@ -198,7 +203,8 @@ class Emx:
 
     def run(self, geometry: Geometry, ctx: StageContext) -> Geometry:
         g = geometry.devices[self.device]
-        snp = emx_kernel.run(self.em, ctx, device=self.device, gds_path=g.gds_path, top_cell=g.top_cell, ports=self.ports(geometry))
+        with self.slots:
+            snp = emx_kernel.run(self.em, ctx, device=self.device, gds_path=g.gds_path, top_cell=g.top_cell, ports=self.ports(geometry))
         geometry.sparams[self.device] = DeviceSParams(self.device, snp, list(g.snp_order), self.em.s_impedance)
         return geometry
 
@@ -220,7 +226,9 @@ class Emx:
 
 
 def emx_stages(spec: Spec) -> list[Emx]:
-    return [Emx(spec, d.id) for d in spec.devices]
+    """One Emx stage per device, sharing one semaphore of ``em.parallel_jobs`` slots when the spec sets it."""
+    slots = threading.BoundedSemaphore(spec.em.parallel_jobs) if spec.em is not None and spec.em.parallel_jobs else None
+    return [Emx(spec, d.id, slots=slots) for d in spec.devices]
 
 
 class BindNport:

@@ -284,9 +284,56 @@ GOLDEN_EM = {              # every field spelled out: the pinned fingerprints be
 }
 
 
+def test_em_parallel_jobs_caps_emx_runs_at_once(monkeypatch, tmp_path):
+    """``em.parallel_jobs`` bounds the EMX runs in flight across the workers (the pool is threads: one semaphore does it);
+    unset, nothing but the workers bounds them."""
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from ic_opt.em.pcell.base import EmxPort
+    from ic_opt.stages import em_chain
+
+    state, lock = {"now": 0, "peak": 0}, threading.Lock()
+
+    def fake_run(em, ctx, *, device, gds_path, top_cell, ports):
+        with lock:
+            state["now"] += 1
+            state["peak"] = max(state["peak"], state["now"])
+        time.sleep(0.03)
+        with lock:
+            state["now"] -= 1
+        path = tmp_path / f"{device}.s2p"
+        path.write_text("! fake", encoding="utf-8")
+        return path
+
+    monkeypatch.setattr(em_chain.emx_kernel, "run", fake_run)
+
+    def geometry():
+        g = em_chain.Geometry()
+        g.devices["d"] = em_chain.DeviceGeometry(device="d", gds_path=tmp_path / "d.gds", top_cell="d", snp_order=["P1", "N1"],
+                                                 ports=[EmxPort("P1", "P1", "G01"), EmxPort("N1", "N1", "G02")], config={}, gds_sha256="0" * 64)
+        return g
+
+    def peak(spec):
+        state.update(now=0, peak=0)
+        (stage,) = emx_stages(spec)
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            list(pool.map(lambda _: stage.run(geometry(), None), range(6)))
+        return state["peak"]
+
+    d = em_spec().model_dump(mode="json")
+    d["em"] = {"process_file": "/site/n28.proc", "frequencies": {"start_hz": 0, "stop_hz": 200e9, "step_hz": 1e9}, "three_d_metals": ["M9"],
+               **EM_RESOURCES}
+    assert peak(Spec.model_validate(d)) == 6
+    assert "parallel_jobs" not in Spec.model_validate(d).model_dump(mode="json")["em"]      # unset: out of the dump (pinned stamps)
+    d["em"]["parallel_jobs"] = 2
+    assert peak(Spec.model_validate(d)) == 2
+
+
 def test_emx_resources_are_not_part_of_the_problem():
     base, em = Spec.model_validate(GOLDEN_EM), GOLDEN_EM["em"]
-    for how in ({"threads": 16}, {"memory_gb": 200}, {"timeout_s": 60}, {"verbose": None}, {"binary": "/opt/emx/bin/emx"}):
+    for how in ({"threads": 16}, {"memory_gb": 200}, {"parallel_jobs": 2}, {"timeout_s": 60}, {"verbose": None}, {"binary": "/opt/emx/bin/emx"}):
         assert Spec.model_validate({**GOLDEN_EM, "em": {**em, **how}}).fingerprint() == base.fingerprint(), how
     for what in ({"three_d_metals": ["M6"]}, {"accuracy": "high"}, {"frequencies": {**em["frequencies"], "stop_hz": 8e10}}):
         assert Spec.model_validate({**GOLDEN_EM, "em": {**em, **what}}).fingerprint() != base.fingerprint(), what

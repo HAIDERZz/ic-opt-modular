@@ -73,7 +73,7 @@ def argv(em: EmSettings, *, gds_file: str, top_cell: str, s_file: str, log_file:
     return [*out, gds_file, top_cell, em.process_file, *positional]
 
 
-_MACHINE_FIELDS = frozenset({"threads", "memory_gb", "timeout_s", "verbose", "binary", "process_file"})   # facts of the host
+_MACHINE_FIELDS = frozenset({"threads", "memory_gb", "parallel_jobs", "timeout_s", "verbose", "binary", "process_file"})   # facts of the host
 
 
 def physics_key(em: EmSettings, *, proc_sha256: str) -> dict:

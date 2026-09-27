@@ -117,6 +117,8 @@ def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, p
     em = engine.point_runs(pipeline)
     parts = [f"{em} EMX runs" if em else "", f"{tb} testbench sims" if tb else "", f"{dev} device measurements" if dev else ""]
     heaviest = max(pipeline, key=lambda s: (s.resources.threads, s.resources.memory_gb))
+    cap = spec.em.parallel_jobs if em and spec.em is not None else None
     return (f"({' + '.join(p for p in parts if p)}) = {len(children) + em} simulations per point on {executor.host}, "
             f"{workers} workers × {heaviest.resources.threads} threads"
-            + (f" / {heaviest.resources.memory_gb:g} GB" if heaviest.resources.memory_gb else "") + f" ({heaviest.name})")
+            + (f" / {heaviest.resources.memory_gb:g} GB" if heaviest.resources.memory_gb else "") + f" ({heaviest.name})"
+            + (f", EMX at once ≤ {cap} (em.parallel_jobs)" if cap else ""))
