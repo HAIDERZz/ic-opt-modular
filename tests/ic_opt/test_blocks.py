@@ -131,7 +131,7 @@ def test_report_from_recorded_run(tmp_path):
     store = RunStore(tmp_path)
     path = analyze.report(spec, obs, store)
     md = path.read_text(encoding="utf-8")
-    assert md.startswith("# IC-Opt report — ") and "## Best observed" in md and "## Constraint margins" in md
+    assert md.startswith("# IC-Opt report — ") and "## Summary" in md and "## Best observed" in md and "## Constraint margins" in md
     assert "real_066" not in md and analyze.best(spec, obs)[0].params == {"F": "26", "L": "40n", "VB_LO": "310m", "W": "1u"}
     assert "- IIP3 gt 0 dBm: pass 64/64" in md
     assert (store.reports_dir() / "report.html").stat().st_size > 20_000
@@ -183,16 +183,17 @@ def test_corners_section_scores_each_corner_with_the_device_metrics(tmp_path):
     rows = Observations([observation(0, 8.5), observation(1, 9.5), observation(2, 8.2, "failed:emx:xfmr")])
     md = analyze._corners_section(spec, rows)
     assert "- best observation obs_0 per corner:" in md
-    assert "  - tt: ok, objective 8, Qp=12, NF=8" in md and "  - ss: ok, objective 8.5, Qp=12, NF=8.5" in md
+    assert "| corner | status | objective | NF | Qp |" in md
+    assert "| tt | ok | 8 | 8 dB | 12 |" in md and "| ss | ok | 8.5 | 8.5 dB | 12 |" in md
     assert "nominal" not in md and "metric_failed" not in md
     assert "- failures per corner (a point counts at every corner it fails at): tt 1/3, ss 2/3" in md   # obs_1 fails at ss; obs_2's device failed for both
-    assert "- NF lt 9 violated at: tt 0/3, ss 1/3" in md and "- Qp gt 10 violated at: tt 0/3, ss 0/3" in md
+    assert "- NF < 9 dB violated at: tt 0/3, ss 1/3" in md and "- Qp > 10 violated at: tt 0/3, ss 0/3" in md
     # Constraint margins are judged on every corner (all_corners): obs_1's own metrics hold ss's NF 9.5, obs_0's tt 8
     margins = analyze._margins_section(spec, rows)
-    assert "- NF lt 9: pass 2/3, best margin 0.8 (obs_2), worst -0.5 (obs_1)" in margins      # each point's worst corner
+    assert "- NF < 9 dB: pass 2/3, best margin 0.8 dB (obs_2), worst -0.5 dB (obs_1)" in margins      # each point's worst corner
     d["corner_policy"] = {"objective": "worst_case", "constraints": "nominal"}
     nominal = analyze._margins_section(make_spec(**d), rows)
-    assert "- NF lt 9: pass 3/3" in nominal and "the nominal corner" in nominal
+    assert "- NF < 9 dB: pass 3/3" in nominal and "the nominal corner" in nominal
 
 
 def test_margins_take_the_worst_corner_even_when_the_point_selected_another(tmp_path):
@@ -211,8 +212,8 @@ def test_margins_take_the_worst_corner_even_when_the_point_selected_another(tmp_
     o = Observation(obs_id="obs_0", params={"F": "20", "W": "0.6u"}, origin="user", children=children, metrics={"NF": 8.0, "gain": 4.0},
                     fom=8.0, objective=None, feasible=False, status="constraint_failed", constraint_penalty=0.36, **stamp)
     md = analyze._margins_section(spec, Observations([o]))
-    assert "- NF lt 9: pass 0/1, best margin -0.5 (obs_0), worst -0.5 (obs_0)" in md
-    assert "- gain gt 10: pass 0/1, best margin -6 (obs_0), worst -6 (obs_0)" in md
+    assert "- NF < 9 dB: pass 0/1, best margin -0.5 dB (obs_0), worst -0.5 dB (obs_0)" in md
+    assert "- gain > 10 dB: pass 0/1, best margin -6 dB (obs_0), worst -6 dB (obs_0)" in md
 
 
 def test_an_empty_deck_saves_and_loads(tmp_path):
@@ -234,3 +235,24 @@ def test_a_devices_only_spec_imports_an_empty_deck(tmp_path):
     assert deck.templates == {} and deck.bundles == {}
     assert (store.root / "decks" / deck.fingerprint() / "source.txt").exists()
     assert not (store.root / "decks" / ".staging").exists()
+
+
+def test_report_values_carry_units_and_the_summary_names_what_binds(tmp_path):
+    """The N-42 report review (2026-09-27): raw floats without units (BW=3.2e+10), constraints as `gt 26e9 Hz`, advisory
+    ranges without their suffix, no summary. Values now print with their unit and an SI prefix, constraints read
+    `BW > 26 GHz`, and the summary says how many points are feasible and which constraint binds."""
+    d = minimal_spec()
+    d["metrics"] = [{"name": "BW", "unit": "Hz", "expression": "bw()"}, {"name": "NF", "unit": "dB", "expression": "nf()"}]
+    d["constraints"] = [{"metric": "BW", "op": "gt", "value": "26e9 Hz"}, {"metric": "NF", "op": "lt", "value": "9"}]
+    d["objective"] = {"direction": "minimize", "expression": "NF"}
+    spec = make_spec(**d)
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"BW": 3.2e10 if p["F"] != "20" else 2.4e10, "NF": 8.0 + int(p["F"]) / 100})
+    obs = evaluate(spec, points.grid(spec, per_dim=2), ex, store, deck=Deck(templates={("tb", None): "parameters F={{F}} W={{W}}\n"}), limits=FAKE_HOST)
+    md = analyze.report(spec, obs, store).read_text(encoding="utf-8")
+    assert "## Summary" in md and "- feasible: 2 of 4 observations (50%)" in md
+    assert "- binding constraints: BW > 26 GHz (2 of 4)" in md
+    assert "- BW > 26 GHz: pass 2/4, best margin 6 GHz" in md and "BW=32 GHz" in md and "NF=8.3 dB" in md
+    html_text = (store.reports_dir() / "report.html").read_text(encoding="utf-8")
+    assert "<div class='table'>" in html_text and "name='viewport'" in html_text and "<figcaption>" in html_text
+    assert "<h2>Figures</h2>" not in html_text and html_text.index("<h2>Constraint margins</h2>") < html_text.index("above the line passes")

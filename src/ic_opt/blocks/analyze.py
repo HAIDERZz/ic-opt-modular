@@ -1,10 +1,12 @@
-"""analyze.best / analyze.report — the six sections and four figures that survived the report review.
+"""analyze.best / analyze.report — the sections and figures that survived the report reviews.
 
-Sections: best observed · top feasible · constraint margins · parameter importance (SHAP) ·
-corners (policy, best point per corner, per-corner failures) · space compression advisory.
-Figures: feasible_convergence · convergence (all points, failures on a status strip) ·
-constraint_margins (normalized by the observed metric range) · bottleneck_weighted_score
-(only when the objective parses as bottleneck + weighted sum; no hard-coded fallback).
+Sections: summary (feasible count, best point, binding constraints, worst corner) · best observed · top feasible ·
+constraint margins · parameter importance (SHAP) · corners (policy, best point per corner as a table, failures and
+violations per corner) · space compression advisory. Values carry their metric's unit with an SI prefix (32 GHz,
+111.4 pH), constraints read `BW > 26 GHz`, advisory ranges keep the variable's suffix (N-42 review, 2026-09-27).
+Figures: feasible_convergence · convergence (all points, failures on a status strip) · constraint_margins (normalized
+by the observed metric range) · bottleneck_weighted_score (only when the objective parses as bottleneck + weighted
+sum; no hard-coded fallback). The HTML places each figure under its section with a caption; the Markdown lists them.
 """
 
 from __future__ import annotations
@@ -24,6 +26,17 @@ from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 
 STATUS_COLORS = {"ok": "#2f9e44", "constraint_failed": "#e08b2d", "metric_failed": "#d64545"}
+OPS = {"gt": ">", "ge": "≥", "lt": "<", "le": "≤"}
+SI_UNITS = {"Hz", "H", "F", "s", "A", "V", "W", "Ohm", "m"}                 # units that take an SI prefix when printed
+SI_PREFIXES = [(1e12, "T"), (1e9, "G"), (1e6, "M"), (1e3, "k"), (1.0, ""), (1e-3, "m"), (1e-6, "µ"), (1e-9, "n"), (1e-12, "p"), (1e-15, "f")]
+FIGURES = {   # figure -> (the section it illustrates, its caption)
+    "feasible_convergence": ("Best observed", "Objective of the feasible observations in evaluation order, and the best so far."),
+    "convergence": ("Best observed", "The same objectives, with every observation's status on the strip below."),
+    "constraint_margins": ("Constraint margins", ("Every observation's margin to each constraint, divided by the metric's observed "
+                                                  "range: above the line passes (the point's selected corner).")),
+    "bottleneck_weighted_score": ("Best observed", ("Bottleneck score (the worst normalized margin) against the weighted-sum score; "
+                                                    "the lines join equal objective values.")),
+}
 
 
 def best(spec: Spec, observations: Sequence[Observation], k: int = 1) -> Observations:
@@ -35,6 +48,7 @@ def report(spec: Spec, observations: Sequence[Observation], store: RunStore, *, 
     out = store.reports_dir()
     figures = _figures(spec, obs, out)
     sections: list[tuple[str, str]] = [
+        ("Summary", _summary_section(spec, obs)),
         ("Best observed", _best_section(spec, obs)),
         ("Top feasible candidates", _top_section(spec, obs)),
         ("Constraint margins", _margins_section(spec, obs)),
@@ -43,7 +57,8 @@ def report(spec: Spec, observations: Sequence[Observation], store: RunStore, *, 
     if spec.corners:
         sections.append(("Corners", _corners_section(spec, obs)))
     sections.append(("Space compression advisory", _advisory_section(spec, obs)))
-    sections.append(("Figures", "\n".join(f"![{name}]({path.name})" for name, path in figures.items()) or "_no figures_"))
+    sections.append(("Figures", "\n".join(f"![{FIGURES.get(name, ('', name))[1]}]({path.name})" for name, path in figures.items())
+                     or "_no figures_"))
 
     heading = title or f"IC-Opt report — {spec.project}"
     counts = _status_counts(obs)
@@ -68,6 +83,68 @@ def _fmt(value: float | None) -> str:
     return "—" if value is None else f"{value:.6g}"
 
 
+def _unit(spec: Spec, metric: str) -> str:
+    """The unit a metric's value prints with; dimensionless ones (``ratio``, ``1``) print bare."""
+    m = next((m for m in spec.metrics if m.name == metric), None)
+    unit = m.unit if m else ""
+    return "" if unit in ("ratio", "1") else unit
+
+
+def _quantity(value: float | None, unit: str) -> str:
+    """A value for reading: four significant digits and, for a base unit, an SI prefix (32 GHz, 111.4 pH, -6 dBm)."""
+    if value is None or not math.isfinite(value):
+        return "—"
+    if unit in SI_UNITS and value != 0:
+        magnitude = abs(value)
+        for scale, prefix in SI_PREFIXES:
+            if magnitude >= scale:
+                return f"{value / scale:.4g} {prefix}{unit}"
+        return f"{value:.4g} {unit}"
+    return f"{value:.4g}" + (f" {unit}" if unit else "")
+
+
+def _constraint(spec: Spec, constraint) -> str:
+    """``BW > 26 GHz``: the constraint as a reader says it."""
+    limit = float(space.parse_scalar(constraint.value.replace(" ", ""))[0])
+    return f"{constraint.metric} {OPS[constraint.op]} {_quantity(limit, _unit(spec, constraint.metric))}"
+
+
+def _failures_per_corner(spec: Spec, obs: Observations) -> dict[str, int]:
+    """How many observations fail at each corner: a failed child there, or the corner's metrics failing the spec."""
+    corner_ids = [c.id for c in spec.corners] or ["nominal"]
+    failures = {cid: 0 for cid in corner_ids}
+    for o in obs:
+        for corner, metrics in _metrics_per_corner(spec, o).items():
+            children = [ch for ch in o.children.values() if ch.corner is None or ch.corner == corner]
+            if any(ch.status != "ok" for ch in children) or objective_contract.evaluate(spec, metrics).status != "ok":
+                failures[corner] = failures.get(corner, 0) + 1
+    return failures
+
+
+def _summary_section(spec: Spec, obs: Observations) -> str:
+    n = len(obs)
+    feasible = sum(1 for o in obs if o.feasible)
+    lines = [f"- feasible: {feasible} of {n} observations" + (f" ({100 * feasible / n:.0f}%)" if n else "")]
+    top = obs.best(1)
+    if top:
+        lines.append(f"- best: `{top[0].obs_id}` at " + ", ".join(f"{k}={v}" for k, v in top[0].params.items()) + f", objective {_fmt(top[0].fom)}")
+    else:
+        lines.append("- best: no feasible observation yet")
+    if spec.constraints:
+        binding = []
+        for c in spec.constraints:
+            failed = sum(1 for o in obs if (v := _constraint_value(spec, c, o)) is not None and _margin(spec, c, v) < 0)
+            if failed:
+                binding.append(f"{_constraint(spec, c)} ({failed} of {n})")
+        lines.append("- binding constraints: " + (", ".join(binding) if binding else "none violated"))
+    if spec.corners and n:
+        failures = _failures_per_corner(spec, obs)
+        worst = max(failures, key=failures.get)
+        lines.append(f"- worst corner: {worst} ({failures[worst]} of {n} observations fail there)" if failures[worst]
+                     else "- worst corner: none, every observation passes at every corner")
+    return "\n".join(lines)
+
+
 def _best_section(spec: Spec, obs: Observations) -> str:
     top = obs.best(1)
     if not top:
@@ -76,7 +153,7 @@ def _best_section(spec: Spec, obs: Observations) -> str:
     lines = [f"- observation: `{o.obs_id}` (step `{o.step}`, origin `{o.origin}`)",
              f"- objective ({spec.objective.direction if spec.objective else 'n/a'}): {_fmt(o.fom)}",
              "- parameters: " + ", ".join(f"{k}={v}" for k, v in o.params.items()),
-             "- metrics: " + ", ".join(f"{k}={_fmt(v)}" for k, v in o.metrics.items())]
+             "- metrics: " + ", ".join(f"{k}={_quantity(v, _unit(spec, k))}" for k, v in o.metrics.items())]
     if spec.corners:
         lines.append(f"- corner policy: objective={spec.corner_policy.objective}, constraints={spec.corner_policy.constraints}")
     return "\n".join(lines)
@@ -89,7 +166,8 @@ def _top_section(spec: Spec, obs: Observations, k: int = 5) -> str:
     header = ["obs", "objective", *[v.name for v in spec.variables], *[m.name for m in spec.metrics]]
     table = [header, ["---"] * len(header)]
     for o in rows:
-        table.append([o.obs_id, _fmt(o.fom), *[o.params[v.name] for v in spec.variables], *[_fmt(o.metrics.get(m.name)) for m in spec.metrics]])
+        table.append([o.obs_id, _fmt(o.fom), *[o.params[v.name] for v in spec.variables],
+                      *[_quantity(o.metrics.get(m.name), _unit(spec, m.name)) for m in spec.metrics]])
     return "\n".join("| " + " | ".join(r) + " |" for r in table)
 
 
@@ -126,13 +204,14 @@ def _margins_section(spec: Spec, obs: Observations) -> str:
     for c in spec.constraints:
         rows = [(o, _margin(spec, c, v)) for o in obs if (v := _constraint_value(spec, c, o)) is not None]
         if not rows:
-            lines.append(f"- {c.metric} {c.op} {c.value}: no data")
+            lines.append(f"- {_constraint(spec, c)}: no data")
             continue
         best_o, best_m = max(rows, key=lambda r: r[1])
         worst_o, worst_m = min(rows, key=lambda r: r[1])
         passed = sum(1 for _, m in rows if m >= 0)
-        lines.append(f"- {c.metric} {c.op} {c.value}: pass {passed}/{len(rows)}, best margin {_fmt(best_m)} ({best_o.obs_id}), "
-                     f"worst {_fmt(worst_m)} ({worst_o.obs_id})")
+        unit = _unit(spec, c.metric)
+        lines.append(f"- {_constraint(spec, c)}: pass {passed}/{len(rows)}, best margin {_quantity(best_m, unit)} ({best_o.obs_id}), "
+                     f"worst {_quantity(worst_m, unit)} ({worst_o.obs_id})")
     return "\n".join(lines)
 
 
@@ -177,15 +256,13 @@ def _corners_section(spec: Spec, obs: Observations) -> str:
     top = obs.best(1)
     if top:
         lines.append(f"- best observation {top[0].obs_id} per corner:")
+        header = ["corner", "status", "objective", *[m.name for m in spec.metrics]]
+        table = [header, ["---"] * len(header)]
         for corner, metrics in _metrics_per_corner(spec, top[0]).items():
             ev = objective_contract.evaluate(spec, metrics)
-            lines.append(f"  - {corner}: {ev.status}, objective {_fmt(ev.objective)}, " + ", ".join(f"{k}={_fmt(v)}" for k, v in metrics.items()))
-    failures: dict[str, int] = {cid: 0 for cid in corner_ids}
-    for o in obs:
-        for corner, metrics in _metrics_per_corner(spec, o).items():
-            children = [ch for ch in o.children.values() if ch.corner is None or ch.corner == corner]
-            if any(ch.status != "ok" for ch in children) or objective_contract.evaluate(spec, metrics).status != "ok":
-                failures[corner] = failures.get(corner, 0) + 1
+            table.append([corner, ev.status, _fmt(ev.objective), *[_quantity(metrics.get(m.name), _unit(spec, m.name)) for m in spec.metrics]])
+        lines.append("\n".join("| " + " | ".join(r) + " |" for r in table))
+    failures = _failures_per_corner(spec, obs)
     lines.append("- failures per corner (a point counts at every corner it fails at): "
                  + ", ".join(f"{k} {v}/{len(obs)}" for k, v in failures.items()))
     if spec.corners and spec.constraints:                # which constraint fails where: what "failures per corner" hides
@@ -194,7 +271,7 @@ def _corners_section(spec: Spec, obs: Observations) -> str:
             for cid in corner_ids:
                 judged = [_metrics_per_corner(spec, o).get(cid, {}) for o in obs]
                 counts.append(f"{cid} {sum(1 for m in judged if c.metric in m and _margin(spec, c, m[c.metric]) < 0)}/{len(obs)}")
-            lines.append(f"- {c.metric} {c.op} {c.value} violated at: " + ", ".join(counts))
+            lines.append(f"- {_constraint(spec, c)} violated at: " + ", ".join(counts))
     return "\n".join(lines)
 
 
@@ -244,7 +321,9 @@ def _advisory_section(spec: Spec, obs: Observations) -> str:
         for item in (step.get_step_info().get("compression_info") or {}).get("compressed_params", []) or []:
             orig, comp = item.get("original_range"), item.get("compressed_range")
             if item.get("name") in {v.name for v in spec.variables} and orig and comp:
-                lines.append(f"- {item['name']}: {orig[0]:g}..{orig[1]:g} → {comp[0]:g}..{comp[1]:g} (advisory only, not applied)")
+                suffix = space.parse_scalar(next(v.lower for v in spec.variables if v.name == item["name"]))[1]
+                lines.append(f"- {item['name']}: {orig[0]:g}{suffix}..{orig[1]:g}{suffix} → {comp[0]:g}{suffix}..{comp[1]:g}{suffix} "
+                             "(advisory only, not applied)")
     return "\n".join(lines) or "_compressor produced no narrower ranges_"
 
 
@@ -277,7 +356,7 @@ def _figures(spec: Spec, obs: Observations, out: Path) -> dict[str, Path]:
         ax.plot(xs, ys, "o", color=STATUS_COLORS["ok"], alpha=0.8, label="feasible")
         ax.plot(xs, [min(ys[: i + 1]) for i in range(len(ys))], color="#111827", linewidth=1.5, label="best so far")
         ax.legend(fontsize=8)
-    ax.set(title="All observations", ylabel="objective (feasible only)")
+    ax.set(title="Objective and status of every observation", ylabel="objective (feasible only)")
     for status, color in STATUS_COLORS.items():
         pts = [index[o.obs_id] for o in obs if (o.status if o.status in STATUS_COLORS else "metric_failed") == status]
         if pts:
@@ -299,7 +378,7 @@ def _figures(spec: Spec, obs: Observations, out: Path) -> dict[str, Path]:
                 axis.plot(xs, [m / scale_ for m in ms], "-", color="#c4c8d4", linewidth=0.8)
                 axis.scatter(xs, [m / scale_ for m in ms], c=["#2f9e44" if m >= 0 else "#d64545" for m in ms], s=18)
             axis.axhline(0, color="#111827", linewidth=0.8)
-            axis.set(title=f"{c.metric} {c.op} {c.value}", ylabel="margin / observed range")
+            axis.set(title=_constraint(spec, c), ylabel="margin / observed range")
         for axis in list(axes.flat)[n:]:
             axis.set_visible(False)
         fig.suptitle("Constraint margins (positive = pass)")
@@ -425,17 +504,35 @@ def _label(node: ast.AST, index: int) -> str:
 # -- html --------------------------------------------------------------------------
 
 def _html(title: str, intro: str, sections: list[tuple[str, str]], figures: dict[str, Path]) -> str:
-    parts = [f"<h1>{html.escape(title)}</h1><p>{html.escape(intro)}</p>"]
+    """The Markdown sections as HTML, every figure inlined (base64) under the section it illustrates with its caption; the
+    tables scroll sideways on a narrow screen instead of being cut."""
+    parts = [f"<h1>{html.escape(title)}</h1><p class='intro'>{html.escape(intro)}</p>"]
     for heading, body in sections:
-        parts.append(f"<h2>{html.escape(heading)}</h2>")
         if heading == "Figures":
-            for name, path in figures.items():
-                data = base64.b64encode(path.read_bytes()).decode()
-                parts.append(f'<figure><img src="data:image/png;base64,{data}" alt="{name}"><figcaption>{name}</figcaption></figure>')
             continue
+        parts.append(f"<h2>{html.escape(heading)}</h2>")
         parts.append(_md_to_html(body))
-    style = "body{font:14px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#1f2937}table{border-collapse:collapse}td,th{border:1px solid #d1d5db;padding:2px 8px;font-variant-numeric:tabular-nums}img{max-width:100%}figure{margin:1rem 0}code{background:#f3f4f6;padding:0 3px}"
-    return f"<!doctype html><html><head><meta charset='utf-8'><title>{html.escape(title)}</title><style>{style}</style></head><body>{''.join(parts)}</body></html>"
+        for name, path in figures.items():
+            section, caption = FIGURES.get(name, ("Figures", name))
+            if section == heading:
+                data = base64.b64encode(path.read_bytes()).decode()
+                parts.append(f'<figure><img src="data:image/png;base64,{data}" alt="{html.escape(name)}">'
+                             f'<figcaption>{html.escape(caption)}</figcaption></figure>')
+    placed = {FIGURES.get(name, ("Figures", name))[0] for name in figures}
+    stray = [name for name in figures if FIGURES.get(name, ("Figures", name))[0] not in {h for h, _ in sections}]
+    if stray:
+        parts.append("<h2>Figures</h2>")
+        for name in stray:
+            data = base64.b64encode(figures[name].read_bytes()).decode()
+            parts.append(f'<figure><img src="data:image/png;base64,{data}" alt="{html.escape(name)}"><figcaption>{html.escape(name)}</figcaption></figure>')
+    del placed
+    style = ("body{font:14px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#1f2937}"
+             "h1{font-size:1.6rem}h2{margin-top:1.8rem}.intro{color:#4b5563}"
+             ".table{overflow-x:auto;max-width:100%}table{border-collapse:collapse;white-space:nowrap}"
+             "th{background:#f3f4f6;text-align:left}td,th{border:1px solid #d1d5db;padding:2px 8px;font-variant-numeric:tabular-nums}"
+             "img{max-width:100%;height:auto}figure{margin:1rem 0}figcaption{font-size:12px;color:#6b7280}code{background:#f3f4f6;padding:0 3px}")
+    return (f"<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
+            f"<title>{html.escape(title)}</title><style>{style}</style></head><body>{''.join(parts)}</body></html>")
 
 
 def _md_to_html(body: str) -> str:
@@ -444,9 +541,19 @@ def _md_to_html(body: str) -> str:
         rows = [[c.strip() for c in line.strip("|").split("|")] for line in lines if not set(line.replace("|", "").strip()) <= {"-", " "}]
         head = "".join(f"<th>{html.escape(c)}</th>" for c in rows[0])
         tail = "".join("<tr>" + "".join(f"<td>{html.escape(c)}</td>" for c in r) + "</tr>" for r in rows[1:])
-        return f"<table><tr>{head}</tr>{tail}</table>"
+        return f"<div class='table'><table><tr>{head}</tr>{tail}</table></div>"
     out, in_list = [], False
-    for line in lines:
+    table: list[str] = []
+    for line in lines + [""]:
+        if line.startswith("|"):
+            table.append(line)
+            continue
+        if table:
+            if in_list:
+                out.append("</ul>")
+                in_list = False
+            out.append(_md_to_html("\n".join(table)))
+            table = []
         if line.startswith(("- ", "  - ")):
             if not in_list:
                 out.append("<ul>")
