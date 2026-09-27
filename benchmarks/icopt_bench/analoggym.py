@@ -38,6 +38,8 @@ value returned, not on some hidden magnitude):
 
 from __future__ import annotations
 
+import functools
+import json
 import math
 import os
 import re
@@ -59,6 +61,7 @@ from icopt_bench.problem import Problem, child, make_spec
 _HERE = Path(__file__).resolve().parent
 _REGISTRY = _HERE / "analoggym_circuits.yaml"
 _TEMPLATES = _HERE / "templates"
+_CALIBRATED = _HERE.parent / "analoggym_problems.json"    # written by tools/survey_analoggym.py (plan section 4.3)
 
 
 def _data_dir() -> Path:
@@ -91,6 +94,7 @@ class Circuit:
     notes: tuple[str, ...]
 
 
+@functools.cache                     # the registry is read once per process: every problem is built from it
 def circuits() -> dict[str, Circuit]:
     doc = yaml.safe_load(_REGISTRY.read_text())
     out: dict[str, Circuit] = {}
@@ -517,6 +521,39 @@ def native_problems() -> dict[str, Callable[[], Problem]]:
     return out
 
 
+def calibrated_problems() -> dict[str, Callable[[], Problem]]:
+    """Two problems per circuit of ``analoggym_problems.json`` (thresholds, reference design and fine-tuning ranges
+    derived from the circuit's survey by ``icopt_bench.calibrate``; none before that file is written):
+
+    - ``ag_<circuit>_wide``: every variable over the registry's ranges, nothing to start from;
+    - ``ag_<circuit>_fine``: the six variables that matter most, a few levels around the reference design, the others
+      held at it; the reference design is the start.
+
+    Both carry the same thresholds and the objective AnalogGym reports."""
+    if not _CALIBRATED.exists():
+        return {}
+    entries = json.loads(_CALIBRATED.read_text(encoding="utf-8"))["problems"]
+    out: dict[str, Callable[[], Problem]] = {}
+    for cname, entry in entries.items():
+        def wide(cname=cname, entry=entry) -> Problem:
+            return problem(cname, constraints=entry["constraints"], objective=native_objective(circuits()[cname]),
+                           scenario="wide_range", name=f"ag_{cname}_wide")
+
+        def fine(cname=cname, entry=entry) -> Problem:
+            chosen = list(entry["fine_variables"])
+            reference = entry["reference"]
+            return problem(cname, variables=chosen, fixed={k: v for k, v in reference.items() if k not in chosen},
+                           ranges={k: tuple(v) for k, v in entry["fine_ranges"].items()},
+                           constraints=entry["constraints"], objective=native_objective(circuits()[cname]),
+                           start=({k: reference[k] for k in chosen},), scenario="around_design",
+                           name=f"ag_{cname}_fine")
+
+        out[f"ag_{cname}_wide"] = wide
+        out[f"ag_{cname}_fine"] = fine
+    return out
+
+
 def problems() -> dict[str, Callable[[], Problem]]:
-    """All AnalogGym benchmark problems. Currently just the native ones; a later task adds calibrated problems."""
-    return native_problems()
+    """All AnalogGym benchmark problems: the calibrated ones the benchmark compares methods on, and the native ones
+    (AnalogGym's own targets, which no point of any survey met) for reference."""
+    return {**calibrated_problems(), **native_problems()}
