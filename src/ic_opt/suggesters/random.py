@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from ic_opt.observation import Observations
 from ic_opt.spec import Spec
 from ic_opt.suggesters.base import Proposal, scale, unit_design
@@ -12,7 +14,8 @@ class RandomSuggester:
         self.method = method
         self.name = f"random:{method}"
 
-    def propose(self, spec: Spec, history: Observations, n: int, *, seed: int) -> Proposal:
+    def propose(self, spec: Spec, history: Observations, n: int, *, seed: int,
+                pending: Sequence[dict[str, str]] = ()) -> Proposal:
         # Offsetting the seed by the history size keeps successive batches distinct.
         unit = unit_design(self.method, n, len(spec.variables), seed + len(history))
         return Proposal(scale(unit, spec), tag=self.method)

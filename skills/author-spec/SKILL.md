@@ -153,8 +153,8 @@ inner quotes end the string early. Copy the expression verbatim; do not
 normalize `'-1` into `(quote -1)` or the like.
 
 A metric that fails on some points does not just lose a number: the point is
-`metric_failed`, has no objective, and the optimizer scores it with the failure
-penalty, so it steers the search away from exactly those points (N-35: the
+`metric_failed`, has no objective, and the optimizer takes it as a failed point
+(the worst value it has seen), so it steers the search away from exactly those points (N-35: the
 wide-band ones). `sim.evaluate` prints `metric X failed on N of M points` after
 a batch; stop and fix the expression before spending more budget. Device metric: `name`,
 `unit`, `device`, `quantity` (a curve `Lp / Qp / Ls / Qs / k` needs
@@ -457,8 +457,9 @@ budget: { max_simulations: 400 }
    `[plan]` line -- `netlist.import <tb>` per testbench (a `FAIL` names the
    variable or corner to fix), the block sequence, `N simulations per point`,
    `jobs x threads` on which host, and for `openbox_*` how many points the
-   surrogate proposes (a warning means every batch starts inside the initial
-   design: use a smaller batch or a larger budget).
+   surrogate proposes (a warning means none: a larger budget, a smaller batch
+   or a smaller `initial_trials`), and the `current design` line (the design as
+   exported, evaluated first, or why there is none).
 3. Show the user the plan and the resource numbers they gave; the plan is the
    approval point (what every plan line means: `skills/ic-opt/SKILL.md`,
    Procedure step 3). No placeholder may remain: a path, a resource or a bound

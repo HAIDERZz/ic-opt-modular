@@ -172,6 +172,21 @@ def test_run_plan_warns_about_a_corner_parameter_the_export_never_uses_and_leave
     assert "WARNING" not in runner.invoke(app, ["run", "optimize", str(root), "--plan", "budget=4", "batch=2", "strategy=sobol"]).output
 
 
+def test_run_plan_names_the_current_design_and_the_start_points(tmp_path):
+    """T17.0b: the plan says what the design as exported is (fetched afresh: import returns an empty deck under --plan) and
+    how much of the run is initial design, start points included."""
+    root = project(tmp_path)
+    (root / "start.json").write_text(json.dumps([{"F": "24", "W": "0.8u"}]))
+    result = runner.invoke(app, ["run", "optimize", str(root), "--plan", "budget=6", "batch=2", "strategy=openbox_gp_eic",
+                                 "start=start.json"])
+    assert result.exit_code == 0, result.output
+    assert "[plan] opt.optimize step='optimize': current design (the exported netlists) first: F=20 W=0.6u" in result.output
+    assert "[plan] openbox initial design 3 points (2 start points first): the surrogate proposes 2 of the 6 new points" in result.output
+    assert not (root / ".icopt" / "observations.jsonl").exists()
+    off = runner.invoke(app, ["run", "optimize", str(root), "--plan", "budget=6", "batch=2", "current=false"]).output
+    assert "current design" not in off and "initial design 3 points: the surrogate proposes 2 of the 6 new points" in off
+
+
 def test_run_rejects_unknown_recipe_and_bad_params(tmp_path):
     root = project(tmp_path)
     assert runner.invoke(app, ["run", "nope", str(root)]).exit_code != 0
@@ -208,6 +223,25 @@ def test_optimize_recipe_end_to_end(tmp_path, capsys):
     assert "[doctor] [ok] machine: local: 96 cores / 384.0 GB; the entry fits" in printed
     assert "[run] report:" in printed
     assert run.jobs == 2                                       # spec parallel_jobs 2, host 16/4 = 4 slots
+
+
+def test_optimize_recipe_evaluates_the_exported_design_and_the_start_file_first_and_once(tmp_path, capsys):
+    """D9: the first batch holds the design as exported and the user's start points; a continued run does not repeat them,
+    and current=false leaves the exported design out."""
+    root = project(tmp_path, export_params="F=20 W=650n")         # between grid points, in another suffix: moved to 0.6u
+    (root / "start.json").write_text(json.dumps([{"F": "24", "W": "0.8u"}]))
+    run = fake_run(root)
+    optimize.main(run, strategy="random", budget=3, batch=2, seed=1, start="start.json")
+    obs = run.store.observations()
+    assert [(o.origin, o.params) for o in obs[:2]] == [("start", {"F": "20", "W": "0.6u"}), ("start", {"F": "24", "W": "0.8u"})]
+    assert ("[optimize] step='optimize': current design (the exported netlists) first: F=20 W=0.6u; W=650n is between grid "
+            "points: moved to 0.6u") in capsys.readouterr().out
+    optimize.main(run, strategy="random", budget=5, batch=2, seed=1, start="start.json")
+    assert len(run.store.observations()) == 5 and [o.origin for o in run.store.observations()].count("start") == 2
+
+    other = fake_run(project(tmp_path / "other"))
+    optimize.main(other, strategy="random", budget=2, batch=2, seed=1, current=False)
+    assert "start" not in {o.origin for o in other.store.observations()}
 
 
 def test_optimize_recipe_stops_when_doctor_fails(tmp_path):
@@ -249,6 +283,7 @@ def test_coarse_to_fine_recipe_warm_starts_the_fine_step(tmp_path):
     coarse_to_fine.main(run, coarse_budget=4, fine_budget=3, batch=2, seed=3)
     obs = run.store.observations()
     assert len(obs.by_step("coarse")) == 4 and len(obs.by_step("fine")) == 3
+    assert obs.by_step("coarse")[0].origin == "start" and obs.by_step("coarse")[0].params == {"F": "20", "W": "0.6u"}
     assert all(o.origin.startswith("suggest:turbo") for o in obs.by_step("fine"))
 
 

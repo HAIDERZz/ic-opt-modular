@@ -179,3 +179,12 @@ def test_binding_terminals_may_drop_instance_ports():
     d["bindings"][0]["terminals"] = ["P1", "N1", "CTP", None, "P2", "N2", "CTS", None, "CTS", None]      # a port twice
     with pytest.raises(ValueError, match="permutation of device ports"):
         Spec.model_validate(d)
+
+
+def test_a_spec_with_devices_has_no_current_design(tmp_path):
+    """T17.0b covers circuit-only specs: device variables have no exported value, so opt.optimize forms no current design."""
+    from ic_opt.blocks.optimize import current_design
+
+    spec = em_circuit_spec(tmp_path)
+    assert current_design(spec, {"tb": NETLIST}) == (None, ("no current design: the spec has EM devices, whose variables have "
+                                                            "no exported value (stage 1 of T17 covers circuit-only specs)"))

@@ -4,24 +4,36 @@
 it, so continuation is "run again with a bigger budget" and warm start is
 ``initial=<observations from elsewhere>``. Foreign observations are re-scored
 under this spec from their metrics before they are used.
+
+Start points (T17.0b, D9): ``start`` rows are proposed first, once, before any strategy is asked; ``opt.optimize`` puts
+the design as exported (the values of the circuit variables in the exported netlists) in front of them. In an 80-point
+real run of 0.4.0 the best of the first 30 random points scored 0.553 while the exported circuit values scored 0.617
+(2026-09-28): the design the user already has was never evaluated.
 """
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 from collections.abc import Sequence
+from decimal import Decimal
+from pathlib import Path
 
 from ic_opt import objective as objective_contract
 from ic_opt import space, suggesters
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
 from ic_opt.eval.stage import Stage
-from ic_opt.executor import Executor
+from ic_opt.executor import Executor, ExecutorError
+from ic_opt.localpath import literal
 from ic_opt.observation import Observation, Observations
+from ic_opt.sim import netlist as kernel
 from ic_opt.sim.ocean import WaveformExport
 from ic_opt.site import HostLimits
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
+from ic_opt.suggesters.base import surrogate_minimum
 
 
 def suggest(
@@ -32,31 +44,49 @@ def suggest(
     strategy: str = "openbox_gp_eic",
     seed: int = 0,
     initial: Sequence[Observation] = (),
-    failure_penalty: float = 1e6,
+    start: Sequence[dict[str, str]] = (),
+    failure_penalty: float | None = None,
     **strategy_kwargs,
 ) -> list[Point]:
-    """Propose ``n`` new grid points not already in ``observations`` or ``initial``."""
+    """Propose ``n`` new grid points not already in ``observations`` or ``initial``.
+
+    ``start``: grid parameter rows (validated like ``points.fixed``); the ones not yet evaluated come first, in order, with
+    origin ``start``, and only then is the strategy asked for the rest of the batch. They count as initial design.
+    ``seed`` is the run's seed, the same for every batch of a run (``opt.optimize`` passes it unchanged): it fixes the
+    space-filling design, and each strategy offsets it by the history size where it needs fresh randomness. Points carry
+    their provenance: ``suggest:<strategy>[:<tag>]``, per point where the strategy tags each (OpenBox ``init`` / ``acq``;
+    ``fill`` for a random point that replaces one the model kept landing on evaluated points with).
+    ``failure_penalty`` is accepted and ignored since T17.0b: no penalty number reaches a model (``suggesters.base``)."""
     history = Observations(list(adopt(spec, initial)) + list(observations))
-    suggester = suggesters.make(strategy, failure_penalty=failure_penalty, **strategy_kwargs)
     taken = history.keys()
     points: list[Point] = []
-    origin = f"suggest:{suggester.name}"
+    for point in space.points_from_params(spec, start, origin="start"):
+        if point.key not in taken and len(points) < n:
+            taken.add(point.key)
+            points.append(point)
+    if len(points) >= n:
+        return points
+    suggester = suggesters.make(strategy, **strategy_kwargs)
+    base = f"suggest:{suggester.name}"
+    batch_tag = fill = None
     for attempt in range(4):
         missing = n - len(points)
         if missing <= 0:
             break
-        proposal = suggester.propose(spec, history, missing, seed=seed + attempt)
-        if attempt == 0 and proposal.tag:
-            origin += f":{proposal.tag}"          # one provenance tag per batch; replacements share it
-        for raw in proposal.raw:
-            point = Point(space.snap(spec, raw), origin)
+        proposal = suggester.propose(spec, history, missing, seed=seed + attempt, pending=[p.params for p in points])
+        if batch_tag is None:
+            batch_tag = proposal.tag          # a batch tag is the batch's: replacements share it (TuRBO replays by it)
+            fill = f"{base}:fill" if proposal.tags else f"{base}:{batch_tag}" if batch_tag else base
+        for index, raw in enumerate(proposal.raw):
+            tag = proposal.tags[index] if proposal.tags else batch_tag
+            point = Point(space.snap(spec, raw), f"{base}:{tag}" if tag else base)
             if point.key not in taken:
                 taken.add(point.key)
                 points.append(point)
     if len(points) < n:      # the model keeps landing on evaluated grid points: fill with random ones
         filler = suggesters.RandomSuggester("random")
         for raw in filler.propose(spec, history, 4 * (n - len(points)), seed=seed + len(taken)).raw:
-            point = Point(space.snap(spec, raw), origin)
+            point = Point(space.snap(spec, raw), fill)
             if point.key not in taken and len(points) < n:
                 taken.add(point.key)
                 points.append(point)
@@ -76,42 +106,56 @@ def optimize(
     corners: str | list[str] = "all",
     waveforms: list[WaveformExport] = (),
     initial: Sequence[Observation] = (),
+    start: Sequence[dict[str, str]] = (),
+    current: bool = True,
     seed: int = 0,
     step: str = "optimize",
     cshrc: str | None = None,
     parallel_jobs: int | None = None,
     limits: HostLimits,
-    failure_penalty: float = 1e6,
+    failure_penalty: float | None = None,
     **strategy_kwargs,
 ) -> Observations:
     """Run suggest ⇄ evaluate until this step holds ``budget`` observations. Re-running continues.
 
-    ``limits`` is the executor host's site.yaml entry (``run.limits``), passed on to every ``sim.evaluate``."""
+    ``current``: evaluate the design as exported first (the circuit variables' values in the exported netlists behind
+    ``deck``; one line says what it is or why there is none); ``start``: further grid parameter rows to evaluate first.
+    Neither is evaluated again once in the history. ``limits`` is the executor host's site.yaml entry (``run.limits``),
+    passed on to every ``sim.evaluate``. ``failure_penalty`` is ignored (see ``suggest``)."""
     from ic_opt.blocks.evaluate import default_pipeline, plan_shape
     from ic_opt.recipe import PLAN_MODE
 
+    plan = PLAN_MODE.get()
     same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}     # a store stamped before T15.2 is this problem too (engine.py, "Identity")
     design = _initial_design(spec, strategy, strategy_kwargs, budget)
     if design is not None and not strategy_kwargs.get("initial_trials"):
         strategy_kwargs = {**strategy_kwargs, "initial_trials": design}      # the suggester runs the design this run printed
-    if PLAN_MODE.get():
-        done = len(Observations(o for o in store.observations() if o.spec_fingerprint in same_problem).by_step(step))
+    rows = list(start)
+    if current:
+        row, line = current_design(spec, _exports(spec, deck, executor, plan))
+        print(f"{'[plan] opt.optimize' if plan else '[optimize]'} step={step!r}: {line}")
+        rows = ([row] if row else []) + rows
+    starts = space.points_from_params(spec, rows, origin="start")
+    mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
+    history = Observations(list(adopt(spec, initial)) + list(mine))
+    done = len(mine.by_step(step))
+    fresh = len({p.key for p in starts} - history.keys())
+    if plan:
         shape = pipeline if pipeline is not None else default_pipeline(spec, deck or Deck(), waveforms)
         print(f"[plan] opt.optimize step={step!r} strategy={strategy}: {done}/{budget} points done, "
               f"up to {max(0, budget - done)} more in batches of {batch} × "
               f"{plan_shape(spec, shape, corners, executor, parallel_jobs, limits)} (spec budget {spec.budget.max_simulations})")
-        _print_design(design, done, budget, batch, plan=True)
+        _print_design(design, len(history), budget - done, batch, fresh, surrogate_minimum(spec), plan=True)
         return Observations()
-    _print_design(design, len(Observations(o for o in store.observations() if o.spec_fingerprint in same_problem).by_step(step)),
-                  budget, batch, plan=False)
+    _print_design(design, len(history), budget - done, batch, fresh, surrogate_minimum(spec), plan=False)
     while True:
         mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
         done = len(mine.by_step(step))
         if done >= budget:
             break
         points = suggest(
-            spec, mine, min(batch, budget - done), strategy=strategy, seed=seed + done, initial=initial,
-            failure_penalty=failure_penalty, **strategy_kwargs,
+            spec, mine, min(batch, budget - done), strategy=strategy, seed=seed, initial=initial,
+            start=[p.params for p in starts], **strategy_kwargs,
         )
         if not points:
             break
@@ -120,6 +164,99 @@ def optimize(
             step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
         )
     return Observations(o for o in store.observations() if o.spec_fingerprint in same_problem and o.step == step)
+
+
+_SI = {"T": 12, "G": 9, "M": 6, "K": 3, "k": 3, "": 0, "m": -3, "u": -6, "n": -9, "p": -12, "f": -15, "a": -18}
+
+
+def current_design(spec: Spec, exports: dict[str, str] | str) -> tuple[dict[str, str] | None, str]:
+    """The design as exported: ``exports`` maps each testbench to its exported netlist text (or is the reason there is
+    none). Returns the grid parameter row, or None, and the line that says which, or why not: every testbench must give
+    a variable the same value; a value inside the variable's range but between grid points is moved to the nearest one
+    (and the line says so); a value outside the range, or that is not a number, means no current design. A spec with EM
+    devices has none: its device variables have no exported value (T17 stage 1 covers circuit-only specs)."""
+    if spec.devices:
+        return None, ("no current design: the spec has EM devices, whose variables have no exported value "
+                      "(stage 1 of T17 covers circuit-only specs)")
+    if isinstance(exports, str):
+        return None, f"no current design: {exports}"
+    seen: dict[str, dict[str, str]] = {}
+    for tb, text in exports.items():
+        try:
+            values = kernel.exported_values(text, spec.circuit_variables)
+        except ValueError as exc:
+            return None, f"no current design: {tb}'s export: {exc}"
+        for name, value in values.items():
+            seen.setdefault(name, {})[tb] = value
+    row, moved, problems = {}, [], []
+    disagree = {name: by_tb for name, by_tb in seen.items()          # 600n and 0.6u agree
+                if len({v if _number(spec, name, v) is None else _number(spec, name, v) for v in by_tb.values()}) > 1}
+    if disagree:
+        return None, "no current design: the testbenches disagree on " + "; ".join(
+            f"{name} ({', '.join(f'{tb} {v}' for tb, v in by_tb.items())})" for name, by_tb in disagree.items())
+    for v in spec.variables:
+        text = next(iter(seen[v.name].values()))
+        lower, unit = space.parse_scalar(v.lower)
+        upper, step = space.parse_scalar(v.upper)[0], space.parse_scalar(v.step)[0]
+        value = _number(spec, v.name, text)
+        if value is None:
+            problems.append(f"{v.name}={text} is not a number in the unit {unit or '(none)'} of its range")
+        elif not lower <= value <= upper:
+            problems.append(f"{v.name}={text} is outside its range [{v.lower}, {v.upper}]")
+        else:
+            snapped = space.format_value(lower + round((value - lower) / step) * step, unit)
+            row[v.name] = snapped
+            if (value - lower) % step:
+                moved.append(f"{v.name}={text} is between grid points: moved to {snapped}")
+    if problems:
+        return None, "no current design: " + "; ".join(problems)
+    line = "current design (the exported netlists) first: " + " ".join(f"{k}={row[k]}" for k in row)
+    return row, line + ("; " + "; ".join(moved) if moved else "")
+
+
+def _number(spec: Spec, name: str, text: str) -> Decimal | None:
+    """``text`` as a number in the unit suffix of the variable's range: an export may write ``600n`` where the spec
+    says ``0.6u`` (ADE writes a design variable as the user typed it); None for an expression or an unknown suffix."""
+    variable = next(v for v in spec.variables if v.name == name)
+    unit = space.parse_scalar(variable.lower)[1]
+    try:
+        value, suffix = space.parse_scalar(text)
+    except ValueError:
+        return None
+    if suffix == unit:
+        return value
+    if suffix not in _SI or unit not in _SI:
+        return None
+    return value.scaleb(_SI[suffix] - _SI[unit])
+
+
+def _exports(spec: Spec, deck: Deck | None, executor: Executor, plan: bool) -> dict[str, str] | str:
+    """Each testbench's exported netlist text: the deck's copy of the export (``Deck.bundle``), or under ``--plan``, where
+    ``netlist.import`` returns an empty deck, the export fetched afresh through the executor (nothing reaches the store).
+    A string says why there is none."""
+    if spec.devices:
+        return {}
+    if not plan:
+        texts = {}
+        for tb in spec.testbenches:
+            bundle = (deck or Deck()).bundle(tb.id)
+            if bundle is None or not (bundle / "input.scs").is_file():
+                return f"the deck carries no export of testbench {tb.id}"
+            texts[tb.id] = (bundle / "input.scs").read_text(encoding="utf-8")
+        return texts
+    tmp = Path(tempfile.mkdtemp(prefix="ic_opt_plan_current_"))
+    try:
+        texts = {}
+        for tb in spec.testbenches:
+            local = tmp / tb.id / "input.scs"
+            try:
+                executor.get(f"{tb.maestro_point_root}/netlist/input.scs", local)
+                texts[tb.id] = local.read_text(encoding="utf-8")
+            except (OSError, ExecutorError) as exc:
+                return f"{tb.id}'s export could not be read: {exc}"
+        return texts
+    finally:
+        shutil.rmtree(literal(tmp))
 
 
 def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict, budget: int) -> int | None:
@@ -132,29 +269,35 @@ def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict, budget: in
     return initial_design_size(spec, strategy_kwargs.get("initial_trials"), budget)
 
 
-def surrogate_points(done: int, budget: int, batch: int, design: int) -> int:
-    """How many of the ``budget - done`` new points the surrogate proposes: a batch is served by the surrogate only when the
-    history at its start already holds ``design`` points; every earlier batch is initial design in full (OpenBox decides per
-    batch). The 2026-09-27 real-scenario acceptance (N-27, ISSUE-8) ran 12 points in batches of 6 on 4 variables (design 8)
-    and never reached the surrogate; nothing said so."""
-    points, start = 0, done
-    while start < budget:
-        size = min(batch, budget - start)
-        if start >= design:
-            points += size
-        start += size
-    return points
+def surrogate_points(history: int, new: int, batch: int, design: int, *, start: int = 0, needed: int = 2) -> int:
+    """How many of the ``new`` points (in batches of ``batch``) the surrogate proposes when the history holds ``history``
+    observations, every point succeeding: the first ``design`` observations are the ``start`` points not yet evaluated
+    followed by space-filling points (start points beyond ``design`` come first all the same), and the rest of a batch
+    that reaches the end of the design is the surrogate's (T17.0b) when the history at the batch's start holds ``needed``
+    successful points (``suggesters.base.surrogate_minimum``), else further space filling. Until 0.4.0 a batch that began
+    inside the design was design in full: the 2026-09-27 real-scenario acceptance (N-27, ISSUE-8) ran 12 points in
+    batches of 6 on 4 variables and never reached the surrogate; a plan saying "initial design 22" ran 30 (2026-09-28)."""
+    proposed, done, left = 0, history, new
+    while left > 0:
+        size = min(batch, left)
+        starts = min(size, start)
+        first = starts + min(size - starts, max(0, design - done - starts))
+        if done >= needed:
+            proposed += size - first
+        start, done, left = start - starts, done + size, left - size
+    return proposed
 
 
-def _print_design(design: int | None, done: int, budget: int, batch: int, *, plan: bool) -> None:
-    if design is None or done >= budget:
+def _print_design(design: int | None, history: int, new: int, batch: int, start: int, needed: int, *, plan: bool) -> None:
+    if design is None or new <= 0:
         return
-    proposed = surrogate_points(done, budget, batch, design)
-    tag = "[plan] " if plan else "[opt] "
-    line = f"{tag}openbox initial design {design} points: the surrogate proposes {proposed} of the {budget - done} new points"
+    proposed = surrogate_points(history, new, batch, design, start=start, needed=needed)
+    tag = "[plan] " if plan else "[optimize] "
+    first = f" ({start} start point{'s' if start != 1 else ''} first)" if start else ""
+    line = f"{tag}openbox initial design {design} points{first}: the surrogate proposes {proposed} of the {new} new points"
     if proposed == 0:
-        line += (" -- WARNING: none; this run is space-filling initial design throughout (every batch starts inside the "
-                 f"design). Use a batch smaller than {design}, raise budget, or pass initial_trials=N below the batch")
+        line += (f" -- WARNING: none; this run is initial design throughout (the surrogate needs {needed} successful points "
+                 "before a batch starts). Raise budget, use a smaller batch, or pass a smaller initial_trials")
     print(line)
 
 

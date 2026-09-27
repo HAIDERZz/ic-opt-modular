@@ -61,6 +61,34 @@ def template_deck(deck_text: str, variable_names: list[str]) -> str:
     return "".join(output)
 
 
+def exported_values(deck_text: str, variable_names: list[str]) -> dict[str, str]:
+    """The values an exported deck's top-level ``parameters`` statement gives the variables, as written (``"0.6u"``,
+    ``"600n"``, or an expression): the statement :func:`template_deck` rewrites, parsed the same way. A variable found
+    nowhere at top level, or more than once, is an error, as it is for ``template_deck``."""
+    lines = deck_text.splitlines(keepends=True)
+    found: dict[str, list[str]] = {name: [] for name in variable_names}
+    depth = 0
+    for statement in _logical_statements(lines):
+        text = "".join(lines[i] for i in statement)
+        first = _first_token(text)
+        top_level = depth == 0
+        if first == "subckt":
+            depth += 1
+        elif first == "ends" and depth > 0:
+            depth -= 1
+        if first != "parameters" or not top_level:
+            continue
+        matches = list(ASSIGNMENT_RE.finditer(text))
+        for index, match in enumerate(matches):
+            if match.group("name") in found:
+                found[match.group("name")].append(text[match.end():_value_end(text, matches, index)].strip())
+    issues = [f"variable {n} was not found in top-level parameters" for n, v in found.items() if not v]
+    issues += [f"variable {n} appears more than once in top-level parameters" for n, v in found.items() if len(v) > 1]
+    if issues:
+        raise ValueError("; ".join(issues))
+    return {name: values[0] for name, values in found.items()}
+
+
 def apply_corner(template_text: str, corner: Corner) -> str:
     """Specialize a template for one corner: the model section / file of the include line, top-level parameter values, and
     the ``simulatorOptions`` values (``options``: ``temp`` sets the simulation temperature an ADE export writes as a literal)."""

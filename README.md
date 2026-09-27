@@ -109,13 +109,29 @@ continues it — `opt.optimize` counts the observations its step already holds a
 stops at `budget`. `budget.max_simulations` counts every simulation the
 project's store holds, including the observations an edited spec no longer
 reuses: a spec edit that leaves earlier runs behind needs a larger budget, or a
-new project. The `openbox_*` strategies spend their first `initial_trials`
-points on a space-filling design and fit their surrogate only after that, batch
-by batch. The default is the smaller of twice the number of variables and half
-the run's `budget`, so a small run still reaches the surrogate; `--plan` prints
-how many of the run's points the surrogate proposes and warns when that is none
-(every batch starting inside the design: use a smaller batch), each observation's
-`origin` ends in `:init` or `:acq`, and `initial_trials=N` overrides the default.
+new project.
+
+`opt.optimize` evaluates the design as it stands first: the values the
+exported netlists give the circuit variables (`current=false` leaves it out;
+testbenches that disagree, a value outside a variable's range or a spec with EM
+devices mean there is none, and a line says why; a value between grid points is
+moved to the nearest one, and the line says so), then the rows of `start=FILE`
+(a JSON list of parameter rows, the format of `fix_run`'s points file). They
+are evaluated once: a continued run does not repeat them. The `openbox_*`
+strategies' first `initial_trials` observations are those start points followed
+by one seeded Sobol design, served in order whatever the batch size; the rest of
+the batch that reaches the end of the design, and every later point, is the
+surrogate's, once the history holds one more successful point than there are
+variables (fewer: further space-filling points). The default is the smaller of
+twice the number of variables and half the run's `budget`; `--plan` prints how
+many of the run's points the surrogate proposes and warns when that is none,
+each observation's `origin` is `start` or ends in `:init` or `:acq`, and
+`initial_trials=N` overrides the default. The strategies are fed each point's
+true objective (a point that misses a constraint included); a point whose
+metrics failed is a failed trial for OpenBox and the worst target for `turbo`,
+never a penalty number (`failure_penalty` is accepted and ignored). The same
+seed therefore proposes other points than 0.4.0 did; recorded observations keep
+their meaning and continue as before.
 
 ### spec.yaml
 

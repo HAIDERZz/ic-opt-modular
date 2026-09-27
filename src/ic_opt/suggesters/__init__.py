@@ -1,15 +1,16 @@
-from ic_opt.suggesters.base import Proposal, Suggester, penalized_objective
+from ic_opt.suggesters.base import Proposal, Suggester, minimization_objective, penalized_objective
 from ic_opt.suggesters.openbox import OpenBoxSuggester
 from ic_opt.suggesters.random import RandomSuggester
 from ic_opt.suggesters.turbo import TurboSuggester
 
 
-def make(strategy: str, *, failure_penalty: float = 1e6, **kwargs) -> Suggester:
-    """Strategy name -> suggester. Legacy names stay valid."""
+def make(strategy: str, *, failure_penalty: float | None = None, **kwargs) -> Suggester:
+    """Strategy name -> suggester. Legacy names stay valid. ``failure_penalty`` is accepted and ignored: since T17.0b no
+    penalty number reaches a model (``suggesters.base``)."""
     if strategy in ("turbo", "turbo_trust_region"):
-        return TurboSuggester(failure_penalty=failure_penalty, **kwargs)
+        return TurboSuggester(**kwargs)
     if strategy.startswith("openbox"):
-        return OpenBoxSuggester(strategy, failure_penalty=failure_penalty, **kwargs)
+        return OpenBoxSuggester(strategy, **kwargs)
     if strategy in ("random", "random_baseline"):
         return RandomSuggester("random")
     if strategy in ("sobol", "latin_hypercube"):
@@ -17,4 +18,5 @@ def make(strategy: str, *, failure_penalty: float = 1e6, **kwargs) -> Suggester:
     raise ValueError(f"unknown strategy {strategy!r}")
 
 
-__all__ = ["OpenBoxSuggester", "Proposal", "RandomSuggester", "Suggester", "TurboSuggester", "make", "penalized_objective"]
+__all__ = ["OpenBoxSuggester", "Proposal", "RandomSuggester", "Suggester", "TurboSuggester", "make", "minimization_objective",
+           "penalized_objective"]
