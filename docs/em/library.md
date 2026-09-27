@@ -57,6 +57,7 @@ process_profile: demo_6m
 strata:
   ind_sym_top:                                   # one device family on one metal body
     generator: clean_port_ind_sym
+    note: primary on M6, the thick top metal        # optional, free text: what the parts are physically; lib.coverage echoes it
     dims: [outer_diameter_um, width_um, spacing_um, turns]
     nt_dim: turns                                # the integer turns dim: one model per turns level
     parts:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ic_opt.blocks.optimize import adopt, optimize, suggest
+from ic_opt.blocks.optimize import adopt, optimize, suggest, surrogate_points
 from ic_opt.deck import Deck
 from ic_opt.observation import ChildResult, Observation
 from ic_opt.store import RunStore
@@ -100,3 +100,26 @@ def test_adopt_rescores_foreign_observations_under_this_spec(tmp_path):
     assert adopted[0].feasible and adopted[0].objective == 8.5 and adopted[0].origin == "initial:user"
     assert adopted[1].status == "constraint_failed" and not adopted[1].feasible
     assert isinstance(adopted[0].children, dict) and ChildResult  # keeps the model shape
+
+
+def test_surrogate_points_counts_the_batches_that_start_past_the_initial_design():
+    assert surrogate_points(0, 12, 6, 8) == 0            # N-27: both batches start inside the design (0, 6 < 8)
+    assert surrogate_points(0, 12, 4, 8) == 4            # the third batch starts at 8
+    assert surrogate_points(0, 12, 6, 4) == 6 and surrogate_points(6, 12, 6, 4) == 6
+    assert surrogate_points(0, 8, 8, 8) == 0 and surrogate_points(0, 9, 8, 8) == 1 and surrogate_points(9, 9, 8, 8) == 0
+
+
+def test_openbox_marks_initial_design_points_and_says_when_the_surrogate_never_proposes(tmp_path, capsys):
+    """Two variables: initial design 4. A budget of 4 in one batch is design throughout, and the run says so; continuing to
+    8 makes the second batch the surrogate's, and every point's origin says which served it (N-27, ISSUE-8)."""
+    spec, store, ex, deck = project(tmp_path)
+    first = optimize(spec, ex, store, deck=deck, strategy="openbox_gp_eic", budget=4, batch=4, seed=1, limits=FAKE_HOST)
+    out = capsys.readouterr().out
+    assert "[opt] openbox initial design 4 points: the surrogate proposes 0 of the 4 new points -- WARNING: none" in out
+    assert {o.origin for o in first} == {"suggest:openbox_gp_eic:init"}
+    both = optimize(spec, ex, store, deck=deck, strategy="openbox_gp_eic", budget=8, batch=4, seed=1, limits=FAKE_HOST)
+    out = capsys.readouterr().out
+    assert "[opt] openbox initial design 4 points: the surrogate proposes 4 of the 4 new points" in out and "WARNING" not in out
+    new = [o for o in both if o.obs_id not in {f.obs_id for f in first}]
+    assert len(new) == 4 and {o.origin for o in new} == {"suggest:openbox_gp_eic:acq"}
+    assert surrogate_points(8, 8, 4, 4) == 0

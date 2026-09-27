@@ -81,6 +81,7 @@ class Stratum(Model):
     quantities: dict[str, Quantity] = Field(min_length=1)
     steps: dict[str, float] = Field(default_factory=dict)  # candidate resolution per dim for inverse queries (e.g. outer_diameter_um: 1)
     low_freq_max_hz: PositiveFloat | Literal["relative"] | None = None   # top of the L*_lf / k_lf band for every part; None: each part's spec
+    note: str = ""                                        # what the parts are physically (which metal each winding sits on, ...): lib.coverage echoes it
 
     @model_validator(mode="after")
     def _consistent(self) -> Stratum:

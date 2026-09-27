@@ -36,11 +36,12 @@ class OpenBoxSuggester:
                               'resolver call as the package: uv pip install -e ".[em,turbo]" -e vendor/open-box') from exc
 
         cs = _config_space(spec, sp)
+        design = initial_design_size(spec, self.initial_trials)
         advisor = Advisor(
             cs,
             num_objectives=1,
             num_constraints=len(spec.constraints),
-            initial_trials=self.initial_trials or max(2 * len(spec.variables), 1),
+            initial_trials=design,
             init_strategy=self.initialization,
             surrogate_type=self.surrogate,
             acq_type="eic" if spec.constraints else ("ei" if self.surrogate != "auto" else "auto"),
@@ -58,7 +59,15 @@ class OpenBoxSuggester:
             ))
         suggestions = advisor.get_suggestions(batch_size=n) if n > 1 else [advisor.get_suggestion()]
         raw = [[float(s.get_dictionary()[v.name]) for v in spec.variables] for s in suggestions]
-        return Proposal(raw, tag=self.name)
+        # OpenBox serves its space-filling initial design while the history is shorter than `initial_trials`, and the
+        # surrogate only after: the tag says which this batch was (origin `suggest:<strategy>:init` / `:acq`).
+        return Proposal(raw, tag="init" if len(history) < design else "acq")
+
+
+def initial_design_size(spec: Spec, initial_trials: int | None = None) -> int:
+    """How many points OpenBox spends on its initial design before the surrogate proposes: ``initial_trials`` when given,
+    else twice the number of variables (at least one). ``opt.optimize`` prints what that leaves the surrogate."""
+    return int(initial_trials) if initial_trials else max(2 * len(spec.variables), 1)
 
 
 def _config_space(spec: Spec, sp):

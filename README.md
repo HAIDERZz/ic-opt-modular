@@ -55,7 +55,11 @@ from `c10.dll`), as the 2026-09-27 Windows acceptance found. ic-opt writes UTF-8
 to stdout and stderr on every platform: Python's own streams follow the Windows
 code page when redirected to a file, and `ic-opt blocks` crashed on a Chinese
 controller's cp936 in the same acceptance; an explicit `PYTHONIOENCODING` still
-wins. Every text file ic-opt reads or writes names its encoding (UTF-8).
+wins. Every text file ic-opt reads or writes names its encoding (UTF-8). A
+Windows controller driven from Git Bash / MSYS2 must set `MSYS_NO_PATHCONV=1`
+(or give the Cadence file through `cshrc:` in site.yaml): that shell rewrites a
+remote absolute path such as `--cshrc /home/...` into `C:/Program Files/Git/home/...`
+before ic-opt sees it, as the 2026-09-27 real-scenario acceptance found.
 Simulating on the controller itself (no `--ssh-profile`: `LocalExecutor`)
 needs Linux or macOS. The device library (`lib.*`, `lib_design`) runs on all
 three; it fits models in spawned worker processes, so a script that calls it
@@ -88,12 +92,28 @@ ic-opt migrate-store PROJECT --dry-run             # a store written by an earli
 ```
 
 `--plan` is the only approval point: it prints everything a reviewer wants to
-confirm before Spectre starts. Re-running a recipe continues it — `opt.optimize`
-counts the observations its step already holds and stops at `budget`.
+confirm before Spectre starts, and it fetches every testbench's export and
+templates it for every corner, so a variable an export lacks shows there
+(`[plan] netlist.import <tb>: FAIL ...`) and not at the run. Re-running a recipe
+continues it — `opt.optimize` counts the observations its step already holds and
+stops at `budget`. `budget.max_simulations` counts every simulation the
+project's store holds, including the observations an edited spec no longer
+reuses: a spec edit that leaves earlier runs behind needs a larger budget, or a
+new project. The `openbox_*` strategies spend their first `initial_trials`
+points (default twice the number of variables) on a space-filling design and
+fit their surrogate only after that, batch by batch: `--plan` prints how many of
+the run's points the surrogate proposes and warns when that is none (a budget at
+or below the design, or every batch starting inside it), each observation's
+`origin` ends in `:init` or `:acq`, and `initial_trials=N` or a larger `budget`
+changes the split.
 
 ### spec.yaml
 
-`examples/spec.yaml` is a complete three-testbench, three-corner example. Sections:
+`examples/spec.yaml` is a complete three-testbench, three-corner example (the
+`MixerCS_*` cells of its exports: another mixer's exports carry other top-level
+parameters, so check the `parameters` line before reusing its variables). Every
+variable must be a top-level `parameters` entry of every testbench's exported
+netlist; a device's variables are consumed by `devices` and are not. Sections:
 `testbenches` (Maestro export roots), `corners` + `corner_policy`, `variables`
 (grid: lower / upper / step), `metrics` (OCEAN expressions), `constraints`,
 `objective`, `simulator` (preset, retention, and the required `threads_per_run`,
@@ -179,7 +199,11 @@ Every family's fields, constraints and retired names: [docs/em/devices.md](docs/
 
 A **device library** (a directory of em_only run stores plus `library.yaml`) answers
 L / Q / SRF / k for a geometry, suggests geometries for targets, and serves as a
-surrogate pipeline for optimization before a real-EMX sign-off:
+surrogate pipeline for optimization before a real-EMX sign-off. A stratum's name
+says little about its parts' physics, so `lib.coverage` answers with each part's
+device (generator, profile, the metals its windings sit on) and the stratum's
+`note` from `library.yaml`; the first fit of a quantity's model prints its
+progress on stderr (minutes per quantity, more for a composed curve):
 
 ```bash
 ic-opt call lib.query LIBRARY stratum=ind_sym_top 'params={"outer_diameter_um": 150, "width_um": 5, "spacing_um": 3, "turns": 2}'

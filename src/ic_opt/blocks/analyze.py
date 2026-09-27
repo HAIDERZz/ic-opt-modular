@@ -147,28 +147,37 @@ def _importance_section(spec: Spec, obs: Observations) -> str:
 
 
 def _corners_section(spec: Spec, obs: Observations) -> str:
+    """Each corner scored on its own testbench children plus the corner-less ones (EM devices measure once per point and count
+    for every corner, as ``sim.corner.aggregate`` scores them). Before N-27 (2026-09-27) the device metrics were filed under
+    a corner of their own, so on a spec with devices and corners every corner read ``metric_failed`` and a ``nominal`` row
+    appeared that no policy names."""
     lines = [f"- policy: objective={spec.corner_policy.objective}, constraints={spec.corner_policy.constraints}"]
+    corner_ids = [c.id for c in spec.corners] or ["nominal"]
     top = obs.best(1)
     if top:
-        per_corner = _metrics_per_corner(top[0])
         lines.append(f"- best observation {top[0].obs_id} per corner:")
-        for corner, metrics in per_corner.items():
+        for corner, metrics in _metrics_per_corner(spec, top[0]).items():
             ev = objective_contract.evaluate(spec, metrics)
             lines.append(f"  - {corner}: {ev.status}, objective {_fmt(ev.objective)}, " + ", ".join(f"{k}={_fmt(v)}" for k, v in metrics.items()))
-    failures: dict[str, int] = {c.id: 0 for c in spec.corners}
+    failures: dict[str, int] = {cid: 0 for cid in corner_ids}
     for o in obs:
-        for corner, metrics in _metrics_per_corner(o).items():
-            child_failed = any(ch.status != "ok" for ch in o.children.values() if (ch.corner or "nominal") == corner)
-            if child_failed or objective_contract.evaluate(spec, metrics).status != "ok":
+        for corner, metrics in _metrics_per_corner(spec, o).items():
+            children = [ch for ch in o.children.values() if ch.corner is None or ch.corner == corner]
+            if any(ch.status != "ok" for ch in children) or objective_contract.evaluate(spec, metrics).status != "ok":
                 failures[corner] = failures.get(corner, 0) + 1
     lines.append("- failures per corner: " + ", ".join(f"{k} {v}/{len(obs)}" for k, v in failures.items()))
     return "\n".join(lines)
 
 
-def _metrics_per_corner(o: Observation) -> dict[str, dict[str, float]]:
-    out: dict[str, dict[str, float]] = {}
-    for child in o.children.values():
-        out.setdefault(child.corner or "nominal", {}).update(child.metrics)
+def _metrics_per_corner(spec: Spec, o: Observation) -> dict[str, dict[str, float]]:
+    """A corner's metrics: every corner-less child's (devices; on a spec without corners, the testbenches too) and then its own
+    testbench children's. A spec without corners has the one corner ``nominal``."""
+    corner_ids = [c.id for c in spec.corners] or ["nominal"]
+    shared = {k: v for ch in o.children.values() if ch.corner is None for k, v in ch.metrics.items()}
+    out = {cid: dict(shared) for cid in corner_ids}
+    for ch in o.children.values():
+        if ch.corner is not None:
+            out.setdefault(ch.corner, dict(shared)).update(ch.metrics)
     return out
 
 

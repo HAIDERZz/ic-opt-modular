@@ -193,11 +193,17 @@ class Library:
         order = self._with_parts(stratum, list(dict.fromkeys(quantities)))
         missing = [q for q in order if not self._load(stratum, q)]
         direct = [q for q in missing if self._plan(stratum, q) is None]
+        built = [q for q in missing if q not in direct]
+        if missing:                     # on stderr: the answer is stdout's, and a first fit is silent for minutes otherwise
+            what = ", ".join(direct + [f"{q} (composed)" for q in built])
+            print(f"[lib] {stratum}: fitting {len(missing)} model(s) not in the cache -- {what}; minutes per quantity, a composed "
+                  "curve's calibration several times that; the answer follows when they are done", file=sys.stderr, flush=True)
         if direct:
             self._fit_direct(stratum, direct, workers, threads)
-        built = [q for q in missing if q not in direct]
         if built:
             self._fit_composed(stratum, built, workers, threads)
+        if missing:
+            print(f"[lib] {stratum}: {len(missing)} model(s) fitted and cached", file=sys.stderr, flush=True)
         return {q: self._models[(stratum, q)] for q in quantities}
 
     def _fit_direct(self, stratum: str, names: list[str], workers: int | None, threads: int | None) -> None:
@@ -743,11 +749,13 @@ def _evidence(row: dataset.Row, q: str, dims: list[str], distance: float | None 
 
 
 def coverage(library: Library, stratum: str) -> dict:
-    """What the stratum covers: rows per part and turns level, the achieved range of every dim, usable rows and value range per
-    quantity; ``notes`` carries the library's."""
+    """What the stratum covers: rows per part and turns level, each part's device (generator, profile, the metals its windings
+    sit on), the achieved range of every dim, usable rows and value range per quantity; ``note`` is the stratum's own line
+    from library.yaml and ``notes`` the library's."""
     ds = library.dataset(stratum)
     x = ds.matrix()
     out = {"stratum": stratum, "rows": len(ds.rows), "parts": {}, "generations": ds.generations, "excluded": ds.excluded,
+           "devices": dataset.devices(library.root, library.manifest.strata[stratum]), "note": library.manifest.strata[stratum].note,
            "dims": {}, "levels": {}, "quantities": {}}
     for r in ds.rows:
         out["parts"][r.part] = out["parts"].get(r.part, 0) + 1

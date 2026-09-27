@@ -122,6 +122,17 @@ def test_run_plan_prints_shape_and_simulates_nothing(tmp_path):
     assert not (root / ".icopt" / "observations.jsonl").exists() and not any((root / ".icopt" / "decks").iterdir())
 
 
+def test_run_plan_checks_every_export_against_the_spec(tmp_path):
+    """--plan is the approval point: a variable an export does not carry as a top-level parameter (N-27, ISSUE-2) and a
+    corner whose model section has nothing to attach to must show there, and the preview goes on; the store stays empty."""
+    root = project(tmp_path, corners=("tt",), export_params="F=20")        # the spec's W is not a parameter of this export
+    result = runner.invoke(app, ["run", "optimize", str(root), "--plan", "budget=4", "batch=2", "strategy=sobol"])
+    assert result.exit_code == 0, result.output
+    assert "[plan] netlist.import tb: FAIL variable W was not found in top-level parameters" in result.output
+    assert "[plan] opt.optimize step='optimize'" in result.output
+    assert not (root / ".icopt" / "observations.jsonl").exists() and not any((root / ".icopt" / "decks").iterdir())
+
+
 def test_run_rejects_unknown_recipe_and_bad_params(tmp_path):
     root = project(tmp_path)
     assert runner.invoke(app, ["run", "nope", str(root)]).exit_code != 0

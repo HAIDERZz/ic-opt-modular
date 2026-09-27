@@ -3,13 +3,40 @@
 from __future__ import annotations
 
 import shutil
+import tempfile
+from pathlib import Path
 
 from ic_opt.deck import Deck
-from ic_opt.executor import Executor
+from ic_opt.executor import Executor, ExecutorError
 from ic_opt.localpath import literal
 from ic_opt.sim import netlist as kernel
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
+
+
+def _plan_check(spec, executor) -> None:
+    """The preview's share of the import: fetch every testbench's export into a temporary directory and template it for
+    every corner, so a variable the export lacks or a corner with no model include shows at the approval point, not at the
+    run (the 2026-09-27 real-scenario acceptance, N-27, ISSUE-2, met it only after the plan). Nothing reaches the store;
+    like env.doctor's checks a failure is printed and the preview goes on."""
+    names = spec.circuit_variables
+    corners = [c or "nominal" for c in spec.corner_ids]
+    with tempfile.TemporaryDirectory(prefix="ic_opt_plan_") as tmp:
+        for tb in spec.testbenches:
+            try:
+                local = Path(tmp) / tb.id
+                executor.get(f"{tb.maestro_point_root}/netlist", local, dereference=True)
+                exported = local / "input.scs"
+                if not exported.is_file():
+                    raise FileNotFoundError(f"{tb.maestro_point_root}/netlist/input.scs not found on {executor.host}")
+                template = kernel.template_deck(exported.read_text(encoding="utf-8"), names)
+                for corner_id in spec.corner_ids:
+                    if corner_id:
+                        kernel.apply_corner(template, spec.corner(corner_id))
+            except (OSError, ValueError, ExecutorError) as exc:
+                print(f"[plan] netlist.import {tb.id}: FAIL {exc}")
+                continue
+            print(f"[plan] netlist.import {tb.id}: {executor.host}:{tb.maestro_point_root}/netlist → deck, corners {corners}")
 
 
 def import_netlists(spec: Spec, executor: Executor, store: RunStore) -> Deck:
@@ -23,9 +50,7 @@ def import_netlists(spec: Spec, executor: Executor, store: RunStore) -> Deck:
     from ic_opt.recipe import PLAN_MODE
 
     if PLAN_MODE.get():
-        for tb in spec.testbenches:
-            print(f"[plan] netlist.import {tb.id}: {executor.host}:{tb.maestro_point_root}/netlist → deck, "
-                  f"corners {[c or 'nominal' for c in spec.corner_ids]}")
+        _plan_check(spec, executor)
         return Deck()
     staging = store.root / "decks" / ".staging"
     if staging.exists():            # left by an import that stopped part-way: none of it may reach this deck

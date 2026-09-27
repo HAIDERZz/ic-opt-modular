@@ -13,7 +13,7 @@ from ic_opt.blocks.netlist import import_netlists
 from ic_opt.deck import Deck
 from ic_opt.executor import LocalExecutor
 from ic_opt.migrate import spec_from_config_dir
-from ic_opt.observation import Observation
+from ic_opt.observation import ChildResult, Observation, Observations
 from ic_opt.site import HostLimits
 from ic_opt.space import Point
 from ic_opt.store import RunStore
@@ -153,6 +153,35 @@ def test_report_with_corners_and_bottleneck_objective(tmp_path):
     md = analyze.report(spec, obs, store).read_text()
     assert "## Corners" in md and "- failures per corner: tt " in md and "ss " in md
     assert (store.reports_dir() / "bottleneck_weighted_score.png").exists()
+
+
+def test_corners_section_scores_each_corner_with_the_device_metrics(tmp_path):
+    """EM devices measure once per point (a corner-less child) while testbenches run per corner. The 2026-09-27 real-scenario
+    acceptance (N-27, ISSUE-7) found the section filing the device metrics under a corner of their own, so every corner
+    read metric_failed and a `nominal` row appeared beside tt / ss / ff. Each corner now counts the corner-less metrics."""
+    d = minimal_spec()
+    d["corners"] = [{"id": "tt"}, {"id": "ss"}]
+    d["metrics"] = [{"name": "NF", "unit": "dB", "expression": "nf()"}, {"name": "Qp", "unit": "ratio", "expression": "qp()"}]
+    d["constraints"] = [{"metric": "NF", "op": "lt", "value": "9"}, {"metric": "Qp", "op": "gt", "value": "10"}]
+    d["objective"] = {"direction": "minimize", "expression": "NF"}
+    spec = make_spec(**d)
+    stamp = {"spec_fingerprint": spec.fingerprint(), "pipeline_fingerprint": "p", "started_at": "t", "finished_at": "t"}
+
+    def observation(i, nf_ss, device_status="ok"):
+        children = {"tb/tt": ChildResult(unit="tb", corner="tt", status="ok", metrics={"NF": 8.0}),
+                    "tb/ss": ChildResult(unit="tb", corner="ss", status="ok", metrics={"NF": nf_ss}),
+                    "xfmr/nominal": ChildResult(unit="xfmr", corner=None, status=device_status, metrics={"Qp": 12.0})}
+        worst = max(8.0, nf_ss)
+        status = device_status if device_status != "ok" else ("ok" if worst < 9 else "constraint_failed")
+        return Observation(obs_id=f"obs_{i}", params={"F": str(20 + 2 * i), "W": "0.6u"}, origin="user", children=children,
+                           metrics={} if status.startswith("failed") else {"NF": worst, "Qp": 12.0}, fom=worst, objective=worst,
+                           feasible=status == "ok", status=status, **stamp)
+
+    md = analyze._corners_section(spec, Observations([observation(0, 8.5), observation(1, 9.5), observation(2, 8.2, "failed:emx:xfmr")]))
+    assert "- best observation obs_0 per corner:" in md
+    assert "  - tt: ok, objective 8, Qp=12, NF=8" in md and "  - ss: ok, objective 8.5, Qp=12, NF=8.5" in md
+    assert "nominal" not in md and "metric_failed" not in md
+    assert md.endswith("- failures per corner: tt 1/3, ss 2/3")      # obs_1 fails ss's NF constraint; obs_2's device failed for both
 
 
 def test_an_empty_deck_saves_and_loads(tmp_path):

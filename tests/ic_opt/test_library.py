@@ -252,3 +252,20 @@ def test_migrate_store_carries_a_part_store_across_the_identity_change(tmp_path)
                                  "metrics": [*d["metrics"], {"name": "Q", "unit": "1", "device": "ind", "quantity": "Qp_peak"}]})
     fresh = evaluate(wider, points, host, RunStore(project), limits=FAKE_HOST)          # another problem on the same geometry
     assert host.emx_runs == 0 and [o.cache for o in fresh] == [{"emx:ind": "hit"}] * 4 and all(o.status == "ok" for o in fresh)
+
+
+def test_coverage_names_each_part_device_and_the_stratum_note(library):
+    """A stratum's name does not say which metal a winding sits on; the 2026-09-27 real-scenario acceptance (N-27, ISSUE-5)
+    had to read a part's spec file to learn its windings mirror the device in hand. coverage now answers with each part's
+    generator, profile and metal fields, and echoes the stratum's `note` from library.yaml (empty when not written)."""
+    from ic_opt.library import query
+
+    lib = query.Library(library, calibrate=False)
+    name = lib.strata()[0]
+    answer = query.coverage(lib, name)
+    stratum = lib.manifest.strata[name]
+    assert set(answer["devices"]) == {p.store for p in stratum.parts}
+    for part in answer["devices"].values():
+        assert set(part) == {"generator", "profile", "metals"} and part["generator"] == stratum.generator
+        assert all(k.endswith("metal") for k in part["metals"])
+    assert answer["note"] == stratum.note == ""

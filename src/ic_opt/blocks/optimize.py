@@ -91,13 +91,17 @@ def optimize(
     from ic_opt.recipe import PLAN_MODE
 
     same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}     # a store stamped before T15.2 is this problem too (engine.py, "Identity")
+    design = _initial_design(spec, strategy, strategy_kwargs)
     if PLAN_MODE.get():
         done = len(Observations(o for o in store.observations() if o.spec_fingerprint in same_problem).by_step(step))
         shape = pipeline if pipeline is not None else default_pipeline(spec, deck or Deck(), waveforms)
         print(f"[plan] opt.optimize step={step!r} strategy={strategy}: {done}/{budget} points done, "
               f"up to {max(0, budget - done)} more in batches of {batch} × "
               f"{plan_shape(spec, shape, corners, executor, parallel_jobs, limits)} (spec budget {spec.budget.max_simulations})")
+        _print_design(design, done, budget, batch, plan=True)
         return Observations()
+    _print_design(design, len(Observations(o for o in store.observations() if o.spec_fingerprint in same_problem).by_step(step)),
+                  budget, batch, plan=False)
     while True:
         mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
         done = len(mine.by_step(step))
@@ -114,6 +118,41 @@ def optimize(
             step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
         )
     return Observations(o for o in store.observations() if o.spec_fingerprint in same_problem and o.step == step)
+
+
+def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict) -> int | None:
+    """The OpenBox strategies' initial design size (``initial_trials``, default twice the variables); None for the others."""
+    if not strategy.startswith("openbox"):
+        return None
+    from ic_opt.suggesters.openbox import initial_design_size
+
+    return initial_design_size(spec, strategy_kwargs.get("initial_trials"))
+
+
+def surrogate_points(done: int, budget: int, batch: int, design: int) -> int:
+    """How many of the ``budget - done`` new points the surrogate proposes: a batch is served by the surrogate only when the
+    history at its start already holds ``design`` points; every earlier batch is initial design in full (OpenBox decides per
+    batch). The 2026-09-27 real-scenario acceptance (N-27, ISSUE-8) ran 12 points in batches of 6 on 4 variables (design 8)
+    and never reached the surrogate; nothing said so."""
+    points, start = 0, done
+    while start < budget:
+        size = min(batch, budget - start)
+        if start >= design:
+            points += size
+        start += size
+    return points
+
+
+def _print_design(design: int | None, done: int, budget: int, batch: int, *, plan: bool) -> None:
+    if design is None or done >= budget:
+        return
+    proposed = surrogate_points(done, budget, batch, design)
+    tag = "[plan] " if plan else "[opt] "
+    line = f"{tag}openbox initial design {design} points: the surrogate proposes {proposed} of the {budget - done} new points"
+    if proposed == 0:
+        line += (" -- WARNING: none; this run is space-filling initial design throughout. Raise budget past "
+                 f"{design} (batches start inside the design until then) or pass initial_trials=N below it")
+    print(line)
 
 
 def adopt(spec: Spec, foreign: Sequence[Observation]) -> Observations:

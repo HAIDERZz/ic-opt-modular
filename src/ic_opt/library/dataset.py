@@ -189,6 +189,19 @@ def _select(root: Path, name: str, part: manifest.Part) -> _Part:
     return _Part(part.store, project, spec.devices[0], generation, kept, excluded)
 
 
+def devices(root: str | Path, stratum: manifest.Stratum) -> dict[str, dict]:
+    """Each part's device as the rows were measured: generator, profile and the fields naming a metal (``metal``,
+    ``primary_metal``, ...), read from the part's spec. A stratum's name says little about which metal a winding sits on
+    (the 2026-09-27 real-scenario acceptance, N-27, ISSUE-5, queried a part whose windings mirror the device in hand), so
+    ``lib.coverage`` answers with this instead of leaving the part's spec files to be read."""
+    out = {}
+    for part in stratum.parts:
+        device = _spec(Path(root) / part.store).devices[0]
+        out[part.store] = {"generator": device.generator, "profile": device.profile,
+                           "metals": {k: v for k, v in device.fixed.items() if k.endswith("metal")}}
+    return out
+
+
 def _spec(project: Path) -> Spec:
     for path in (project / "spec.yaml", project / ".icopt" / "spec.json"):
         if path.is_file():

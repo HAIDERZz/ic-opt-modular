@@ -1,4 +1,7 @@
 # IC-Opt 0.2 spec: the WHAT of the design problem. How to run it lives in the recipe.
+# The testbenches are Maestro exports of the MixerCS_* cells: their top-level `parameters` lines carry these eight
+# variables. Another mixer's exports carry other parameters (F, W, L, VB_LO, VB_RF but no FCS / WCS / LCS, for one):
+# check each export's `parameters` line before reusing the variables, and `--plan` reports one an export lacks.
 project: mixer_multi_tb_opt
 description: Optimize one Mixer candidate across CG/NF/BW, IIP3 and P1dB testbenches plus TT/SS/FF corners
 
