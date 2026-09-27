@@ -80,6 +80,24 @@ def apply_corner(template_text: str, corner: Corner) -> str:
     return result
 
 
+def unreferenced_parameters(deck_text: str, names: list[str]) -> list[str]:
+    """Of ``names``, the ones the deck declares in a top-level ``parameters`` statement but uses nowhere else: setting them
+    (a corner's ``variables``) changes nothing. Every other statement is searched for the name as a whole word."""
+    lines = deck_text.splitlines(keepends=True)
+    rest, depth = [], 0
+    for statement in _logical_statements(lines):
+        text = "".join(lines[i] for i in statement)
+        first = _first_token(text)
+        if first == "subckt":
+            depth += 1
+        elif first == "ends" and depth > 0:
+            depth -= 1
+        if not (first == "parameters" and depth == 0):
+            rest.append(text)
+    body = "".join(rest)
+    return [n for n in names if not re.search(rf"(?<![A-Za-z0-9_]){re.escape(n)}(?![A-Za-z0-9_])", body)]
+
+
 def render(template_text: str, params: dict[str, str]) -> str:
     """Substitute every ``{{VAR}}``; the placeholder set must equal the parameter set."""
     names = {m.group("name") for m in PLACEHOLDER_RE.finditer(template_text)}

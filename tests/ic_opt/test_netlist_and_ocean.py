@@ -71,3 +71,13 @@ def test_ocean_script_and_scalar_parsing(tmp_path: Path):
     rows = ocean.parse_scalars(tsv)
     assert rows["NF"].value == 8.5 and rows["GAIN"].status == "fail" and rows["GAIN"].message == "non_scalar"
     assert rows["X"].value is None and rows["X"].message == "non_finite"
+
+
+def test_replay_script_names_the_type_of_a_non_scalar_value():
+    """N-35 (2026-09-27): `non_scalar` alone cost a quarter hour of probing; the message now carries the SKILL type."""
+    from ic_opt.sim import ocean
+    from ic_opt.spec import Metric
+
+    script = ocean.replay_script([Metric(name="BW", unit="Hz", expression='bandwidth(x 3 "low")')], [], psf_dir="psf",
+                                 scalars_file="metrics/ocean_scalars.tsv", waveform_dir="metrics/waveforms")
+    assert 'non_scalar:%L' in script and "type(icoptValue)" in script

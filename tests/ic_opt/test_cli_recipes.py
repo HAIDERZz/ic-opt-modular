@@ -133,6 +133,26 @@ def test_run_plan_checks_every_export_against_the_spec(tmp_path):
     assert not (root / ".icopt" / "observations.jsonl").exists() and not any((root / ".icopt" / "decks").iterdir())
 
 
+def test_run_plan_warns_about_a_corner_parameter_the_export_never_uses_and_leaves_no_temporary_tree(tmp_path):
+    """N-35 (2026-09-27): the exports declared `temperature` and set `temp=27` as a literal, so every corner ran at 27 degrees
+    without a word; the plan now says so. The fetched trees are removed through `literal` (a TemporaryDirectory died on
+    Windows on the trailing-dot file), so no `ic_opt_plan_*` directory stays behind."""
+    import tempfile
+
+    root = project(tmp_path, corners=("tt", "ss"))
+    d = yaml.safe_load((root / "spec.yaml").read_text(encoding="utf-8"))
+    d["corners"] = [{"id": "tt", "variables": {"temperature": "27"}}, {"id": "ss", "variables": {"temperature": "125"}}]
+    (root / "spec.yaml").write_text(yaml.safe_dump(d, sort_keys=False), encoding="utf-8")
+    before = {p.name for p in Path(tempfile.gettempdir()).glob("ic_opt_plan_*")}
+    result = runner.invoke(app, ["run", "optimize", str(root), "--plan", "budget=4", "batch=2", "strategy=sobol"])
+    assert result.exit_code == 0, result.output
+    assert "[plan] netlist.import tb: WARNING the corners set ['temperature'], which this export declares" in result.output
+    assert {p.name for p in Path(tempfile.gettempdir()).glob("ic_opt_plan_*")} == before
+    export = tmp_path / "maestro" / "tb" / "netlist" / "input.scs"                # the export uses it: no warning
+    export.write_text(export.read_text(encoding="utf-8").replace("tran tran stop=10n", "tran tran stop=10n temp=temperature"), encoding="utf-8")
+    assert "WARNING" not in runner.invoke(app, ["run", "optimize", str(root), "--plan", "budget=4", "batch=2", "strategy=sobol"]).output
+
+
 def test_run_rejects_unknown_recipe_and_bad_params(tmp_path):
     root = project(tmp_path)
     assert runner.invoke(app, ["run", "nope", str(root)]).exit_code != 0

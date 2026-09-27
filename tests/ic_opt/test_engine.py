@@ -393,3 +393,17 @@ def test_a_nil_metric_at_one_corner_keeps_every_computed_metric(tmp_path):
     assert broken.metrics == {"NF": 8.0, "gain": 5.0}                        # the nominal corner's (tt, first in spec order)
     assert "tb/ss: metric NF failed: non_scalar" in broken.issues
     assert fine.status == "ok" and fine.metrics == {"NF": 8.5, "gain": 5.2}      # worst case: ss
+
+
+def test_evaluate_reports_a_metric_that_failed_on_some_points(tmp_path, capsys):
+    """N-35 (2026-09-27): a metric wrong for a region of the space failed half a batch in silence while the optimizer
+    penalized exactly those points; sim.evaluate now says so once per batch."""
+    from ic_opt.blocks.evaluate import evaluate as evaluate_block
+
+    spec = make_spec()
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": None if p["F"] == "20" else 8.0})
+    evaluate_block(spec, [Point({"F": "20", "W": "0.6u"}, "user"), Point({"F": "22", "W": "0.6u"}, "user")], ex, store,
+                   deck=deck_for(spec), limits=FAKE_HOST)
+    out = capsys.readouterr().out
+    assert "[evaluate] step='evaluate': metric NF failed on 1 of 2 points (non_scalar 1); those points are metric_failed" in out

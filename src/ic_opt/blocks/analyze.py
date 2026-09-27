@@ -98,12 +98,33 @@ def _margin(spec: Spec, constraint, value: float) -> float:
     return (limit - value) if constraint.op in ("lt", "le") else (value - limit)
 
 
+def _scored_corners(spec: Spec) -> list[str]:
+    """The corners the constraint policy scores: every corner under ``all_corners``, the nominal one otherwise."""
+    corner_ids = [c.id for c in spec.corners] or ["nominal"]
+    if spec.corner_policy.constraints == "all_corners":
+        return corner_ids
+    return ["nominal"] if "nominal" in corner_ids else corner_ids[:1]
+
+
+def _constraint_value(spec: Spec, constraint, o: Observation) -> float | None:
+    """The metric's value the constraint is judged on for this point: its worst over the scored corners (the smallest for a
+    lower bound, the largest for an upper one), as ``sim.corner.aggregate`` judges it. The point's own ``metrics`` hold one
+    corner's values -- the corner with the largest total penalty -- and a constraint another corner violates alone was
+    counted as passed before N-35 (2026-09-27: BW 43/50 in the report, 41/50 by the policy)."""
+    per_corner = _metrics_per_corner(spec, o)
+    values = [m[constraint.metric] for cid in _scored_corners(spec) if (m := per_corner.get(cid)) and constraint.metric in m]
+    if not values:
+        return o.metrics.get(constraint.metric)
+    return min(values) if constraint.op in ("gt", "ge") else max(values)
+
+
 def _margins_section(spec: Spec, obs: Observations) -> str:
     if not spec.constraints:
         return "_no constraints_"
-    lines = []
+    scope = "every corner" if spec.corner_policy.constraints == "all_corners" else "the nominal corner"
+    lines = [f"- margins are judged on {scope} (the worst one per constraint)"] if spec.corners else []
     for c in spec.constraints:
-        rows = [(o, _margin(spec, c, o.metrics[c.metric])) for o in obs if c.metric in o.metrics]
+        rows = [(o, _margin(spec, c, v)) for o in obs if (v := _constraint_value(spec, c, o)) is not None]
         if not rows:
             lines.append(f"- {c.metric} {c.op} {c.value}: no data")
             continue
@@ -166,6 +187,13 @@ def _corners_section(spec: Spec, obs: Observations) -> str:
             if any(ch.status != "ok" for ch in children) or objective_contract.evaluate(spec, metrics).status != "ok":
                 failures[corner] = failures.get(corner, 0) + 1
     lines.append("- failures per corner: " + ", ".join(f"{k} {v}/{len(obs)}" for k, v in failures.items()))
+    if spec.corners and spec.constraints:                # which constraint fails where: what "failures per corner" hides
+        for c in spec.constraints:
+            counts = []
+            for cid in corner_ids:
+                judged = [_metrics_per_corner(spec, o).get(cid, {}) for o in obs]
+                counts.append(f"{cid} {sum(1 for m in judged if c.metric in m and _margin(spec, c, m[c.metric]) < 0)}/{len(obs)}")
+            lines.append(f"- {c.metric} {c.op} {c.value} violated at: " + ", ".join(counts))
     return "\n".join(lines)
 
 

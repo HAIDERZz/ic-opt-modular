@@ -153,3 +153,18 @@ def test_every_text_read_and_write_names_its_encoding():
     """Text I/O without an encoding follows the locale: cp936 on a Chinese Windows controller, where the 2026-09-27
     acceptance crashed the CLI's stdout (N-26). Every text file ic-opt reads or writes is UTF-8, said explicitly."""
     assert _text_io_without_encoding() == []
+
+
+EXPORT_TREE_MODULES = ("blocks/netlist.py", "deck.py", "executor/local.py", "executor/ssh.py", "stages/spectre_chain.py")
+
+
+def test_export_trees_are_removed_and_copied_through_literal():
+    """Maestro exports carry `amap/__dspf_information__.`, a name Win32 path normalization changes: every tree copy or
+    removal in the modules that handle export trees goes through `localpath.literal`, and none uses a TemporaryDirectory,
+    whose cleanup cannot (N-21 in Deck.save, then N-35 in the plan check: a checklist did not stop the second one)."""
+    for rel in EXPORT_TREE_MODULES:
+        text = (PACKAGE / rel).read_text(encoding="utf-8")
+        assert "TemporaryDirectory(" not in text, rel
+        for call in re.finditer(r"shutil\.(rmtree|copytree)\((.*?)\)", text):
+            args = [a.strip() for a in call.group(2).split(",")[: 2 if call.group(1) == "copytree" else 1]]
+            assert all(a.startswith("literal(") for a in args), f"{rel}: {call.group(0)}"

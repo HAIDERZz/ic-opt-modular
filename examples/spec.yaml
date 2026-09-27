@@ -48,10 +48,14 @@ variables:
   - { name: VB_RF, kind: continuous_step, lower: 300m,   upper: 440m,   step: 20m }
 
 metrics:
+  # The -3 dB bandwidth of the conversion gain. ADE's `bandwidth(<gain> 3 "low")` returns a waveform object, which the
+  # extract stage refuses as non_scalar (N-35, 2026-09-27); `cross` gives the frequency where the gain sits 3 dB under its
+  # peak, and the `if(car(errset(...)))` makes it total: where the gain never falls 3 dB inside the swept window the
+  # bandwidth is at least the window, whose far edge is `xmin` of this falling curve.
   - name: BW
     unit: Hz
     testbench: cg_nf
-    expression: bandwidth(db((harmonic((v("/IF_P" ?result "pac") - v("/IF_N" ?result "pac")) '-1) / harmonic(drplPacVolGnExpDen("(v(\"/RF_P\" ?result \"pac\")-v(\"/RF_N\" ?result \"pac\"))" '(0) nil) '-1))) 3 "low")
+    expression: if(car(errset(cross(db((harmonic((v("/IF_P" ?result "pac") - v("/IF_N" ?result "pac")) '-1) / harmonic(drplPacVolGnExpDen("(v(\"/RF_P\" ?result \"pac\")-v(\"/RF_N\" ?result \"pac\"))" '(0) nil) '-1))) (ymax(db((harmonic((v("/IF_P" ?result "pac") - v("/IF_N" ?result "pac")) '-1) / harmonic(drplPacVolGnExpDen("(v(\"/RF_P\" ?result \"pac\")-v(\"/RF_N\" ?result \"pac\"))" '(0) nil) '-1)))) - 3) 1 "either") t)) then car(errset(cross(db((harmonic((v("/IF_P" ?result "pac") - v("/IF_N" ?result "pac")) '-1) / harmonic(drplPacVolGnExpDen("(v(\"/RF_P\" ?result \"pac\")-v(\"/RF_N\" ?result \"pac\"))" '(0) nil) '-1))) (ymax(db((harmonic((v("/IF_P" ?result "pac") - v("/IF_N" ?result "pac")) '-1) / harmonic(drplPacVolGnExpDen("(v(\"/RF_P\" ?result \"pac\")-v(\"/RF_N\" ?result \"pac\"))" '(0) nil) '-1)))) - 3) 1 "either") t)) else xmin(db((harmonic((v("/IF_P" ?result "pac") - v("/IF_N" ?result "pac")) '-1) / harmonic(drplPacVolGnExpDen("(v(\"/RF_P\" ?result \"pac\")-v(\"/RF_N\" ?result \"pac\"))" '(0) nil) '-1)))))
   - name: MAX_GAIN
     unit: dB
     testbench: cg_nf

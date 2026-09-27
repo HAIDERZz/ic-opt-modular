@@ -55,7 +55,11 @@ from `c10.dll`), as the 2026-09-27 Windows acceptance found. ic-opt writes UTF-8
 to stdout and stderr on every platform: Python's own streams follow the Windows
 code page when redirected to a file, and `ic-opt blocks` crashed on a Chinese
 controller's cp936 in the same acceptance; an explicit `PYTHONIOENCODING` still
-wins. Every text file ic-opt reads or writes names its encoding (UTF-8). A
+wins. Every text file ic-opt reads or writes names its encoding (UTF-8). The
+plan check's fetched trees are removed through `localpath.literal` too, and a
+test keeps every tree copy or removal on export trees there: the 2026-09-27
+multi-corner acceptance (N-35) found `--plan` dying in a `TemporaryDirectory`
+cleanup on the same trailing-dot file. A
 Windows controller driven from Git Bash / MSYS2 must set `MSYS_NO_PATHCONV=1`
 (or give the Cadence file through `cshrc:` in site.yaml): that shell rewrites a
 remote absolute path such as `--cshrc /home/...` into `C:/Program Files/Git/home/...`

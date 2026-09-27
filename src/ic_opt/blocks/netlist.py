@@ -17,19 +17,25 @@ from ic_opt.store import RunStore
 def _plan_check(spec, executor) -> None:
     """The preview's share of the import: fetch every testbench's export into a temporary directory and template it for
     every corner, so a variable the export lacks or a corner with no model include shows at the approval point, not at the
-    run (the 2026-09-27 real-scenario acceptance, N-27, ISSUE-2, met it only after the plan). Nothing reaches the store;
-    like env.doctor's checks a failure is printed and the preview goes on."""
+    run (the 2026-09-27 real-scenario acceptance, N-27, ISSUE-2, met it only after the plan). A parameter a corner sets
+    that the export declares but never uses is a WARNING (N-35: `temperature` set per corner while `simulatorOptions`
+    carried a literal `temp=27`, so every corner ran at 27 degrees in silence). Nothing reaches the store; like env.doctor's
+    checks a failure is printed and the preview goes on. The fetched tree carries `amap/__dspf_information__.`, whose name
+    Win32 would change: it is removed through `literal` (a `TemporaryDirectory` died with WinError 145 on the N-35 run)."""
     names = spec.circuit_variables
     corners = [c or "nominal" for c in spec.corner_ids]
-    with tempfile.TemporaryDirectory(prefix="ic_opt_plan_") as tmp:
+    set_by_corners = sorted({name for c in spec.corners for name in c.variables})
+    tmp = Path(tempfile.mkdtemp(prefix="ic_opt_plan_"))
+    try:
         for tb in spec.testbenches:
             try:
-                local = Path(tmp) / tb.id
+                local = tmp / tb.id
                 executor.get(f"{tb.maestro_point_root}/netlist", local, dereference=True)
                 exported = local / "input.scs"
                 if not exported.is_file():
                     raise FileNotFoundError(f"{tb.maestro_point_root}/netlist/input.scs not found on {executor.host}")
-                template = kernel.template_deck(exported.read_text(encoding="utf-8"), names)
+                text = exported.read_text(encoding="utf-8")
+                template = kernel.template_deck(text, names)
                 for corner_id in spec.corner_ids:
                     if corner_id:
                         kernel.apply_corner(template, spec.corner(corner_id))
@@ -37,6 +43,13 @@ def _plan_check(spec, executor) -> None:
                 print(f"[plan] netlist.import {tb.id}: FAIL {exc}")
                 continue
             print(f"[plan] netlist.import {tb.id}: {executor.host}:{tb.maestro_point_root}/netlist → deck, corners {corners}")
+            unused = kernel.unreferenced_parameters(text, set_by_corners)
+            if unused:
+                print(f"[plan] netlist.import {tb.id}: WARNING the corners set {unused}, which this export declares in its "
+                      "top-level parameters but never uses; the value changes nothing there (a literal such as "
+                      "`simulatorOptions options temp=27` does not follow a parameter)")
+    finally:
+        shutil.rmtree(literal(tmp))
 
 
 def import_netlists(spec: Spec, executor: Executor, store: RunStore) -> Deck:

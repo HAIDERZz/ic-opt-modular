@@ -41,9 +41,35 @@ def evaluate(
     if PLAN_MODE.get():
         print(f"[plan] sim.evaluate step={step!r}: {len(points)} points × {plan_shape(spec, pipeline, corners, executor, parallel_jobs, limits)}")
         return Observations()
-    return engine.run(
+    obs = engine.run(
         spec, pipeline, points, executor, store, corners=corners, step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits
     )
+    _report_failed_metrics(obs, step)
+    return obs
+
+
+def _report_failed_metrics(obs, step: str) -> None:
+    """One line per metric that failed to extract on any point of this batch: a failed metric makes its point
+    ``metric_failed`` and the optimizer scores that point with the failure penalty, so an expression wrong for a region of
+    the space steers the search away from it in silence (N-35, 2026-09-27: half of a first batch, the wide-band points)."""
+    failed: dict[str, dict[str, int]] = {}
+    for o in obs:
+        seen = set()
+        for child in o.children.values():
+            for issue in child.issues:
+                name = reason = None
+                if issue.startswith("metric ") and " failed: " in issue:
+                    name, reason = issue[len("metric "):].split(" failed: ", 1)
+                elif issue.startswith("metric ") and issue.endswith(" missing from OCEAN output"):
+                    name, reason = issue[len("metric "):-len(" missing from OCEAN output")], "missing"
+                if name and name not in seen:
+                    seen.add(name)
+                    failed.setdefault(name, {})[reason] = failed.setdefault(name, {}).get(reason, 0) + 1
+    for name, reasons in failed.items():
+        n = sum(reasons.values())
+        print(f"[evaluate] step={step!r}: metric {name} failed on {n} of {len(obs)} points "
+              f"({', '.join(f'{r} {c}' for r, c in reasons.items())}); those points are metric_failed and the optimizer "
+              "penalizes them -- fix the expression before spending more budget")
 
 
 def default_pipeline(spec: Spec, deck: Deck | None, waveforms=()) -> list[Stage]:

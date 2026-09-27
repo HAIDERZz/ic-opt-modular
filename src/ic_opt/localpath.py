@@ -8,9 +8,10 @@ silently leaves its tree behind. The first Windows acceptance (2026-09-26) died 
 extended-length path (``\\\\?\\D:\\...``) reaches the file under its literal name.
 
 Use ``literal`` for every ``shutil.copytree`` / ``shutil.rmtree`` / ``open`` / ``os.walk`` on a local tree that came
-from a Maestro export or that will be packed for the host: ``Deck.save``, ``netlist.import``'s staging,
-``render_netlist``, ``LocalExecutor``'s copies and ``SshExecutor``'s tree transfers (on Windows these pack and unpack
-with ``tarfile``, through ``literal``). On Linux and macOS it returns the path as it is.
+from a Maestro export or that will be packed for the host: ``Deck.save``, ``netlist.import``'s staging and its plan
+check's temporary fetch, ``render_netlist``, ``LocalExecutor``'s copies and ``SshExecutor``'s tree transfers (on Windows
+these pack and unpack with ``tarfile``, through ``literal``). On Linux and macOS it returns the path as it is.
+``tests/ic_opt/test_packaging.py`` keeps every tree removal or copy in those modules on ``literal``.
 """
 
 from __future__ import annotations

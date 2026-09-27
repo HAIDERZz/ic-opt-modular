@@ -53,7 +53,14 @@ on the host with `ssh HOST cat ...` or through `--plan`, which fetches it):
   names go in `bindings.instance`, and their terminal order says which device
   port each terminal takes;
 - `simulatorOptions options temp=27 ...`: a temperature written as a literal
-  there does not follow a corner variable; only a top-level parameter does.
+  there does not follow a corner variable; only a top-level parameter the
+  netlist actually uses does. ADE exports write the simulation temperature
+  as that literal and leave `temperature` declared but unused, so a spec
+  cannot change the temperature of such an export: its corners differ by
+  model section only, `--plan` says so (`WARNING the corners set
+  ['temperature'], which this export declares ... but never uses`), and the
+  report must not claim a temperature sweep. Tell the user; do not work
+  around it by editing the export.
 
 From the **package** for a device: `docs/em/devices.md` (every family's fields,
 constraints and retired names); `ic-opt describe` for a block; the examples
@@ -105,9 +112,23 @@ device's `variables`).
 
 ### `metrics`
 Testbench metric: `name`, `unit`, `expression` (OCEAN, must evaluate to a
-scalar -- `value(...)`, `ymax(...)`, `rapidIIPN(...)`, `compressionVRI(...)`;
-`bandwidth(...)` and other waveform-returning calls fail as `non_scalar`),
-`testbench` (required with more than one testbench). Device metric: `name`,
+scalar -- `value(...)`, `ymax(...)`, `ymin(...)`, `xmax(...)`, `xmin(...)`,
+`cross(...)`, `rapidIIPN(...)`, `compressionVRI(...)`; `bandwidth(...)` and
+other waveform-returning calls fail as `non_scalar:<type>`), `testbench`
+(required with more than one testbench). Replacements that keep the meaning:
+
+| ADE gives | write |
+| --- | --- |
+| `bandwidth(<g> 3 "low")` (a waveform object) | `if(car(errset(cross(<g> (ymax(<g>) - 3) 1 "either") t)) then car(errset(cross(<g> (ymax(<g>) - 3) 1 "either") t)) else xmin(<g>))` -- the -3 dB crossing, or the window's far edge when the gain never falls 3 dB inside it |
+| a curve `w` at one frequency | `value(w 3e+09)` |
+| a curve's peak / its frequency | `ymax(w)` / `xmax(w)` |
+| `cross(...)` alone | partial: it errors where there is no crossing -- wrap it as above so every point yields a number |
+
+A metric that fails on some points does not just lose a number: the point is
+`metric_failed`, has no objective, and the optimizer scores it with the failure
+penalty, so it steers the search away from exactly those points (N-35: the
+wide-band ones). `sim.evaluate` prints `metric X failed on N of M points` after
+a batch; stop and fix the expression before spending more budget. Device metric: `name`,
 `unit`, `device`, `quantity` (a curve `Lp / Qp / Ls / Qs / k` needs
 `frequency_hz`; scalars `Lp_lf / Lp_res / Qp_peak / SRF_p / Ls_lf / Ls_res /
 Qs_peak / SRF_s / k_lf / SRF` do not). A metric whose expression returns nil or

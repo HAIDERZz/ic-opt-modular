@@ -71,7 +71,7 @@ def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf
             "  if(numberp(icoptValue) then",
             f'    fprintf(out "%s\\t%.16g\\t%s\\tpass\\t\\n" {_skill(metric.name)} icoptValue {_skill(metric.unit)})',
             "  else",
-            f'    fprintf(out "%s\\t\\t%s\\tfail\\tnon_scalar\\n" {_skill(metric.name)} {_skill(metric.unit)})',
+            f'    fprintf(out "%s\\t\\t%s\\tfail\\tnon_scalar:%L\\n" {_skill(metric.name)} {_skill(metric.unit)} type(icoptValue))',
             "  )",
             "else",
             f'  fprintf(out "%s\\t\\t%s\\tfail\\texpression_error\\n" {_skill(metric.name)} {_skill(metric.unit)})',

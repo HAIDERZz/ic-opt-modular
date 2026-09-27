@@ -32,7 +32,10 @@ def maestro_export(root: Path, tb: str, params: str = "F=20 W=0.6u") -> Path:
     (netlist / "amap").mkdir()
     (netlist / "amap" / "__dspf_information__.").write_text("dspf\n")     # in every export: the name ends with a dot (N-21)
     (root / tb / "shared.txt").write_text("shared")
-    (netlist / "link").symlink_to(root / tb / "shared.txt")        # Maestro exports carry symlinks; import dereferences them
+    try:
+        (netlist / "link").symlink_to(root / tb / "shared.txt")    # Maestro exports carry symlinks; import dereferences them
+    except OSError as exc:                                        # Windows without the symlink privilege (N-35, 2026-09-27)
+        pytest.skip(f"this account cannot create symlinks: {exc}")
     return root / tb
 
 
@@ -52,8 +55,8 @@ def test_import_netlists_builds_a_deck_with_corners_and_support_files(tmp_path):
     assert "F={{F}} W={{W}}" in deck.template("tb", "tt") and "section=ss" in deck.template("tb", "ss")
     assert "temperature=125" in deck.template("tb", "ss")
     bundle = deck.bundle("tb")
-    assert (bundle / ".modelFiles").exists() and (bundle / "link").read_text() == "shared" and not (bundle / "link").is_symlink()
-    assert (bundle / "amap" / "__dspf_information__.").read_text() == "dspf\n" and not (bundle / "stale.scs").exists()
+    assert (bundle / ".modelFiles").exists() and (bundle / "link").read_text(encoding="utf-8") == "shared" and not (bundle / "link").is_symlink()
+    assert (bundle / "amap" / "__dspf_information__.").read_text(encoding="utf-8") == "dspf\n" and not (bundle / "stale.scs").exists()
     assert not staging.exists()                              # removed after the import, not left behind in silence (N-21)
     assert Deck.load(store.root / "decks" / deck.fingerprint()).templates == deck.templates
 
@@ -114,7 +117,7 @@ def test_score_model_parses_the_bottleneck_form_and_nothing_else():
 @pytest.mark.skipif(not RECORDED.exists(), reason="recorded run not available")
 def test_report_from_recorded_run(tmp_path):
     spec = spec_from_config_dir(RECORDED / "config")
-    rows = [json.loads(line) for line in (RECORDED / "reports" / "optimizer_evaluations.jsonl").read_text().splitlines() if line.strip()]
+    rows = [json.loads(line) for line in (RECORDED / "reports" / "optimizer_evaluations.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     obs = []
     for i, row in enumerate(rows, 1):
         metrics = row.get("metrics") or {}
@@ -127,7 +130,7 @@ def test_report_from_recorded_run(tmp_path):
         ))
     store = RunStore(tmp_path)
     path = analyze.report(spec, obs, store)
-    md = path.read_text()
+    md = path.read_text(encoding="utf-8")
     assert md.startswith("# IC-Opt report — ") and "## Best observed" in md and "## Constraint margins" in md
     assert "real_066" not in md and analyze.best(spec, obs)[0].params == {"F": "26", "L": "40n", "VB_LO": "310m", "W": "1u"}
     assert "- IIP3 gt 0 dBm: pass 64/64" in md
@@ -150,7 +153,7 @@ def test_report_with_corners_and_bottleneck_objective(tmp_path):
     ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 8.0 + (0.6 if c == "ss" else 0) + int(p["F"]) / 100, "IIP3": 2.5 - int(p["F"]) / 20})
     deck = Deck(templates={("tb", c): "parameters F={{F}} W={{W}}\n" for c in ("tt", "ss")})
     obs = evaluate(spec, points.grid(spec, per_dim=3), ex, store, deck=deck, limits=FAKE_HOST)
-    md = analyze.report(spec, obs, store).read_text()
+    md = analyze.report(spec, obs, store).read_text(encoding="utf-8")
     assert "## Corners" in md and "- failures per corner: tt " in md and "ss " in md
     assert (store.reports_dir() / "bottleneck_weighted_score.png").exists()
 
@@ -177,11 +180,39 @@ def test_corners_section_scores_each_corner_with_the_device_metrics(tmp_path):
                            metrics={} if status.startswith("failed") else {"NF": worst, "Qp": 12.0}, fom=worst, objective=worst,
                            feasible=status == "ok", status=status, **stamp)
 
-    md = analyze._corners_section(spec, Observations([observation(0, 8.5), observation(1, 9.5), observation(2, 8.2, "failed:emx:xfmr")]))
+    rows = Observations([observation(0, 8.5), observation(1, 9.5), observation(2, 8.2, "failed:emx:xfmr")])
+    md = analyze._corners_section(spec, rows)
     assert "- best observation obs_0 per corner:" in md
     assert "  - tt: ok, objective 8, Qp=12, NF=8" in md and "  - ss: ok, objective 8.5, Qp=12, NF=8.5" in md
     assert "nominal" not in md and "metric_failed" not in md
-    assert md.endswith("- failures per corner: tt 1/3, ss 2/3")      # obs_1 fails ss's NF constraint; obs_2's device failed for both
+    assert "- failures per corner: tt 1/3, ss 2/3" in md              # obs_1 fails ss's NF constraint; obs_2's device failed for both
+    assert "- NF lt 9 violated at: tt 0/3, ss 1/3" in md and "- Qp gt 10 violated at: tt 0/3, ss 0/3" in md
+    # Constraint margins are judged on every corner (all_corners): obs_1's own metrics hold ss's NF 9.5, obs_0's tt 8
+    margins = analyze._margins_section(spec, rows)
+    assert "- NF lt 9: pass 2/3, best margin 0.8 (obs_2), worst -0.5 (obs_1)" in margins      # each point's worst corner
+    d["corner_policy"] = {"objective": "worst_case", "constraints": "nominal"}
+    nominal = analyze._margins_section(make_spec(**d), rows)
+    assert "- NF lt 9: pass 3/3" in nominal and "the nominal corner" in nominal
+
+
+def test_margins_take_the_worst_corner_even_when_the_point_selected_another(tmp_path):
+    """N-35 (2026-09-27, ISSUE-8): a point's metrics are the corner with the largest total penalty; a constraint another corner
+    violates alone read as passed in the margins. Two constraints, two corners: NF fails at ss only, gain fails at tt only
+    and by more, so the point selects tt -- the margins must still count NF as violated."""
+    d = minimal_spec()
+    d["corners"] = [{"id": "tt"}, {"id": "ss"}]
+    d["metrics"] = [{"name": "NF", "unit": "dB", "expression": "nf()"}, {"name": "gain", "unit": "dB", "expression": "g()"}]
+    d["constraints"] = [{"metric": "NF", "op": "lt", "value": "9"}, {"metric": "gain", "op": "gt", "value": "10"}]
+    d["objective"] = {"direction": "minimize", "expression": "NF"}
+    spec = make_spec(**d)
+    stamp = {"spec_fingerprint": spec.fingerprint(), "pipeline_fingerprint": "p", "started_at": "t", "finished_at": "t"}
+    children = {"tb/tt": ChildResult(unit="tb", corner="tt", status="ok", metrics={"NF": 8.0, "gain": 4.0}),
+                "tb/ss": ChildResult(unit="tb", corner="ss", status="ok", metrics={"NF": 9.5, "gain": 12.0})}
+    o = Observation(obs_id="obs_0", params={"F": "20", "W": "0.6u"}, origin="user", children=children, metrics={"NF": 8.0, "gain": 4.0},
+                    fom=8.0, objective=None, feasible=False, status="constraint_failed", constraint_penalty=0.36, **stamp)
+    md = analyze._margins_section(spec, Observations([o]))
+    assert "- NF lt 9: pass 0/1, best margin -0.5 (obs_0), worst -0.5 (obs_0)" in md
+    assert "- gain gt 10: pass 0/1, best margin -6 (obs_0), worst -6 (obs_0)" in md
 
 
 def test_an_empty_deck_saves_and_loads(tmp_path):
