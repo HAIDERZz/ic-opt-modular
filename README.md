@@ -19,6 +19,10 @@ ic-opt --version                                                     # ic-opt 0.
 bash scripts/check_clean_install.sh                                  # optional: the same install in throwaway venvs, smoke-tested
 ```
 
+`uv venv` creates the environment without pip: `uv pip install` needs none, and
+`python -m pip` in it fails (`No module named pip`) without meaning the install
+did; `uv pip list` shows what is there.
+
 The package declares everything it imports at start-up (numpy, scipy, scikit-learn, threadpoolctl, ...).
 OpenBox, which serves the `openbox_*` strategies (`opt.optimize`'s default), is vendored in `vendor/open-box`
 instead of declared, because a path dependency does not survive into a published wheel. Install it in the
@@ -286,6 +290,10 @@ concurrency to fit; recipes pass `limits=run.limits` to `sim.evaluate` and
 the budget of the device library's own compute (model fits, BLAS threads,
 prediction chunks), which always runs on the machine running ic-opt:
 [docs/em/library.md](docs/em/library.md#compute).
+
+A Spectre run states threads but no memory (`simulator` has no memory field), so the
+envelope's memory check covers EMX runs only; a testbench-only spec shows `0 GB per job`
+in `doctor` and `--plan`, and its memory is bounded by the host, not by ic-opt.
 
 ## Results
 

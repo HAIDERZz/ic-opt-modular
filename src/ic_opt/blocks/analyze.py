@@ -145,7 +145,7 @@ def _importance_section(spec: Spec, obs: Observations) -> str:
         import numpy as np
         import shap
     except ImportError:
-        return "_not available: install the `advanced` extras (shap, lightgbm)_"
+        return "_not available: install the `report` extras (shap, lightgbm)_"
     x = np.array([space.to_raw(spec, o.params) for o in rows])
     names = [v.name for v in spec.variables]
     targets: dict[str, list[float]] = {}
@@ -186,7 +186,8 @@ def _corners_section(spec: Spec, obs: Observations) -> str:
             children = [ch for ch in o.children.values() if ch.corner is None or ch.corner == corner]
             if any(ch.status != "ok" for ch in children) or objective_contract.evaluate(spec, metrics).status != "ok":
                 failures[corner] = failures.get(corner, 0) + 1
-    lines.append("- failures per corner: " + ", ".join(f"{k} {v}/{len(obs)}" for k, v in failures.items()))
+    lines.append("- failures per corner (a point counts at every corner it fails at): "
+                 + ", ".join(f"{k} {v}/{len(obs)}" for k, v in failures.items()))
     if spec.corners and spec.constraints:                # which constraint fails where: what "failures per corner" hides
         for c in spec.constraints:
             counts = []

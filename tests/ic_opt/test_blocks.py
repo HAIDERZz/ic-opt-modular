@@ -154,7 +154,7 @@ def test_report_with_corners_and_bottleneck_objective(tmp_path):
     deck = Deck(templates={("tb", c): "parameters F={{F}} W={{W}}\n" for c in ("tt", "ss")})
     obs = evaluate(spec, points.grid(spec, per_dim=3), ex, store, deck=deck, limits=FAKE_HOST)
     md = analyze.report(spec, obs, store).read_text(encoding="utf-8")
-    assert "## Corners" in md and "- failures per corner: tt " in md and "ss " in md
+    assert "## Corners" in md and "- failures per corner (a point counts at every corner it fails at): tt " in md and "ss " in md
     assert (store.reports_dir() / "bottleneck_weighted_score.png").exists()
 
 
@@ -185,7 +185,7 @@ def test_corners_section_scores_each_corner_with_the_device_metrics(tmp_path):
     assert "- best observation obs_0 per corner:" in md
     assert "  - tt: ok, objective 8, Qp=12, NF=8" in md and "  - ss: ok, objective 8.5, Qp=12, NF=8.5" in md
     assert "nominal" not in md and "metric_failed" not in md
-    assert "- failures per corner: tt 1/3, ss 2/3" in md              # obs_1 fails ss's NF constraint; obs_2's device failed for both
+    assert "- failures per corner (a point counts at every corner it fails at): tt 1/3, ss 2/3" in md   # obs_1 fails at ss; obs_2's device failed for both
     assert "- NF lt 9 violated at: tt 0/3, ss 1/3" in md and "- Qp gt 10 violated at: tt 0/3, ss 0/3" in md
     # Constraint margins are judged on every corner (all_corners): obs_1's own metrics hold ss's NF 9.5, obs_0's tt 8
     margins = analyze._margins_section(spec, rows)

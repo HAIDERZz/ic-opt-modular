@@ -407,3 +407,15 @@ def test_evaluate_reports_a_metric_that_failed_on_some_points(tmp_path, capsys):
                    deck=deck_for(spec), limits=FAKE_HOST)
     out = capsys.readouterr().out
     assert "[evaluate] step='evaluate': metric NF failed on 1 of 2 points (non_scalar 1); those points are metric_failed" in out
+
+
+def test_evaluate_names_the_constraints_a_batch_violated(tmp_path, capsys):
+    """N-42 (2026-09-27): the binding constraint is read off the run's own output, per batch."""
+    from ic_opt.blocks.evaluate import evaluate as evaluate_block
+
+    spec = make_spec(constraints=[{"metric": "NF", "op": "lt", "value": "9"}])
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 9.5 if p["F"] == "20" else 8.0})
+    evaluate_block(spec, [Point({"F": "20", "W": "0.6u"}, "user"), Point({"F": "22", "W": "0.6u"}, "user")], ex, store,
+                   deck=deck_for(spec), limits=FAKE_HOST)
+    assert "[evaluate] step='evaluate': constraints violated -- NF lt 9 on 1 of 2 points" in capsys.readouterr().out

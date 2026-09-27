@@ -125,6 +125,12 @@ other waveform-returning calls fail as `non_scalar:<type>`), `testbench`
 | a curve's peak / its frequency | `ymax(w)` / `xmax(w)` |
 | `cross(...)` alone | partial: it errors where there is no crossing -- wrap it as above so every point yields a number |
 
+The wrapped bandwidth is right-censored: where the gain never falls 3 dB
+inside the swept window it returns the window's far edge (the pac window's
+width, 32 GHz on a 80-112 GHz sweep), so that value means "at least", a
+constraint on it stops discriminating there, and its normalized score sits at
+full marks. Widen the sweep or say so in the report (N-42: 49 of 80 points).
+
 A metric that fails on some points does not just lose a number: the point is
 `metric_failed`, has no objective, and the optimizer scores it with the failure
 penalty, so it steers the search away from exactly those points (N-35: the

@@ -168,3 +168,13 @@ def test_export_trees_are_removed_and_copied_through_literal():
         for call in re.finditer(r"shutil\.(rmtree|copytree)\((.*?)\)", text):
             args = [a.strip() for a in call.group(2).split(",")[: 2 if call.group(1) == "copytree" else 1]]
             assert all(a.startswith("literal(") for a in args), f"{rel}: {call.group(0)}"
+
+
+def test_every_install_hint_names_an_extra_that_exists():
+    r"""`install the \`X\` extras` in a message must name a group of pyproject's optional dependencies: the SHAP section said
+    `advanced` for two releases while the group was `report` (N-42, 2026-09-27; the agent fixed it in its checkout)."""
+    extras = set(tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["optional-dependencies"])
+    hints = [(path.relative_to(ROOT), m.group(1)) for path in PACKAGE.rglob("*.py")
+             for m in re.finditer(r"install the `([^`]+)` extras?", path.read_text(encoding="utf-8"))]
+    assert hints, "no install hint found: the pattern changed"
+    assert all(name in extras for _, name in hints), [h for h in hints if h[1] not in extras]

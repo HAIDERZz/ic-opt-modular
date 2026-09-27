@@ -45,7 +45,26 @@ def evaluate(
         spec, pipeline, points, executor, store, corners=corners, step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits
     )
     _report_failed_metrics(obs, step)
+    _report_binding_constraints(obs, step)
     return obs
+
+
+def _report_binding_constraints(obs, step: str) -> None:
+    """One line per batch naming the constraints that failed and on how many points (from the points' issues, `<metric>
+    <op> <value> violated by ...`, per corner under all_corners), so the binding constraint is read off the run, not
+    computed from observations.jsonl afterwards (N-42, 2026-09-27)."""
+    counts: dict[str, int] = {}
+    for o in obs:
+        seen = set()
+        for issue in o.issues:
+            body = issue.split(": ", 1)[1] if ": " in issue else issue          # "<corner>: <metric> <op> <value> violated by ..."
+            if " violated by " in body:
+                name = body.split(" violated by ", 1)[0]
+                if name not in seen:
+                    seen.add(name)
+                    counts[name] = counts.get(name, 0) + 1
+    if counts:
+        print(f"[evaluate] step={step!r}: constraints violated -- " + ", ".join(f"{k} on {v} of {len(obs)} points" for k, v in counts.items()))
 
 
 def _report_failed_metrics(obs, step: str) -> None:
