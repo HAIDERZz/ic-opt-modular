@@ -47,7 +47,8 @@ def _plan_check(spec, executor) -> None:
             if unused:
                 print(f"[plan] netlist.import {tb.id}: WARNING the corners set {unused}, which this export declares in its "
                       "top-level parameters but never uses; the value changes nothing there (a literal such as "
-                      "`simulatorOptions options temp=27` does not follow a parameter)")
+                      "`simulatorOptions options temp=27` does not follow a parameter: set it with the corner's "
+                      "`options`, e.g. options: {temp: \"125\"})")
     finally:
         shutil.rmtree(literal(tmp))
 

@@ -81,11 +81,24 @@ class Testbench(Model):
 
 
 class Corner(Model):
+    """One process / environment corner: the model section (and file) the include line takes, top-level parameter values,
+    and ``options`` -- ``key=value`` pairs set on the netlist's ``simulatorOptions`` statement, ``temp`` above all: an ADE
+    export writes the simulation temperature there as a literal that no parameter follows (N-38, 2026-09-27)."""
+
     id: str
     model_section: str | None = None
     model_file: str | None = None
     variables: dict[str, str] = Field(default_factory=dict)
+    options: dict[str, str] = Field(default_factory=dict)     # simulatorOptions key -> value, e.g. temp: "125"
     description: str = ""
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        """Empty options stay out of the dump, so the specs written before the field existed keep their fingerprints."""
+        data = handler(self)
+        if not self.options:
+            data.pop("options", None)
+        return data
 
     @field_validator("id")
     @classmethod
@@ -114,6 +127,15 @@ class Corner(Model):
             _name(name, "corner variable name")
             _compact_token(raw, f"corner variable {name}")
         return value
+
+    @field_validator("options", mode="before")
+    @classmethod
+    def _opts(cls, value: dict) -> dict[str, str]:
+        out = {}
+        for name, raw in (value or {}).items():
+            _name(name, "corner option name")
+            out[name] = _compact_token(str(raw), f"corner option {name}")   # YAML turns 125 into an int; Spectre gets the text
+        return out
 
 
 class CornerPolicy(Model):

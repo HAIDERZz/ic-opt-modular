@@ -23,16 +23,18 @@ testbenches:
     test_name: P1dB_Test
 
 # Optional. Omit the whole section to simulate only at the source point's corner.
+# `options` sets values on the netlist's `simulatorOptions` statement: ADE exports write the simulation temperature
+# there as a literal (`temp=27`) that the declared `temperature` parameter does not drive, so `temp` goes here.
 corners:
   - id: tt
     model_section: Post_simu_top_tt
-    variables: { temperature: "27" }
+    options: { temp: "27" }
   - id: ss
     model_section: Post_simu_top_ss
-    variables: { temperature: "125" }
+    options: { temp: "125" }
   - id: ff
     model_section: Post_simu_top_ff
-    variables: { temperature: "-40" }
+    options: { temp: "-40" }
 corner_policy:
   objective: worst_case
   constraints: all_corners

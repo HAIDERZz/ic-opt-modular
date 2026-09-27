@@ -62,7 +62,8 @@ def template_deck(deck_text: str, variable_names: list[str]) -> str:
 
 
 def apply_corner(template_text: str, corner: Corner) -> str:
-    """Specialize a template for one process corner (model section/file, parameter values)."""
+    """Specialize a template for one corner: the model section / file of the include line, top-level parameter values, and
+    the ``simulatorOptions`` values (``options``: ``temp`` sets the simulation temperature an ADE export writes as a literal)."""
     result = template_text
     if corner.model_section is not None:
         result, n = INCLUDE_SECTION_RE.subn(r"\g<1>" + corner.model_section, result)
@@ -77,7 +78,38 @@ def apply_corner(template_text: str, corner: Corner) -> str:
         missing = [name for name, count in found.items() if count == 0]
         if missing:
             raise ValueError(f"corner {corner.id}: variables {missing} not found in top-level parameters")
+    if corner.options:
+        result, n = _set_simulator_options(result, corner.options)
+        if n == 0:
+            raise ValueError(f"corner {corner.id}: no top-level 'simulatorOptions' statement to set options {sorted(corner.options)} on")
     return result
+
+
+def _set_simulator_options(text: str, options: dict[str, str]) -> tuple[str, int]:
+    """``key=value`` on every top-level ``simulatorOptions`` statement: an existing key is rewritten in place, a missing one
+    appended to the statement. Returns the text and the number of statements touched."""
+    lines = text.splitlines(keepends=True)
+    output, touched, depth = list(lines), 0, 0
+    for statement in _logical_statements(lines):
+        stmt = "".join(lines[i] for i in statement)
+        first = _first_token(stmt)
+        if first == "subckt":
+            depth += 1
+        elif first == "ends" and depth > 0:
+            depth -= 1
+        if first != "simulatorOptions" or depth:
+            continue
+        new = stmt
+        for key, value in options.items():
+            pattern = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(key)}=\S+")
+            if pattern.search(new):
+                new = pattern.sub(f"{key}={value}", new, count=1)
+            else:
+                body = new.rstrip("\r\n")
+                new = f"{body} {key}={value}{new[len(body):]}"
+        output[statement[0]:statement[-1] + 1] = new.splitlines(keepends=True)   # the same lines, no newline added
+        touched += 1
+    return "".join(output), touched
 
 
 def unreferenced_parameters(deck_text: str, names: list[str]) -> list[str]:

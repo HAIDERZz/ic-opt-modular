@@ -120,7 +120,11 @@ the exports, every section's rules, three complete examples -- is the
 `MixerCS_*` cells of its exports: another mixer's exports carry other top-level
 parameters, so check the `parameters` line before reusing its variables). Every
 variable must be a top-level `parameters` entry of every testbench's exported
-netlist; a device's variables are consumed by `devices` and are not. Sections:
+netlist; a device's variables are consumed by `devices` and are not. A corner
+names its model section and, through `options` (values on the netlist's
+`simulatorOptions` statement, `temp` above all), the simulation temperature:
+an ADE export writes it there as a literal that no parameter follows, as the
+2026-09-27 multi-corner acceptance found. Sections:
 `testbenches` (Maestro export roots), `corners` + `corner_policy`, `variables`
 (grid: lower / upper / step), `metrics` (OCEAN expressions), `constraints`,
 `objective`, `simulator` (preset, retention, and the required `threads_per_run`,

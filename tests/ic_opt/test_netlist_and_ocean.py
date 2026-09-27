@@ -81,3 +81,22 @@ def test_replay_script_names_the_type_of_a_non_scalar_value():
     script = ocean.replay_script([Metric(name="BW", unit="Hz", expression='bandwidth(x 3 "low")')], [], psf_dir="psf",
                                  scalars_file="metrics/ocean_scalars.tsv", waveform_dir="metrics/waveforms")
     assert 'non_scalar:%L' in script and "type(icoptValue)" in script
+
+
+def test_corner_options_set_the_simulator_options_statement():
+    """N-38 (2026-09-27): an ADE export writes the simulation temperature as a literal `temp=27` in `simulatorOptions`
+    that no parameter follows; a corner's `options` rewrite it (a missing key is appended, a nested statement is left alone,
+    and a deck without the statement is an error)."""
+    from ic_opt.sim.netlist import apply_corner
+    from ic_opt.spec import Corner
+
+    deck = ('simulator lang=spectre\ninclude "/pdk/m.scs" section=tt\nparameters temperature=27 F={{F}}\n'
+            'simulatorOptions options psfversion="1.4.0" temp=27 tnom=27 \\\n    scalem=1.0 reltol=1e-3\n'
+            'subckt s (a b)\nsimulatorOptions options temp=99\nends s\ntran tran stop=10n\n')
+    hot = apply_corner(deck, Corner(id="ss", model_section="ss", options={"temp": 125, "gmin": "1e-14"}))
+    assert 'simulatorOptions options psfversion="1.4.0" temp=125 tnom=27 \\\n    scalem=1.0 reltol=1e-3 gmin=1e-14\n' in hot
+    assert "simulatorOptions options temp=99" in hot and 'section=ss' in hot and hot.count("\n") == deck.count("\n")
+    with pytest.raises(ValueError, match="no top-level 'simulatorOptions' statement"):
+        apply_corner("parameters F={{F}}\ntran tran stop=1n\n", Corner(id="ss", options={"temp": "125"}))
+    assert Corner(id="tt").model_dump() == {"id": "tt", "model_section": None, "model_file": None, "variables": {}, "description": ""}
+    assert Corner(id="tt", options={"temp": "27"}).model_dump()["options"] == {"temp": "27"}

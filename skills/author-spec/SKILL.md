@@ -52,15 +52,13 @@ on the host with `ssh HOST cat ...` or through `--plan`, which fetches it):
 - the `nport` instances (`NPORT0 ( P1 0 P2 0 net6 0 net4 0 ) nport ...`): their
   names go in `bindings.instance`, and their terminal order says which device
   port each terminal takes;
-- `simulatorOptions options temp=27 ...`: a temperature written as a literal
-  there does not follow a corner variable; only a top-level parameter the
-  netlist actually uses does. ADE exports write the simulation temperature
-  as that literal and leave `temperature` declared but unused, so a spec
-  cannot change the temperature of such an export: its corners differ by
-  model section only, `--plan` says so (`WARNING the corners set
-  ['temperature'], which this export declares ... but never uses`), and the
-  report must not claim a temperature sweep. Tell the user; do not work
-  around it by editing the export.
+- `simulatorOptions options temp=27 ...`: ADE exports write the simulation
+  temperature there as a literal and leave the `temperature` parameter
+  declared but unused, so a corner `variables: {temperature: ...}` changes
+  nothing (`--plan` warns: `WARNING the corners set ['temperature'], which
+  this export declares ... but never uses`). Set it with the corner's
+  `options: { temp: "125" }`, which rewrites that statement; never edit the
+  export.
 
 From the **package** for a device: `docs/em/devices.md` (every family's fields,
 constraints and retired names); `ic-opt describe` for a block; the examples
@@ -73,7 +71,7 @@ below.
 | "sweep W from 0.6u to 1.2u in 0.2u steps", "F is 20 to 30, even" | `variables`: `continuous_step` with a shared unit suffix, or `integer`; `(upper - lower)` divisible by `step` |
 | "NF at 3 GHz below 9 dB", "gain over 5.5 dB" | `metrics` (an OCEAN expression that returns **one number**) + `constraints` (`lt / le / gt / ge`, value with the metric's unit) |
 | "maximize IIP3", "weigh NF and gain, the worst one counts most" | `objective`: `direction` + an expression over metric names with `+ - * / ** %`, `min`, `max`, `ln` (the bottleneck form: `-(a*min(z1..zn) + b*(w1*z1 + ... ))` with each `z` a clipped normalized margin) |
-| "at tt / ss / ff", "at 125 degrees" | `corners`: `model_section` per corner (the PDK's section names); `variables` only for names on the `parameters` line; `corner_policy` says how corners score |
+| "at tt / ss / ff", "at 125 degrees" | `corners`: `model_section` per corner (the PDK's section names); the temperature through `options: { temp: "125" }` (the `simulatorOptions` statement); `variables` only for names on the `parameters` line the netlist uses; `corner_policy` says how corners score |
 | "the input transformer is a real EM device", "let EMX size the primary width" | `devices` (+ `em`, + a `bindings` entry per nport it feeds) and `variables` named `<device>.<field>` |
 | "what are L, Q and k of the transformer at 60 GHz" | device `metrics`: `quantity` (`Lp / Qp / Ls / Qs / k` with `frequency_hz`, or the scalars `Lp_lf / Lp_res / Qp_peak / SRF_p / k_lf` and their `s` / system `SRF` forms) |
 | "12 points", "no more than 300 simulations" | `budget.max_simulations` (every simulation the project's store holds counts, also the ones a later spec edit stops reusing); the point count is the recipe's `budget=` |
@@ -93,8 +91,11 @@ host**, holding `netlist/input.scs`), `virtuoso_library`, `cell`, `test_name`;
 ### `corners`, `corner_policy`
 Each corner: `id`, `model_section` (replaces the `section=` of the model
 include; there must be one such include line), `model_file` (an absolute host
-path, only to swap the file), `variables` (top-level parameter values, e.g.
-`temperature: "125"` when `temperature` is a parameter the netlist uses).
+path, only to swap the file), `options` (`key=value` on the netlist's
+top-level `simulatorOptions` statement -- rewritten in place, appended when
+missing; `temp: "125"` is how the simulation temperature of an ADE export is
+set, since the export carries it as a literal), `variables` (top-level
+parameter values the netlist actually uses).
 `corner_policy.objective`: `worst_case` (the worst corner's objective is the
 point's) or `nominal`; `corner_policy.constraints`: `all_corners` (every corner
 must satisfy them) or `nominal`. Corners act on PDK devices: a testbench of
@@ -200,8 +201,8 @@ testbenches:
     cell: LNA_Gain
     test_name: Gain_Test
 corners:
-  - { id: tt, model_section: Post_simu_top_tt, variables: { temperature: "27" } }
-  - { id: ss, model_section: Post_simu_top_ss, variables: { temperature: "125" } }
+  - { id: tt, model_section: Post_simu_top_tt, options: { temp: "27" } }
+  - { id: ss, model_section: Post_simu_top_ss, options: { temp: "125" } }
 corner_policy: { objective: worst_case, constraints: all_corners }
 variables:
   - { name: W,     kind: continuous_step, lower: 0.6u, upper: 1.2u, step: 0.2u }
