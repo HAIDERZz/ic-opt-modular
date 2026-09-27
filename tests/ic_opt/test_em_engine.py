@@ -170,6 +170,26 @@ def test_point_stage_cache_hits_across_points_and_survives_processes(tmp_path):
     assert uncached.runs == 1
 
 
+def test_points_of_one_batch_with_the_same_fingerprint_do_the_work_once(tmp_path):
+    """N-54 (2026-09-28): two workers of a batch met the same geometry, both missed the cache and both ran EMX (61 runs for
+    55 geometries in the N-51 campaign). The later ones now wait for the first one's entry and read it."""
+    import time
+
+    class Slow(Build):
+        def run(self, point, ctx):
+            time.sleep(0.2)
+            return super().run(point, ctx)
+
+    spec = em_spec(testbenches=False)
+    build = Slow()
+    batch = [Point({"d.od": "30", "F": str(f)}, "user") for f in (20, 22, 24)] + [Point({"d.od": "40", "F": "20"}, "user")]
+    obs, store = run(spec, [build, Measure()], batch, tmp_path, parallel_jobs=4)
+    assert build.runs == 2 and sorted(o.cache["build"] for o in obs) == ["hit", "hit", "miss", "miss"]
+    assert {o.metrics["Q"] for o in obs} == {60.0, 80.0}
+    step = json.loads((store.root / "steps.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert 0 < step["wall_seconds"] < step["seconds"]           # the points overlap: their durations add up to more than the clock
+
+
 def test_workers_are_capped_by_the_host_entry_of_the_heaviest_stage():
     spec = em_spec()
     pipeline = [Build(), Measure(), CircuitChild()]              # threads: circuit 10; memory: build 32 GB
@@ -226,9 +246,33 @@ def test_spec_routes_variables_to_devices_and_circuit():
     bare = Spec.model_validate(d)
     assert bare.device_fields(bare.device("d")) == {"od": "od", "w": "w"} and bare.circuit_variables == []
 
+    joint = em_spec().model_dump(mode="json")                    # with testbenches the bare names are the circuit's (N-51)
+    joint["variables"] = [{"name": "od", "kind": "integer", "lower": "20", "upper": "60", "step": "10"},
+                          {"name": "F", "kind": "integer", "lower": "20", "upper": "30", "step": "2"}]
+    both = Spec.model_validate(joint)
+    assert both.device_fields(both.device("d")) == {} and both.circuit_variables == ["od", "F"]
+
     d["devices"][0]["variables"] = {"outer_diameter_um": "od"}   # explicit mapping wins; unmapped names stay circuit variables
     explicit = Spec.model_validate(d)
     assert explicit.device_fields(explicit.device("d")) == {"outer_diameter_um": "od"} and explicit.circuit_variables == ["w"]
+
+
+def test_report_ranks_a_device_quantity_among_its_device_variables_only():
+    """N-51 (2026-09-28): a device's quantity depends on the device's variables alone; ranked among all of them, a circuit
+    variable that happened to move with the geometry took a share of SRF."""
+    pytest.importorskip("shap")
+    from ic_opt.blocks import analyze
+    from ic_opt.observation import Observation, Observations
+
+    spec = em_spec()
+    rows = Observations()
+    for i, (od, f) in enumerate([(20, 20), (20, 22), (30, 22), (30, 24), (40, 24), (40, 26), (50, 28), (60, 30), (60, 28), (50, 26)], 1):
+        rows.append(Observation(obs_id=f"obs_{i:04d}", params={"d.od": str(od), "F": str(f)}, origin="user",
+                                metrics={"Q": 2.0 * od, "NF": 0.3 * f + 0.01 * od}, fom=0.3 * f, objective=0.3 * f, feasible=True,
+                                status="ok", spec_fingerprint="s", pipeline_fingerprint="p", started_at="t", finished_at="t"))
+    lines = analyze._importance_section(spec, rows).splitlines()
+    assert "- Q (its device's variables): d.od 100.0%" in lines
+    assert any(line.startswith("- NF: ") and "F " in line and "d.od " in line for line in lines)
 
 
 def test_spec_rejects_bad_em_sections():

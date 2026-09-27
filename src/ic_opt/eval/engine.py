@@ -213,6 +213,7 @@ def run(
             _retain(spec, job, results, executor, store)
             return job
 
+        began = time.monotonic()
         with ThreadPoolExecutor(max_workers=workers) as pool:
             try:
                 jobs = list(pool.map(evaluate_job, jobs))
@@ -227,7 +228,8 @@ def run(
     store.log_step(
         step, "ok", points=len(points), new=sum(not j.reused for j in jobs), reused=sum(j.reused for j in jobs),
         simulations=sum(simulations(j.observation) for j in jobs if not j.reused), workers=workers,
-        seconds=round(sum(j.seconds for j in jobs), 1),
+        seconds=round(sum(j.seconds for j in jobs), 1),              # the points' own durations added up (they overlap)
+        wall_seconds=round(time.monotonic() - began, 1),             # what the batch took on the clock
     )
     return Observations(j.observation for j in jobs)
 
@@ -257,7 +259,7 @@ def _run_stages(stages: list[Stage], value, ctx: StageContext, stopping=None):
     for stage in stages:
         _unless_stopping(stopping, f"{ctx.obs_id} {stage.name}")
         try:
-            value = _run_cached(stage, value, ctx) if stage.level == "point" else stage.run(value, ctx)
+            value = _run_cached(stage, value, ctx, stopping) if stage.level == "point" else stage.run(value, ctx)
         except StageFailure as failure:
             failure.stage = stage.name
             raise
@@ -268,24 +270,40 @@ def _run_stages(stages: list[Stage], value, ctx: StageContext, stopping=None):
     return value
 
 
-def _run_cached(stage: Stage, value, ctx: StageContext):
-    """Point-level stages with a fingerprint are served from the store's cache; the engine owns the cache, the stage its format."""
+_FLIGHTS: dict[str, threading.Lock] = {}
+_FLIGHTS_GUARD = threading.Lock()
+
+
+def _flight(entry: Path) -> threading.Lock:
+    """One lock per cache entry, for the life of the process."""
+    with _FLIGHTS_GUARD:
+        return _FLIGHTS.setdefault(str(entry), threading.Lock())
+
+
+def _run_cached(stage: Stage, value, ctx: StageContext, stopping=None):
+    """Point-level stages with a fingerprint are served from the store's cache; the engine owns the cache, the stage its format.
+
+    Points of one batch with the same fingerprint do the work once: the first runs it, the others wait for its entry and read
+    it as a hit. Before N-54 (2026-09-28) each of them missed and ran, the later results thrown away: 61 EMX runs for 55
+    geometries in the N-51 campaign."""
     fingerprint = stage.fingerprint(value, ctx)
     if fingerprint is None:
         return stage.run(value, ctx)
     entry = ctx.store.cache_dir(stage.name, fingerprint)
-    if (entry / ".complete").exists():
-        ctx.cache[stage.name] = "hit"
-        return stage.load(entry, value, ctx)
-    out = stage.run(value, ctx)
-    ctx.cache[stage.name] = "miss"
-    staging = Path(tempfile.mkdtemp(prefix=f".{fingerprint}.", dir=entry.parent))
-    stage.save(out, staging)
-    (staging / ".complete").touch()
-    if (entry / ".complete").exists():           # another point finished the same work first; keep the first writer
-        shutil.rmtree(staging, ignore_errors=True)
-    else:
-        staging.rename(entry)
+    with _flight(entry):
+        if (entry / ".complete").exists():
+            ctx.cache[stage.name] = "hit"
+            return stage.load(entry, value, ctx)
+        _unless_stopping(stopping, f"{ctx.obs_id} {stage.name}")      # interrupted while it waited: the work does not start
+        out = stage.run(value, ctx)
+        ctx.cache[stage.name] = "miss"
+        staging = Path(tempfile.mkdtemp(prefix=f".{fingerprint}.", dir=entry.parent))
+        stage.save(out, staging)
+        (staging / ".complete").touch()
+        if (entry / ".complete").exists():           # another process finished the same work first; keep the first writer
+            shutil.rmtree(staging, ignore_errors=True)
+        else:
+            staging.rename(entry)
     return out
 
 

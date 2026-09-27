@@ -228,21 +228,28 @@ def _importance_section(spec: Spec, obs: Observations) -> str:
     x = np.array([space.to_raw(spec, o.params) for o in rows])
     names = [v.name for v in spec.variables]
     targets: dict[str, list[float]] = {}
+    own: dict[str, list[int]] = {}               # a device quantity: the columns of that device's variables, nothing else reaches it
     if spec.objective:
         targets["objective"] = [o.fom if o.fom is not None else math.nan for o in rows]
     for m in spec.metrics:
         targets[m.name] = [o.metrics.get(m.name, math.nan) for o in rows]
+        if m.device is not None:
+            mine = set(spec.device_fields(spec.device(m.device)).values())
+            own[m.name] = [i for i, n in enumerate(names) if n in mine]
     lines = []
     for target, y in targets.items():
         y = np.array(y, dtype=float)
         mask = np.isfinite(y)
-        if mask.sum() < 8 or np.allclose(y[mask], y[mask][0]):
+        columns = own.get(target, list(range(len(names))))
+        if mask.sum() < 8 or np.allclose(y[mask], y[mask][0]) or not columns:
             continue
-        model = lightgbm.LGBMRegressor(n_estimators=200, learning_rate=0.05, min_child_samples=2, verbose=-1).fit(x[mask], y[mask])
-        values = np.abs(shap.TreeExplainer(model).shap_values(x[mask])).mean(axis=0)
+        features = x[mask][:, columns]
+        model = lightgbm.LGBMRegressor(n_estimators=200, learning_rate=0.05, min_child_samples=2, verbose=-1).fit(features, y[mask])
+        values = np.abs(shap.TreeExplainer(model).shap_values(features)).mean(axis=0)
         total = values.sum() or 1.0
-        ranked = sorted(zip(names, values / total, strict=True), key=lambda kv: -kv[1])
-        lines.append(f"- {target}: " + ", ".join(f"{n} {100 * s:.1f}%" for n, s in ranked))
+        ranked = sorted(zip([names[i] for i in columns], values / total, strict=True), key=lambda kv: -kv[1])
+        scope = " (its device's variables)" if target in own else ""
+        lines.append(f"- {target}{scope}: " + ", ".join(f"{n} {100 * s:.1f}%" for n, s in ranked))
     return "\n".join(lines) or "_no target had enough variation_"
 
 

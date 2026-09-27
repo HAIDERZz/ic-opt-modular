@@ -94,6 +94,25 @@ def test_cli_streams_are_utf8_whatever_the_console_locale(monkeypatch):
     assert sys.stdout.encoding == "cp936"
 
 
+def test_cli_streams_reach_a_redirected_log_line_by_line(monkeypatch):
+    """N-51 (2026-09-28): redirected to a file, stdout was block-buffered and the per-batch `[evaluate]` lines reached the log
+    when the process ended; the run could not be watched. Both streams are line-buffered."""
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+    out = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", io.TextIOWrapper(io.BytesIO(), encoding="utf-8"))
+    print("[evaluate] batch 1")
+    assert out.buffer.getvalue() == b""                               # Python's default for a file or a pipe
+    cli._utf8_streams()
+    assert sys.stdout.line_buffering and sys.stderr.line_buffering
+    print("[evaluate] batch 2")
+    assert out.buffer.getvalue() == b"[evaluate] batch 1\n[evaluate] batch 2\n"
+    monkeypatch.setenv("PYTHONIOENCODING", "cp936")                   # an explicit encoding keeps the encoding, not the buffering
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="cp936"))
+    cli._utf8_streams()
+    assert sys.stdout.encoding == "cp936" and sys.stdout.line_buffering
+
+
 def test_blocks_survives_a_gbk_console_locale():
     """The Windows failure reproduced on Linux: under the zh_CN.gbk locale a piped stdout is gbk (skipped where that
     locale is not installed), and a bare print of the glyph fails exactly as the controller did."""

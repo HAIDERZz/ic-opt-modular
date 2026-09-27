@@ -517,13 +517,15 @@ class Spec(Model):
         return next(d for d in self.devices if d.id == device_id)
 
     def device_fields(self, device: Device) -> dict[str, str]:
-        """Generator field -> spec variable name. Explicit mapping, else ``<id>.<field>`` names,
-        else (single device, no prefixed names) every variable is a generator field."""
+        """Generator field -> spec variable name. Explicit mapping, else ``<id>.<field>`` names, else -- in a spec of one
+        device and no testbench, its names without a prefix -- every variable is a generator field. With testbenches the
+        unprefixed names are the circuit's: taking them all for the device left the netlists without their parameters
+        (N-51, 2026-09-28)."""
         if device.variables:
             return dict(device.variables)
         prefix = f"{device.id}."
         mapped = {v.name[len(prefix):]: v.name for v in self.variables if v.name.startswith(prefix)}
-        if mapped or len(self.devices) != 1 or any("." in v.name for v in self.variables):
+        if mapped or len(self.devices) != 1 or self.testbenches or any("." in v.name for v in self.variables):
             return mapped
         return {v.name: v.name for v in self.variables}
 

@@ -81,6 +81,8 @@ def test_replay_script_names_the_type_of_a_non_scalar_value():
     script = ocean.replay_script([Metric(name="BW", unit="Hz", expression='bandwidth(x 3 "low")')], [], psf_dir="psf",
                                  scalars_file="metrics/ocean_scalars.tsv", waveform_dir="metrics/waveforms")
     assert 'non_scalar:%L' in script and "type(icoptValue)" in script
+    # N-51 (2026-09-28): nil is SKILL's empty list, so `compressionVRI` finding no compression point read `non_scalar:list`
+    assert "if(null(icoptValue) then" in script and "no_value:nil" in script
 
 
 def test_corner_options_set_the_simulator_options_statement():

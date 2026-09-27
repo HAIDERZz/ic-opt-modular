@@ -121,4 +121,5 @@ def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, p
     return (f"({' + '.join(p for p in parts if p)}) = {len(children) + em} simulations per point on {executor.host}, "
             f"{workers} workers × {heaviest.resources.threads} threads"
             + (f" / {heaviest.resources.memory_gb:g} GB" if heaviest.resources.memory_gb else "") + f" ({heaviest.name})"
-            + (f", EMX at once ≤ {cap} (em.parallel_jobs)" if cap else ""))
+            + (f", EMX at once ≤ {cap} (em.parallel_jobs)" if cap else "")
+            + (", EMX results cached per geometry: a repeated geometry costs no run" if em else ""))

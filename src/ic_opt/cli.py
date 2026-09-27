@@ -269,12 +269,18 @@ def _utf8_streams() -> None:
     summary with a glyph outside it (UnicodeEncodeError, the 2026-09-27 Windows acceptance). Same handlers as Python's
     UTF-8 mode (the default from 3.15, PEP 686): surrogateescape on stdout, backslashreplace on stderr. An explicit
     PYTHONIOENCODING wins, as it does over UTF-8 mode; a stream already on UTF-8 (the Windows console, pytest's capture)
-    is left alone."""
-    if os.environ.get("PYTHONIOENCODING"):
-        return
+    is left alone.
+
+    Both streams are line-buffered: a run redirected to a file shows its `[evaluate]` lines batch by batch. Block-buffered
+    (Python's default for a file or a pipe), they reached the log when the process ended, and the line that says "stop and
+    fix the expression" could not be read while the run was going (N-51, 2026-09-28)."""
+    explicit = bool(os.environ.get("PYTHONIOENCODING"))
     for stream, errors in ((sys.stdout, "surrogateescape"), (sys.stderr, "backslashreplace")):
-        if hasattr(stream, "reconfigure") and (stream.encoding or "").lower().replace("-", "") != "utf8":
+        if not hasattr(stream, "reconfigure"):
+            continue
+        if not explicit and (stream.encoding or "").lower().replace("-", "") != "utf8":
             stream.reconfigure(encoding="utf-8", errors=errors)
+        stream.reconfigure(line_buffering=True)
 
 
 def main() -> None:

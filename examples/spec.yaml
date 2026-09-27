@@ -17,10 +17,10 @@ testbenches:
     cell: MixerCS_PSS_IIP3
     test_name: Mixer_CS_IIP3
   - id: p1db
-    maestro_point_root: /home/username/simulation/Virtuoso_Bridge_test/MixerCS_PSS_P1dB/maestro/results/maestro/Interactive.N/1/P1dB_Test
+    maestro_point_root: /home/username/simulation/Virtuoso_Bridge_test/MixerCS_PSS_P1dB/maestro/results/maestro/Interactive.N/1/Mixer_CS_P1dB
     virtuoso_library: Virtuoso_Bridge_test
     cell: MixerCS_PSS_P1dB
-    test_name: P1dB_Test
+    test_name: Mixer_CS_P1dB
 
 # Optional. Omit the whole section to simulate only at the source point's corner.
 # `options` sets values on the netlist's `simulatorOptions` statement: ADE exports write the simulation temperature
@@ -70,10 +70,13 @@ metrics:
     unit: dBm
     testbench: iip3
     expression: rapidIIPN("pac_ip3")
+  # The input-referred 1 dB compression point. `compressionVRI` returns nil where the gain has not fallen 1 dB at the
+  # sweep's last input power (N-51, 2026-09-28: 6 of 80 points, the low-gain ones); `or` then gives that last power, read
+  # from the data (`xmax(xval(w))` is the largest x of `w`), so the value means "at least" there.
   - name: P1dB
     unit: dBm
     testbench: p1db
-    expression: compressionVRI((v("/IF_P" ?result "pss_fd") - v("/IF_N" ?result "pss_fd")) '1 ?rport resultParam("PORT2:r" ?result "pss_fd") ?gcomp 1)
+    expression: or(compressionVRI((v("/IF_P" ?result "pss_fd") - v("/IF_N" ?result "pss_fd")) '1 ?rport resultParam("PORT2:r" ?result "pss_fd") ?gcomp 1) xmax(xval(harmonic((v("/IF_P" ?result "pss_fd") - v("/IF_N" ?result "pss_fd")) '1))))
 
 constraints:
   - { metric: BW,       op: gt, value: 28e9 Hz }

@@ -59,7 +59,9 @@ from `c10.dll`), as the 2026-09-27 Windows acceptance found. ic-opt writes UTF-8
 to stdout and stderr on every platform: Python's own streams follow the Windows
 code page when redirected to a file, and `ic-opt blocks` crashed on a Chinese
 controller's cp936 in the same acceptance; an explicit `PYTHONIOENCODING` still
-wins. Every text file ic-opt reads or writes names its encoding (UTF-8). The
+wins. Both streams are line-buffered, so a run redirected to a log shows its
+per-batch lines while it runs (the 2026-09-28 joint-optimization acceptance
+could read them only after the process ended). Every text file ic-opt reads or writes names its encoding (UTF-8). The
 plan check's fetched trees are removed through `localpath.literal` too, and a
 test keeps every tree copy or removal on export trees there: the 2026-09-27
 multi-corner acceptance (N-35) found `--plan` dying in a `TemporaryDirectory`
@@ -187,9 +189,11 @@ devices:
     profile: demo_6m                      # process rule profile; yours: IC_OPT_PROFILE_DIRS=/path/to/profiles
     ports: [P1, N1, P2, N2]
     fixed: {primary_outer_diameter_um: 90, primary_metal: "6", secondary_metal: "5", ground_fixture: {...}}
-    variables: {primary_width_um: xfmr_in.wp}    # default: spec variables named <id>.<field>
+    variables: {primary_width_um: xfmr_in.wp}    # default: spec variables named <id>.<field>; beside testbenches a
+                                                 # name without the prefix is a circuit variable
 em:
-  process_file: /path/to/your.proc      # placeholder: your EMX process file, a path on the simulation host
+  process_file: /path/to/your.proc      # placeholder: your EMX process file, a path on the simulation host (POSIX);
+                                        # IC_OPT_PROFILE_DIRS is read where ic-opt runs: D:/work/profiles on Windows
   frequencies: {start_hz: 0, stop_hz: 200e9, step_hz: 1e9}
   accuracy: standard
   three_d_metals: [M6, M5]              # the windings' metals, by their EMX names

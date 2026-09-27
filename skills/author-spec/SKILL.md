@@ -121,7 +121,8 @@ device variables are `<device>.<field>` (or listed under the device's
 Testbench metric: `name`, `unit`, `expression` (OCEAN, must evaluate to a
 scalar -- `value(...)`, `ymax(...)`, `ymin(...)`, `xmax(...)`, `xmin(...)`,
 `cross(...)`, `rapidIIPN(...)`, `compressionVRI(...)`; `bandwidth(...)` and
-other waveform-returning calls fail as `non_scalar:<type>`), `testbench`
+other waveform-returning calls fail as `non_scalar:<type>`, a call that finds
+nothing as `no_value:nil`), `testbench`
 (required with more than one testbench). Replacements that keep the meaning:
 
 | ADE gives | write |
@@ -130,12 +131,20 @@ other waveform-returning calls fail as `non_scalar:<type>`), `testbench`
 | a curve `w` at one frequency | `value(w 3e+09)` |
 | a curve's peak / its frequency | `ymax(w)` / `xmax(w)` |
 | `cross(...)` alone | partial: it errors where there is no crossing -- wrap it as above so every point yields a number |
+| `compressionVRI(<v> '1 ?rport <r> ?gcomp 1)` alone | partial: it returns nil where the gain never falls 1 dB inside the swept input power (`no_value:nil`) -- `or(compressionVRI(<v> '1 ?rport <r> ?gcomp 1) xmax(xval(harmonic(<v> '1))))`: the compression point, or the last swept input power when there is none |
 
 The wrapped bandwidth is right-censored: where the gain never falls 3 dB
 inside the swept window it returns the window's far edge (the pac window's
 width, 32 GHz on a 80-112 GHz sweep), so that value means "at least", a
 constraint on it stops discriminating there, and its normalized score sits at
 full marks. Widen the sweep or say so in the report (N-42: 49 of 80 points).
+The wrapped compression point is right-censored the same way: a point whose
+gain has not fallen 1 dB at the sweep's last input power reports that power (0
+dBm on a -40..0 dBm sweep), meaning "at least". Such points are usually the
+low-gain ones (N-51: 6 of 80, all in the first three batches), so check the
+gain before reading the value as linearity. The fallback reads the sweep from
+the data: with the signal missing it fails as `expression_error`, it does not
+turn into a number. A number typed in its place would.
 
 YAML: an OCEAN expression carries quotes, so write it as a plain scalar on its
 own line (`expression: value(getData("NF" ?result "pnoise") 3e+09)`) or as a
@@ -174,7 +183,9 @@ profile id found through `IC_OPT_PROFILE_DIRS`), `ports` (the family's fixed
 port set, in order: `[P1, N1]`, `[P1, N1, P2, N2]`, plus `CT` / `CTP` / `CTS`
 with a tap metal), `fixed` (every generator field that is not a variable,
 including `ground_fixture`), `variables` (field -> spec variable; default
-`<id>.<field>`), `topology` only for a generator whose secondary winds the
+`<id>.<field>`; names without the prefix are the device's only in a spec of
+one device and no testbench -- beside testbenches they are circuit
+variables), `topology` only for a generator whose secondary winds the
 other way (`drives: [[P1, N1], [P2, N2]]`).
 
 ### `em`
@@ -186,7 +197,9 @@ windings' metals by their EMX names), `threads`, `memory_gb`, `timeout_s`
 (optional `parallel_jobs`: EMX runs at once across the workers, when the
 user caps them below `simulator.parallel_jobs`)
 (required, the user's), `simultaneous_frequencies: 0` (keep it). One `em`
-section serves every device.
+section serves every device. `process_file` is a path on the simulation host
+(POSIX); `IC_OPT_PROFILE_DIRS` is read on the machine running ic-opt, so on a
+Windows controller it is a Windows path (`D:/work/profiles`).
 
 ### `bindings`
 One per nport instance that takes a device's S-parameters: `testbench`,
