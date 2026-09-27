@@ -153,3 +153,10 @@ T1–T7 每个任务一个提交（在 `refactor/modular-blocks` 分支）。
 - 第 2 次重跑（Codex 在用户的 Windows 10.0.26200 上执行，修复版 wheel main@35ff42b，辅助操作全部经 `n15_tools.py`）：本地 doctor 按设计在 executor 拒绝；远程 doctor 9/9 ok；`--plan` 无仿真；真实运行退出码 0（97 s，服务器上 6 次 Spectre）；v2 比对 PASS。
 - Claude 服务器侧独立复核：scratch 下 6 个子任务工作目录（含 psf 与原名尾点文件）；用服务器脚本与原始基线重比 PASS；40 个记录值逐位相同；zip CRC 通过、9 个尾点文件原名保留；控制端无 psf。
 - ADR-0001 状态与验收段更新为"已由真实 Windows 控制端验收"。N-21 经真机确认。macOS 仍未测。
+
+### 2026-09-28 · N-51 联合优化验收通过，发布 0.4.0
+
+- N-51：Windows agent 自主完成 80 点联合优化（8 个电路变量 + 3 个变压器几何变量，3 平台 × 3 corner），服务器复核全部数字一致；引出的 7 个产品问题已修（`06087ae`，N-54 … N-60），候选 N-61 … N-65 入表。复核记录 `/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-accept/n51/N51_SERVER_REVIEW_CN.md`。
+- author-spec 补"电路 + 器件联合优化"完整示例；验证覆盖表加入 N-51（`afe6383`）。
+- 0.4.0 发布（`ecec991`，标签 `v0.4.0`）：脱敏复查、与 0.3.0 的指纹兼容性核对、全部测试、干净安装、GitHub Release。证据 `/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-accept/release_v0.4.0/`。
+

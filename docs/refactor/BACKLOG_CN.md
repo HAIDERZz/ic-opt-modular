@@ -28,6 +28,18 @@
 | RT-4 | Claude：合入并验收 RT-1..3；`RELEASE_NOTES_v0.3.0.md`（升级步骤：写 site.yaml、补 spec 资源字段、`migrate-store`）；版本号 `pyproject` / `__init__` / README；干净环境安装检查；定向测试 | 已做（发布提交 + 本地标签 v0.3.0；非 pcell 271 绿、pcell 917/288 绿、CLI 77 绿、干净安装 PASS） |
 | RT-5 | `git push origin v0.3.0`（Claude 已于 2026-09-25 推送）与 GitHub Release 页（发布说明用 `RELEASE_NOTES_v0.3.0.md`） | 已做：标签由 Claude 推送，Release 页由用户于 2026-09-25 发布（wheel + sdist 从 v0.3.0 标签构建） |
 
+## 0.6 发布 0.4.0（用户 2026-09-28 拍板："当前的版本可以发布到 github 上了，作为版本存档"）
+
+| # | 事项 | 状态 |
+|---|---|---|
+| RL-1 | 脱敏复查：0.3.0 以来的改动、wheel、sdist、全部已跟踪文本、新增图片 | 已做：敏感 1 项（一个合成测试 profile 里的虚构值恰与真实值相同）已修；构建产物无命中；记录在 `N28_DESENSITISATION_AUDIT_2026-09-25_CN.md` 第 9 节 |
+| RL-2 | 与 0.3.0 的兼容性：用两个版本的代码对同一批 spec 计算指纹 | 已做：spec 指纹与三条流水线（Spectre、纯器件、电路内器件）的指纹全部相同，几何版本未变，真实库 9250 行全部可读；0.3.0 的 store 不需要迁移 |
+| RL-3 | 版本号（`pyproject` / `__init__` / README）、`RELEASE_NOTES_v0.4.0.md` | 已做（`ecec991`） |
+| RL-4 | 测试与安装：全部测试、`ruff`、干净环境安装、从 wheel 安装 | 已做：非 pcell 452 通过 / 12 跳过；pcell 有私有 profile 975 通过 / 1 跳过、无私有 profile 341 通过 / 635 跳过；`ruff` 通过；`check_clean_install.sh` PASS；wheel 在全新环境安装后 `ic-opt --version` 为 0.4.0 |
+| RL-5 | 标签、推送、GitHub Release | 已做（Claude，2026-09-28）：`git push origin main`、`git push origin v0.4.0`、`gh release create`（wheel + sdist + 校验和）；下载后校验和一致。页面 https://github.com/HAIDERZz/ic-opt-modular/releases/tag/v0.4.0 |
+
+0.4.0 之后的主线：优化算法（路线与依据见 `/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/optimizer_research/00_README_CN.md`，候选 N-62 … N-64 并入）。Windows 远程流程验证与 skill 文档已收尾；"停止运行"在真机上未验证，用户 2026-09-28 决定不补，留在覆盖表里。
+
 ## 1. 已拍板事项（2026-09-25）
 
 | # | 事项 | 决定 | 落点 |
