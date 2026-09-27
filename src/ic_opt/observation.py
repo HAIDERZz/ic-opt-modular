@@ -15,7 +15,7 @@ class ChildResult(BaseModel):
 
     unit: str = Field(validation_alias=AliasChoices("unit", "testbench"))   # testbench id or device id
     corner: str | None = None
-    status: str                                   # "ok" | "failed:<stage>"
+    status: str                                   # "ok" | "metric_failed" (ran; an expression returned nil / non-scalar) | "failed:<stage>"
     metrics: dict[str, float] = Field(default_factory=dict)
     issues: list[str] = Field(default_factory=list)
     sim_dir: str | None = None                    # relative to the project root

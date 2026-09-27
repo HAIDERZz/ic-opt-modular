@@ -99,10 +99,17 @@ def test_ocean_retries_then_fails(tmp_path):
     assert sum(c.startswith("ocean") for c in executor.commands) == 3
 
 
-def test_missing_metric_is_an_extract_failure_not_an_exception(tmp_path):
+def test_a_failed_metric_marks_the_child_metric_failed_and_keeps_the_others(tmp_path):
+    """N-31 (2026-09-27): an expression that returns nil / a non-scalar costs that metric, not the child's other metrics."""
     executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {"NF": None})
     child, _ = run_chain(tmp_path, executor)
-    assert child.status == "failed:extract" and child.metrics == {} and "non_scalar" in child.issues[0]
+    assert child.status == "metric_failed" and child.metrics == {} and "non_scalar" in child.issues[0]
+
+    spec = make_spec(metrics=[{"name": "NF", "unit": "dB", "expression": "nf()"}, {"name": "gain", "unit": "dB", "expression": "g()"}])
+    executor = FakeSpectreExecutor(tmp_path / "two" / ".icopt" / "sims", lambda p, tb, c: {"NF": None, "gain": 3.0})
+    child, _ = run_chain(tmp_path / "two", executor, spec=spec)
+    assert child.status == "metric_failed" and child.metrics == {"gain": 3.0}
+    assert child.issues == ["metric NF failed: non_scalar"]
 
 
 def test_spectre_retries_once_on_a_transient_socket_failure(tmp_path):

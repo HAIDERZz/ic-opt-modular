@@ -64,10 +64,15 @@ class OpenBoxSuggester:
         return Proposal(raw, tag="init" if len(history) < design else "acq")
 
 
-def initial_design_size(spec: Spec, initial_trials: int | None = None) -> int:
-    """How many points OpenBox spends on its initial design before the surrogate proposes: ``initial_trials`` when given,
-    else twice the number of variables (at least one). ``opt.optimize`` prints what that leaves the surrogate."""
-    return int(initial_trials) if initial_trials else max(2 * len(spec.variables), 1)
+def initial_design_size(spec: Spec, initial_trials: int | None = None, budget: int | None = None) -> int:
+    """How many points OpenBox spends on its initial design before the surrogate proposes: ``initial_trials`` when given;
+    else, with the run's ``budget`` known (``opt.optimize`` passes it), the smaller of twice the number of variables and
+    half the budget, so at least half of a small run reaches the surrogate (N-30, 2026-09-27: 12 points on 4 variables
+    used to be design throughout); without a budget, twice the variables. At least one."""
+    if initial_trials:
+        return int(initial_trials)
+    variables = max(2 * len(spec.variables), 1)
+    return variables if budget is None else max(1, min(variables, int(budget) // 2))
 
 
 def _config_space(spec: Spec, sp):

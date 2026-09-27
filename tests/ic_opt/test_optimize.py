@@ -8,6 +8,7 @@ from ic_opt.blocks.optimize import adopt, optimize, suggest, surrogate_points
 from ic_opt.deck import Deck
 from ic_opt.observation import ChildResult, Observation
 from ic_opt.store import RunStore
+from ic_opt.suggesters.openbox import initial_design_size
 from ic_opt.suggesters.turbo import _active_start, _batches
 from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec, needs_turbo, restamp
 
@@ -109,13 +110,24 @@ def test_surrogate_points_counts_the_batches_that_start_past_the_initial_design(
     assert surrogate_points(0, 8, 8, 8) == 0 and surrogate_points(0, 9, 8, 8) == 1 and surrogate_points(9, 9, 8, 8) == 0
 
 
+def test_initial_design_size_defaults_to_the_smaller_of_twice_the_variables_and_half_the_budget():
+    """N-30 (user decision 2026-09-27): a small run must reach the surrogate. N-27's 12 points on 4 variables: design 6, not 8."""
+    spec = make_spec()                                         # two variables
+    four = make_spec(variables=[{"name": n, "kind": "integer", "lower": "1", "upper": "9", "step": "1"} for n in "ABCD"])
+    assert initial_design_size(four, None, 12) == 6 and surrogate_points(0, 12, 6, 6) == 6
+    assert initial_design_size(four, None, 100) == 8 and initial_design_size(four, None) == 8
+    assert initial_design_size(spec, None, 12) == 4 and initial_design_size(spec, None, 3) == 1 and initial_design_size(spec, None, 1) == 1
+    assert initial_design_size(four, 3, 100) == 3                # an explicit initial_trials wins
+
+
 def test_openbox_marks_initial_design_points_and_says_when_the_surrogate_never_proposes(tmp_path, capsys):
-    """Two variables: initial design 4. A budget of 4 in one batch is design throughout, and the run says so; continuing to
-    8 makes the second batch the surrogate's, and every point's origin says which served it (N-27, ISSUE-8)."""
+    """Two variables. A budget of 4 in one batch (design min(4, 2) = 2, but the one batch starts at 0) is design throughout,
+    and the run says so; continuing to 8 (design 4) makes the second batch the surrogate's, and every point's origin says
+    which served it (N-27, ISSUE-8)."""
     spec, store, ex, deck = project(tmp_path)
     first = optimize(spec, ex, store, deck=deck, strategy="openbox_gp_eic", budget=4, batch=4, seed=1, limits=FAKE_HOST)
     out = capsys.readouterr().out
-    assert "[opt] openbox initial design 4 points: the surrogate proposes 0 of the 4 new points -- WARNING: none" in out
+    assert "[opt] openbox initial design 2 points: the surrogate proposes 0 of the 4 new points -- WARNING: none" in out
     assert {o.origin for o in first} == {"suggest:openbox_gp_eic:init"}
     both = optimize(spec, ex, store, deck=deck, strategy="openbox_gp_eic", budget=8, batch=4, seed=1, limits=FAKE_HOST)
     out = capsys.readouterr().out

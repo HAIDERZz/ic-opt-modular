@@ -265,7 +265,7 @@ def test_retention_drops_psf_of_failed_runs_when_configured(tmp_path):
     ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": None if p["F"] == "20" else 8.0})
     obs = evaluate(spec, [Point({"F": "20", "W": "0.6u"}, "user"), Point({"F": "22", "W": "0.6u"}, "user")], ex, store, deck=deck_for(spec), limits=FAKE_HOST)
 
-    assert obs[0].status == "failed:extract" and obs[1].status == "ok"
+    assert obs[0].status == "metric_failed" and obs[1].status == "ok"        # a nil metric: the point ran, its psf is a failed run's
     assert not Path(tmp_path, obs[0].children["tb/nominal"].sim_dir, "psf").exists()
     assert Path(tmp_path, obs[1].children["tb/nominal"].sim_dir, "psf").exists()
 
@@ -370,3 +370,26 @@ def test_migrate_store_restamps_a_project_once_and_nothing_else(tmp_path):
 
     evaluate(spec, points, ex, RunStore(tmp_path), deck=deck_for(spec), limits=FAKE_HOST)   # the restamped rows are reused
     assert sum(c.startswith("spectre") for c in ex.commands) == 2
+
+
+def test_a_nil_metric_at_one_corner_keeps_every_computed_metric(tmp_path):
+    """N-31 (2026-09-27, user decision): the child whose expression returned nil is metric_failed and keeps its other metrics;
+    the point is metric_failed, keeps the nominal corner's metrics and names the failure, instead of losing everything."""
+    spec = make_spec(corners=[{"id": "tt"}, {"id": "ss"}],
+                     metrics=[{"name": "NF", "unit": "dB", "expression": "nf()"}, {"name": "gain", "unit": "dB", "expression": "g()"}],
+                     constraints=[{"metric": "NF", "op": "lt", "value": "9"}], objective={"direction": "minimize", "expression": "NF"})
+    store = RunStore(tmp_path)
+
+    def metric_fn(p, tb, c):
+        nf = None if (p["F"] == "20" and c == "ss") else 8.0 + (0.5 if c == "ss" else 0.0)
+        return {"NF": nf, "gain": 3.0 + int(p["F"]) / 10}
+
+    ex = FakeSpectreExecutor(store.root / "sims", metric_fn)
+    obs = evaluate(spec, [Point({"F": "20", "W": "0.6u"}, "user"), Point({"F": "22", "W": "0.6u"}, "user")], ex, store, deck=deck_for(spec), limits=FAKE_HOST)
+    broken, fine = obs[0], obs[1]
+    assert broken.status == "metric_failed" and broken.fom is None and not broken.feasible
+    assert broken.children["tb/ss"].status == "metric_failed" and broken.children["tb/ss"].metrics == {"gain": 5.0}
+    assert broken.children["tb/tt"].status == "ok" and broken.children["tb/tt"].metrics == {"NF": 8.0, "gain": 5.0}
+    assert broken.metrics == {"NF": 8.0, "gain": 5.0}                        # the nominal corner's (tt, first in spec order)
+    assert "tb/ss: metric NF failed: non_scalar" in broken.issues
+    assert fine.status == "ok" and fine.metrics == {"NF": 8.5, "gain": 5.2}      # worst case: ss

@@ -29,9 +29,9 @@ The user owns the design question; you own the mechanics and the evidence.
 
 ```bash
 ic-opt run optimize PROJECT budget=60 batch=10 strategy=openbox_gp_eic|turbo|random seed=0 [corners='["tt"]'] [initial_trials=N]
-# openbox_*: the first initial_trials points (default 2 x variables) are space-filling design, the surrogate proposes only
-# batches that start past them -- `--plan` prints "the surrogate proposes K of the N new points" and warns when K is 0;
-# origins end in :init / :acq
+# openbox_*: the first initial_trials points (default min(2 x variables, budget // 2)) are space-filling design, the surrogate
+# proposes only batches that start past them -- `--plan` prints "the surrogate proposes K of the N new points" and warns when
+# K is 0 (use a batch smaller than the design); origins end in :init / :acq
 ic-opt run fix_run  PROJECT points=points.json [waveforms=waveforms.json] [corners='["tt","ss"]']
 ic-opt run coarse_to_fine PROJECT coarse_budget=40 fine_budget=40
 ic-opt run signoff  PROJECT corner=tt budget=60 top=5
@@ -50,13 +50,13 @@ def main(run, *, n=12):
     run.note(f"report: {b.report(run.spec, obs, run.store)}")
 ```
 
-Point-level status: `ok`, `constraint_failed`, `metric_failed`, `failed:<stage>` (render / spectre / ocean / extract) — the child's `issues` and `sim_dir` (`spectre.stderr`, `metrics/ocean.log`) say why.
+Point-level status: `ok`, `constraint_failed`, `metric_failed` (a metric's OCEAN expression returned nil / a non-scalar / nothing, or a requested waveform nil: the child keeps the metrics that did extract and the point keeps the nominal corner's, so a wrong expression costs that metric, not the point), `failed:<stage>` (render / spectre / ocean / pcell / emx / bind_nport / measure) — the child's `issues` and `sim_dir` (`spectre.stderr`, `metrics/ocean.log`) say why.
 
 ## Reading failures
 
 - `doctor` `[FAIL] tools/license/emx` → wrong or missing cshrc; `export:<tb>` → Maestro export not at `maestro_point_root/netlist/input.scs` on that host.
 - `netlist.import` `ValueError: <var> was not found` → the variable is not a top-level `parameters` entry in the exported netlist (only those may be swept), and every circuit variable must be one in **every** testbench's netlist (a device's variables are consumed by `devices` and are not); `--plan` fetches the exports and prints `[plan] netlist.import <tb>: FAIL ...` for one that lacks a variable, so read the plan before the run.
-- `failed:spectre` with a license message → retry later; `failed:ocean` → check the metric expression in `metrics/probe.ocn`; `metric_failed` → the OCEAN expression returned nil/non-finite (see `ocean_scalars.tsv`).
+- `failed:spectre` with a license message → retry later; `failed:ocean` → OCEAN itself produced no scalars (check `metrics/probe.ocn`); `metric_failed` → one expression returned nil / a non-scalar / non-finite (`ocean_scalars.tsv` names it; the other metrics are in the observation): fix that expression, the point is re-simulated when it comes up again.
 - `failed:<stage>` with `timed out after Ns` → that point's command ran past `simulator.timeout_s` / `em.timeout_s` and was killed with its process group; the other points ran on. Ask the user before raising the timeout: a hung point can also be a pathological design point.
 - Stopped by Ctrl-C → the last `steps.jsonl` row has status `interrupted` with `recorded` / `interrupted` / `not_started` point ids; interrupted points were not recorded, and running the recipe again simulates them (nothing queued had started).
 - `BudgetExceeded` → raise `budget.max_simulations` in `spec.yaml`: the problem fingerprint leaves the budget out, so the observations keep being reused and counted. The budget counts every simulation the store holds, also the observations an edited spec (metrics, variables, ...) no longer reuses: after such an edit raise it or start a new project. That holds for a store an earlier ic-opt wrote only after `ic-opt migrate-store PROJECT`: its old stamps match the spec only as it was, and raising the budget first cuts the run off from them.

@@ -166,6 +166,9 @@ class Extract:
         return None
 
     def run(self, scalars: Scalars, ctx: StageContext) -> ChildResult:
+        """Every metric OCEAN gave a scalar for is kept. One that came back nil, non-scalar or not at all, or a requested
+        waveform that came back nil, makes the child ``metric_failed`` with that as its issue -- the simulation ran and the
+        other metrics stand (N-31, 2026-09-27: a wrong expression used to fail the child and lose every metric)."""
         metrics, issues = {}, []
         for metric in ctx.spec.metrics_for(ctx.unit):
             row = scalars.rows.get(metric.name)
@@ -178,7 +181,7 @@ class Extract:
         issues += [f"waveform {name} returned nil" for name, path in scalars.waveforms.items() if path is None]
         return ChildResult(
             unit=ctx.unit, corner=ctx.corner, metrics=metrics, issues=issues,
-            status="ok" if not issues else "failed:extract",
+            status="ok" if not issues else "metric_failed",
         )
 
 

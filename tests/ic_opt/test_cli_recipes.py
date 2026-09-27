@@ -189,7 +189,7 @@ def test_fix_run_recipe_with_waveforms_and_no_metrics(tmp_path):
     obs = run.store.observations()
     assert [o.params["F"] for o in obs] == ["22", "30"] and all(o.step == "fix_run" for o in obs)
     child = obs[0].children["tb/tt"]
-    assert child.status == "failed:extract" and child.issues == ["waveform gain returned nil"]
+    assert child.status == "metric_failed" and child.issues == ["waveform gain returned nil"]     # asked for, not delivered (N-31)
     assert (root / child.sim_dir / "metrics" / "waveforms" / "nf_curve.csv").read_text().startswith("freq,value")
     assert not (root / child.sim_dir / "metrics" / "waveforms" / "gain.csv").exists()
 

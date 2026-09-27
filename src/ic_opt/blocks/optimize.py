@@ -91,7 +91,9 @@ def optimize(
     from ic_opt.recipe import PLAN_MODE
 
     same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}     # a store stamped before T15.2 is this problem too (engine.py, "Identity")
-    design = _initial_design(spec, strategy, strategy_kwargs)
+    design = _initial_design(spec, strategy, strategy_kwargs, budget)
+    if design is not None and not strategy_kwargs.get("initial_trials"):
+        strategy_kwargs = {**strategy_kwargs, "initial_trials": design}      # the suggester runs the design this run printed
     if PLAN_MODE.get():
         done = len(Observations(o for o in store.observations() if o.spec_fingerprint in same_problem).by_step(step))
         shape = pipeline if pipeline is not None else default_pipeline(spec, deck or Deck(), waveforms)
@@ -120,13 +122,14 @@ def optimize(
     return Observations(o for o in store.observations() if o.spec_fingerprint in same_problem and o.step == step)
 
 
-def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict) -> int | None:
-    """The OpenBox strategies' initial design size (``initial_trials``, default twice the variables); None for the others."""
+def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict, budget: int) -> int | None:
+    """The OpenBox strategies' initial design size: ``initial_trials`` when given, else min(2 x variables, budget // 2), at
+    least one (``suggesters.openbox.initial_design_size``); None for the other strategies."""
     if not strategy.startswith("openbox"):
         return None
     from ic_opt.suggesters.openbox import initial_design_size
 
-    return initial_design_size(spec, strategy_kwargs.get("initial_trials"))
+    return initial_design_size(spec, strategy_kwargs.get("initial_trials"), budget)
 
 
 def surrogate_points(done: int, budget: int, batch: int, design: int) -> int:
@@ -150,8 +153,8 @@ def _print_design(design: int | None, done: int, budget: int, batch: int, *, pla
     tag = "[plan] " if plan else "[opt] "
     line = f"{tag}openbox initial design {design} points: the surrogate proposes {proposed} of the {budget - done} new points"
     if proposed == 0:
-        line += (" -- WARNING: none; this run is space-filling initial design throughout. Raise budget past "
-                 f"{design} (batches start inside the design until then) or pass initial_trials=N below it")
+        line += (" -- WARNING: none; this run is space-filling initial design throughout (every batch starts inside the "
+                 f"design). Use a batch smaller than {design}, raise budget, or pass initial_trials=N below the batch")
     print(line)
 
 

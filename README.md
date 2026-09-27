@@ -100,12 +100,12 @@ stops at `budget`. `budget.max_simulations` counts every simulation the
 project's store holds, including the observations an edited spec no longer
 reuses: a spec edit that leaves earlier runs behind needs a larger budget, or a
 new project. The `openbox_*` strategies spend their first `initial_trials`
-points (default twice the number of variables) on a space-filling design and
-fit their surrogate only after that, batch by batch: `--plan` prints how many of
-the run's points the surrogate proposes and warns when that is none (a budget at
-or below the design, or every batch starting inside it), each observation's
-`origin` ends in `:init` or `:acq`, and `initial_trials=N` or a larger `budget`
-changes the split.
+points on a space-filling design and fit their surrogate only after that, batch
+by batch. The default is the smaller of twice the number of variables and half
+the run's `budget`, so a small run still reaches the surrogate; `--plan` prints
+how many of the run's points the surrogate proposes and warns when that is none
+(every batch starting inside the design: use a smaller batch), each observation's
+`origin` ends in `:init` or `:acq`, and `initial_trials=N` overrides the default.
 
 ### spec.yaml
 
@@ -278,7 +278,10 @@ prediction chunks), which always runs on the machine running ic-opt:
 
 Everything lands under `PROJECT/.icopt/`: `observations.jsonl` (one row per
 point: parameters, per-testbench/corner children, metrics, fom, feasibility,
-status, provenance), `steps.jsonl`, `decks/`, `sims/<obs>/<tb>/<corner>/`,
+status, provenance; `metric_failed` when an OCEAN expression returned nil or a
+non-scalar -- the child keeps the metrics that did extract and the point the
+nominal corner's, so a wrong expression costs that metric, not the point),
+`steps.jsonl`, `decks/`, `sims/<obs>/<tb>/<corner>/`,
 `reports/report.md` + `report.html` (best observed, top feasible, constraint
 margins, parameter importance, corners, space-compression advisory; four figures).
 

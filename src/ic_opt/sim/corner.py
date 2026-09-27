@@ -1,7 +1,9 @@
 """Corner aggregation: many testbench × corner child results -> one evaluation.
 
-Rules (unchanged from the legacy aggregator):
-- every child must succeed, otherwise the point failed at that child's stage;
+Rules:
+- a child that did not run to the end (``failed:<stage>``) fails the point at that stage;
+- a child that ran but whose OCEAN expressions returned nil / non-scalar values (``metric_failed``) keeps the metrics
+  that did extract; the point is then ``metric_failed`` and keeps the nominal corner's computed metrics (N-31);
 - metrics of one corner are the union over its testbenches;
 - ``constraints: all_corners`` fails the point if any corner violates,
   ``nominal`` looks at the nominal corner only;
@@ -39,7 +41,7 @@ class Aggregate:
 
 
 def aggregate(spec: Spec, children: dict[str, ChildResult]) -> Aggregate:
-    failed = [c for c in children.values() if c.status != "ok"]
+    failed = [c for c in children.values() if c.status not in ("ok", "metric_failed")]
     warnings = [f"{c.unit}/{c.corner or 'nominal'}: {issue}" for c in children.values() if c.status == "ok" for issue in c.issues]
     if failed:
         worst = failed[0]
@@ -47,6 +49,7 @@ def aggregate(spec: Spec, children: dict[str, ChildResult]) -> Aggregate:
             status=worst.status,
             issues=[f"{c.unit}/{c.corner or 'nominal'}: {issue}" for c in failed for issue in c.issues] + warnings,
         )
+    partial = [f"{c.unit}/{c.corner or 'nominal'}: {issue}" for c in children.values() if c.status == "metric_failed" for issue in c.issues]
 
     cornered = [c for c in children.values() if c.corner is not None]
     shared = {k: v for c in children.values() if c.corner is None for k, v in c.metrics.items()}   # corner-less children (EM devices)
@@ -59,11 +62,11 @@ def aggregate(spec: Spec, children: dict[str, ChildResult]) -> Aggregate:
 
     evaluations = {cid: objective_contract.evaluate(spec, metrics) for cid, metrics in per_corner.items()}
     objectives = {cid: ev.objective for cid, ev in evaluations.items()}
-    issues = [f"{cid}: {issue}" for cid, ev in evaluations.items() for issue in ev.issues] + warnings
+    issues = partial + [f"{cid}: {issue}" for cid, ev in evaluations.items() for issue in ev.issues] + warnings
 
     metric_failed = [cid for cid, ev in evaluations.items() if ev.status == "metric_failed"]
-    if metric_failed:
-        return Aggregate(status="metric_failed", corner_objectives=objectives, issues=issues)
+    if metric_failed or partial:            # what was computed stays readable: the nominal corner's metrics, no objective
+        return Aggregate(status="metric_failed", metrics=dict(per_corner[nominal]), corner_objectives=objectives, issues=issues)
 
     constraint_scope = [nominal] if spec.corner_policy.constraints == "nominal" else corner_ids
     violating = [cid for cid in constraint_scope if evaluations[cid].status == "constraint_failed"]
