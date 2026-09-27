@@ -322,6 +322,93 @@ simulator: { preset: cx, threads_per_run: 4, parallel_jobs: 4, timeout_s: 3600 }
 budget: { max_simulations: 96 }
 ```
 
+Circuit and device together (the joint problem: the circuit's parameters and
+the transformer's geometry are variables of one search), a tapped transformer
+bound into the ten-terminal nport the export carries, three corners. Circuit
+variables carry no prefix, the device's are `<id>.<field>`; the device is
+simulated once per point and its sNp serves every testbench and corner, so a
+point costs 1 EMX run + testbenches x corners Spectre runs, and a geometry
+that comes up again costs no EMX run:
+
+```yaml
+# complete: joint
+project: mixer_xfmr_joint_opt
+description: Mixer bias and device sizes together with its tapped input transformer's widths, across tt / ss / ff
+testbenches:
+  - id: cg_nf
+    maestro_point_root: /home/user/simulation/Mixer/CG_NF/maestro/results/maestro/Interactive.7/1/Mixer_CG_NF
+    virtuoso_library: Mixer_lib
+    cell: Mixer_CG_NF
+    test_name: Mixer_CG_NF
+  - id: p1db
+    maestro_point_root: /home/user/simulation/Mixer/P1dB/maestro/results/maestro/Interactive.4/1/Mixer_P1dB
+    virtuoso_library: Mixer_lib
+    cell: Mixer_P1dB
+    test_name: Mixer_P1dB
+corners:
+  - { id: tt, model_section: Post_simu_top_tt, options: { temp: "27" } }
+  - { id: ss, model_section: Post_simu_top_ss, options: { temp: "125" } }
+  - { id: ff, model_section: Post_simu_top_ff, options: { temp: "-40" } }
+corner_policy: { objective: worst_case, constraints: all_corners }
+devices:
+  - id: xfmr
+    generator: clean_port_xfm_bs
+    profile: demo_6m
+    ports: [P1, N1, P2, N2, CTP, CTS]
+    fixed:
+      primary_outer_diameter_um: 73
+      secondary_outer_diameter_um: 58
+      primary_opening_um: 8.75
+      secondary_opening_um: 7.5
+      primary_lead_length_um: 20.75
+      secondary_lead_length_um: 21.5
+      center_spacing_um: 0
+      primary_metal: "6"
+      secondary_metal: "5"
+      ct_primary_metal: "4"
+      ct_secondary_metal: "4"
+      ground_fixture: { inner_margin_um: 4, ring_width_um: 70, stub_length_um: 2, stub_chamfer_um: 0 }
+em:
+  process_file: /opt/pdk/demo_6m/demo.proc
+  frequencies: { start_hz: 0, stop_hz: 200e9, step_hz: 1e9 }
+  mode: full_wave
+  accuracy: standard
+  three_d_metals: [M6, M5]
+  threads: 4
+  memory_gb: 8
+  parallel_jobs: 4
+  timeout_s: 3600
+  simultaneous_frequencies: 0
+bindings:
+  - { testbench: cg_nf, instance: NPORT0, device: xfmr, terminals: [P1, N1, CTP, null, P2, N2, CTS, null, null, null] }
+  - { testbench: p1db,  instance: NPORT0, device: xfmr, terminals: [P1, N1, CTP, null, P2, N2, CTS, null, null, null] }
+variables:
+  - { name: WCS,   kind: continuous_step, lower: 0.6u, upper: 1.2u, step: 0.2u }
+  - { name: VB_RF, kind: continuous_step, lower: 300m, upper: 440m, step: 20m }
+  - { name: FCS,   kind: integer,         lower: "40", upper: "56", step: "2" }
+  - { name: xfmr.primary_width_um,   kind: continuous_step, lower: "5.0", upper: "8.0", step: "0.1" }
+  - { name: xfmr.secondary_width_um, kind: continuous_step, lower: "4.0", upper: "6.5", step: "0.1" }
+metrics:
+  - { name: NF_3G, unit: dB,    testbench: cg_nf, expression: 'value(getData("NF" ?result "pnoise") 3e+09)' }
+  - { name: GAIN,  unit: dB,    testbench: cg_nf, expression: 'ymax(db(getData("gain" ?result "pac")))' }
+  - name: P1dB
+    unit: dBm
+    testbench: p1db
+    expression: or(compressionVRI((v("/IF_P" ?result "pss_fd") - v("/IF_N" ?result "pss_fd")) '1 ?rport resultParam("PORT2:r" ?result "pss_fd") ?gcomp 1) xmax(xval(harmonic((v("/IF_P" ?result "pss_fd") - v("/IF_N" ?result "pss_fd")) '1))))
+  - { name: k_lf,  unit: ratio, device: xfmr, quantity: k_lf }
+  - { name: SRF_p, unit: Hz,    device: xfmr, quantity: SRF_p }
+constraints:
+  - { metric: NF_3G, op: lt, value: 12.5 dB }
+  - { metric: GAIN,  op: gt, value: -3 dB }
+  - { metric: P1dB,  op: gt, value: -8.5 dBm }
+  - { metric: SRF_p, op: gt, value: 150e9 Hz }
+objective:
+  direction: minimize
+  expression: -(0.1*min(max(0,min(1,(12.5-NF_3G)/3.5)),max(0,min(1,(GAIN+3)/5)),max(0,min(1,(P1dB+8.5)/4.5)))+0.8*(0.4*max(0,min(1,(12.5-NF_3G)/3.5))+0.2*max(0,min(1,(GAIN+3)/5))+0.4*max(0,min(1,(P1dB+8.5)/4.5))))
+simulator: { preset: ax, threads_per_run: 10, parallel_jobs: 10, timeout_s: 7200 }
+budget: { max_simulations: 600 }
+```
+
 A device by itself (a library part, a geometry study): no testbenches, the
 variables are the generator's fields:
 

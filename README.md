@@ -120,7 +120,7 @@ how many of the run's points the surrogate proposes and warns when that is none
 ### spec.yaml
 
 Writing a spec from a design request -- the shape to pick, what to read off
-the exports, every section's rules, three complete examples -- is the
+the exports, every section's rules, four complete examples -- is the
 [author-spec skill](skills/author-spec/SKILL.md).
 `examples/spec.yaml` is a complete three-testbench, three-corner example (the
 `MixerCS_*` cells of its exports: another mixer's exports carry other top-level
