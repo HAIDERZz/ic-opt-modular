@@ -133,6 +133,17 @@ never a penalty number (`failure_penalty` is accepted and ignored). The same
 seed therefore proposes other points than 0.4.0 did; recorded observations keep
 their meaning and continue as before.
 
+`strategy=metric_gp` is new and not the default: one Gaussian process per metric
+the constraints and the objective name, the spec's own formulas applied to their
+posterior samples, a search region on the spec's grid (logarithmic for a range
+that spans a decade), a separate model of where points fail to give a value, and
+no penalty number anywhere; numpy, scipy and scikit-learn only. Its design is
+`initial_trials` points (default twice the variables, at least 8, at most 20),
+start points included, and origins end in `:init`, `:grid:<k>`, `:tr:<r>:<k>`,
+`:wide:<r>:<k>` or `:anchor:<r>:<k>`. It does not take EM devices or several
+corners at once yet: `opt.optimize` refuses both before anything runs; run one
+corner (`corners='["tt"]'`) or the `signoff` recipe.
+
 ### spec.yaml
 
 Writing a spec from a design request -- the shape to pick, what to read off

@@ -17,7 +17,7 @@ history (``turbo.py``). No strategy uses a penalty number any more.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -104,16 +104,20 @@ def unit_design(method: str, n: int, dim: int, seed: int) -> np.ndarray:
     raise ValueError(f"unknown initialization method {method!r}")
 
 
-def space_filling(spec: Spec, taken: set[str], n: int, *, method: str, size: int, seed: int) -> list[list[float]]:
+def space_filling(spec: Spec, taken: set[str], n: int, *, method: str, size: int, seed: int,
+                  to_raw: Callable[[np.ndarray], list[list[float]]] | None = None) -> list[list[float]]:
     """The next ``n`` points of the seeded space-filling sequence ``method`` whose grid point is not in ``taken``, in
     sequence order, one per grid point. The first ``size`` points of the sequence are the initial design; it depends on
     (spec, method, seed) alone, never on the batch size, so the points served so far (in ``taken``) are skipped and the
     design goes on where it stopped. Where the design is used up (its points taken, or snapped onto each other on a
-    coarse grid) the sequence is continued past ``size``; on a grid with nothing left fewer than ``n`` come back."""
+    coarse grid) the sequence is continued past ``size``; on a grid with nothing left fewer than ``n`` come back.
+    ``to_raw`` reads the unit cube as raw vectors: linearly between the bounds by default (:func:`scale`); ``metric_gp``
+    reads it in its own coordinates, logarithmic where a range spans a decade (T17.1 specification, section 11)."""
     out, seen = [], set(taken)
     grid, drawn, length = space.grid_size(spec), 0, max(size, n, 1)
+    to_raw = to_raw or (lambda unit: scale(unit, spec))
     while len(out) < n and len(seen) < grid and length <= 1024 * max(size, n, 1):
-        for raw in scale(unit_design(method, length, len(spec.variables), seed)[drawn:], spec):
+        for raw in to_raw(unit_design(method, length, len(spec.variables), seed)[drawn:]):
             key = space.point_key(space.snap(spec, raw))
             if key not in seen:
                 seen.add(key)

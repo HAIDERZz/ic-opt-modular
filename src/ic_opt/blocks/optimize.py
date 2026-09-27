@@ -126,10 +126,16 @@ def optimize(
     from ic_opt.recipe import PLAN_MODE
 
     plan = PLAN_MODE.get()
+    if strategy == "metric_gp":          # T17 stage 1 (one condition, no EM devices): refused before anything runs, --plan too
+        from ic_opt.suggesters.metric_gp import stage_one_refusal
+
+        reason = stage_one_refusal(spec, len(spec.corner_ids) if corners == "all" else len(list(corners)))
+        if reason:
+            raise ValueError(reason)
     same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}     # a store stamped before T15.2 is this problem too (engine.py, "Identity")
     design = _initial_design(spec, strategy, strategy_kwargs, budget)
     if design is not None and not strategy_kwargs.get("initial_trials"):
-        strategy_kwargs = {**strategy_kwargs, "initial_trials": design}      # the suggester runs the design this run printed
+        strategy_kwargs = {**strategy_kwargs, "initial_trials": design[0]}   # the suggester runs the design this run printed
     rows = list(start)
     if current:
         row, line = current_design(spec, _exports(spec, deck, executor, plan))
@@ -145,9 +151,9 @@ def optimize(
         print(f"[plan] opt.optimize step={step!r} strategy={strategy}: {done}/{budget} points done, "
               f"up to {max(0, budget - done)} more in batches of {batch} × "
               f"{plan_shape(spec, shape, corners, executor, parallel_jobs, limits)} (spec budget {spec.budget.max_simulations})")
-        _print_design(design, len(history), budget - done, batch, fresh, surrogate_minimum(spec), plan=True)
+        _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=True)
         return Observations()
-    _print_design(design, len(history), budget - done, batch, fresh, surrogate_minimum(spec), plan=False)
+    _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=False)
     while True:
         mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
         done = len(mine.by_step(step))
@@ -259,14 +265,20 @@ def _exports(spec: Spec, deck: Deck | None, executor: Executor, plan: bool) -> d
         shutil.rmtree(literal(tmp))
 
 
-def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict, budget: int) -> int | None:
-    """The OpenBox strategies' initial design size: ``initial_trials`` when given, else min(2 x variables, budget // 2), at
-    least one (``suggesters.openbox.initial_design_size``); None for the other strategies."""
-    if not strategy.startswith("openbox"):
-        return None
-    from ic_opt.suggesters.openbox import initial_design_size
+def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict, budget: int) -> tuple[int, int] | None:
+    """The initial design of a strategy whose design ic-opt serves: (its size, the successful points the model needs
+    before it completes a batch). OpenBox: ``initial_trials`` when given, else min(2 x variables, budget // 2), at least
+    one (``suggesters.openbox.initial_design_size``), and the surrogate minimum; metric_gp: ``initial_trials``, else
+    min(max(2 x active variables, 8), 20), and none (its models always complete the batch). None for the others."""
+    if strategy.startswith("openbox"):
+        from ic_opt.suggesters.openbox import initial_design_size
 
-    return initial_design_size(spec, strategy_kwargs.get("initial_trials"), budget)
+        return initial_design_size(spec, strategy_kwargs.get("initial_trials"), budget), surrogate_minimum(spec)
+    if strategy == "metric_gp":
+        from ic_opt.suggesters import metric_gp
+
+        return metric_gp.initial_design_size(spec, strategy_kwargs.get("initial_trials")), 0
+    return None
 
 
 def surrogate_points(history: int, new: int, batch: int, design: int, *, start: int = 0, needed: int = 2) -> int:
@@ -288,16 +300,20 @@ def surrogate_points(history: int, new: int, batch: int, design: int, *, start: 
     return proposed
 
 
-def _print_design(design: int | None, history: int, new: int, batch: int, start: int, needed: int, *, plan: bool) -> None:
+def _print_design(strategy: str, design: tuple[int, int] | None, history: int, new: int, batch: int, start: int, *,
+                  plan: bool) -> None:
     if design is None or new <= 0:
         return
-    proposed = surrogate_points(history, new, batch, design, start=start, needed=needed)
+    size, needed = design
+    proposed = surrogate_points(history, new, batch, size, start=start, needed=needed)
+    label, model = ("openbox", "surrogate") if strategy.startswith("openbox") else (strategy, "model")
     tag = "[plan] " if plan else "[optimize] "
     first = f" ({start} start point{'s' if start != 1 else ''} first)" if start else ""
-    line = f"{tag}openbox initial design {design} points{first}: the surrogate proposes {proposed} of the {new} new points"
+    line = f"{tag}{label} initial design {size} points{first}: the {model} proposes {proposed} of the {new} new points"
     if proposed == 0:
-        line += (f" -- WARNING: none; this run is initial design throughout (the surrogate needs {needed} successful points "
-                 "before a batch starts). Raise budget, use a smaller batch, or pass a smaller initial_trials")
+        before = (f" (the {model} needs {needed} successful points before a batch starts)" if needed else "")
+        line += (f" -- WARNING: none; this run is initial design throughout{before}. Raise budget"
+                 + (", use a smaller batch," if needed else "") + " or pass a smaller initial_trials")
     print(line)
 
 

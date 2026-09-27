@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from difflib import get_close_matches
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from ic_opt.space import parse_scalar
 
 if TYPE_CHECKING:
@@ -58,6 +60,54 @@ def evaluate_expression(expression: str, metrics: dict[str, float]) -> float:
     if not math.isfinite(value):
         raise ValueError("expression returned a non-finite value")
     return value
+
+
+def evaluate_expression_array(expression: str, arrays: dict[str, np.ndarray]) -> np.ndarray:
+    """:func:`evaluate_expression` on numpy arrays (broadcast together), walking the same syntax tree: ``nan`` wherever
+    the scalar evaluator raises -- division or ``%`` by zero, ``ln`` of a non-positive number, a power that is complex or
+    overflows, a non-finite result. The ``metric_gp`` strategy applies the spec's own formulas to model samples with it
+    (T17.1 specification, section 5)."""
+    with np.errstate(all="ignore"):
+        value = np.asarray(_eval_array(ast.parse(expression, mode="eval").body, arrays), dtype=float)
+    return np.where(np.isfinite(value), value, np.nan)
+
+
+def _eval_array(node: ast.AST, arrays: dict[str, np.ndarray]) -> np.ndarray:
+    if isinstance(node, ast.Constant):
+        return np.asarray(float(node.value))
+    if isinstance(node, ast.Name):
+        return np.asarray(arrays[node.id], dtype=float)
+    if isinstance(node, ast.UnaryOp):
+        v = _eval_array(node.operand, arrays)
+        return -v if isinstance(node.op, ast.USub) else v
+    if isinstance(node, ast.BinOp):
+        a, b = _eval_array(node.left, arrays), _eval_array(node.right, arrays)
+        op = type(node.op)
+        if op is ast.Add:
+            return a + b
+        if op is ast.Sub:
+            return a - b
+        if op is ast.Mult:
+            return a * b
+        if op is ast.Div:
+            return np.where(b == 0, np.nan, a / b)            # Python raises ZeroDivisionError, numpy gives inf / nan
+        if op is ast.Mod:
+            return np.where(b == 0, np.nan, np.mod(a, b))     # np.mod takes the divisor's sign, as Python's % does
+        if op is ast.Pow:
+            result = np.power(a, b)
+            # Python: a negative base to a non-integer power is complex (raised), 0 to a negative power and a finite
+            # power that overflows raise; numpy gives nan / inf for the same inputs.
+            raises = (np.isfinite(a) & np.isfinite(b) & ~np.isfinite(result)) | ((a < 0) & (b != np.floor(b)))
+            return np.where(raises, np.nan, result)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        args = np.broadcast_arrays(*(_eval_array(a, arrays) for a in node.args))
+        if node.func.id == "min":
+            return np.minimum.reduce(args)
+        if node.func.id == "max":
+            return np.maximum.reduce(args)
+        if node.func.id == "ln":
+            return np.where(args[0] > 0, np.log(np.where(args[0] > 0, args[0], 1.0)), np.nan)
+    raise ValueError(f"unsupported expression node {type(node).__name__}")
 
 
 @dataclass(frozen=True)
