@@ -465,6 +465,12 @@ file system that honours file locks, for machines sharing a cache
 directory; where locks are not supported both fit, and the last one to
 finish writes the file. The lock files are empty.
 
+`lib.coverage` and `lib.load` answer with `cached`, one entry per quantity of the stratum's current dataset: `model` (a
+query needs no fit), `calibration` (the hold-out fits are cached; the first query fits the model, minutes), `none`
+(both to come) or `no rows`. Read it before a query on a library you copied: the cache is keyed by content, so one
+copy is as good as another, but it only holds what was fitted where it came from -- the first query of a quantity
+nobody asked for yet fits it, on the copy as on the original.
+
 ## A new process
 
 The library is only as good as the process profile the generator drew with.

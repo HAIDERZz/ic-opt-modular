@@ -109,6 +109,9 @@ how many of the run's points the surrogate proposes and warns when that is none
 
 ### spec.yaml
 
+Writing a spec from a design request -- the shape to pick, what to read off
+the exports, every section's rules, three complete examples -- is the
+[author-spec skill](skills/author-spec/SKILL.md).
 `examples/spec.yaml` is a complete three-testbench, three-corner example (the
 `MixerCS_*` cells of its exports: another mixer's exports carry other top-level
 parameters, so check the `parameters` line before reusing its variables). Every
@@ -202,8 +205,10 @@ L / Q / SRF / k for a geometry, suggests geometries for targets, and serves as a
 surrogate pipeline for optimization before a real-EMX sign-off. A stratum's name
 says little about its parts' physics, so `lib.coverage` answers with each part's
 device (generator, profile, the metals its windings sit on) and the stratum's
-`note` from `library.yaml`; the first fit of a quantity's model prints its
-progress on stderr (minutes per quantity, more for a composed curve):
+`note` from `library.yaml`, and with `cached`: which quantities already have a
+fitted model, which only a calibration, which nothing, so a query's wait is known
+beforehand; the first fit of a quantity's model prints its progress on stderr
+(minutes per quantity, more for a composed curve):
 
 ```bash
 ic-opt call lib.query LIBRARY stratum=ind_sym_top 'params={"outer_diameter_um": 150, "width_um": 5, "spacing_um": 3, "turns": 2}'

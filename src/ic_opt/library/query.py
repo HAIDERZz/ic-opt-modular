@@ -487,6 +487,26 @@ class Library:
         h.update(sklearn.__version__.encode())
         return f"model-{ds.stratum}-{_file_part(quantity)}-{h.hexdigest()[:20]}.pkl"
 
+    def cached(self, stratum: str) -> dict[str, str]:
+        """What the cache already holds for each column of the stratum's current dataset: ``"model"`` (a query needs no fit),
+        ``"calibration"`` (the five hold-out fits are cached; the model itself is fitted at the first query, one fit),
+        ``"none"`` (calibration and model both to come: the five folds and the fit) or ``"no rows"``. File presence only:
+        nothing is loaded or fitted. ``lib.coverage`` and ``lib.load`` answer with it, so a user sees what a query will
+        wait for before asking (N-33, 2026-09-27: a first query fitted three 60 GHz curves in silence for half an hour)."""
+        ds = self.dataset(stratum)
+        out: dict[str, str] = {}
+        for q in ds.columns:
+            if not ds.usable(q):
+                out[q] = "no rows"
+            elif self._model_file(stratum, q) is not None:
+                out[q] = "model"
+            elif self._plan(stratum, q) is None:
+                _ds, _rows, x, y, settings = self._fit_inputs(stratum, q)
+                out[q] = "calibration" if self._calibration(ds, q, x, y, settings, compute=False) is not None else "none"
+            else:
+                out[q] = "calibration" if self._composed_calibration(stratum, q, compute=False) is not None else "none"
+        return out
+
     def _model_file(self, stratum: str, quantity: str) -> Path | None:
         """The model's cache file if it exists (``Cache.find``: the cache directory, then the library's own ``.cache``). Never
         while the calibration is not cached: the key needs it, and computing it takes the five hold-out fits that are the
@@ -768,12 +788,14 @@ def coverage(library: Library, stratum: str) -> dict:
         v = ds.values(q, ds.usable(q))
         out["quantities"][q] = {"rows": len(v), "min": float(v.min()) if len(v) else None, "max": float(v.max()) if len(v) else None,
                                 "unit": unit(q)}
+    out["cached"] = library.cached(stratum)
     out["notes"] = library.notes
     return out
 
 
 def load(library: Library, stratum: str | None = None) -> dict:
-    """Dataset summaries (rows, cache state, integrity evidence, the library's notes) for one stratum or all of them."""
+    """Dataset summaries (rows, cache state, what the cache holds per quantity, integrity evidence, the library's notes) for
+    one stratum or all of them."""
     names = [stratum] if stratum else library.strata()
-    return {name: {"cache": library.dataset(name).cache, **dataset.check(library.dataset(name)), "notes": library.notes}
-            for name in names}
+    return {name: {"cache": library.dataset(name).cache, "cached": library.cached(name), **dataset.check(library.dataset(name)),
+                   "notes": library.notes} for name in names}

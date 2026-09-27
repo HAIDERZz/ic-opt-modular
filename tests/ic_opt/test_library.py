@@ -284,3 +284,20 @@ def test_a_stratum_note_does_not_change_the_dataset_key(library):
     noted = query.Library(library, calibrate=False)
     assert noted.manifest.strata[name].note == "windings on the top metal"
     assert noted.dataset(name).key == before
+
+
+def test_coverage_and_load_say_what_the_cache_holds_per_quantity(library):
+    """N-33 (2026-09-27): a first query fitted three models in silence for half an hour; the answers now say beforehand which
+    quantities have a cached model, which only a calibration, and which nothing."""
+    from ic_opt.library import query
+
+    lib = query.Library(library)
+    name = lib.strata()[0]
+    before = query.coverage(lib, name)["cached"]
+    assert set(before) == set(lib.dataset(name).columns) and set(before.values()) == {"none"}
+    lib.models(name, ["Lp_lf"])                                # calibration and model of one direct quantity
+    after = query.coverage(lib, name)["cached"]
+    assert after["Lp_lf"] == "model" and after["Qp_peak"] == "none"
+    assert query.load(lib, name)[name]["cached"] == after
+    (lib.cache.directory / next(p.name for p in lib.cache.directory.iterdir() if p.name.startswith(f"model-{name}-Lp_lf-"))).unlink()
+    assert query.Library(library).cached(name)["Lp_lf"] == "calibration"     # the model file gone, its calibration stays
