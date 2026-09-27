@@ -19,3 +19,7 @@ smoke/
 
 # Claude Code subagent worktrees (harness-managed, never part of the repo)
 .claude/worktrees/
+
+# benchmark data fetched by benchmarks/fetch_analoggym.py and benchmark results (regenerable)
+benchmarks/.data/
+benchmarks/results/
