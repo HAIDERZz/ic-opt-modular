@@ -103,6 +103,11 @@ class Coords:
                for params in rows]
         return np.array(out, dtype=np.int64).reshape(-1, len(self.names))
 
+    def level(self, i: int, text: str) -> int:
+        """The level index of variable ``i``'s grid text."""
+        low, step = self._grid[i]
+        return int((space.parse_scalar(text)[0] - low) / step)
+
     def design_raw(self, unit: np.ndarray) -> list[list[float]]:
         """Unit-cube samples (a space-filling design) -> raw grid vectors: the unit cube is read in the strategy's
         own coordinates, so a logarithmic variable's design is even per decade."""

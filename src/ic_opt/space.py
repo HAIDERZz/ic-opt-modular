@@ -149,15 +149,17 @@ class Point:
         object.__setattr__(self, "key", point_key(self.params))
 
 
-_ADVICE_SUFFIX = re.compile(r"^(?P<origin>.+)@(?P<advice>[A-Za-z0-9_]+)$")
+_ADVICE_SUFFIX = re.compile(r"^a[1-9]\d*$")
 
 
 def split_origin(origin: str) -> tuple[str, str | None]:
-    """``"suggest:metric_gp:tr:0:40@a2"`` -> ``("suggest:metric_gp:tr:0:40", "a2")``; an origin without an advice suffix
-    -> ``(origin, None)``. A strategy's point proposed inside an advice's ranges carries the advice's id after ``@``
-    (T17.1.5 specification, section 3); every reader of origins reads them through this."""
-    match = _ADVICE_SUFFIX.match(origin)
-    return (match.group("origin"), match.group("advice")) if match else (origin, None)
+    """An origin and the advice it was proposed under (T17.1.5 specification, section 3): a point a strategy chose among
+    the candidates an advice narrowed carries ``@<id>`` -- ``suggest:metric_gp:tr:0:40@a2`` -> (``suggest:metric_gp:tr:0:
+    40``, ``a2``); any other origin -> (origin, None). Every reader of origins reads them through this. Only an advice id
+    after the last ``@`` counts, so an origin that holds an ``@`` of its own (a directory name) is left whole. A start
+    point of an advice has the origin ``advice:<id>``, with no suffix."""
+    head, sep, tail = origin.rpartition("@")
+    return (head, tail) if sep and _ADVICE_SUFFIX.match(tail) else (origin, None)
 
 
 def points_from_params(spec: Spec, rows: Sequence[dict[str, str]], origin: str = "user") -> list[Point]:

@@ -13,6 +13,11 @@ real run of 0.4.0 the best of the first 30 random points scored 0.553 while the 
 The default strategy is ``auto`` (T17.2): resolved once per call to ``metric_gp`` for a run inside its stage-1 scope (no EM
 devices, one condition) and to ``openbox_gp_eic`` otherwise (``suggesters.resolve_auto``). Nothing downstream sees
 ``auto``: an observation's origin names the strategy that proposed it.
+
+Advice (T17.1.5, ``ic_opt.advice``): ``advise`` records an advice in ``<project>/.icopt/advice.jsonl``; ``optimize`` reads
+that file before every batch and hands its rows to ``suggest``, which applies the advice in effect at the batch's history
+size: its start rows first (origin ``advice:<id>``), for every strategy; its ranges, fixed levels and ``vary`` to
+``metric_gp`` only. Without the file every proposal is what it was before advice existed.
 """
 
 from __future__ import annotations
@@ -23,8 +28,10 @@ from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import Path
 
+from ic_opt import advice as advice_rules
 from ic_opt import objective as objective_contract
 from ic_opt import space, suggesters
+from ic_opt._lock import exclusive_lock
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
 from ic_opt.eval.stage import Stage
@@ -49,6 +56,7 @@ def suggest(
     seed: int = 0,
     initial: Sequence[Observation] = (),
     start: Sequence[dict[str, str]] = (),
+    advice: Sequence[dict] = (),
     failure_penalty: float | None = None,
     **strategy_kwargs,
 ) -> list[Point]:
@@ -60,6 +68,9 @@ def suggest(
     space-filling design, and each strategy offsets it by the history size where it needs fresh randomness. Points carry
     their provenance: ``suggest:<strategy>[:<tag>]``, per point where the strategy tags each (OpenBox ``init`` / ``acq``;
     ``fill`` for a random point that replaces one the model kept landing on evaluated points with).
+    ``advice``: every row of an advice file (``ic_opt.advice``). The advice in effect at this history size (section 2 of
+    the T17.1.5 specification) puts its start rows not yet evaluated after ``start``'s, origin ``advice:<id>``, for every
+    strategy; ``metric_gp`` also narrows where its models' points look (they carry ``@<id>``); the others take no more.
     ``failure_penalty`` is accepted and ignored since T17.0b: no penalty number reaches a model (``suggesters.base``).
     ``strategy="auto"`` is resolved from the spec (no devices, one corner id) and the history: a history holding points
     evaluated at several corners, which ``metric_gp`` would refuse, resolves to ``openbox_gp_eic``. Nothing is printed
@@ -70,20 +81,24 @@ def suggest(
         suggesters.check_auto_keywords(strategy, reason, strategy_kwargs)
     taken = history.keys()
     points: list[Point] = []
-    for point in space.points_from_params(spec, start, origin="start"):
+    current = advice_rules.in_effect(advice, len(history))
+    advised = space.points_from_params(spec, current["start"], origin=f"advice:{current['id']}") if current else []
+    for point in space.points_from_params(spec, start, origin="start") + advised:
         if point.key not in taken and len(points) < n:
             taken.add(point.key)
             points.append(point)
     if len(points) >= n:
         return points
     suggester = suggesters.make(strategy, **strategy_kwargs)
+    narrowing = {"advice": advice} if advice and suggester.name == "metric_gp" else {}
     base = f"suggest:{suggester.name}"
     batch_tag = fill = None
     for attempt in range(4):
         missing = n - len(points)
         if missing <= 0:
             break
-        proposal = suggester.propose(spec, history, missing, seed=seed + attempt, pending=[p.params for p in points])
+        proposal = suggester.propose(spec, history, missing, seed=seed + attempt, pending=[p.params for p in points],
+                                     **narrowing)
         if batch_tag is None:
             batch_tag = proposal.tag          # a batch tag is the batch's: replacements share it (TuRBO replays by it)
             fill = f"{base}:fill" if proposal.tags else f"{base}:{batch_tag}" if batch_tag else base
@@ -172,24 +187,52 @@ def optimize(
               f"up to {max(0, budget - done)} more in batches of {batch} × "
               f"{plan_shape(spec, shape, corners, executor, parallel_jobs, limits)} (spec budget {spec.budget.max_simulations})")
         _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=True)
+        handed = _at_corners(spec, mine, corners) if strategy == "metric_gp" else mine
+        _announce(advice_rules.of_problem(advice_rules.read(store.root), same_problem), len(adopted) + len(handed),
+                  strategy, set(), plan=True)
         return Observations()
     _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=False)
-    while True:
-        mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
-        done = len(mine.by_step(step))
-        if done >= budget:
-            break
-        points = suggest(
-            spec, _at_corners(spec, mine, corners) if strategy == "metric_gp" else mine, min(batch, budget - done),
-            strategy=strategy, seed=seed, initial=initial, start=[p.params for p in starts], **strategy_kwargs,
-        )
-        if not points:
-            break
-        evaluate(
-            spec, points, executor, store, deck=deck, pipeline=pipeline, corners=corners, waveforms=waveforms,
-            step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
-        )
+    announced: set[str] = set()
+    with exclusive_lock(store.root / RUN_LOCK, what="project"):      # no advice is adopted while the run goes (advise)
+        while True:
+            mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
+            done = len(mine.by_step(step))
+            if done >= budget:
+                break
+            handed = _at_corners(spec, mine, corners) if strategy == "metric_gp" else mine
+            # Read before every batch: a recipe of several steps sees an advice its own code adopted between them.
+            advice = advice_rules.of_problem(advice_rules.read(store.root), same_problem)
+            _announce(advice, len(adopted) + len(handed), strategy, announced, plan=False)
+            points = suggest(
+                spec, handed, min(batch, budget - done), strategy=strategy, seed=seed, initial=initial,
+                start=[p.params for p in starts], advice=advice, **strategy_kwargs,
+            )
+            if not points:
+                break
+            evaluate(
+                spec, points, executor, store, deck=deck, pipeline=pipeline, corners=corners, waveforms=waveforms,
+                step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
+            )
     return Observations(o for o in store.observations() if o.spec_fingerprint in same_problem and o.step == step)
+
+
+RUN_LOCK = "run.lock"      # held by opt.optimize for its whole loop; the store's own lock is held per batch (sim.evaluate)
+
+
+def _announce(advice: Sequence[dict], k: int, strategy: str, announced: set[str], *, plan: bool) -> None:
+    """One line when an advice comes into effect for this run's next batch, once per advice: what it asks for, and, for a
+    strategy other than ``metric_gp``, which of its parts are not used and why."""
+    current = advice_rules.in_effect(advice, k)
+    if current is None or current["id"] in announced:
+        return
+    announced.add(current["id"])
+    tag = "[plan] opt.optimize" if plan else "[optimize]"
+    print(f"{tag} advice {current['id']} in effect (since {current['since']}, by {current['author']}): "
+          f"{advice_rules.describe(current)}")
+    if advice_rules.narrows(current) and strategy != "metric_gp":
+        unused = [part for part in advice_rules.NARROWING if current[part]]
+        print(f"{tag} advice {current['id']}: strategy {strategy} takes its start rows only; its {', '.join(unused)} "
+              "are not used (narrowing the search is metric_gp's)")
 
 
 def _at_corners(spec: Spec, rows: Observations, corners: str | list[str]) -> Observations:
@@ -198,6 +241,69 @@ def _at_corners(spec: Spec, rows: Observations, corners: str | list[str]) -> Obs
     put metrics aggregated over different conditions into one model. A row without children (an adopted one) stays."""
     wanted = set(spec.corner_ids if corners == "all" else corners)
     return Observations(o for o in rows if not o.children or {c.corner for c in o.children.values()} == wanted)
+
+
+def history_size(spec: Spec, rows: Sequence[Observation], corners: str | list[str] | None = None) -> int:
+    """How many observations the strategy of this problem's next batch is handed -- an advice's ``since``, compared with
+    the history size a batch is proposed at: the rows of this problem (the spec's fingerprints, as ``optimize`` counts
+    them), and with ``corners`` given the ones evaluated at exactly those corners (``_at_corners``, what ``metric_gp`` is
+    handed). Without ``corners`` the rows must all have been evaluated at one set of corners; a store that holds this
+    problem at several (the signoff recipe's search corner and its all-corner re-check) is refused, naming them: which
+    rows the next batch sees depends on the run, and a ``since`` above it would hold the advice back."""
+    same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}
+    mine = Observations(o for o in rows if o.spec_fingerprint in same_problem)
+    if corners is not None:
+        return len(_at_corners(spec, mine, corners))
+    held: dict[tuple[str, ...], int] = {}
+    for o in mine:
+        if o.children:
+            key = tuple(sorted(c.corner or "nominal" for c in o.children.values()))
+            held[key] = held.get(key, 0) + 1
+    if len(held) > 1:
+        raise ValueError("this problem's observations were evaluated at several sets of corners ("
+                         + "; ".join(f"{', '.join(dict.fromkeys(key))}: {count}" for key, count in held.items())
+                         + "); say which run the advice is for with --corners (e.g. --corners tt for the signoff "
+                         "recipe's search)")
+    return len(mine)
+
+
+def advise(spec: Spec, store: RunStore, advice: dict, *, corners: str | list[str] | None = None) -> dict:
+    """Adopt an advice for this problem (``ic_opt.advice``, T17.1.5 specification): ``advice`` holds ``author``,
+    ``reason`` and any of ``start`` (complete grid parameter rows to evaluate first), ``ranges`` (``{variable: [lower,
+    upper]}`` inside the spec's range), ``fixed`` (``{variable: value}``), ``vary`` (the variables that may move; the
+    others stay at the search region's centre). Checked against the spec -- refused with what to change, values between
+    levels moved onto the grid and said so -- and appended to ``<project>/.icopt/advice.jsonl`` with the next id and
+    ``since`` (:func:`history_size`; ``corners`` as there). It ends the advice before it. Takes the project's run lock and
+    its store lock: not while a run goes. Prints what it adopted; returns the recorded row.
+
+    It is in effect from the next batch: its start rows come first (every strategy); its ranges, fixed levels and
+    ``vary`` narrow four fifths of each ``metric_gp`` batch after the initial design, the other fifth looks over the
+    spec's whole range. An advice never widens the spec's ranges and never moves the initial design's points."""
+    same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}
+    with exclusive_lock(store.root / RUN_LOCK, what="project"), store.lock():
+        rows = advice_rules.read(store.root)
+        since = history_size(spec, store.observations(), corners)
+        row, notes = advice_rules.adoption(spec, advice, rows, since)
+        before = advice_rules.in_effect(advice_rules.of_problem(rows, same_problem), since)
+        advice_rules.append(store.root, row)
+    for note in notes:
+        print(f"[advise] {note}")
+    print(f"[advise] adopted {row['id']} (since {since}; in effect from the next batch"
+          + (f"; ends {before['id']}" if before else "") + f"): {advice_rules.describe(row)}")
+    return row
+
+
+def revoke_advice(spec: Spec, store: RunStore, advice_id: str, reason: str, *,
+                  corners: str | list[str] | None = None) -> dict:
+    """End advice ``advice_id`` (the one adopted last) from the next batch on: appends a ``revoke`` row with ``since``
+    (:func:`history_size`) and ``reason``. Takes the locks ``advise`` takes. Returns the row."""
+    same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}
+    with exclusive_lock(store.root / RUN_LOCK, what="project"), store.lock():
+        rows = advice_rules.of_problem(advice_rules.read(store.root), same_problem)
+        row = advice_rules.revocation(rows, advice_id, reason, history_size(spec, store.observations(), corners))
+        advice_rules.append(store.root, row)
+    print(f"[advise] revoked {advice_id} (since {row['since']}): {row['reason']}")
+    return row
 
 
 _SI = {"T": 12, "G": 9, "M": 6, "K": 3, "k": 3, "": 0, "m": -3, "u": -6, "n": -9, "p": -12, "f": -15, "a": -18}

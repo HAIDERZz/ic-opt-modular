@@ -148,6 +148,17 @@ levels a change is a large move; it must be offered, not imposed on every candid
 
 Both sets exclude `E` and duplicates.
 
+Under advice (T17.1.5 specification, section 6; `ic_opt.advice`), for the advice in effect at the batch's history size
+when it has `ranges`, `fixed` or `vary`: `local` is generated exactly as above -- the same random streams -- and then
+brought inside the advice (`candidates.Advised`): a variable with a range goes to the nearest level of its range (the
+range's end level: in level indices, so in unit coordinates too, logarithmic or not), a fixed variable to its level, a
+variable not in `vary` (when `vary` is given) to the level of the region's centre; the moved points that are evaluated,
+chosen already, repeated or among `wide` drop out. `wide` is not touched. A new region's anchor (section 9) is chosen
+among its 2000 points brought inside the advice likewise (held variables at the level of the history's best point, as
+there is no region yet); when the advice holds none of them that is not evaluated, it is chosen as without advice. With
+`G <= 2000` the whole grid stays the candidate set and the advice marks which grid points lie inside it (held variables
+at the best point's levels). The initial design (section 11) is never moved by an advice.
+
 ## 8. Choosing a batch (`select.py`)
 
 For the candidate set `C` (all candidates of the call, local and wide together) and the `n` slots of the batch:
@@ -172,6 +183,12 @@ For the candidate set `C` (all candidates of the call, local and wide together) 
    runs empty the slot chooses among the other). `wide_share` is a constructor argument, default `0.2`.
 4. The slots' samples are independent draws. A batch is as spread as the models are unsure: far apart where they
    know little, neighbours of the predicted optimum where they know much (section 15).
+
+Under advice (section 7): with `G > 2000` the slots are assigned as in item 3, the `local` set being the advised one;
+when it runs empty the slot chooses among `wide`, so an advice that holds no unevaluated point leaves the whole batch
+to the whole space. With `G <= 2000` the first `round(wide_share * n)` slots choose among all grid points and the others
+among the grid points inside the advice (all grid points again once none is left there). Without an advice in effect,
+or with one that has only `start` rows, nothing here changes: the proposal is the one without advice, point for point.
 
 Each chosen point carries a tag (section 10).
 
@@ -213,6 +230,12 @@ A continued run must give the same proposals as an uninterrupted one.
 | `anchor:<r>:<k>` | the anchor of region `r` |
 
 The batch key is `k`.
+
+A point chosen among the candidates an advice narrowed (sections 7 and 8) carries `@<id>` after its tag:
+`tr:<r>:<k>@a2`, `grid:<k>@a2`, `anchor:<r>:<k>@a2`; the points of the same batch chosen over the whole space carry
+none. A start row of an advice has the origin `advice:<id>` (proposed by `suggest` before the strategy is asked, like a
+`start` row) and belongs to region 0 like every row without a batch tag. Every reader of origins, the replay of section
+9 first, reads them through `ic_opt.space.split_origin`: the region's course is judged as without advice.
 
 ## 11. The initial design and the stage-1 refusals
 

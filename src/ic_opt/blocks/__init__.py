@@ -17,7 +17,9 @@ from ic_opt.blocks import profile as _profile
 from ic_opt.blocks.doctor import doctor as _doctor
 from ic_opt.blocks.evaluate import evaluate as _evaluate
 from ic_opt.blocks.netlist import import_netlists as _import_netlists
+from ic_opt.blocks.optimize import advise as _advise
 from ic_opt.blocks.optimize import optimize as _optimize
+from ic_opt.blocks.optimize import revoke_advice as _revoke_advice
 from ic_opt.blocks.optimize import suggest as _suggest
 from ic_opt.spec import load_spec as _load_spec
 from ic_opt.stages import spectre_pipeline
@@ -64,6 +66,8 @@ points_from = block("points.from", "Points of existing observations (e.g. top-k 
 evaluate = block("sim.evaluate", "Run the pipeline on points and append observations")(_evaluate)
 suggest = block("opt.suggest", "Propose n new points from observations (stateless)")(_suggest)
 optimize = block("opt.optimize", "Loop suggest ⇄ evaluate until the step holds its budget")(_optimize)
+advise = block("opt.advise", "Adopt advice for the next batches: start rows, narrower ranges, variables to hold")(_advise)
+revoke_advice = block("opt.revoke_advice", "End the advice in effect from the next batch on")(_revoke_advice)
 best = block("analyze.best", "Best feasible observations under the corner policy")(_analyze.best)
 report = block("analyze.report", "report.md + report.html with six sections and four figures")(_analyze.report)
 digest = block("analyze.digest", "reports/digest.md + digest.json: what the run found, computed from its observations")(

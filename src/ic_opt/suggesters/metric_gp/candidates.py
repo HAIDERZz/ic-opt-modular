@@ -101,3 +101,37 @@ def local(coords: Coords, centre: np.ndarray, length: float, weights: np.ndarray
 def wide(coords: Coords, excluded: set[bytes], rng: np.random.Generator, n: int = WIDE) -> np.ndarray:
     """A scrambled Sobol sample of ``n`` points in unit coordinates, snapped to the grid, minus ``excluded``."""
     return fresh(coords.snap(unit_design("sobol", n, len(coords.counts), int(rng.integers(2**63)))), excluded)
+
+
+class Advised:
+    """An advice's ranges, fixed levels and ``vary`` on the grid (T17.1.5 specification, section 6.2): per variable the
+    band of level indices it may take, and which variables may move at all.
+
+    Candidates are brought inside it rather than drawn inside it: they are generated as they are without advice, so the
+    random streams stay what they were, then every variable is moved to the nearest level of its band -- the band's end,
+    in level indices and therefore in unit coordinates too, logarithmic or not -- and, when ``vary`` is given, every other
+    variable to the level of ``centre``. The advice's check (``ic_opt.advice.check``) has put every bound on a level."""
+
+    def __init__(self, coords: Coords, row: dict) -> None:
+        self.id = row["id"]
+        self.low = np.zeros(len(coords.counts), dtype=np.int64)
+        self.high = coords.counts - 1
+        self.held = np.zeros(len(coords.counts), dtype=bool)
+        for name, (lo, hi) in row.get("ranges", {}).items():
+            i = coords.names.index(name)
+            self.low[i], self.high[i] = coords.level(i, lo), coords.level(i, hi)
+        for name, value in row.get("fixed", {}).items():
+            i = coords.names.index(name)
+            self.low[i] = self.high[i] = coords.level(i, value)
+        if row.get("vary"):
+            self.held = np.array([name not in row["vary"] for name in coords.names])
+
+    def inside(self, idx: np.ndarray, centre: np.ndarray) -> np.ndarray:
+        """``idx`` (rows of level indices) brought inside the advice; ``centre``: the level indices the held variables take."""
+        out = np.array(idx, dtype=np.int64).reshape(-1, len(self.low))
+        out[:, self.held] = centre[self.held]
+        return np.clip(out, self.low, self.high)
+
+    def contains(self, idx: np.ndarray, centre: np.ndarray) -> np.ndarray:
+        """Which rows of ``idx`` lie inside the advice already."""
+        return (self.inside(idx, centre) == idx).all(axis=1)

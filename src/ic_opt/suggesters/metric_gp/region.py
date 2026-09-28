@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from ic_opt import space
 from ic_opt.observation import Observation
 from ic_opt.spec import Spec
 from ic_opt.suggesters.metric_gp.compose import Composer, metric_scales, true_arrays
@@ -65,8 +66,9 @@ class Region:
 
 def batch_key(origin: str) -> tuple[str, int] | None:
     """(kind, k) of a metric_gp batch row, None for every other row (start points, the initial design, user points,
-    other strategies: region 0's, not batches)."""
-    match = BATCH_TAG.match(origin)
+    other strategies, an advice's start points: region 0's, not batches). A point proposed under an advice
+    (``tr:0:40@a2``) belongs to its batch as any other: the region's course is judged as without advice."""
+    match = BATCH_TAG.match(space.split_origin(origin)[0])
     return (match.group("kind"), int(match.group("k"))) if match else None
 
 

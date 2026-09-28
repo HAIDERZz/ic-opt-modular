@@ -14,6 +14,7 @@ import os
 import sys
 import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -33,11 +34,14 @@ DEFAULT_BATCH = 10
 
 
 def run_one(problem: Problem, method: str, seed: int, *, budget: int = DEFAULT_BUDGET, batch: int = DEFAULT_BATCH,
-            n_init: int | None = None, cache: str | Path | None = None) -> dict:
+            n_init: int | None = None, cache: str | Path | None = None,
+            advice: Callable[[Observations], list[dict]] | None = None) -> dict:
     """Run ``suggest`` <-> ``observe`` until ``budget`` points are gathered (or ``suggest`` stops proposing). Returns
     the run's result dict (schema: see the module docstring of ``benchmarks/icopt_bench/loop.py``'s CLI, or just read
     the keys below) -- never raises: an exception during the run is caught, recorded as ``error``, and the points
-    gathered so far are kept."""
+    gathered so far are kept. ``advice``: called with the history before every batch, returns the advice rows
+    (``ic_opt.advice``) ``suggest`` is handed, as ``opt.optimize`` hands it the project's advice file; none by default,
+    and then nothing is handed and every run is what it was before advice existed."""
     if cache is not None:
         problem = cached(problem, cache)
     dim = len(problem.spec.variables)
@@ -63,8 +67,10 @@ def run_one(problem: Problem, method: str, seed: int, *, budget: int = DEFAULT_B
     try:
         while len(history) < budget:
             n = min(batch, budget - len(history))
+            advised = {"advice": advice(history)} if advice is not None else {}
             t0 = time.perf_counter()
-            points = suggest(problem.spec, history, n, strategy=method, seed=seed if since_0b else seed + len(history), **kwargs)
+            points = suggest(problem.spec, history, n, strategy=method, seed=seed if since_0b else seed + len(history),
+                             **kwargs, **advised)
             suggest_seconds.append(time.perf_counter() - t0)
             if not points:
                 break

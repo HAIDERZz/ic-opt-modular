@@ -149,8 +149,9 @@ _TAG_RE = re.compile(r"^suggest:turbo:(?P<kind>init|tr):(?P<restart>\d+):(?P<k>\
 
 
 def _tag(origin: str) -> tuple[str, int] | None:
-    """('init'|'tr', restart) for a TuRBO-tagged origin, None for any other row."""
-    match = _TAG_RE.match(origin)
+    """('init'|'tr', restart) for a TuRBO-tagged origin, None for any other row. Read through ``space.split_origin``:
+    TuRBO proposes nothing under an advice, but a history continued from another strategy may hold ``...@<id>``."""
+    match = _TAG_RE.match(space.split_origin(origin)[0])
     return (match.group("kind"), int(match.group("restart"))) if match else None
 
 

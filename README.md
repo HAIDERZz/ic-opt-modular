@@ -98,6 +98,8 @@ ic-opt blocks | ic-opt describe sim.evaluate       # what a recipe can compose
 ic-opt call points.sobol PROJECT n=12 seed=3       # one block by name
 ic-opt doctor PROJECT                              # tools, license, exports, site envelope, budget
 ic-opt digest PROJECT [--step S] [--top N] [--json]  # what the run found, from its observations; also while it runs
+ic-opt advise PROJECT advice.yaml                  # advice for the next batches: start rows, ranges, fixed, vary
+ic-opt advise PROJECT --list | --revoke a2 --reason "..."
 ic-opt migrate OLD_PROJECT NEW_PROJECT             # 0.1 opt_requirement.md -> spec.yaml (+ MIGRATION.md)
 ic-opt migrate-store PROJECT --dry-run             # a store written by an earlier version: see Results
 ```
@@ -154,6 +156,48 @@ and at most half the budget), start points included, and origins end in `:init`,
 `:wide:<r>:<k>` or `:anchor:<r>:<k>`. It does not take EM devices or several
 corners at once yet: named with `strategy=metric_gp` for such a run, `opt.optimize`
 refuses it before anything runs; run one corner or the `signoff` recipe.
+
+Advice. ic-opt calls no language model; whoever reads what a run found (a
+person, or the user's own agent) can give the run advice as data, between runs:
+
+```yaml
+# advice.yaml
+author: "agent: <model>"            # who gives it; required
+reason: "the best points sit at W1 >= 2u; L2 does not matter"   # why; required
+start:                              # complete grid rows to evaluate first
+  - {W1: 2.4u, L2: 0.1u, IB: 40u}
+ranges: {W1: [2u, 4u]}              # inside the spec's range, never wider
+fixed: {L2: 0.1u}                   # hold a variable at one level
+vary: [W1, IB]                      # only these move; the others stay at the search region's centre
+```
+
+`ic-opt advise PROJECT advice.yaml` checks it against the spec -- an unknown
+variable, a range or value outside the spec's range (the spec's ranges are the
+user's to change; an advice never widens them), a start row that does not name
+every variable, a range that holds no grid level are refused with what to
+change; bounds between grid levels move inward, values between levels to the
+nearest level, and a line says so -- then appends it with its id (`a1`, `a2`,
+...) and `since` (the observations the next batch's strategy is handed) to
+`.icopt/advice.jsonl`, and ends the advice before it. It takes the project's
+lock: not while a run goes; continue the run afterwards with a larger budget.
+`--list` shows every advice and which is in effect, `--revoke ID --reason ...`
+ends one. A store that holds the problem at several sets of corners (the
+`signoff` recipe's search corner and its re-check at all) needs `--corners tt`.
+`opt.advise` / `opt.revoke_advice` are the same as blocks, for a recipe's own
+code.
+
+`opt.optimize` reads the file before every batch; the advice in effect at a
+batch follows from the file's rows and the batch's history size alone, so a
+continued run replays as it went. Its start rows come first, once, with origin
+`advice:<id>`, whatever the strategy. Its ranges, fixed levels and `vary` are
+`metric_gp`'s: a fifth of every batch still looks over the spec's whole range,
+the other slots choose among the search region's candidates brought inside the
+advice (on a small grid, among the grid points inside it), and those points'
+origins end in `@<id>` (`suggest:metric_gp:tr:0:40@a2`). The initial design is
+not moved by an advice. When the advice holds no point that is not evaluated,
+the whole batch looks over the whole space. Another strategy uses the start rows
+only, and a line says which parts it leaves unused. A run without the file is
+exactly the run it was before advice existed.
 
 ### spec.yaml
 

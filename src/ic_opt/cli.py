@@ -251,6 +251,66 @@ def call(
         raise typer.Exit(code=1)
 
 
+@app.command()
+def advise(
+    project: Annotated[Path, typer.Argument(help="project directory containing spec.yaml")],
+    file: Annotated[Path | None, typer.Argument(help="advice YAML: author, reason, and any of start, ranges, fixed, vary")] = None,
+    revoke: Annotated[str | None, typer.Option("--revoke", help="end this advice (its id, e.g. a2) from the next batch on")] = None,
+    reason: Annotated[str | None, typer.Option("--reason", help="why the advice ends (with --revoke)")] = None,
+    list_: Annotated[bool, typer.Option("--list", help="print every advice of this project and whether it is in effect")] = False,
+    corners: Annotated[str | None, typer.Option("--corners", help="the corners of the run the advice is for (tt or "
+                                                "tt,ss or all); needed only when the store holds this problem's points "
+                                                "at several sets of corners")] = None,
+) -> None:
+    """Give a run advice as data (no language model is called): start rows to evaluate first, narrower ranges, variables
+    to hold. Checked against the spec, recorded in .icopt/advice.jsonl, in effect from the next batch. Not while a run
+    goes: continue the run afterwards (same recipe, larger budget)."""
+    from ic_opt import advice as advice_rules
+    from ic_opt._lock import LockHeld
+    from ic_opt.blocks.optimize import advise as adopt_advice
+    from ic_opt.blocks.optimize import revoke_advice
+    from ic_opt.spec import load_spec
+    from ic_opt.store import RunStore
+
+    if sum((file is not None, revoke is not None, list_)) != 1:
+        typer.echo("error: give one of: an advice FILE, --revoke ID --reason TEXT, --list", err=True)
+        raise typer.Exit(code=2)
+    try:
+        spec = load_spec(project / "spec.yaml")
+    except ValidationError as exc:
+        typer.echo(f"error: {_spec_problems(project / 'spec.yaml', exc)}", err=True)
+        raise typer.Exit(code=2) from exc
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    store = RunStore(project)
+    if list_:
+        rows = advice_rules.of_problem(advice_rules.read(store.root), {spec.fingerprint(), spec._legacy_fingerprint()})
+        states = advice_rules.status(rows)
+        for row in rows:
+            if row["event"] == "adopt":
+                typer.echo(f"{row['id']}  since {row['since']}  {states[row['id']]}  by {row['author']}: "
+                           f"{advice_rules.describe(row)} -- {row['reason']}")
+            else:
+                typer.echo(f"{row['id']}  revoked at since {row['since']}: {row['reason']}")
+        if not rows:
+            typer.echo("no advice for this problem")
+        return
+    wanted = None if corners is None else "all" if corners == "all" else [c for c in corners.split(",") if c]
+    try:
+        if revoke is not None:
+            revoke_advice(spec, store, revoke, reason or "", corners=wanted)
+        else:
+            adopt_advice(spec, store, yaml.safe_load(file.read_text(encoding="utf-8")), corners=wanted)
+    except LockHeld as exc:
+        typer.echo(f"error: {exc}; advice is given between runs: stop the run (or let it finish), advise, then "
+                   "continue it", err=True)
+        raise typer.Exit(code=2) from exc
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+
 def _render(result: object) -> str:
     if hasattr(result, "model_dump_json"):
         return result.model_dump_json(indent=2)

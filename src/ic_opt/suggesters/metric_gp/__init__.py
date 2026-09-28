@@ -19,6 +19,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from ic_opt import advice as advice_rules
 from ic_opt import space
 from ic_opt.observation import Observations
 from ic_opt.spec import Spec
@@ -69,9 +70,12 @@ class MetricGpSuggester:
         self.wide_share = wide_share      # share of a batch chosen over the whole space when there is a region
 
     def propose(self, spec: Spec, history: Observations, n: int, *, seed: int,
-                pending: Sequence[dict[str, str]] = ()) -> Proposal:
+                pending: Sequence[dict[str, str]] = (), advice: Sequence[dict] = ()) -> Proposal:
         """``seed`` is the run's seed: it fixes the initial design; every other random number is drawn from
-        (seed, history size), so successive batches differ and the same history and seed give the same proposal."""
+        (seed, history size), so successive batches differ and the same history and seed give the same proposal.
+        ``advice``: every row of the project's advice file (``ic_opt.advice``); the advice in effect at this history
+        size narrows where the models' points look (section 6.2 of the T17.1.5 specification). The design's points are
+        not moved by an advice: the design is the design."""
         _refuse(spec, history)
         coords = Coords(spec)
         design = initial_design_size(spec, self.initial_trials)
@@ -88,7 +92,7 @@ class MetricGpSuggester:
         rows = list(history)
         chosen = [space.snap(spec, r) for r in raw] + list(pending)
         excluded = set(keys(coords.indices([o.params for o in rows] + chosen)))
-        idx, more = self._model_batch(spec, coords, rows, n - len(raw), excluded, seed)
+        idx, more = self._model_batch(spec, coords, rows, n - len(raw), excluded, seed, advice)
         return Proposal(raw + coords.raw(idx).tolist() if len(idx) else raw, tags=tags + more)
 
     def fit(self, spec: Spec, coords: Coords, rows: list, seed: int) -> tuple[list[MetricModel], ValueModel]:
@@ -107,33 +111,48 @@ class MetricGpSuggester:
         return region.replay(spec, list(history), Coords(spec).d)
 
     def _model_batch(self, spec: Spec, coords: Coords, rows: list, n: int, excluded: set[bytes],
-                     seed: int) -> tuple[np.ndarray, list[str]]:
+                     seed: int, advice: Sequence[dict] = ()) -> tuple[np.ndarray, list[str]]:
         k = len(rows)
         nothing_feasible = not any(o.status == "ok" for o in rows)
         models, value_model = self.fit(spec, coords, rows, seed)
         composer, scales = Composer(spec), metric_scales(spec, rows)
         active = coords.active
+        current = advice_rules.in_effect(advice, k)
+        advised = candidates.Advised(coords, current) if advice_rules.narrows(current) else None
         if space.grid_size(spec) <= candidates.MAX_CANDIDATES:
             idx = candidates.whole_grid(coords, excluded)
+            slots = min(n, len(idx))
+            # With an advice a fifth of the slots still chooses among every grid point (D7b), the others among the points
+            # inside it -- held variables at the best point's levels, there being no region -- or, once none is left there,
+            # among every point again.
+            n_wide = slots if advised is None else round(self.wide_share * slots)
+            inside = (advised.contains(idx, self._best(spec, coords, rows, composer, scales)) if advised is not None
+                      else np.zeros(len(idx), dtype=bool))
+            preferred = [None] * n_wide + [inside] * (slots - n_wide)
             picks = select.select_batch(models, value_model, composer, scales, coords.unit(idx)[:, active],
-                                        [None] * min(n, len(idx)), _rng(seed, k, _SELECT),
-                                        nothing_feasible=nothing_feasible)
-            return idx[picks], [f"grid:{k}"] * len(picks)
+                                        preferred, _rng(seed, k, _SELECT), nothing_feasible=nothing_feasible)
+            return idx[picks], [f"grid:{k}" + (f"@{advised.id}" if b >= n_wide and inside[j] else "")
+                                for b, j in enumerate(picks)]
 
         state = region.replay(spec, rows, coords.d)
         anchor = None
+        anchor_advised = False
         if state.ended:
-            anchor = self._anchor(spec, coords, rows, state, models, value_model, composer, scales, excluded, seed)
+            anchor, anchor_advised = self._anchor(spec, coords, rows, state, models, value_model, composer, scales,
+                                                  excluded, seed, advised)
             index, length, centre = state.index + 1, region.LENGTH_INIT, anchor
         else:
             position = region.centre(composer, rows, state, scales, true_arrays(spec, rows))
             centre = (coords.indices([rows[position].params])[0] if position is not None
                       else coords.snap(np.full((1, len(coords.counts)), 0.5))[0])
             index, length = state.index, state.length
+        before = set(excluded) if advised is not None else excluded
         local = candidates.local(coords, centre, length, region.weights(models, coords), excluded, _rng(seed, k, _LOCAL))
         head = [anchor[None, :]] if anchor is not None else []
         local = local[: candidates.LOCAL - len(head)]          # the anchor is one of the region's candidates
         wide = candidates.wide(coords, excluded, _rng(seed, k, _WIDE))
+        if advised is not None:     # the region's candidates as without advice, brought inside it; the wide ones untouched
+            local = candidates.fresh(advised.inside(local, centre), before | set(keys(wide)))
         idx = np.vstack(head + [local, wide])
         is_wide = np.r_[np.zeros(len(idx) - len(wide), dtype=bool), np.ones(len(wide), dtype=bool)]
         slots = min(n, len(idx))
@@ -142,19 +161,30 @@ class MetricGpSuggester:
         picks = select.select_batch(models, value_model, composer, scales, coords.unit(idx)[:, active], preferred,
                                     _rng(seed, k, _SELECT), nothing_feasible=nothing_feasible,
                                     forced=0 if head else None)
-        tags = [f"{'wide' if is_wide[j] else 'tr'}:{index}:{k}" for j in picks]
+        suffix = f"@{advised.id}" if advised is not None else ""
+        tags = [f"wide:{index}:{k}" if is_wide[j] else f"tr:{index}:{k}{suffix}" for j in picks]
         if head:
-            tags[0] = f"anchor:{index}:{k}"
+            tags[0] = f"anchor:{index}:{k}" + (suffix if anchor_advised else "")
         return idx[picks], tags
 
     def _anchor(self, spec: Spec, coords: Coords, rows: list, state: region.Region, models: list[MetricModel],
                 value_model: ValueModel, composer: Composer, scales: dict[str, float], excluded: set[bytes],
-                seed: int) -> np.ndarray:
+                seed: int, advised: candidates.Advised | None = None) -> tuple[np.ndarray, bool]:
         """The next region's anchor: among 2000 snapped Sobol points farther than ``0.25 sqrt(d)`` from every earlier
         region's final centre, the winner of one posterior sample under the rule of section 8; when none is that far,
-        the farthest one. It leaves ``excluded`` holding it."""
+        the farthest one. It leaves ``excluded`` holding it.
+
+        Under an advice that narrows the search the 2000 points are brought inside it first (held variables at the best
+        point's levels), and the anchor says so (the second value): the anchor is the first of the region's own slots,
+        which an advice narrows; the whole space keeps its fifth of every batch. When the advice holds none of them that
+        is not evaluated, the anchor is chosen as without advice."""
         k = len(rows)
         pool = candidates.wide(coords, set(excluded), _rng(seed, k, _ANCHOR_POINTS), n=ANCHOR_SAMPLE)
+        inside = False
+        if advised is not None:
+            moved = candidates.fresh(advised.inside(pool, self._best(spec, coords, rows, composer, scales)), set(excluded))
+            if len(moved):
+                pool, inside = moved, True
         unit = coords.unit(pool)[:, coords.active]
         centres = coords.unit(coords.indices([rows[p].params for p in state.centres]))[:, coords.active]
         far, distance = region.far_from(unit, centres, coords.d)
@@ -166,7 +196,16 @@ class MetricGpSuggester:
         else:
             j = int(np.argmax(distance))
         excluded.update(keys(pool[j : j + 1]))
-        return pool[j]
+        return pool[j], inside
+
+    @staticmethod
+    def _best(spec: Spec, coords: Coords, rows: list, composer: Composer, scales: dict[str, float]) -> np.ndarray:
+        """Level indices of the history's best point (section 6), where an advice's held variables stay when there is no
+        region to take them from; the grid's middle when nothing is scored."""
+        best = region.incumbent(composer, rows, list(range(len(rows))), scales, true_arrays(spec, rows))
+        if best is None:
+            return coords.snap(np.full((1, len(coords.counts)), 0.5))[0]
+        return coords.indices([rows[best.position].params])[0]
 
 
 def _refuse(spec: Spec, history: Observations) -> None:
