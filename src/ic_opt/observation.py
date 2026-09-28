@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, model_serializer
 
 from ic_opt.space import Point
 
@@ -20,6 +20,18 @@ class ChildResult(BaseModel):
     issues: list[str] = Field(default_factory=list)
     sim_dir: str | None = None                    # relative to the project root
     seconds: float | None = None
+    # T17.5 (D8): instance as the simulator reports it (`/M1`, `/I0/M3`) -> quantity (sim.ocean.OP_QUANTITIES) -> value;
+    # transistors only (instances that report gm). None: not extracted -- older stores, EM devices, operating points
+    # switched off, results without any. Shown to whoever reads the run; no strategy reads it.
+    operating_points: dict[str, dict[str, float]] | None = None
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        """Left out while None: a child without operating points is written as before T17.5, byte for byte."""
+        data = handler(self)
+        if self.operating_points is None:
+            data.pop("operating_points", None)
+        return data
 
 
 class Observation(BaseModel):

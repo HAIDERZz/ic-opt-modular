@@ -7,6 +7,7 @@ import shlex
 from dataclasses import dataclass, field
 
 from ic_opt.executor import Executor, ExecutorError
+from ic_opt.sim import netlist as netlist_kernel
 from ic_opt.site import HostLimits
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
@@ -82,6 +83,7 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
     for tb in spec.testbenches:
         path = f"{tb.maestro_point_root}/netlist/input.scs"
         add(Check(f"export:{tb.id}", executor.exists(path), path))
+        add(_operating_points_check(spec, tb.id, path, executor))
 
     add(_envelope_check(spec, limits, executor.host))
     add(_machine_check(executor, limits))
@@ -124,6 +126,19 @@ def _spectre_checks(spec: Spec, executor: Executor, cshrc: str | None, limits: H
                             f"{head[0] if head else 'spectre -V failed'}; lmstat {len(features)} features" + (f" ({spectre})" if spectre else "")
                             if version.ok and probe.ok else (probe.stderr.strip() or version.stderr.strip() or "spectre -V / lmstat failed")))
     return checks
+
+
+def _operating_points_check(spec: Spec, tb_id: str, path: str, executor: Executor) -> Check:
+    """What the render stage does for the operating points of this testbench (T17.5), read off the export on the host:
+    they are in it, ic-opt adds the info statement, or a DC analysis and the statement; or the spec turns them off.
+    Every recipe runs the doctor first, so this is the line each run prints about them."""
+    name = f"operating points:{tb_id}"
+    if not spec.simulator.operating_points:
+        return Check(name, True, "off (simulator.operating_points: false)")
+    text = executor.run(f"cat {shlex.quote(path)}", timeout_s=120)
+    if not text.ok:
+        return Check(name, False, f"export not read ({path} on {executor.host})", level="note")
+    return Check(name, True, netlist_kernel.operating_points(text.stdout).describe())
 
 
 def _job(spec: Spec) -> tuple[int, float]:

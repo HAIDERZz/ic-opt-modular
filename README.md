@@ -179,6 +179,15 @@ is optional: how many seconds Spectre waits in its license queue, passed as
 itself. Like `timeout_s`, it says how the problem is run, so it is not part of
 the spec's fingerprint. `ic-opt migrate` writes `900` into a spec it converts from
 a 0.1 project, which passed `+lqtimeout 900` to every Spectre run.
+`simulator.operating_points` (default `true`) keeps every transistor's operating
+point with each observation: an export without `info what=oppoint where=rawfile`
+after a plain DC analysis gets `icoptOpInfo info what=oppoint where=rawfile` right
+after its DC analysis, or, without one, `icoptDcOp dc` and that statement at the
+end (after every analysis, so no metric changes); the rendered netlist says so in
+a comment, and `doctor` / `--plan` print one `operating points:<tb>` line per
+testbench (`in the export (<name>)`, `added by ic-opt (statement) ...`, `added by
+ic-opt (DC analysis and statement) ...`, `off`). `false` adds and reads nothing.
+Not part of the fingerprint: it changes no metric.
 
 ### Recipes
 
@@ -350,8 +359,12 @@ Everything lands under `PROJECT/.icopt/`: `observations.jsonl` (one row per
 point: parameters, per-testbench/corner children, metrics, fom, feasibility,
 status, provenance; `metric_failed` when an OCEAN expression returned nil or a
 non-scalar -- the child keeps the metrics that did extract and the point the
-nominal corner's, so a wrong expression costs that metric, not the point),
-`steps.jsonl`, `decks/`, `sims/<obs>/<tb>/<corner>/`,
+nominal corner's, so a wrong expression costs that metric, not the point; a
+Spectre child also carries `operating_points`, `{instance: {quantity: value}}`
+for the instances that report `gm`, with `region`, `ids`, `vgs`, `vds`, `vbs`,
+`vth`, `vdsat`, `gm`, `gds`, `gmoverid`, `cgs`, `cgd` where the simulator gives a
+number -- read after the metrics, it never fails a child; left out when there
+are none, and no strategy reads it), `steps.jsonl`, `decks/`, `sims/<obs>/<tb>/<corner>/`,
 `reports/report.md` + `report.html` (best observed, top feasible, constraint
 margins, parameter importance, corners, space-compression advisory; four figures).
 

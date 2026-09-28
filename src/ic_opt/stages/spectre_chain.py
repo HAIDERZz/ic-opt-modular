@@ -4,7 +4,11 @@
 
 Working directory layout (identical on the local and the remote side):
 
-    <dir>/netlist/input.scs   <dir>/psf/   <dir>/metrics/{probe.ocn, ocean.log, ocean_scalars.tsv, waveforms/}
+    <dir>/netlist/input.scs   <dir>/psf/   <dir>/metrics/{probe.ocn, ocean.log, ocean_scalars.tsv, oppoints.tsv, waveforms/}
+
+Operating points (T17.5, ``simulator.operating_points``): the render stage adds what the netlist lacks for Spectre to
+write them (``sim.netlist.with_operating_points``), the OCEAN stage reads them after the metrics, the extract stage
+keeps them in the child's result. None of it can fail a child or change a metric.
 """
 
 from __future__ import annotations
@@ -54,7 +58,8 @@ class Render:
 
 
 def render_netlist(deck: Deck, point: Point, ctx: StageContext) -> Netlist:
-    """The child's netlist: the deck template for (testbench, corner) with the circuit variables filled in; support files copied alongside."""
+    """The child's netlist: the deck template for (testbench, corner) with the circuit variables filled in and, unless the
+    spec turns them off, the statements for the operating points added; support files copied alongside."""
     try:
         template = deck.template(ctx.unit, ctx.corner)
     except KeyError as exc:
@@ -63,7 +68,10 @@ def render_netlist(deck: Deck, point: Point, ctx: StageContext) -> Netlist:
     if bundle is not None:   # Maestro's support files (.modelFiles, .designVariables, ...) travel with the deck
         shutil.copytree(literal(bundle), literal(ctx.workdir / "netlist"), dirs_exist_ok=True)     # names may end in a dot
     circuit = {name: point.params[name] for name in ctx.spec.circuit_variables}
-    return Netlist(netlist_kernel.render(template, circuit))
+    text = netlist_kernel.render(template, circuit)
+    if ctx.spec.simulator.operating_points:
+        text, _ = netlist_kernel.with_operating_points(text)
+    return Netlist(text)
 
 
 class Spectre:
@@ -124,8 +132,12 @@ class Ocean:
         waveforms = [w for w in self.waveforms if w.testbench in (None, ctx.unit)]
         local = ctx.workdir / "metrics"
         (local / "waveforms").mkdir(parents=True, exist_ok=True)
+        oppoints = None       # the netlist as it ran names the result (render_netlist added the statement where it lacked one)
+        if ctx.spec.simulator.operating_points:
+            oppoints = netlist_kernel.operating_points((ctx.workdir / "netlist" / "input.scs").read_text(encoding="utf-8")).result
         script = ocean_kernel.replay_script(
-            metrics, waveforms, psf_dir="psf", scalars_file="metrics/ocean_scalars.tsv", waveform_dir="metrics/waveforms"
+            metrics, waveforms, psf_dir="psf", scalars_file="metrics/ocean_scalars.tsv", waveform_dir="metrics/waveforms",
+            oppoint_result=oppoints, oppoints_file="metrics/oppoints.tsv",
         )
         (local / "probe.ocn").write_text(script, encoding="utf-8", newline="\n")
         ctx.executor.put(local, f"{ctx.remote_dir}/metrics")
@@ -153,7 +165,8 @@ class Ocean:
         except ValueError as exc:
             raise StageFailure(f"ocean scalars unreadable: {exc}") from exc
         csvs = {w.name: local / "waveforms" / f"{w.name}.csv" for w in waveforms}
-        return Scalars(rows, {name: (path if path.exists() else None) for name, path in csvs.items()}, attempts)
+        return Scalars(rows, {name: (path if path.exists() else None) for name, path in csvs.items()}, attempts,
+                       oppoints=local / "oppoints.tsv" if oppoints else None)
 
 
 class Extract:
@@ -168,7 +181,8 @@ class Extract:
     def run(self, scalars: Scalars, ctx: StageContext) -> ChildResult:
         """Every metric OCEAN gave a scalar for is kept. One that came back nil, non-scalar or not at all, or a requested
         waveform that came back nil, makes the child ``metric_failed`` with that as its issue -- the simulation ran and the
-        other metrics stand (N-31, 2026-09-27: a wrong expression used to fail the child and lose every metric)."""
+        other metrics stand (N-31, 2026-09-27: a wrong expression used to fail the child and lose every metric).
+        Operating points are kept when OCEAN wrote them; none, or a file that does not parse, is ``None``, never an issue."""
         metrics, issues = {}, []
         for metric in ctx.spec.metrics_for(ctx.unit):
             row = scalars.rows.get(metric.name)
@@ -179,9 +193,15 @@ class Extract:
             else:
                 metrics[metric.name] = row.value
         issues += [f"waveform {name} returned nil" for name, path in scalars.waveforms.items() if path is None]
+        operating_points = None
+        if scalars.oppoints is not None:
+            try:
+                operating_points = ocean_kernel.parse_oppoints(scalars.oppoints)
+            except ValueError:
+                pass
         return ChildResult(
             unit=ctx.unit, corner=ctx.corner, metrics=metrics, issues=issues,
-            status="ok" if not issues else "metric_failed",
+            status="ok" if not issues else "metric_failed", operating_points=operating_points,
         )
 
 

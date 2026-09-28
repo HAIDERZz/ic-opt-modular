@@ -98,11 +98,15 @@ class FakeSpectreExecutor(LocalExecutor):
     host then runs a real ``sleep`` in its place, under ``LocalExecutor`` in a
     process group of its own, so only the command's deadline or an interrupt
     ends it; ``hung`` lists those runs as (tool, cwd).
+    ``oppoints_fn(params_text, testbench, corner) -> {instance: {quantity: value}} | None`` gives the operating points
+    an OCEAN run writes to ``metrics/oppoints.tsv`` when its script asks for them (T17.5), escaped as the script's SKILL
+    escapes them; like Spectre, the fake has them only when the netlist it ran holds the info statement the script
+    selects. ``oppoint_results`` lists the result each such script selected. Without ``oppoints_fn`` no file is written.
     """
 
     def __init__(self, scratch_root: Path, metric_fn=None, *, fail_spectre=None, fail_ocean=None, nil_waveforms=(),
                  snp_fn=None, fail_emx=None, machine=(FAKE_HOST.max_threads, FAKE_HOST.max_memory_gb), tools=None,
-                 hang=None) -> None:
+                 hang=None, oppoints_fn=None) -> None:
         super().__init__(scratch_root)
         self.machine = machine
         self.tools = None if tools is None else set(tools)
@@ -116,6 +120,8 @@ class FakeSpectreExecutor(LocalExecutor):
         self.fail_emx = fail_emx or (lambda device: False)
         self.commands: list[str] = []
         self.emx_runs = 0
+        self.oppoints_fn = oppoints_fn
+        self.oppoint_results: list[str] = []
 
     def run(self, command, *, cwd=None, timeout_s=None, cshrc=None) -> CommandResult:
         self.commands.append(command)
@@ -174,10 +180,26 @@ class FakeSpectreExecutor(LocalExecutor):
             for name, value in _call(self.metric_fn, params, tb, corner, cwd=str(work)).items():
                 rows.append(f"{name}\t{value!r}\tx\tpass\t" if value is not None else f"{name}\t\tx\tfail\tnon_scalar")
             (work / "metrics" / "ocean_scalars.tsv").write_text("\n".join(rows) + "\n")
-            for line in (work / "metrics" / "probe.ocn").read_text().splitlines():
+            script = (work / "metrics" / "probe.ocn").read_text().splitlines()
+            for line in script:
                 if line.startswith("; waveform export: ") and (name := line.split(": ", 1)[1]) not in self.nil_waveforms:
                     (work / "metrics" / "waveforms" / f"{name}.csv").write_text("freq,value\n1e9,1.0\n2e9,1.5\n")
+            self._oppoints(work, script, params, tb, corner)
         return CommandResult(0, "", "", argv, 0.01)
+
+    def _oppoints(self, work: Path, script: list[str], params: dict[str, str], tb: str, corner: str | None) -> None:
+        part = [line for line in script[script.index("close(out)"):] if line.lstrip().startswith("when(errset(selectResult('")]
+        if self.oppoints_fn is None or not part:
+            return
+        result = part[0].split("'", 1)[1].split(")", 1)[0]
+        self.oppoint_results.append(result)
+        table = _call(self.oppoints_fn, params, tb, corner, cwd=str(work))
+        netlist = (work / "netlist" / "input.scs").read_text()
+        text = ""                                       # the script's file when the results hold no operating points
+        if table and f"\n{result} info what=oppoint where=rawfile" in "\n" + netlist:
+            rows = [f"{_skill_escape(i)}\t{q}\t{v!r}" for i, quantities in table.items() for q, v in quantities.items()]
+            text = "".join(f"{r}\n" for r in ["instance\tquantity\tvalue", *rows])
+        (work / "metrics" / "oppoints.tsv").write_text(text, newline="")
 
     def _installed(self, tool: str) -> bool:
         return self.tools is None or tool in self.tools
@@ -219,6 +241,11 @@ def _call(fn, *args, cwd: str):
 
     positional = [p for p in inspect.signature(fn).parameters.values() if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
     return fn(*args, cwd) if len(positional) > len(args) else fn(*args)
+
+
+def _skill_escape(name: str) -> str:
+    """What the replay script's icoptOpEscape does to an instance name."""
+    return name.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")
 
 
 def _tb_corner(child_dir: Path) -> tuple[str, str | None]:

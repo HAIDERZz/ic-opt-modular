@@ -218,7 +218,11 @@ device still appears exactly once.
 `parallel_jobs`, `timeout_s` (required, the user's; `parallel_jobs x
 threads_per_run` must fit the host's site.yaml entry), `license_check`
 (default true), `license_queue_timeout_s` (only when the user gives it),
-`keep_failed_runs` / `keep_successful_runs` (raw psf retention).
+`keep_failed_runs` / `keep_successful_runs` (raw psf retention),
+`operating_points` (default true: every transistor's operating point is kept per
+child; ic-opt adds the `info what=oppoint where=rawfile` statement -- and a DC
+analysis when the export has none -- to the rendered netlist; `false` only when
+the user does not want the netlist touched; not in the fingerprint).
 
 ### `budget`
 `max_simulations`: the ceiling on simulations the project may hold. Size it
@@ -453,7 +457,9 @@ budget: { max_simulations: 400 }
 
 1. `ic-opt doctor PROJECT [--ssh-profile HOST]`: every check `[ok]` (tools,
    license, `export:<tb>` per testbench, `device:<id>` per device, `emx`,
-   `em:process_file`, envelope, budget).
+   `em:process_file`, envelope, budget). `operating points:<tb>` says whether the
+   export asks for them, what ic-opt adds, or `off`; tell the user when ic-opt
+   adds a DC analysis.
 2. `ic-opt run <recipe> PROJECT <params> --plan [--ssh-profile HOST]`: read every
    `[plan]` line -- `netlist.import <tb>` per testbench (a `FAIL` names the
    variable or corner to fix), the block sequence, `N simulations per point`,

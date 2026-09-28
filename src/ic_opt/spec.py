@@ -239,17 +239,20 @@ class Simulator(Model):
     license_queue_timeout_s: int | None = Field(default=None, ge=0)   # Spectre +lqtimeout <s>; None: the flag is not passed
     keep_failed_runs: bool = True
     keep_successful_runs: bool = True
+    operating_points: bool = True        # T17.5: add the statements Spectre needs to write them, read them per child
 
     engine: Literal["spectre_x"] = "spectre_x"
     output_format: Literal["psfxl"] = "psfxl"
 
     @model_serializer(mode="wrap")
     def _dump(self, handler):
-        """An unset license queue timeout stays out of the dump, so the specs written before it existed keep their legacy
-        fingerprint (``Spec._legacy_fingerprint``)."""
+        """An unset license queue timeout and operating points left on stay out of the dump, so the specs written before
+        they existed keep their legacy fingerprint (``Spec._legacy_fingerprint``)."""
         data = handler(self)
         if self.license_queue_timeout_s is None:
             data.pop("license_queue_timeout_s", None)
+        if self.operating_points:
+            data.pop("operating_points", None)
         return data
 
 
@@ -554,8 +557,8 @@ class Spec(Model):
 
     def problem(self) -> dict:
         """The problem this spec states: ``model_dump(mode="json")`` without how it is run -- the simulator's parallel jobs,
-        threads per run, timeout, license check, license queue timeout and retention, EMX threads, memory cap, timeout and
-        verbosity, and the budget. Unset (None) fields are left out too, so an optional field added to the schema later
+        threads per run, timeout, license check, license queue timeout, retention and operating points, EMX threads, memory
+        cap, timeout and verbosity, and the budget. Unset (None) fields are left out too, so an optional field added to the schema later
         leaves every existing problem's identity alone."""
         return self.model_dump(mode="json", exclude=_NOT_PROBLEM, exclude_none=True)
 
@@ -581,7 +584,7 @@ def _unique(values: list[str], label: str) -> None:
 # How a problem is run, not which problem it is: left out of Spec.problem() and so of Spec.fingerprint().
 _NOT_PROBLEM = {
     "simulator": {"parallel_jobs", "threads_per_run", "timeout_s", "license_check", "license_queue_timeout_s",
-                  "keep_failed_runs", "keep_successful_runs"},
+                  "keep_failed_runs", "keep_successful_runs", "operating_points"},   # operating points: read beside the metrics, never change one
     "em": {"threads", "memory_gb", "parallel_jobs", "timeout_s", "verbose", "binary"},      # the binary: a path on the host, not physics
     "budget": True,
 }

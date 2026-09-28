@@ -17,6 +17,9 @@ WAVEFORM_RESULT_RE = re.compile(r'\?result\s+"([^"]+)"')
 UNSAFE_RE = re.compile(r"outfile\(|system\(|\{\{")
 SAFE_IDENTIFIER_RE = re.compile(r"[^A-Za-z0-9_]")
 SCALARS_HEADER = ["metric", "value", "unit", "status", "message"]
+OPPOINTS_HEADER = "instance\tquantity\tvalue"
+# D8: the quantities kept per transistor, fixed. `gm` first: an instance without it is not a transistor and is left out.
+OP_QUANTITIES = ("gm", "region", "ids", "vgs", "vds", "vbs", "vth", "vdsat", "gds", "gmoverid", "cgs", "cgd")
 
 
 class WaveformExport(BaseModel):
@@ -45,11 +48,13 @@ class Scalars:
     rows: dict[str, ScalarRow] = field(default_factory=dict)
     waveforms: dict[str, Path | None] = field(default_factory=dict)   # export name -> local csv path (None: returned nil)
     attempts: int = 1
+    oppoints: Path | None = None           # local oppoints.tsv (None: not asked for)
 
 
 def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf_dir: str, scalars_file: str,
-                  waveform_dir: str) -> str:
-    """SKILL that reads ``psf_dir`` and writes one TSV row per metric plus waveform CSVs.
+                  waveform_dir: str, oppoint_result: str | None = None, oppoints_file: str | None = None) -> str:
+    """SKILL that reads ``psf_dir`` and writes one TSV row per metric plus waveform CSVs and, with ``oppoint_result``
+    (the netlist's ``info what=oppoint where=rawfile`` statement), the operating points to ``oppoints_file``.
 
     All paths are relative to the OCEAN working directory.
     """
@@ -99,8 +104,102 @@ def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf
             f"  ; waveform export {wf.name} returned nil",
             ")",
         ]
-    lines += ["close(out)", "exit()"]
+    lines.append("close(out)")
+    if oppoint_result is not None:
+        lines += oppoint_script(oppoint_result, oppoints_file)
+    lines.append("exit()")
     return "\n".join(lines) + "\n"
+
+
+def oppoint_script(result: str, oppoints_file: str) -> list[str]:
+    """The replay script's operating-point part. It runs after the metrics and waveforms, with their file closed, so it
+    cannot change one. Every call that can fail is inside ``errset``; rows are collected first and written only when the
+    whole read went through, so a failure leaves the file empty (as does a result without operating points).
+
+    A quantity is read with ``pv`` from the named result, then with ``OP`` (the form checked by hand on 2026-09-28,
+    ``OP("/M1" "gm")`` with the result selected) under the name as ``outputs()`` gives it and with a leading ``/``.
+    Instance names are written as ``outputs()`` gives them, with ``\\``, tab and newline escaped
+    (:func:`parse_oppoints` undoes it)."""
+    _check_selector(result, "operating-point result")
+    quantities = " ".join(_skill(q) for q in OP_QUANTITIES[1:])
+    return [
+        "; operating points (ic-opt): after the metrics, whose file is closed; nothing here can change one",
+        "procedure(icoptOpEscape(s)",
+        "  let((escaped c)",
+        '    escaped = ""',
+        "    for(i 1 strlen(s)",
+        "      c = substring(s i 1)",
+        r'      escaped = strcat(escaped cond((equal(c "\\") "\\\\") (equal(c "\t") "\\t") (equal(c "\n") "\\n") (t c)))',
+        "    )",
+        "    escaped",
+        "  )",
+        ")",
+        "procedure(icoptOpValue(inst q)",
+        "  let((v)",
+        f"    v = car(errset(pv(inst q ?result '{result})))",
+        "    unless(numberp(v) v = car(errset(OP(inst q))))",
+        '    unless(numberp(v) || equal(substring(inst 1 1) "/") v = car(errset(OP(strcat("/" inst) q))))',
+        "    if(numberp(v) v nil)",
+        "  )",
+        ")",
+        "icoptOpRows = nil",
+        "icoptOpRead = errset(",
+        f"  when(errset(selectResult('{result}))",
+        "    foreach(icoptOpInst car(errset(outputs()))",
+        "      errset(",
+        "        let((name gm row v)",
+        "          name = if(symbolp(icoptOpInst) get_pname(icoptOpInst) icoptOpInst)",
+        f"          gm = icoptOpValue(name {_skill(OP_QUANTITIES[0])})",
+        "          when(gm",
+        rf'            row = list(sprintf(nil "%s\t{OP_QUANTITIES[0]}\t%.16g\n" icoptOpEscape(name) float(gm)))',
+        f"            foreach(q list({quantities})",
+        "              v = icoptOpValue(name q)",
+        r'              when(v row = cons(sprintf(nil "%s\t%s\t%.16g\n" icoptOpEscape(name) q float(v)) row))',
+        "            )",
+        "            icoptOpRows = append(icoptOpRows reverse(row))",
+        "          )",
+        "        )",
+        "      )",
+        "    )",
+        "  )",
+        ")",
+        f'icoptOpOut = car(errset(outfile({_skill(oppoints_file)} "w")))',
+        "when(icoptOpOut",
+        "  when(icoptOpRead && icoptOpRows",
+        r'    fprintf(icoptOpOut "instance\tquantity\tvalue\n")',          # OPPOINTS_HEADER
+        '    foreach(icoptOpRow icoptOpRows fprintf(icoptOpOut "%s" icoptOpRow))',
+        "  )",
+        "  close(icoptOpOut)",
+        ")",
+    ]
+
+
+def parse_oppoints(path: Path) -> dict[str, dict[str, float]] | None:
+    """``oppoints.tsv`` -> {instance: {quantity: value}}; None when the file is missing or holds no row (no operating
+    points in the results). Instances without ``gm`` and non-finite values are left out, as the script leaves out what
+    has no number. A malformed row is an error (ValueError): the extract stage then keeps no operating points."""
+    if not path.exists():
+        return None
+    text = path.read_bytes().decode("utf-8")           # not read_text: a carriage return inside a name stays in it
+    rows = [line for line in text.split("\n") if line]
+    if not rows:
+        return None
+    if rows[0] != OPPOINTS_HEADER:
+        raise ValueError(f"unexpected operating-point header {rows[0]!r}")
+    table: dict[str, dict[str, float]] = {}
+    for line in rows[1:]:
+        fields = line.split("\t")
+        if len(fields) != 3 or fields[1] not in OP_QUANTITIES:
+            raise ValueError(f"malformed operating-point row {line!r}")
+        value = float(fields[2])
+        if math.isfinite(value):
+            table.setdefault(_unescape(fields[0]), {})[fields[1]] = value
+    table = {name: q for name, q in table.items() if "gm" in q}
+    return table or None
+
+
+def _unescape(name: str) -> str:
+    return re.sub(r"\\(.)", lambda m: {"t": "\t", "n": "\n"}.get(m.group(1), m.group(1)), name)
 
 
 def parse_scalars(path: Path) -> dict[str, ScalarRow]:
