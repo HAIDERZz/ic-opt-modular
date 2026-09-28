@@ -19,10 +19,10 @@ from ic_opt.cli import app
 from ic_opt.deck import Deck
 from ic_opt.recipes import coarse_to_fine, fix_run, optimize, signoff
 from ic_opt.site import HostLimits, Site
-from ic_opt.spec import load_spec
+from ic_opt.spec import Spec, load_spec
 from ic_opt.stages import spectre_pipeline
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FakeSpectreExecutor, minimal_spec, needs_turbo
+from tests.ic_opt.fakes import DEMO_PROC, FakeSpectreExecutor, minimal_spec, needs_turbo
 from tests.ic_opt.test_blocks import maestro_export
 
 TEMPLATES = sorted((Path(__file__).parent / "fixtures" / "legacy").glob("opt_requirement*.md"))
@@ -183,7 +183,8 @@ def test_run_plan_names_the_current_design_and_the_start_points(tmp_path):
     assert "[plan] opt.optimize step='optimize': current design (the exported netlists) first: F=20 W=0.6u" in result.output
     assert "[plan] openbox initial design 3 points (2 start points first): the surrogate proposes 2 of the 6 new points" in result.output
     assert not (root / ".icopt" / "observations.jsonl").exists()
-    off = runner.invoke(app, ["run", "optimize", str(root), "--plan", "budget=6", "batch=2", "current=false"]).output
+    off = runner.invoke(app, ["run", "optimize", str(root), "--plan", "budget=6", "batch=2", "strategy=openbox_gp_eic",
+                              "current=false"]).output
     assert "current design" not in off and "initial design 3 points: the surrogate proposes 2 of the 6 new points" in off
 
 
@@ -277,14 +278,73 @@ def test_signoff_recipe_searches_one_corner_then_checks_all(tmp_path):
     assert {o.key for o in check} <= {o.key for o in search}
 
 
-@needs_turbo
-def test_coarse_to_fine_recipe_warm_starts_the_fine_step(tmp_path):
+def test_coarse_to_fine_recipe_runs_metric_gp_in_both_steps_on_a_circuit_at_one_condition(tmp_path, capsys, monkeypatch):
+    """T17.2: ``auto`` resolves to metric_gp; the fine step goes on from the coarse step's points in the store (not handed
+    over again as ``initial=``, which would put every one in the model twice) and evaluates none of them a second time."""
+    from ic_opt.suggesters.metric_gp import MetricGpSuggester
+
+    seen = []
+    propose = MetricGpSuggester.propose
+    monkeypatch.setattr(MetricGpSuggester, "propose", lambda self, spec, history, n, **kw: seen.append(list(history))
+                        or propose(self, spec, history, n, **kw))
     run = fake_run(project(tmp_path))
+    coarse_to_fine.main(run, coarse_budget=6, fine_budget=4, batch=2, seed=3)
+    obs = run.store.observations()
+    coarse, fine = obs.by_step("coarse"), obs.by_step("fine")
+    assert len(coarse) == 6 and len(fine) == 4 and len({o.key for o in obs}) == 10
+    assert coarse[0].origin == "start" and coarse[0].params == {"F": "20", "W": "0.6u"}
+    assert all(o.origin.startswith("suggest:metric_gp:") for o in [*coarse[1:], *fine])
+    assert [len(h) for h in seen] == [0, 2, 4, 6, 8]            # the fine step's first batch sees the six coarse rows once
+    assert all(len({o.key for o in h}) == len(h) for h in seen)
+    out = capsys.readouterr().out
+    assert out.count("[optimize] strategy auto: metric_gp (no EM devices, one condition)") == 1     # the coarse step's
+    assert "turbo" not in out and "openbox" not in out
+
+
+@needs_turbo
+def test_coarse_to_fine_recipe_on_a_spec_with_a_device_runs_openbox_then_turbo(tmp_path, capsys):
+    """Outside metric_gp's scope ``auto`` is the recipe as before T17.2: OpenBox, then TuRBO warm-started from it."""
+    pytest.importorskip("klayout.db")
+    from tests.ic_opt.test_em_circuit import em_circuit_spec
+
+    proc = tmp_path / "demo.proc"                              # the doctor asks the (local) host for the process file
+    proc.write_text(DEMO_PROC, encoding="utf-8")
+    d = em_circuit_spec(tmp_path).model_dump(mode="json")
+    spec = Spec.model_validate({**d, "em": {**d["em"], "process_file": str(proc)}})
+    store = RunStore(tmp_path / "proj")
+    executor = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 7.0 + int(p["F"]) / 100})
+    run = recipe.Run(tmp_path / "proj", spec, store, executor, None, SITE, SITE.host("local"))
     coarse_to_fine.main(run, coarse_budget=4, fine_budget=3, batch=2, seed=3)
     obs = run.store.observations()
-    assert len(obs.by_step("coarse")) == 4 and len(obs.by_step("fine")) == 3
-    assert obs.by_step("coarse")[0].origin == "start" and obs.by_step("coarse")[0].params == {"F": "20", "W": "0.6u"}
+    assert len(obs.by_step("coarse")) == 4 and len(obs.by_step("fine")) == 3 and len({o.key for o in obs}) == 7
+    assert all(o.origin.startswith("suggest:openbox_gp_eic:") for o in obs.by_step("coarse"))
     assert all(o.origin.startswith("suggest:turbo") for o in obs.by_step("fine"))
+    assert "[optimize] strategy auto: openbox_gp_eic (metric_gp does not take EM devices yet)" in capsys.readouterr().out
+
+
+def test_the_recipes_default_strategy_resolves_per_run_under_plan(tmp_path):
+    """T17.2 defaults: optimize, signoff and coarse_to_fine name no strategy and run ``auto``; the plan says what it became."""
+    one = project(tmp_path / "one")
+    three = project(tmp_path / "three", corners=("tt", "ss", "ff"))
+    cases = [
+        (["optimize", one], "[plan] strategy auto: metric_gp (no EM devices, one condition)",
+         ["step='optimize' strategy=metric_gp"]),
+        (["optimize", three], "[plan] strategy auto: openbox_gp_eic (metric_gp works on one condition; this run covers 3 corners)",
+         ["step='optimize' strategy=openbox_gp_eic"]),
+        (["signoff", three], "[plan] strategy auto: metric_gp (no EM devices, one condition)",
+         ["step='search@tt' strategy=metric_gp"]),
+        (["coarse_to_fine", one], "[plan] strategy auto: metric_gp (no EM devices, one condition)",
+         ["step='coarse' strategy=metric_gp", "step='fine' strategy=metric_gp"]),
+        (["coarse_to_fine", three], "[plan] strategy auto: openbox_gp_eic (metric_gp works on one condition; this run covers 3 corners)",
+         ["step='coarse' strategy=openbox_gp_eic", "step='fine' strategy=turbo"]),
+    ]
+    for (name, root), line, steps in cases:
+        result = runner.invoke(app, ["run", name, str(root), "--plan"])
+        assert result.exit_code == 0, result.output
+        assert line in result.output and all(f"[plan] opt.optimize {s}:" in result.output for s in steps), result.output
+        assert not (root / ".icopt" / "observations.jsonl").exists()
+    named = runner.invoke(app, ["run", "optimize", str(one), "--plan", "strategy=turbo"]).output
+    assert "strategy auto" not in named and "step='optimize' strategy=turbo:" in named          # a named strategy: as named
 
 
 def test_user_recipe_file_composes_blocks(tmp_path):

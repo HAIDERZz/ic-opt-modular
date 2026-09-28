@@ -24,7 +24,7 @@ bash scripts/check_clean_install.sh                                  # optional:
 did; `uv pip list` shows what is there.
 
 The package declares everything it imports at start-up (numpy, scipy, scikit-learn, threadpoolctl, ...).
-OpenBox, which serves the `openbox_*` strategies (`opt.optimize`'s default), is vendored in `vendor/open-box`
+OpenBox, which serves the `openbox_*` strategies (what the default `auto` runs with EM devices or several corners), is vendored in `vendor/open-box`
 instead of declared, because a path dependency does not survive into a published wheel. Install it in the
 **same** `uv pip install` as the package so the resolver keeps its pins (numpy < 2, scipy < 1.13,
 scikit-learn < 1.4, ConfigSpace <= 0.6.1, matplotlib < 3.9); together they have wheels only on Python 3.11.
@@ -133,7 +133,17 @@ never a penalty number (`failure_penalty` is accepted and ignored). The same
 seed therefore proposes other points than 0.4.0 did; recorded observations keep
 their meaning and continue as before.
 
-`strategy=metric_gp` is new and not the default: one Gaussian process per metric
+The default strategy is `auto`: `metric_gp` for a spec without EM devices run at
+one condition (no corners, or one corner: `corners='["tt"]'`, the `signoff`
+recipe's search), `openbox_gp_eic` otherwise, and a line says which and why
+(`[optimize] strategy auto: metric_gp (no EM devices, one condition)`, under
+`--plan` too). A strategy keyword the chosen strategy does not take is refused
+before anything runs (`initial_trials` both take). A strategy named with
+`strategy=` runs as named. `coarse_to_fine` runs `metric_gp` in both steps when
+`auto` chooses it, else OpenBox then TuRBO; `lib_design` stays on `turbo`. The
+comparisons behind the choice: `docs/refactor/T17_OPTIMIZER_PLAN_CN.md`, section 7.
+
+`metric_gp`: one Gaussian process per metric
 the constraints and the objective name, the spec's own formulas applied to their
 posterior samples, a search region on the spec's grid (logarithmic for a range
 that spans a decade), a separate model of where points fail to give a value, and
@@ -141,8 +151,8 @@ no penalty number anywhere; numpy, scipy and scikit-learn only. Its design is
 `initial_trials` points (default twice the variables, at least 8, at most 20
 and at most half the budget), start points included, and origins end in `:init`, `:grid:<k>`, `:tr:<r>:<k>`,
 `:wide:<r>:<k>` or `:anchor:<r>:<k>`. It does not take EM devices or several
-corners at once yet: `opt.optimize` refuses both before anything runs; run one
-corner (`corners='["tt"]'`) or the `signoff` recipe.
+corners at once yet: named with `strategy=metric_gp` for such a run, `opt.optimize`
+refuses it before anything runs; run one corner or the `signoff` recipe.
 
 ### spec.yaml
 

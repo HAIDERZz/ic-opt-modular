@@ -9,6 +9,10 @@ Start points (T17.0b, D9): ``start`` rows are proposed first, once, before any s
 the design as exported (the values of the circuit variables in the exported netlists) in front of them. In an 80-point
 real run of 0.4.0 the best of the first 30 random points scored 0.553 while the exported circuit values scored 0.617
 (2026-09-28): the design the user already has was never evaluated.
+
+The default strategy is ``auto`` (T17.2): resolved once per call to ``metric_gp`` for a run inside its stage-1 scope (no EM
+devices, one condition) and to ``openbox_gp_eic`` otherwise (``suggesters.resolve_auto``). Nothing downstream sees
+``auto``: an observation's origin names the strategy that proposed it.
 """
 
 from __future__ import annotations
@@ -41,7 +45,7 @@ def suggest(
     observations: Sequence[Observation],
     n: int,
     *,
-    strategy: str = "openbox_gp_eic",
+    strategy: str = "auto",
     seed: int = 0,
     initial: Sequence[Observation] = (),
     start: Sequence[dict[str, str]] = (),
@@ -56,8 +60,14 @@ def suggest(
     space-filling design, and each strategy offsets it by the history size where it needs fresh randomness. Points carry
     their provenance: ``suggest:<strategy>[:<tag>]``, per point where the strategy tags each (OpenBox ``init`` / ``acq``;
     ``fill`` for a random point that replaces one the model kept landing on evaluated points with).
-    ``failure_penalty`` is accepted and ignored since T17.0b: no penalty number reaches a model (``suggesters.base``)."""
+    ``failure_penalty`` is accepted and ignored since T17.0b: no penalty number reaches a model (``suggesters.base``).
+    ``strategy="auto"`` is resolved from the spec (no devices, one corner id) and the history: a history holding points
+    evaluated at several corners, which ``metric_gp`` would refuse, resolves to ``openbox_gp_eic``. Nothing is printed
+    (``ic-opt call opt.suggest`` prints the points as JSON); the origins name the strategy."""
     history = Observations(list(adopt(spec, initial)) + list(observations))
+    if strategy == suggesters.AUTO:
+        strategy, reason = suggesters.resolve_auto(spec, len(spec.corner_ids), history)
+        suggesters.check_auto_keywords(strategy, reason, strategy_kwargs)
     taken = history.keys()
     points: list[Point] = []
     for point in space.points_from_params(spec, start, origin="start"):
@@ -100,7 +110,7 @@ def optimize(
     *,
     budget: int,
     batch: int = 10,
-    strategy: str = "openbox_gp_eic",
+    strategy: str = "auto",
     deck: Deck | None = None,
     pipeline: list[Stage] | None = None,
     corners: str | list[str] = "all",
@@ -121,15 +131,25 @@ def optimize(
     ``current``: evaluate the design as exported first (the circuit variables' values in the exported netlists behind
     ``deck``; one line says what it is or why there is none); ``start``: further grid parameter rows to evaluate first.
     Neither is evaluated again once in the history. ``limits`` is the executor host's site.yaml entry (``run.limits``),
-    passed on to every ``sim.evaluate``. ``failure_penalty`` is ignored (see ``suggest``)."""
+    passed on to every ``sim.evaluate``. ``failure_penalty`` is ignored (see ``suggest``).
+
+    ``strategy="auto"`` (the default) is resolved here, once, before anything runs (``--plan`` too), and one line says to
+    what and why; a strategy keyword the resolved strategy does not take is refused there. A named strategy is taken as
+    named: ``metric_gp`` out of its scope is refused."""
     from ic_opt.blocks.evaluate import default_pipeline, plan_shape
     from ic_opt.recipe import PLAN_MODE
 
     plan = PLAN_MODE.get()
-    if strategy == "metric_gp":          # T17 stage 1 (one condition, no EM devices): refused before anything runs, --plan too
+    n_corners = len(spec.corner_ids) if corners == "all" else len(list(corners))
+    adopted = adopt(spec, initial)
+    if strategy == suggesters.AUTO:      # the initial= rows too: _at_corners filters only the store's rows
+        strategy, reason = suggesters.resolve_auto(spec, n_corners, adopted)
+        suggesters.check_auto_keywords(strategy, reason, strategy_kwargs)
+        print(f"{'[plan]' if plan else '[optimize]'} strategy auto: {strategy} ({reason})")
+    elif strategy == "metric_gp":        # T17 stage 1 (one condition, no EM devices): refused before anything runs, --plan too
         from ic_opt.suggesters.metric_gp import stage_one_refusal
 
-        reason = stage_one_refusal(spec, len(spec.corner_ids) if corners == "all" else len(list(corners)))
+        reason = stage_one_refusal(spec, n_corners)
         if reason:
             raise ValueError(reason)
     same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}     # a store stamped before T15.2 is this problem too (engine.py, "Identity")
@@ -143,7 +163,7 @@ def optimize(
         rows = ([row] if row else []) + rows
     starts = space.points_from_params(spec, rows, origin="start")
     mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
-    history = Observations(list(adopt(spec, initial)) + list(mine))
+    history = Observations(list(adopted) + list(mine))
     done = len(mine.by_step(step))
     fresh = len({p.key for p in starts} - history.keys())
     if plan:

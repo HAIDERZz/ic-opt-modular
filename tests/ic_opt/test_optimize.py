@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import inspect
+import itertools
+import re
 import warnings
 
 import numpy as np
@@ -12,13 +14,23 @@ from ic_opt import objective as objective_contract
 from ic_opt.blocks.optimize import adopt, current_design, optimize, suggest, surrogate_points
 from ic_opt.deck import Deck
 from ic_opt.observation import ChildResult, Observation, Observations
+from ic_opt.recipe import PLAN_MODE
 from ic_opt.sim.netlist import exported_values
 from ic_opt.space import Point
+from ic_opt.spec import Spec
 from ic_opt.store import RunStore
+from ic_opt.suggesters import auto_keywords, resolve_auto
 from ic_opt.suggesters.base import minimization_objective, unit_design
 from ic_opt.suggesters.openbox import OpenBoxSuggester, initial_design_size
 from ic_opt.suggesters.turbo import _active_start, _batches, targets
-from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec, needs_turbo, restamp
+from tests.ic_opt.fakes import (
+    FAKE_HOST,
+    FakeSpectreExecutor,
+    make_spec,
+    minimal_spec,
+    needs_turbo,
+    restamp,
+)
 
 TEMPLATE = "simulator lang=spectre\nparameters temperature=27 F={{F}} W={{W}}\ntran tran stop=10n\n"
 
@@ -358,3 +370,169 @@ def test_a_continued_optimize_does_not_evaluate_its_start_points_again(tmp_path)
     more = optimize(spec, ex, store, deck=deck, strategy="random", budget=6, batch=2, seed=1, start=start, limits=FAKE_HOST)
     assert len(more) == 6 and [o.origin for o in more].count("start") == 2
     assert sum(c.startswith("spectre") for c in ex.commands) == 6
+
+
+# -- strategy auto (T17.2) ------------------------------------------------------------------------------------------------
+
+ONE = "no EM devices, one condition"
+# What strategy="openbox_gp_eic", budget 8, batch 4, seed 1 proposed on the bowl before the default changed (8048977).
+OPENBOX_POINTS = [("22", "1u", "init"), ("28", "0.6u", "init"), ("26", "1.2u", "init"), ("24", "0.8u", "init"),
+                  ("28", "1u", "acq"), ("20", "0.6u", "acq"), ("20", "1u", "acq"), ("30", "1.2u", "acq")]
+
+
+def devices_spec() -> Spec:
+    """A spec with an EM device; what is asked of it here is decided before a geometry is built."""
+    d = minimal_spec()
+    d["devices"] = [{"id": "d", "generator": "demo", "profile": "demo_6m", "ports": ["P1", "N1"], "fixed": {"turns": 1}}]
+    d["variables"] = d["variables"] + [{"name": "d.od", "kind": "integer", "lower": "20", "upper": "60", "step": "10"}]
+    return Spec.model_validate(d)
+
+
+def at_corners(rows, *corners) -> list[Observation]:
+    return [o.model_copy(update={"children": {f"tb/{c}": ChildResult(unit="tb", corner=c, status="ok") for c in corners}})
+            for o in rows]
+
+
+def some_rows(spec) -> Observations:
+    grid = [Point({"F": f, "W": w}, "user") for f, w in (("20", "0.6u"), ("22", "0.8u"), ("24", "1u"), ("26", "1.2u"),
+                                                         ("28", "0.8u"), ("30", "1u"))]
+    return observed(spec, grid, lambda p: bowl(p, "tb", None))
+
+
+def planned(fn, *args, **kwargs):
+    token = PLAN_MODE.set(True)
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        PLAN_MODE.reset(token)
+
+
+def test_auto_resolves_to_metric_gp_for_a_circuit_at_one_condition_and_to_openbox_otherwise():
+    plain, three = make_spec(), make_spec(corners=[{"id": c} for c in ("tt", "ss", "ff")])
+    assert resolve_auto(plain, len(plain.corner_ids)) == ("metric_gp", ONE)            # no corners: one condition
+    assert resolve_auto(devices_spec(), 1) == ("openbox_gp_eic", "metric_gp does not take EM devices yet")
+    assert resolve_auto(three, len(three.corner_ids)) == ("openbox_gp_eic",
+                                                          "metric_gp works on one condition; this run covers 3 corners")
+    assert resolve_auto(three, len(["tt"])) == ("metric_gp", ONE)                      # corners=["tt"]
+    rows = some_rows(plain)
+    assert resolve_auto(three, 1, at_corners(rows, "tt")) == ("metric_gp", ONE)
+    assert resolve_auto(three, 1, at_corners(rows, "tt", "ss")) == (
+        "openbox_gp_eic", "metric_gp works on one condition; the history holds points evaluated at the corners ss, tt")
+
+
+def test_optimize_without_a_strategy_runs_metric_gp_on_a_circuit_at_one_condition(tmp_path, capsys):
+    spec, store, ex, deck = project(tmp_path)
+    planned(optimize, spec, ex, store, deck=deck, budget=8, batch=4, current=False, limits=FAKE_HOST)
+    out = capsys.readouterr().out
+    assert out.splitlines()[0] == f"[plan] strategy auto: metric_gp ({ONE})"
+    assert "[plan] opt.optimize step='optimize' strategy=metric_gp: 0/8 points done" in out
+    assert "[plan] metric_gp initial design 4 points: the model proposes 4 of the 8 new points" in out
+    assert ex.commands == [] and store.observations() == []
+    obs = optimize(spec, ex, store, deck=deck, budget=8, batch=4, seed=1, limits=FAKE_HOST)
+    out = capsys.readouterr().out
+    assert out.splitlines()[0] == f"[optimize] strategy auto: metric_gp ({ONE})"
+    assert "[optimize] metric_gp initial design 4 points: the model proposes 4 of the 8 new points" in out
+    assert len(obs) == 8 and [o.origin for o in obs] == ["suggest:metric_gp:init"] * 4 + ["suggest:metric_gp:grid:4"] * 4
+    three = make_spec(corners=[{"id": c} for c in ("tt", "ss", "ff")], budget={"max_simulations": 200})
+    planned(optimize, three, ex, RunStore(tmp_path / "tt"), deck=deck, budget=8, corners=["tt"], current=False,
+            limits=FAKE_HOST)
+    assert f"[plan] strategy auto: metric_gp ({ONE})" in capsys.readouterr().out
+
+
+def test_optimize_without_a_strategy_over_two_corners_runs_openbox_and_is_not_refused(tmp_path, capsys):
+    spec, store, ex, deck = project(tmp_path / "two", corners=[{"id": "tt"}, {"id": "ss"}])
+    obs = optimize(spec, ex, store, deck=deck, budget=4, batch=2, seed=1, current=False, limits=FAKE_HOST)
+    out = capsys.readouterr().out
+    assert out.splitlines()[0] == ("[optimize] strategy auto: openbox_gp_eic (metric_gp works on one condition; "
+                                   "this run covers 2 corners)")
+    assert "[optimize] openbox initial design" in out
+    assert len(obs) == 4 and all(o.origin.startswith("suggest:openbox_gp_eic:") for o in obs)
+    assert all(set(o.children) == {"tb/tt", "tb/ss"} for o in obs)
+    # the same rows handed to a circuit at one condition as initial=: metric_gp would refuse them, auto does not pick it
+    single, store, ex, deck = project(tmp_path / "one")
+    more = optimize(single, ex, store, deck=deck, budget=2, batch=2, seed=1, initial=obs, current=False, limits=FAKE_HOST)
+    assert ("[optimize] strategy auto: openbox_gp_eic (metric_gp works on one condition; the history holds points "
+            "evaluated at the corners ss, tt)") in capsys.readouterr().out
+    assert len(more) == 2 and all(o.origin.startswith("suggest:openbox_gp_eic:") for o in more)
+
+
+def test_optimize_without_a_strategy_on_a_spec_with_a_device_runs_openbox(tmp_path, capsys):
+    pytest.importorskip("klayout.db")
+    from ic_opt.blocks.netlist import import_netlists
+    from tests.ic_opt.test_em_circuit import em_circuit_spec
+
+    spec = em_circuit_spec(tmp_path)
+    store = RunStore(tmp_path / "proj")
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 7.0 + int(p["F"]) / 100})
+    obs = optimize(spec, ex, store, deck=import_netlists(spec, ex, store), budget=4, batch=2, seed=1, limits=FAKE_HOST)
+    out = capsys.readouterr().out
+    assert "[optimize] strategy auto: openbox_gp_eic (metric_gp does not take EM devices yet)" in out
+    assert len(obs) == 4 and all(o.status == "ok" and o.origin.startswith("suggest:openbox_gp_eic:") for o in obs)
+
+
+def test_a_named_strategy_is_taken_as_named(tmp_path, capsys):
+    """Nothing changes for an explicit strategy: no auto line, and openbox_gp_eic on a circuit at one condition proposes
+    the points it proposed before the default changed."""
+    spec, store, ex, deck = project(tmp_path)
+    obs = optimize(spec, ex, store, deck=deck, strategy="openbox_gp_eic", budget=8, batch=4, seed=1, limits=FAKE_HOST)
+    assert "strategy auto" not in capsys.readouterr().out
+    assert [(o.params["F"], o.params["W"], o.origin) for o in obs] == \
+        [(f, w, f"suggest:openbox_gp_eic:{tag}") for f, w, tag in OPENBOX_POINTS]
+
+
+def test_a_keyword_the_resolved_strategy_does_not_take_is_refused_before_anything_runs(tmp_path, capsys):
+    assert auto_keywords("metric_gp") == ["initial_trials", "wide_share"]
+    assert auto_keywords("openbox_gp_eic") == ["initial_trials", "initialization", "workdir"]
+    spec, store, ex, deck = project(tmp_path)
+    cases = [
+        (spec, "initialization", (f"strategy auto resolved to metric_gp ({ONE}), which does not take the keyword "
+         "'initialization' (it takes initial_trials, wide_share); 'initialization' is openbox_gp_eic's: name that strategy "
+         "(strategy=openbox_gp_eic) to pass it")),
+        (devices_spec(), "wide_share", ("strategy auto resolved to openbox_gp_eic (metric_gp does not take EM devices yet), "
+         "which does not take the keyword 'wide_share' (it takes initial_trials, initialization, workdir); 'wide_share' is "
+         "metric_gp's: name that strategy (strategy=metric_gp) to pass it")),
+        (spec, "n_init", (f"strategy auto resolved to metric_gp ({ONE}), which does not take the keyword 'n_init' "
+         "(it takes initial_trials, wide_share)")),
+    ]
+    for (s, keyword, message), plan in itertools.product(cases, (False, True)):
+        token = PLAN_MODE.set(plan)
+        try:
+            with pytest.raises(ValueError, match=re.escape(message) + "$"):
+                optimize(s, ex, store, deck=deck, budget=4, limits=FAKE_HOST, **{keyword: 0.5})
+        finally:
+            PLAN_MODE.reset(token)
+        with pytest.raises(ValueError, match=re.escape(message) + "$"):
+            suggest(s, [], 2, **{keyword: 0.5})
+    assert ex.commands == [] and store.observations() == [] and capsys.readouterr().out == ""
+    assert len(suggest(spec, [], 2, initial_trials=4)) == 2                     # a keyword both take is passed on
+
+
+def test_suggest_resolves_auto_from_the_spec_and_the_history_it_is_handed():
+    """``opt.suggest`` has no corners argument: one corner id in the spec and a history at one condition give metric_gp.
+    A history that also holds points at another corner (a store written while the spec had two, handed over whole by
+    ``ic-opt call opt.suggest``) would make metric_gp refuse it: auto resolves to openbox_gp_eic instead."""
+    tt = make_spec(corners=[{"id": "tt"}])
+    rows = at_corners(some_rows(tt), "tt")
+    assert all(p.origin.startswith("suggest:metric_gp:") for p in suggest(tt, rows, 3, seed=0, initial_trials=4))
+    mixed = at_corners(rows[:2], "tt", "ss") + rows[2:]
+    with pytest.raises(ValueError, match="corners ss, tt"):
+        suggest(tt, mixed, 3, strategy="metric_gp", seed=0, initial_trials=4)
+    assert all(p.origin.startswith("suggest:openbox_gp_eic:") for p in suggest(tt, mixed, 3, seed=0, initial_trials=4))
+    two = make_spec(corners=[{"id": "tt"}, {"id": "ss"}])
+    assert all(p.origin.startswith("suggest:openbox_gp_eic:") for p in suggest(two, [], 2, seed=0))
+    assert all(p.origin.startswith("suggest:openbox_gp_eic:") for p in suggest(devices_spec(), [], 2, seed=0))
+    assert all(p.origin.startswith("suggest:metric_gp:") for p in suggest(make_spec(), [], 2, seed=0))
+
+
+def test_a_continued_auto_run_proposes_what_an_uninterrupted_one_does(tmp_path, capsys):
+    """With ``initial_trials`` stated (metric_gp's default design follows the budget), budget 8 then 12 is budget 12."""
+    variables = [{"name": "F", "kind": "integer", "lower": "20", "upper": "60", "step": "2"},
+                 {"name": "W", "kind": "continuous_step", "lower": "0.6u", "upper": "3u", "step": "0.2u"}]
+    spec, store, ex, deck = project(tmp_path / "whole", variables=variables)
+    whole = optimize(spec, ex, store, deck=deck, budget=12, batch=4, seed=2, initial_trials=8, limits=FAKE_HOST)
+    spec, store, ex, deck = project(tmp_path / "parts", variables=variables)
+    optimize(spec, ex, store, deck=deck, budget=8, batch=4, seed=2, initial_trials=8, limits=FAKE_HOST)
+    parts = optimize(spec, ex, store, deck=deck, budget=12, batch=4, seed=2, initial_trials=8, limits=FAKE_HOST)
+    assert [(o.params, o.origin) for o in parts] == [(o.params, o.origin) for o in whole]
+    assert [o.origin for o in whole] == ["suggest:metric_gp:init"] * 8 + ["suggest:metric_gp:grid:8"] * 4
+    assert capsys.readouterr().out.count(f"[optimize] strategy auto: metric_gp ({ONE})") == 3

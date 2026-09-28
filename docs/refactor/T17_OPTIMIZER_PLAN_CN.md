@@ -337,3 +337,26 @@ D11 前三条，新策略对照修好喂数的 OpenBox（括号里是对照 TuRB
 - D11 的第 ④ 条（用户自己的电路）没有做，需要用户批准真实运行。默认策略没有变。
 
 还没有解决的：模型把握大时，一批 10 个点是预测最优点周围相邻的网格点（平均两两距离约两个网格间距）。条件化和独立取样都不改变这一点，显式间隔规则在合成函数上没有量出好处。留到 AnalogGym 的数据出来后再看。
+
+### 换默认（T17.2，2026-09-28）：策略名 `auto`
+
+用户 2026-09-28 看过上面的结果后拍板：`metric_gp` 成为默认。它只接受第一步范围内的运行（没有 EM 器件、只在一个条件下），所以默认不是直接改名，而是新增策略名 `auto`：它本身不是策略，每次调用解析一次，解析成这次运行能用的策略。
+
+- spec 没有器件、且这次运行只覆盖一个条件（`corners="all"` 时按 spec 的 corner 数，否则按给出的 corner 数；与 `stage_one_refusal` 的判断相同）：`metric_gp`；否则 `openbox_gp_eic`。规则只在一处（`suggesters.resolve_auto`）。另外，`initial=` 传入的行（`opt.optimize` 的 corner 过滤管不到它们）或直接调用 `opt.suggest` 时交给它的历史，如果含有在多个 corner 上评估的点，也解析成 `openbox_gp_eic`，因为 `metric_gp` 会拒绝这样的历史。
+- `opt.optimize` 在设计行之前打印一行，例如 `[optimize] strategy auto: metric_gp (no EM devices, one condition)`、`[optimize] strategy auto: openbox_gp_eic (metric_gp does not take EM devices yet)`、`[optimize] strategy auto: openbox_gp_eic (metric_gp works on one condition; this run covers 3 corners)`；`--plan` 下前缀为 `[plan]`。之后的一切（设计行、初始设计、观测的 origin `suggest:<策略>:...`）用解析后的名字，origin 里不会出现 `auto`。
+- 策略关键字：`metric_gp` 接受 `initial_trials`、`wide_share`，`openbox_gp_eic` 接受 `initial_trials`、`initialization`、`workdir`。`auto` 解析后的策略不接受的关键字在任何仿真之前（含 `--plan`）报错，写明关键字和解析结果，不会悄悄丢掉。
+
+默认值：
+
+| 位置 | 之前 | 之后 |
+| --- | --- | --- |
+| `opt.suggest(strategy=...)` | `openbox_gp_eic` | `auto` |
+| `opt.optimize(strategy=...)` | `openbox_gp_eic` | `auto` |
+| 配方 `optimize` | `openbox_gp_eic` | `auto` |
+| 配方 `signoff`（在一个 corner 上的搜索） | `turbo` | `auto` |
+| 配方 `coarse_to_fine` | 固定 `openbox_gp_eic` 再 `turbo` | 新参数 `strategy`，默认 `auto`：解析成 `metric_gp` 时两步都用它（第二步从库里已有的第一步的点接着走，不再用 `initial=` 重复交一遍）；解析成 `openbox_gp_eic` 时与之前完全相同；写明其他策略名时两步都用它 |
+| 配方 `lib_design` | `turbo` | 不变（器件库不在范围内） |
+
+写明策略名的调用一切照旧，包括 `strategy=metric_gp` 在范围外被拒绝。基准代码（`benchmarks/`）写明各自的策略，不受影响。
+
+说明：D11 的第 ④ 条（用户自己的电路确认）在换默认时还没有量；按用户 2026-09-28 的决定先换默认。用户的主要用法——电路和它的 EM 器件的联合优化——以及所有多 corner 的运行，现在仍由 `auto` 解析成 `openbox_gp_eic`，要等第 2、3 步。

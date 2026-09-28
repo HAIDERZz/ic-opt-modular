@@ -9,9 +9,10 @@ from ic_opt import blocks as b
 from ic_opt.recipe import Run
 
 
-def main(run: Run, *, corner: str = "tt", budget: int = 60, batch: int = 10, top: int = 5, strategy: str = "turbo", seed: int = 0,
+def main(run: Run, *, corner: str = "tt", budget: int = 60, batch: int = 10, top: int = 5, strategy: str = "auto", seed: int = 0,
          current: bool = True, start: str | None = None) -> None:
-    """``current`` / ``start`` as for ``optimize``, for the search step at ``corner``."""
+    """``current`` / ``start`` as for ``optimize``, for the search step at ``corner``. ``strategy``: ``auto`` searches
+    with ``metric_gp`` (one corner) unless the spec has EM devices (then ``openbox_gp_eic``)."""
     rows = json.loads(Path(run.project, start).read_text(encoding="utf-8")) if start else []
     b.doctor(run.spec, run.executor, cshrc=run.cshrc, store=run.store, limits=run.limits).require_pass()
     deck = b.import_netlists(run.spec, run.executor, run.store)
