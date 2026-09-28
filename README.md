@@ -190,14 +190,18 @@ code.
 batch follows from the file's rows and the batch's history size alone, so a
 continued run replays as it went. Its start rows come first, once, with origin
 `advice:<id>`, whatever the strategy. Its ranges, fixed levels and `vary` are
-`metric_gp`'s: a fifth of every batch still looks over the spec's whole range,
-the other slots choose among the search region's candidates brought inside the
-advice (on a small grid, among the grid points inside it), and those points'
-origins end in `@<id>` (`suggest:metric_gp:tr:0:40@a2`). The initial design is
-not moved by an advice. When the advice holds no point that is not evaluated,
-the whole batch looks over the whole space. Another strategy uses the start rows
-only, and a line says which parts it leaves unused. A run without the file is
-exactly the run it was before advice existed.
+`metric_gp`'s: a fifth of every batch is free -- it chooses among the
+candidates the batch would have without advice (the search region's and those
+spread over the spec's whole range), so the search the run was making goes on
+at a fifth of its pace, whatever the advice says (in batches of one or two, every
+fifth point of the run is free). The other slots choose among the search
+region's candidates brought inside the advice (on a small grid, among the grid
+points inside it), and those points' origins end in `@<id>`
+(`suggest:metric_gp:tr:0:40@a2`). The initial design is not moved by an advice.
+When the advice holds no point that is not evaluated, the whole batch chooses as
+the free slots do. Another strategy uses the start rows only, and a line says
+which parts it leaves unused. A run without the file is exactly the run it was
+before advice existed.
 
 ### spec.yaml
 

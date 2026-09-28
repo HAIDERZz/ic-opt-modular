@@ -24,7 +24,7 @@ from ic_opt.cli import app
 from ic_opt.deck import Deck
 from ic_opt.recipe import PLAN_MODE
 from ic_opt.store import RunStore
-from ic_opt.suggesters.metric_gp import MetricGpSuggester, region
+from ic_opt.suggesters.metric_gp import MetricGpSuggester, region, select
 from ic_opt.suggesters.metric_gp.compose import Composer, metric_scales, true_arrays
 from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec, minimal_spec, needs_turbo
 from tests.ic_opt.test_metric_gp import (
@@ -188,14 +188,26 @@ def split(points, advice_id="a1"):
     return suffixed, [p for p in points if p not in suffixed]
 
 
-def test_ranges_narrow_eight_of_ten_slots_and_two_look_anywhere(region_history):
+def test_ranges_narrow_eight_of_ten_slots_and_two_choose_as_without_advice(region_history, monkeypatch):
+    """The two free slots choose among the candidates the batch has without advice -- the region's, not moved, and the
+    ones spread over the whole space -- so the search the run was making goes on; the eight others among the region's
+    candidates brought inside the ranges."""
     spec = region_spec()
+    offered = []
+    choose = select.select_batch
+    monkeypatch.setattr(select, "select_batch", lambda models, value_model, composer, scales, x, preferred, rng, **kw:
+                        offered.append((x, preferred)) or choose(models, value_model, composer, scales, x, preferred, rng, **kw))
+    suggest(spec, region_history, 10, strategy="metric_gp", seed=5)
     rows = [adopted(spec, 30, ranges={"A": ["0", "0.3"], "B": ["0", "0.3"]})]
     points = suggest(spec, region_history, 10, strategy="metric_gp", seed=5, advice=rows)
+    (plain, _), (x, preferred) = offered
+    assert {tuple(r) for r in x[preferred[0]]} == {tuple(r) for r in plain}                # A, B, C, D: unit coordinates
+    assert all(preferred[b] is preferred[0] for b in (0, 1)) and all(preferred[b] is preferred[2] for b in range(2, 10))
+    assert (x[preferred[2]][:, :2] <= 0.3 + 1e-12).all()
     inside, whole = split(points)
     assert len(inside) == 8 and all(p.origin == "suggest:metric_gp:tr:0:30@a1" for p in inside)
     assert all(value(p, "A") <= 0.3 and value(p, "B") <= 0.3 for p in inside)
-    assert len(whole) == 2 and all(p.origin == "suggest:metric_gp:wide:0:30" for p in whole)
+    assert len(whole) == 2 and {p.origin for p in whole} <= {"suggest:metric_gp:tr:0:30", "suggest:metric_gp:wide:0:30"}
     assert len({p.key for p in points}) == 10 and not {p.key for p in points} & region_history.keys()
 
 
@@ -226,7 +238,26 @@ def test_on_a_small_grid_a_fifth_chooses_among_all_points_and_the_rest_inside_th
     assert len(inside) == 8 and {p.params["Y"] for p in inside} == {best.params["Y"]}      # held at the best point's level
 
 
-def test_an_advice_that_holds_no_unevaluated_point_leaves_the_batch_to_the_whole_space(region_history):
+@pytest.mark.parametrize("batch", [1, 2])
+def test_in_batches_of_one_or_two_slots_a_fifth_of_the_points_is_free(region_history, batch):
+    """``round(0.2 * slots)`` is none for one or two slots: slot ``b`` of the batch proposed at history size ``k`` is then
+    free when ``k + b + 1`` is a multiple of 5 -- the 35th and the 40th point here, the 25th and the 30th on the small
+    grid."""
+    spec = region_spec()
+    rows = [adopted(spec, 30, ranges={"A": ["0", "0.3"], "B": ["0", "0.3"]})]
+    history = run(spec, 40, batch, region_metrics, seed=5, history=list(region_history), advice=rows)
+    inside, free = split(history[30:])
+    assert [history.index(o) for o in free] == [34, 39] and len(inside) == 8
+    assert all(value(o, "A") <= 0.3 and value(o, "B") <= 0.3 for o in inside)
+    assert all(re.fullmatch(r"suggest:metric_gp:tr:0:3\d@a1", o.origin) for o in inside)
+    spec = bowl_spec()
+    rows = [adopted(spec, 20, ranges={"X": ["0.6", "1"]})]
+    history = run(spec, 30, batch, bowl, seed=1, history=list(run(spec, 20, 5, bowl, seed=1)), advice=rows)
+    inside, free = split(history[20:])
+    assert [history.index(o) for o in free] == [24, 29] and all(value(o, "X") >= 0.6 for o in inside)
+
+
+def test_an_advice_that_holds_no_unevaluated_point_leaves_the_batch_to_the_candidates_without_advice(region_history):
     spec = bowl_spec()
     history = run(spec, 20, 5, bowl, seed=1)
     only = {name: [v, v] for name, v in history[0].params.items()}           # one grid point, already evaluated
@@ -236,7 +267,7 @@ def test_an_advice_that_holds_no_unevaluated_point_leaves_the_batch_to_the_whole
     spec = region_spec()
     only = {name: [v, v] for name, v in region_history[0].params.items()}
     points = suggest(spec, region_history, 10, strategy="metric_gp", seed=5, advice=[adopted(spec, 30, ranges=only)])
-    assert [p.origin for p in points] == ["suggest:metric_gp:wide:0:30"] * 10
+    assert {p.origin for p in points} <= {"suggest:metric_gp:tr:0:30", "suggest:metric_gp:wide:0:30"}
     assert len({p.key for p in points}) == 10 and not {p.key for p in points} & region_history.keys()
 
 
@@ -254,45 +285,66 @@ def test_a_new_region_s_anchor_is_brought_inside_the_advice(monkeypatch):
     assert MetricGpSuggester().region_state(spec, advised).trace == MetricGpSuggester().region_state(spec, plain).trace
 
 
+def test_in_batches_of_one_an_anchor_at_a_free_place_is_chosen_as_without_advice(monkeypatch):
+    """In batches of one the anchor is the batch: at a place of the run that is free (the 35th point) it is chosen as
+    without advice and carries no suffix; at another (the 39th) it is brought inside the advice. The plateau decides
+    when the region ends: after it, four batches without success halve the side below 0.5."""
+    monkeypatch.setattr(region, "LENGTH_MIN", 0.5)
+    spec = region_spec()
+    rows = [adopted(spec, 10, ranges={"A": ["0", "0.3"]})]
+    for plateau, place, suffix in ((26, 34, ""), (30, 38, "@a1")):
+        history = run(spec, place + 1, 1, staged(plateau), seed=1, start=START, advice=rows)
+        assert [i for i, o in enumerate(history) if ":anchor:" in o.origin] == [place]
+        assert history[place].origin == f"suggest:metric_gp:anchor:1:{place}{suffix}"
+    assert value(history[place], "A") <= 0.3
+
+
 # -- 6. wrong advice ------------------------------------------------------------------------------------------------------
 
 # Hartmann-6 with its sum constraint (the benchmark's syn_hartmann6_c1; x* ~ (0.20, 0.15, 0.48, 0.28, 0.31, 0.66)), a
 # metric_gp run of 100 points in batches of 10, and an advice adopted at 20 that keeps x0 and x1 in [0.6, 1]: plainly
-# wrong, the optimum lies outside it in two of six variables. Measured on seeds 0-9 (T17_OPTIMIZER_PLAN_CN.md section 7):
-# every advised run found feasible points; the distance of its best from the best known value was 4.0 to 234 times that
-# of the run without advice (median 24).
+# wrong, the optimum lies outside it in two of six variables. The run keeps its share when its best at 100 points is no
+# worse than the best of the run without advice at 36 points: the 20 before the advice and a fifth of the 80 after it
+# (T17.1.5 specification, section 6.3 item 6). The run without advice is one of 40 points, whose first 36 are those of
+# a run of 100 (the same design, the same batches). Measured, best feasible objective (the problem's reference -3.3008):
+#   seed                        0        1        2        3        4
+#   wrong advice, at 100    -3.0722  -3.0378  -2.9806  -3.0479  -3.2806
+#   no advice, at 36        -1.9248  -2.3923  -1.8347  -2.4404  -2.8659
+#   no advice, at 100       -3.0652  -3.0392  -3.0790  -3.0848  -3.2850
 WRONG = {"ranges": {"x0": ["0.6", "1"], "x1": ["0.6", "1"]}}
+WRONG_SEEDS = range(5)
 
 
 @pytest.fixture(scope="module")
 def wrong_advice_runs():
     problem = PROBLEMS["syn_hartmann6_c1"]()
     row = adopted(problem.spec, 20, **WRONG)
-    return (problem, run_one(problem, "metric_gp", 0, budget=100, batch=10),
-            run_one(problem, "metric_gp", 0, budget=100, batch=10, advice=lambda _history: [row]))
+    return {seed: (run_one(problem, "metric_gp", seed, budget=40, batch=10),
+                   run_one(problem, "metric_gp", seed, budget=100, batch=10, advice=lambda _history: [row]))
+            for seed in WRONG_SEEDS}
+
+
+def best(points) -> float:
+    return min((p["objective"] for p in points if p["feasible"]), default=math.inf)
 
 
 def test_wrong_advice_does_not_end_the_search(wrong_advice_runs):
-    _problem, plain, advised = wrong_advice_runs
+    plain, advised = wrong_advice_runs[0]
     assert plain["error"] is None and advised["error"] is None and len(advised["points"]) == 100
+    assert [p["params"] for p in advised["points"][:20]] == [p["params"] for p in plain["points"][:20]]
     assert any(p["feasible"] for p in advised["points"][20:])
     suffixed = [p for p in advised["points"] if "@a1" in p["origin"]]
     assert len(suffixed) == 64 and all(float(p["params"]["x0"]) >= 0.6 and float(p["params"]["x1"]) >= 0.6 for p in suffixed)
     assert not any("@" in p["origin"] for p in advised["points"][:20])
-    whole = [p for p in advised["points"][20:] if ":wide:" in p["origin"]]
-    assert len(whole) == 16 and any(float(p["params"]["x0"]) < 0.6 or float(p["params"]["x1"]) < 0.6 for p in whole)
+    free = [p for p in advised["points"][20:] if "@" not in p["origin"]]
+    assert len(free) == 16 and any(float(p["params"]["x0"]) < 0.6 or float(p["params"]["x1"]) < 0.6 for p in free)
 
 
-@pytest.mark.xfail(strict=True, reason="finding (T17.1.5 section 6.3 item 6): with wrong ranges four fifths of every batch "
-                   "stay inside them and only the whole-space fifth can approach the optimum; on seed 0 the best is 1.29 "
-                   "from the best known value against 0.236 without advice (5.5 times; 4.0 to 234 times on seeds 0-9)")
-def test_wrong_advice_ends_no_worse_than_twice_as_far_from_the_optimum(wrong_advice_runs):
-    problem, plain, advised = wrong_advice_runs
-
-    def gap(result):
-        return min(p["objective"] for p in result["points"] if p["feasible"]) - problem.reference
-
-    assert gap(advised) <= 2 * gap(plain), (gap(advised), gap(plain))
+@pytest.mark.parametrize("seed", WRONG_SEEDS)
+def test_wrong_advice_keeps_its_share(wrong_advice_runs, seed):
+    plain, advised = wrong_advice_runs[seed]
+    assert advised["error"] is None and len(advised["points"]) == 100 and best(advised["points"]) < math.inf
+    assert best(advised["points"]) <= best(plain["points"][:36]), (best(advised["points"]), best(plain["points"][:36]))
 
 
 # -- 7. replay and continuation ---------------------------------------------------------------------------------------------

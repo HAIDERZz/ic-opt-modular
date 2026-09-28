@@ -67,7 +67,8 @@ class MetricGpSuggester:
 
     def __init__(self, *, initial_trials: int | None = None, wide_share: float = 0.2) -> None:
         self.initial_trials = initial_trials
-        self.wide_share = wide_share      # share of a batch chosen over the whole space when there is a region
+        self.wide_share = wide_share      # share of a batch chosen over the whole space when there is a region; under
+                                          # an advice, the share of free slots
 
     def propose(self, spec: Spec, history: Observations, n: int, *, seed: int,
                 pending: Sequence[dict[str, str]] = (), advice: Sequence[dict] = ()) -> Proposal:
@@ -92,7 +93,8 @@ class MetricGpSuggester:
         rows = list(history)
         chosen = [space.snap(spec, r) for r in raw] + list(pending)
         excluded = set(keys(coords.indices([o.params for o in rows] + chosen)))
-        idx, more = self._model_batch(spec, coords, rows, n - len(raw), excluded, seed, advice)
+        idx, more = self._model_batch(spec, coords, rows, n - len(raw), excluded, seed, advice,
+                                       place=len(pending) + len(raw))
         return Proposal(raw + coords.raw(idx).tolist() if len(idx) else raw, tags=tags + more)
 
     def fit(self, spec: Spec, coords: Coords, rows: list, seed: int) -> tuple[list[MetricModel], ValueModel]:
@@ -111,7 +113,9 @@ class MetricGpSuggester:
         return region.replay(spec, list(history), Coords(spec).d)
 
     def _model_batch(self, spec: Spec, coords: Coords, rows: list, n: int, excluded: set[bytes],
-                     seed: int, advice: Sequence[dict] = ()) -> tuple[np.ndarray, list[str]]:
+                     seed: int, advice: Sequence[dict] = (), place: int = 0) -> tuple[np.ndarray, list[str]]:
+        """``n`` of the models' points; ``place``: the points of the batch before them (start rows, design points), so
+        that ``len(rows) + place`` points precede the first."""
         k = len(rows)
         nothing_feasible = not any(o.status == "ok" for o in rows)
         models, value_model = self.fit(spec, coords, rows, seed)
@@ -122,24 +126,27 @@ class MetricGpSuggester:
         if space.grid_size(spec) <= candidates.MAX_CANDIDATES:
             idx = candidates.whole_grid(coords, excluded)
             slots = min(n, len(idx))
-            # With an advice a fifth of the slots still chooses among every grid point (D7b), the others among the points
-            # inside it -- held variables at the best point's levels, there being no region -- or, once none is left there,
-            # among every point again.
-            n_wide = slots if advised is None else round(self.wide_share * slots)
+            # Without advice every slot chooses among every grid point. With one the free slots still do (D7b), the others
+            # among the points inside it -- held variables at the best point's levels, there being no region -- or, once
+            # none is left there, among every point again.
+            free = np.ones(slots, dtype=bool) if advised is None else self._free_slots(slots, k + place)
             inside = (advised.contains(idx, self._best(spec, coords, rows, composer, scales)) if advised is not None
                       else np.zeros(len(idx), dtype=bool))
-            preferred = [None] * n_wide + [inside] * (slots - n_wide)
+            preferred = [None if f else inside for f in free]
             picks = select.select_batch(models, value_model, composer, scales, coords.unit(idx)[:, active],
                                         preferred, _rng(seed, k, _SELECT), nothing_feasible=nothing_feasible)
-            return idx[picks], [f"grid:{k}" + (f"@{advised.id}" if b >= n_wide and inside[j] else "")
+            return idx[picks], [f"grid:{k}" + (f"@{advised.id}" if not free[b] and inside[j] else "")
                                 for b, j in enumerate(picks)]
 
         state = region.replay(spec, rows, coords.d)
         anchor = None
         anchor_advised = False
         if state.ended:
+            # The anchor is the first of the new region's slots: an advice narrows it, unless that slot is a free one (a
+            # batch of one or two slots, section 6.2 of the T17.1.5 specification).
+            anchor_free = advised is not None and bool(self._free_slots(n, k + place, head=1)[0])
             anchor, anchor_advised = self._anchor(spec, coords, rows, state, models, value_model, composer, scales,
-                                                  excluded, seed, advised)
+                                                  excluded, seed, None if anchor_free else advised)
             index, length, centre = state.index + 1, region.LENGTH_INIT, anchor
         else:
             position = region.centre(composer, rows, state, scales, true_arrays(spec, rows))
@@ -151,21 +158,44 @@ class MetricGpSuggester:
         head = [anchor[None, :]] if anchor is not None else []
         local = local[: candidates.LOCAL - len(head)]          # the anchor is one of the region's candidates
         wide = candidates.wide(coords, excluded, _rng(seed, k, _WIDE))
-        if advised is not None:     # the region's candidates as without advice, brought inside it; the wide ones untouched
-            local = candidates.fresh(advised.inside(local, centre), before | set(keys(wide)))
-        idx = np.vstack(head + [local, wide])
-        is_wide = np.r_[np.zeros(len(idx) - len(wide), dtype=bool), np.ones(len(wide), dtype=bool)]
-        slots = min(n, len(idx))
-        n_wide = min(round(self.wide_share * slots), slots - len(head))
-        preferred = [None] * len(head) + [is_wide] * n_wide + [~is_wide] * (slots - len(head) - n_wide)
+        if advised is None:
+            idx = np.vstack(head + [local, wide])
+            is_wide = np.r_[np.zeros(len(idx) - len(wide), dtype=bool), np.ones(len(wide), dtype=bool)]
+            is_advised = np.zeros(len(idx), dtype=bool)
+            slots = min(n, len(idx))
+            n_wide = min(round(self.wide_share * slots), slots - len(head))
+            preferred = [None] * len(head) + [is_wide] * n_wide + [~is_wide] * (slots - len(head) - n_wide)
+            free = np.ones(slots, dtype=bool)
+        else:
+            idx, is_advised, is_free, is_wide = _advised_candidates(advised, head, local, wide, centre, before)
+            slots = min(n, len(idx))
+            free = self._free_slots(slots, k + place, head=len(head))
+            preferred = [None] * len(head) + [is_free if f else is_advised for f in free[len(head):]]
         picks = select.select_batch(models, value_model, composer, scales, coords.unit(idx)[:, active], preferred,
                                     _rng(seed, k, _SELECT), nothing_feasible=nothing_feasible,
                                     forced=0 if head else None)
-        suffix = f"@{advised.id}" if advised is not None else ""
-        tags = [f"wide:{index}:{k}" if is_wide[j] else f"tr:{index}:{k}{suffix}" for j in picks]
+        tags = []
+        for b, j in enumerate(picks):
+            under = is_advised[j] and not free[b]
+            kind = "wide" if is_wide[j] and not under else "tr"
+            tags.append(f"{kind}:{index}:{k}" + (f"@{advised.id}" if under else ""))
         if head:
-            tags[0] = f"anchor:{index}:{k}" + (suffix if anchor_advised else "")
+            tags[0] = f"anchor:{index}:{k}" + (f"@{advised.id}" if anchor_advised else "")
         return idx[picks], tags
+
+    def _free_slots(self, slots: int, preceding: int, head: int = 0) -> np.ndarray:
+        """Which of a batch's ``slots`` model slots are free under an advice (section 6.2 of the T17.1.5 specification): as
+        many as the whole space has in a batch without advice, ``round(wide_share * slots)``, right after the ``head``
+        (a new region's anchor). A batch of one or two slots has none by that count; there slot ``b`` is free when the
+        point's place in the run, ``preceding + b + 1``, is a multiple of ``round(1 / wide_share)`` (5), so that a fifth
+        of the points stays free whatever the batch size. ``preceding``: the points before the first model slot."""
+        free = np.zeros(slots, dtype=bool)
+        count = round(self.wide_share * slots)
+        if count:
+            free[head : head + count] = True
+        elif self.wide_share > 0:
+            free[(preceding + np.arange(slots) + 1) % round(1 / self.wide_share) == 0] = True
+        return free
 
     def _anchor(self, spec: Spec, coords: Coords, rows: list, state: region.Region, models: list[MetricModel],
                 value_model: ValueModel, composer: Composer, scales: dict[str, float], excluded: set[bytes],
@@ -176,8 +206,8 @@ class MetricGpSuggester:
 
         Under an advice that narrows the search the 2000 points are brought inside it first (held variables at the best
         point's levels), and the anchor says so (the second value): the anchor is the first of the region's own slots,
-        which an advice narrows; the whole space keeps its fifth of every batch. When the advice holds none of them that
-        is not evaluated, the anchor is chosen as without advice."""
+        which an advice narrows; the free slots keep a fifth of every batch. When the advice holds none of them that is
+        not evaluated, the anchor is chosen as without advice."""
         k = len(rows)
         pool = candidates.wide(coords, set(excluded), _rng(seed, k, _ANCHOR_POINTS), n=ANCHOR_SAMPLE)
         inside = False
@@ -206,6 +236,29 @@ class MetricGpSuggester:
         if best is None:
             return coords.snap(np.full((1, len(coords.counts)), 0.5))[0]
         return coords.indices([rows[best.position].params])[0]
+
+
+def _advised_candidates(advised: candidates.Advised, head: list[np.ndarray], local: np.ndarray, wide: np.ndarray,
+                        centre: np.ndarray, taken: set[bytes]) -> tuple[np.ndarray, ...]:
+    """A region's batch under an advice (section 6.2 of the T17.1.5 specification): the anchor (``head``), the region's
+    candidates brought inside the advice, then the candidates of the batch without advice -- the region's unmoved and the
+    wide ones -- that are not among those. Returns the candidates and three masks over them: advised (inside the advice),
+    free (a candidate of the batch without advice; a moved point that is one of them is both), wide (for the tag of a free
+    pick). ``taken``: evaluated or already chosen for this batch, the anchor included."""
+    near = candidates.fresh(advised.inside(local, centre), set(taken))
+    free = np.vstack([local, wide])
+    position = {key: j for j, key in enumerate(keys(near))}
+    free_keys = keys(free)
+    idx = np.vstack(head + [near, free[[row for row, key in enumerate(free_keys) if key not in position]]])
+    start = len(head)
+    is_advised = np.zeros(len(idx), dtype=bool)
+    is_advised[start : start + len(near)] = True
+    is_free = np.zeros(len(idx), dtype=bool)
+    is_free[start + len(near) :] = True
+    is_free[[start + position[key] for key in free_keys if key in position]] = True
+    wide_keys = set(keys(wide))
+    is_wide = np.array([key in wide_keys for key in keys(idx)], dtype=bool)
+    return idx, is_advised, is_free, is_wide
 
 
 def _refuse(spec: Spec, history: Observations) -> None:
