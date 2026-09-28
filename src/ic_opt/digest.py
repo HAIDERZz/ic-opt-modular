@@ -385,12 +385,24 @@ def _failures(spec: Spec, rows: list[Observation], grid: list[_Grid]) -> dict[st
     said: dict[str, int] = {}
     for o in rows:
         if o.status not in SCORED:
-            for text in dict.fromkeys(o.issues):
+            for text in _causes(o.issues):
                 said[text] = said.get(text, 0) + 1
     messages = [{"text": text, "count": count}
                 for text, count in sorted(said.items(), key=lambda kv: (-kv[1], kv[0]))[:MESSAGES]]
     return {"by_status": dict(sorted(by_status.items())), "missing_in_partial": missing,
             "partial_points": len(partial), "separating": separating, "messages": messages, "notes": notes}
+
+
+_CHILD_SAID = re.compile(r"metric (\w+) failed")
+_POINT_SAID = re.compile(r"metric (\w+) missing or non-finite$")
+
+
+def _causes(issues: Sequence[str]) -> list[str]:
+    """A point's issue texts, each once, without the point's own "metric X missing or non-finite" where a child's text
+    says why X failed: the two are one cause, and the child's text is the one that names it."""
+    texts = list(dict.fromkeys(issues))
+    named = {m.group(1) for text in texts if (m := _CHILD_SAID.search(text))}
+    return [text for text in texts if not ((m := _POINT_SAID.search(text)) and m.group(1) in named)]
 
 
 def _best_split(g: _Grid, rows: list[Observation], unscored: np.ndarray) -> dict[str, Any] | None:

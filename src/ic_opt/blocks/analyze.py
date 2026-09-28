@@ -24,6 +24,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from ic_opt import advice as advice_rules
 from ic_opt import digest as digest_module
 from ic_opt import objective as objective_contract
 from ic_opt import space
@@ -83,10 +84,14 @@ def digest(spec: Spec, observations: Sequence[Observation], store: RunStore, *, 
     """``reports/digest.json`` and ``reports/digest.md``: what the run found, computed from its observations
     (``ic_opt.digest``), with the advice rows of ``.icopt/advice.jsonl`` when there is one. Reads the store and takes no
     lock, so it runs beside a run that holds the project. Each file is replaced whole (written aside, then renamed): a
-    reader never sees half of one. Returns the Markdown file's path."""
-    advice_path = store.root / "advice.jsonl"
-    advice = ([json.loads(line) for line in advice_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-              if advice_path.exists() else [])
+    reader never sees half of one. Returns the Markdown file's path.
+
+    Only this problem's observations and advice are read (the spec's fingerprints, as ``opt.optimize`` tells its rows
+    apart): a store that also holds rows of the spec as it was before an edit would otherwise count them, and an advice's
+    period is a stretch of this problem's history."""
+    same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}
+    advice = advice_rules.of_problem(advice_rules.read(store.root), same_problem)
+    observations = [o for o in observations if o.spec_fingerprint in same_problem]
     d = digest_module.digest(spec, observations, advice=advice, top=top, step=step)
     out = store.reports_dir()
     _write_atomic(out / "digest.json", json.dumps(d, indent=2, ensure_ascii=False, allow_nan=False) + "\n")

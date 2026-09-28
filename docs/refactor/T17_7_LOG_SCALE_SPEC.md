@@ -13,7 +13,7 @@ wide-range problems. The existing strategies were then given the same scale in a
 | --- | --- | --- | --- |
 | TuRBO, logarithmic against linear | 23 | 0 | 25 |
 | OpenBox (`openbox_gp_eic`), logarithmic against linear | 14 | 1 | 33 |
-| Sobol, logarithmic against linear | 11 | 5 | 28 |
+| Sobol, logarithmic against linear | 13 | 5 | 30 |
 | `metric_gp` against TuRBO, linear | 29 | 0 | 19 |
 | `metric_gp` against TuRBO, logarithmic | 9 | 3 | 36 |
 | `metric_gp` against OpenBox, logarithmic | 25 | 0 | 23 |

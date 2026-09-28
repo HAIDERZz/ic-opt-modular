@@ -409,6 +409,40 @@ def test_what_the_unscored_points_said():
     assert every["failures"]["messages"] == [] and "said" not in dg.markdown(every).split("## What failed")[1]
 
 
+def test_a_point_s_own_text_for_a_metric_a_child_explains_is_not_counted_twice():
+    spec = spec_abc()
+    rows = observe(spec, abc_rows()[:60], abc_metrics)
+    unscored = [o for o in rows if o.status not in dg.SCORED]
+    child, point = "tb/nominal: metric q failed: no_value:nil", "nominal: metric q missing or non-finite"
+    alone = "nominal: metric r missing or non-finite"
+    texts = {o.obs_id: [child, point, alone] for o in unscored[:4]} | {o.obs_id: [point] for o in unscored[4:6]}
+    rows = [o.model_copy(update={"issues": texts.get(o.obs_id, [])}) if o.status not in dg.SCORED else o for o in rows]
+    # with the child's text the point's own is the same cause; alone, or for another metric, it is counted
+    assert dg.digest(spec, rows)["failures"]["messages"] == [
+        {"text": alone, "count": 4}, {"text": child, "count": 4}, {"text": point, "count": 2}]
+
+
+def test_the_block_reads_this_problem_s_rows_and_advice_only(tmp_path):
+    from ic_opt import advice as advice_rules
+    from ic_opt.blocks import analyze
+    from ic_opt.store import RunStore
+
+    spec = spec_abc()
+    rows = observe(spec, abc_rows()[:60], abc_metrics)
+    store = RunStore(tmp_path)
+    other = [o.model_copy(update={"obs_id": f"old_{i:04d}", "spec_fingerprint": "the spec before an edit"})
+             for i, o in enumerate(rows[:20])]
+    ranges = {"A": [spec.variables[0].lower, spec.variables[0].upper]}
+    fields = {"event": "adopt", "at": "t", "author": "a", "reason": "r", "start": [], "fixed": {}, "vary": []}
+    advice_rules.append(store.root, {"id": "a1", "since": 10, "ranges": ranges, "spec_fingerprint": "the spec before an edit",
+                                     **fields})
+    advice_rules.append(store.root, {"id": "a2", "since": 30, "ranges": ranges, "spec_fingerprint": spec.fingerprint(),
+                                     **fields})
+    path = analyze.digest(spec, other + rows, store)
+    d = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+    assert d["counts"]["points"] == 60 and [a["id"] for a in d["advice"]] == ["a2"]
+
+
 def test_the_markdown_of_an_advice_the_region_s_side_and_a_run_without_operating_points():
     from ic_opt.suggesters.metric_gp import region
 
