@@ -94,7 +94,7 @@ def test_every_entry_on_a_run_of_known_structure():
     rows = observe(spec, abc_rows(), abc_metrics, op_of=lambda p: OP)
     d = dg.digest(spec, rows)
 
-    assert d["digest_version"] == 1 and d["top"] == 5
+    assert d["digest_version"] == 2 and d["top"] == 5
     p = d["problem"]
     assert [(v["name"], v["levels"], v["scale"]) for v in p["variables"]] == [("A", 10, "linear"), ("B", 11, "linear"),
                                                                              ("C", 100, "log")]
@@ -140,6 +140,7 @@ def test_every_entry_on_a_run_of_known_structure():
     assert (split["variable"], split["at_most"], split["from"]) == ("B", "0.5", "0.8")
     assert split["below"] == {"points": 72, "no_value": 0, "share": 0.0}
     assert split["above"] == {"points": 48, "no_value": 48, "share": 1.0}
+    assert f["messages"] == [{"text": "tb/nominal: spectre did not finish", "count": 48}]
 
     ranges = {r["variable"]: r for r in d["suggested_ranges"]["ranges"]}
     assert ranges["A"]["suggested"] == ["4", "8"] and ranges["A"]["reaches_bound"] is None
@@ -157,6 +158,7 @@ def test_every_entry_on_a_run_of_known_structure():
     op = d["operating_points"]
     assert op["best"]["id"] == best["id"] and op["best"]["children"]["tb/nominal"]["/M1"]["gm"] == 1.2e-3
     assert op["start"]["id"] == "obs_0000" and list(op["best"]["children"]["tb/nominal"]) == ["/I0/M3", "/M1"]
+    assert op["recorded"] == 72                                 # the points that ran; a failed child records none
 
     md = dg.markdown(d)
     assert md.startswith("# Run digest — demo\n\n120 points · constraint_failed 36 · failed:spectre 48 · ok 36")
@@ -248,7 +250,9 @@ def test_a_store_of_040_gives_a_digest(tmp_path):
     assert d["counts"]["points"] == 30 and d["advice"] == [] and not (store.root / "advice.jsonl").exists()
     assert d["operating_points"]["best"]["children"] == {"tb/nominal": None}
     assert d["operating_points"]["start"]["children"] == {"tb/nominal": None}
-    assert "_none recorded for `" in path.read_text(encoding="utf-8").split("## Operating points of the best point")[1]
+    assert d["operating_points"]["recorded"] == 0
+    section = path.read_text(encoding="utf-8").split("## Operating points of the best point")[1]
+    assert "_No point of this run holds operating points" in section and "_none recorded for `" not in section
 
 
 # -- 4. origins under advice --------------------------------------------------------------------------------------------
@@ -275,12 +279,13 @@ def test_origins_with_an_advice_suffix_count_under_their_advice_and_their_strate
     d = dg.digest(spec, obs, advice=advice)
     a1, a2 = d["advice"]
     assert a1["status"] == "superseded by a2" and a2["status"] == "revoked" and a2["revoke"]["reason"] == "did not help"
-    assert a1["points"] == 10 and a2["points"] == 10
+    assert a1["under"]["points"] == 10 and a2["under"]["points"] == 10
     assert [s["id"] for s in a1["start_points"]] == ["obs_0040"] and a1["start_points"][0]["status"] == obs[40].status
     under = [o for o in obs if split_origin(o.origin)[1] == "a1"]
     feasible = [o for o in under if o.feasible]
-    assert a1["best"] == (min(o.fom for o in feasible) if feasible else None)
-    assert a1["others_since"] == 80 - 40 - 11
+    assert a1["under"]["best"] == (min(o.fom for o in feasible) if feasible else None)
+    assert (a1["period"], a2["period"]) == ([40, 60], [60, 70])
+    assert a1["others"]["points"] == 60 - 40 - 11 and a2["others"]["points"] == 0     # the points after 70 are no one's
     assert d["strategy"]["origins"] == {"metric_gp": 78, "advice": 1, "start": 1}
     # the region replay reads the origins without their suffix: the digest's region is region_state's on stripped rows
     stripped = Observations(o.model_copy(update={"origin": split_origin(o.origin)[0]}) for o in obs)
@@ -290,8 +295,148 @@ def test_origins_with_an_advice_suffix_count_under_their_advice_and_their_strate
     # the suffix keeps a point in its batch, and the advice's start point joins the batch it was proposed first in
     assert [b["points"] for b in d["progress"]["batches"]] == [10, 20, 30, 40, 50, 60, 70, 80]
     md = dg.markdown(d)
-    assert "| a1 | someone | 40 | superseded by a2 | start 1; ranges A 4..7 | 10 |" in md
+    assert "| a1 | someone | 40 to 60 | superseded by a2 | start 1; ranges A 4..7 | 10 points, " in md
     assert "- a2: hold C" in md
+
+
+# -- T17.3b: an advice's period, both sides counted, its start points, the best point at its bound ----------------------
+
+
+def advised_run(spec, later=""):
+    """120 points of known outcome. 0-39: the initial design and two batches, none feasible (A = 2). An advice a1 adopted
+    at 40: three start points (40: feasible 10.05, the run's first feasible point; 41: feasible 20.06; 42: fails the
+    constraint), then batches 40 to 70 whose odd points carry ``@a1`` and are none of them feasible (9 give no value, 10
+    fail the constraint) and whose even points are feasible at 30.07 but for point 44, which gives no value. 80-119:
+    batches 80 to 110, all feasible at 2.09 (A at the spec's upper bound, C = 2); ``later`` is appended to the odd ones."""
+    rows = []
+    starts = {40: {"A": "5", "B": "0", "C": "10"}, 41: {"A": "6", "B": "0", "C": "20"}, 42: {"A": "4", "B": "0", "C": "5"}}
+    for k in range(120):
+        origin = "suggest:metric_gp:init" if k < 20 else f"suggest:metric_gp:tr:0:{10 * (k // 10)}"
+        if k < 40:
+            params = {"A": "2", "B": "0", "C": "50"}
+        elif k in starts:
+            params, origin = starts[k], "advice:a1"
+        elif k < 80 and k % 2:
+            params = {"A": "3", "B": "0.9" if k % 4 == 1 else "0", "C": "40"}
+            origin += "@a1"
+        elif k < 80:
+            params = {"A": "7", "B": "0.8" if k == 44 else "0", "C": "30"}
+        else:
+            params = {"A": "9", "B": "0", "C": "2"}
+            origin += later if k % 2 else ""
+        rows.append((params, origin))
+    return observe(spec, rows, abc_metrics)
+
+
+def adopt(ident, since, **parts):
+    return {"id": ident, "event": "adopt", "at": "t", "since": since, "author": "someone", "reason": f"reason of {ident}",
+            "start": [], "ranges": {}, "fixed": {}, "vary": [], "spec_fingerprint": "s", **parts}
+
+
+def revoke(ident, since):
+    return {"id": ident, "event": "revoke", "at": "t", "since": since, "reason": "did not help"}
+
+
+A1_STARTS = [{"A": "5", "B": "0", "C": "10"}, {"A": "6", "B": "0", "C": "20"}, {"A": "4", "B": "0", "C": "5"}]
+
+
+def test_an_advice_s_period_ends_at_its_revocation_or_the_next_adoption():
+    spec = spec_abc()
+    revoked = dg.digest(spec, advised_run(spec), advice=[adopt("a1", 40, start=A1_STARTS), revoke("a1", 80)])
+    (a1,) = revoked["advice"]
+    assert a1["period"] == [40, 80] and a1["status"] == "revoked"
+    # the others are the 18 even points of batches 40 to 70; the 40 feasible points proposed after the revocation are not
+    assert a1["others"] == {"points": 18, "feasible": 17, "no_value": 1, "best": pytest.approx(30.07)}
+
+    superseded = dg.digest(spec, advised_run(spec, later="@a2"), advice=[adopt("a1", 40, start=A1_STARTS),
+                                                                          adopt("a2", 80, ranges={"A": ["8", "9"]})])
+    a1, a2 = superseded["advice"]
+    assert a1["period"] == [40, 80] and a1["status"] == "superseded by a2" and a1["others"]["points"] == 18
+    assert a2["period"] == [80, None] and a2["status"] == "in effect"
+    assert a2["under"] == {"points": 20, "feasible": 20, "no_value": 0, "best": pytest.approx(2.09)}
+    assert a2["others"] == {"points": 20, "feasible": 20, "no_value": 0, "best": pytest.approx(2.09)}
+    json.dumps(superseded, allow_nan=False)
+
+
+def test_both_sides_of_an_advice_are_counted_alike_and_its_start_points_are_told_apart():
+    spec = spec_abc()
+    d = dg.digest(spec, advised_run(spec), advice=[adopt("a1", 40, start=A1_STARTS), revoke("a1", 80)])
+    (a1,) = d["advice"]
+    assert a1["under"] == {"points": 19, "feasible": 0, "no_value": 9, "best": None}    # nothing feasible under it
+    assert a1["others"] == {"points": 18, "feasible": 17, "no_value": 1, "best": pytest.approx(30.07)}
+    assert set(a1) >= {"period", "under", "others", "start_points", "best_at_bound"}
+    assert not set(a1) & {"points", "best", "others_since", "best_others_since"}
+    # the best when evaluated; feasible but not the best; failing a constraint (its objective is not printed as a result)
+    assert a1["start_points"] == [
+        {"id": "obs_0040", "status": "ok", "objective": pytest.approx(10.05), "best_then": True},
+        {"id": "obs_0041", "status": "ok", "objective": pytest.approx(20.06), "best_then": False},
+        {"id": "obs_0042", "status": "constraint_failed", "objective": None, "best_then": False}]
+
+
+def test_the_best_point_at_an_advice_s_bound():
+    """The best point is obs_0080: A = 9 (the spec's upper bound), C = 2 (one level above the spec's lower bound)."""
+    spec = spec_abc()
+    rows = advised_run(spec)
+    advice = [adopt("a1", 40, ranges={"C": ["2", "50"]}),        # at the advice's lower bound, not the spec's
+              adopt("a2", 50, ranges={"C": ["1", "3"]}),         # inside
+              adopt("a3", 60, ranges={"A": ["5", "9"]}),         # at a bound that is the spec's too
+              adopt("a4", 70, ranges={"A": ["3", "6"]}),         # neither under it nor inside its ranges
+              adopt("a5", 75, start=A1_STARTS)]                  # no ranges: no bound to be at
+    d = dg.digest(spec, rows, advice=advice)
+    assert d["progress"]["best"]["id"] == "obs_0080"
+    assert [a["best_at_bound"] for a in d["advice"]] == [[{"variable": "C", "side": "lower", "value": "2"}], [], [],
+                                                         None, None]
+    # proposed under the advice: at its bound even though it lies outside another of its ranges
+    under = [o.model_copy(update={"origin": o.origin + "@a1"}) if o.obs_id == "obs_0080" else o for o in rows]
+    d = dg.digest(spec, under, advice=[adopt("a1", 40, ranges={"A": ["3", "6"], "C": ["2", "3"]})])
+    assert d["advice"][0]["best_at_bound"] == [{"variable": "C", "side": "lower", "value": "2"}]
+    assert dg.digest(spec, rows[:40], advice=advice)["advice"][0]["best_at_bound"] is None      # no feasible point
+
+
+def test_what_the_unscored_points_said():
+    spec = spec_abc()
+    rows = observe(spec, abc_rows()[:60], abc_metrics)
+    said = [["x", "y"]] * 5 + [["y", "z", "z"]] * 3 + [["w"]] * 2
+    unscored = [o for o in rows if o.status not in dg.SCORED]
+    assert len(unscored) >= len(said)
+    texts = {o.obs_id: issues for o, issues in zip(unscored, said)}
+    rows = [o.model_copy(update={"issues": texts.get(o.obs_id, [] if o.status not in dg.SCORED else ["x"])})
+            for o in rows]
+    messages = dg.digest(spec, rows)["failures"]["messages"]
+    # counted once per point that holds a text; a scored point's issues are not counted; the three most frequent
+    assert messages == [{"text": "y", "count": 8}, {"text": "x", "count": 5}, {"text": "z", "count": 3}]
+    every = dg.digest(spec, [o for o in rows if o.status in dg.SCORED])
+    assert every["failures"]["messages"] == [] and "said" not in dg.markdown(every).split("## What failed")[1]
+
+
+def test_the_markdown_of_an_advice_the_region_s_side_and_a_run_without_operating_points():
+    from ic_opt.suggesters.metric_gp import region
+
+    spec = spec_abc()
+    d = dg.digest(spec, advised_run(spec), advice=[adopt("a1", 40, start=A1_STARTS, ranges={"C": ["2", "50"]}),
+                                                    revoke("a1", 80)])
+    md = dg.markdown(d)
+    advice = md.split("## Advice\n\n")[1].split("\n## ")[0]
+    assert ("| advice | given by | period | status | what | under it | others in its period | its start points |"
+            in advice)
+    assert ("| a1 | someone | 40 to 80 | revoked | start 3; ranges C 2..50 | 19 points, 0 feasible, 9 no value, best — "
+            "| 18 points, 17 feasible, 1 no value, best 30.07 "
+            "| `obs_0040` ok 10.05 (best so far), `obs_0041` ok 20.06, `obs_0042` constraint_failed |") in advice
+    assert ("- the best point `obs_0080` lies at a1's bound, which is not the spec's: C = 2 (lower). Better points may "
+            "lie beyond it; only a wider advice looks there.") in advice
+    assert "- a1: reason of a1" in advice
+    strategy = md.split("## Strategy\n\n")[1].split("\n## ")[0]
+    assert "side × weight / 2 of the centre, in unit coordinates" in strategy and "of the unit cube" not in strategy
+    assert "lies between 0.2 and 5; where side × weight reaches 2 the region holds every level" in strategy
+    assert dg.REGION_WEIGHTS == region.WEIGHT_CLIP
+    failures = md.split("## What failed and where\n\n")[1].split("\n## ")[0]
+    assert "  - 10 × `tb/nominal: spectre did not finish`" in failures
+    assert d["operating_points"]["recorded"] == 0
+    assert md.split("## Operating points of the best point\n\n")[1].startswith(
+        "_No point of this run holds operating points (`ic-opt doctor` says per testbench whether the netlist asks for "
+        "them)._")
+    without = dg.markdown(dg.digest(spec, advised_run(spec)))
+    assert "## Advice\n\n_no advice given_" in without
 
 
 # -- 5. the order of the observations -----------------------------------------------------------------------------------

@@ -30,6 +30,18 @@ Definitions the specification leaves open:
   ``[0, 1/3)``, ``[1/3, 2/3)``, ``[2/3, 1]``.
 - *suggested range*: the span of the ``top`` best feasible points, one level wider on each side, inside the spec's
   range; ``reaches_bound`` names the spec bound those points themselves lie at (the span before widening).
+- *the history size a point was proposed at*: the batch key of its origin where it has one (a ``metric_gp`` or TuRBO
+  batch); for any other point (a start point, an advice's start point, the initial design, OpenBox, user points) its
+  position among every observation handed to :func:`digest`, before the step is picked. The position equals the history
+  size the strategy was handed while the store holds this one problem and the run adopted no rows from elsewhere; an
+  advice's ``since`` counts the same way.
+- *an advice's period* (T17.3b specification, 2.1): the history sizes from its ``since`` up to, not including, the
+  ``since`` of the row that ended it -- its ``revoke`` row or the next ``adopt`` row, whichever comes first -- or on
+  while it is in effect: the batches :func:`ic_opt.advice.in_effect` gives it. *The others* of an advice: the points
+  proposed at a history size inside its period that are neither under it (``@<id>``) nor its start points.
+- *the best then*: a feasible point whose objective is lower than that of every feasible point before it in
+  observation-number order.
+- *what the unscored points said*: the texts of their ``issues`` as stored, each counted once per point that holds it.
 
 The value helpers (units, SI prefixes, a constraint as a reader says it, a point's value per corner) live here and the
 report (``blocks/analyze.py``) imports them: importing ``ic_opt.blocks`` loads every block and the strategies'
@@ -55,12 +67,14 @@ from ic_opt.observation import Observation
 from ic_opt.space import split_origin
 from ic_opt.spec import Spec
 
-DIGEST_VERSION = 1
+DIGEST_VERSION = 2
 SCORED = ("ok", "constraint_failed")
 MIN_CORRELATED = 10                # scored points below which no rank correlation is given
 MIN_SIDE = 5                       # points on either side of a split
 MIN_FEASIBLE_RANGES = 3            # feasible points below which no range is suggested
 SEPARATING = 3                     # variables listed as separating scored from unscored points
+MESSAGES = 3                       # issue texts listed for the points that gave no value
+REGION_WEIGHTS = (0.2, 5.0)        # metric_gp's per-variable weights of the region's side (region.WEIGHT_CLIP)
 QUANTITIES = ("region", "ids", "vgs", "vds", "vbs", "vth", "vdsat", "gm", "gds", "gmoverid", "cgs", "cgd")   # section 4
 QUANTITY_UNITS = {"ids": "A", "vgs": "V", "vds": "V", "vbs": "V", "vth": "V", "vdsat": "V", "gm": "S", "gds": "S",
                   "gmoverid": "1/V", "cgs": "F", "cgd": "F"}
@@ -146,13 +160,16 @@ def _limit(constraint) -> float:
 
 def digest(spec: Spec, observations: Iterable[Observation], *, advice: Sequence[dict] = (), top: int = 5,
            step: str | None = None) -> dict[str, Any]:
-    """The digest of ``observations`` (only step ``step``'s when given) as a JSON-ready dict, ``"digest_version": 1``.
+    """The digest of ``observations`` (only step ``step``'s when given) as a JSON-ready dict, ``"digest_version": 2``.
     ``advice``: the rows of ``.icopt/advice.jsonl`` in file order (section 2); ``top``: how many of the best feasible
     points the spans and suggested ranges describe. The order of ``observations`` does not matter: they are taken in
     observation-number order, as the store and the strategies take them."""
-    rows = sorted((o for o in observations if step is None or o.step == step), key=_obs_order)
+    ordered = sorted(observations, key=_obs_order)
+    position = {o.obs_id: i for i, o in enumerate(ordered)}
+    rows = [o for o in ordered if step is None or o.step == step]
     grid = [_Grid(v) for v in spec.variables]
     feasible = sorted((o for o in rows if o.feasible), key=lambda o: o.objective if o.objective is not None else math.inf)
+    sizes = [key if (key := batch_key(o.origin)) is not None else position[o.obs_id] for o in rows]
     return {
         "digest_version": DIGEST_VERSION,
         "project": spec.project,
@@ -166,7 +183,7 @@ def digest(spec: Spec, observations: Iterable[Observation], *, advice: Sequence[
         "failures": _failures(spec, rows, grid),
         "suggested_ranges": suggested_ranges(spec, rows, top=top),
         "strategy": _strategy(spec, rows),
-        "advice": _advice(rows, advice),
+        "advice": _advice(rows, sizes, advice, grid, feasible[0] if feasible else None),
         "operating_points": _operating_points(rows, feasible),
     }
 
@@ -365,8 +382,15 @@ def _failures(spec: Spec, rows: list[Observation], grid: list[_Grid]) -> dict[st
         separating = splits[:SEPARATING]
         if not separating:
             notes["separating"] = f"no split leaves {MIN_SIDE} points on each side and separates them"
+    said: dict[str, int] = {}
+    for o in rows:
+        if o.status not in SCORED:
+            for text in dict.fromkeys(o.issues):
+                said[text] = said.get(text, 0) + 1
+    messages = [{"text": text, "count": count}
+                for text, count in sorted(said.items(), key=lambda kv: (-kv[1], kv[0]))[:MESSAGES]]
     return {"by_status": dict(sorted(by_status.items())), "missing_in_partial": missing,
-            "partial_points": len(partial), "separating": separating, "notes": notes}
+            "partial_points": len(partial), "separating": separating, "messages": messages, "notes": notes}
 
 
 def _best_split(g: _Grid, rows: list[Observation], unscored: np.ndarray) -> dict[str, Any] | None:
@@ -442,17 +466,26 @@ def _metric_gp_region(spec: Spec, rows: list[Observation]) -> tuple[dict[str, An
              "design_points": design}, None)
 
 
-def _advice(rows: list[Observation], advice: Sequence[dict]) -> list[dict[str, Any]]:
+def _advice(rows: list[Observation], sizes: list[int], advice: Sequence[dict], grid: list[_Grid],
+            best: Observation | None) -> list[dict[str, Any]]:
+    """Per adopted advice (T17.3b specification, 2.1-2.4): its row and status, its period, the points under it and the
+    others of its period counted alike, its start points, and where the run's best point lies against its ranges.
+    ``sizes``: the history size each row was proposed at."""
     adopted = [r for r in advice if r.get("event") == "adopt"]
     revoked = {r.get("id"): r for r in advice if r.get("event") == "revoke"}
+    best_then = _best_then(rows)
     out = []
     for i, row in enumerate(adopted):
         ident = row.get("id")
         since = int(row.get("since", 0))
+        ends = [int(r.get("since", 0)) for r in (revoked.get(ident), adopted[i + 1] if i + 1 < len(adopted) else None)
+                if r is not None]
+        until = min(ends) if ends else None
         under = [o for o in rows if split_origin(o.origin)[1] == ident]
         starts = [o for o in rows if split_origin(o.origin)[0] == f"advice:{ident}"]
         mine = {o.obs_id for o in under} | {o.obs_id for o in starts}
-        others = [o for o in rows[since:] if o.obs_id not in mine]
+        others = [o for o, k in zip(rows, sizes, strict=True)
+                  if since <= k and (until is None or k < until) and o.obs_id not in mine]
         if ident in revoked:
             status = "revoked"
         elif i + 1 < len(adopted):
@@ -461,9 +494,50 @@ def _advice(rows: list[Observation], advice: Sequence[dict]) -> list[dict[str, A
             status = "in effect"
         out.append({"id": ident, "row": dict(row), "status": status,
                     "revoke": dict(revoked[ident]) if ident in revoked else None,
-                    "points": len(under), "best": _best_fom(under), "others_since": len(others),
-                    "best_others_since": _best_fom(others),
-                    "start_points": [{"id": o.obs_id, "status": o.status, "objective": _num(o.fom)} for o in starts]})
+                    "period": [since, until], "under": _side_counts(under), "others": _side_counts(others),
+                    "start_points": [{"id": o.obs_id, "status": o.status, "objective": _num(o.fom) if o.feasible else None,
+                                      "best_then": o.obs_id in best_then} for o in starts],
+                    "best_at_bound": _best_at_bound(row, grid, best)})
+    return out
+
+
+def _side_counts(rows: list[Observation]) -> dict[str, Any]:
+    return {"points": len(rows), "feasible": sum(1 for o in rows if o.feasible),
+            "no_value": sum(1 for o in rows if o.status not in SCORED), "best": _best_fom(rows)}
+
+
+def _best_then(rows: list[Observation]) -> set[str]:
+    """The points that were the run's best feasible point when they were evaluated (observation-number order)."""
+    out, best = set(), None
+    for o in rows:
+        if o.feasible and o.objective is not None and (best is None or o.objective < best):
+            best = o.objective
+            out.add(o.obs_id)
+    return out
+
+
+def _best_at_bound(row: dict, grid: list[_Grid], best: Observation | None) -> list[dict[str, str]] | None:
+    """The run's best feasible point against an advice's ranges (2.4): per variable and side, where its level is the
+    advice's bound and that bound is not the spec's -- better points may lie beyond it, and only a wider advice looks
+    there. ``None`` when there is no best point, the advice has no ranges, or the best point was neither proposed under
+    the advice (``@<id>``, or one of its start points) nor lies inside its ranges."""
+    ranges = row.get("ranges") or {}
+    by_name = {g.name: g for g in grid}
+    bounds = {name: (by_name[name].index(lo), by_name[name].index(hi)) for name, (lo, hi) in ranges.items()
+              if name in by_name}
+    if best is None or not bounds:
+        return None
+    base, suffix = split_origin(best.origin)
+    under = suffix == row.get("id") or base == f"advice:{row.get('id')}"
+    levels = {name: by_name[name].index(best.params[name]) for name in bounds}
+    if not under and not all(lo <= levels[name] <= hi for name, (lo, hi) in bounds.items()):
+        return None
+    out = []
+    for name, (lo, hi) in bounds.items():
+        g = by_name[name]
+        for side, bound, spec_bound in (("lower", lo, 0), ("upper", hi, g.count - 1)):
+            if levels[name] == bound != spec_bound:
+                out.append({"variable": name, "side": side, "value": g.text(bound)})
     return out
 
 
@@ -479,8 +553,9 @@ def _operating_points(rows: list[Observation], feasible: list[Observation]) -> d
         notes["best"] = "no feasible point"
     if start is None:
         notes["start"] = "no start point (the design as exported) was evaluated"
+    recorded = sum(1 for o in rows if any(getattr(ch, "operating_points", None) is not None for ch in o.children.values()))
     return {"best": _tables(feasible[0]) if feasible else None, "start": _tables(start) if start else None,
-            "notes": notes}
+            "recorded": recorded, "notes": notes}
 
 
 def _tables(o: Observation) -> dict[str, Any]:
@@ -581,7 +656,7 @@ def markdown(d: dict[str, Any]) -> str:
              "## Where the good points are", _md_variables(d),
              "## What failed and where", _md_failures(d["failures"]),
              "## Strategy", _md_strategy(d["strategy"]),
-             "## Advice", _md_advice(d["advice"]),
+             "## Advice", _md_advice(d["advice"], d["progress"]["best"]),
              "## Operating points of the best point", _md_operating_points(d["operating_points"]),
              "## What these numbers are not", NOT_SAID]
     return "\n\n".join(parts) + "\n"
@@ -697,6 +772,10 @@ def _md_failures(f: dict[str, Any]) -> str:
     if f["partial_points"]:
         missing = ", ".join(f"{k} {v}" for k, v in sorted(f["missing_in_partial"].items(), key=lambda kv: -kv[1]) if v)
         lines.append(f"- metrics missing on the {f['partial_points']} points that ran but gave only some values: {missing}")
+    if f["messages"]:
+        lines.append(f"- what the points that gave no value said (the {len(f['messages'])} most frequent texts of their "
+                     "issues, and how many points hold each):")
+        lines += [f"  - {m['count']} × `{m['text'].replace('`', chr(39))}`" for m in f["messages"]]
     if not f["separating"]:
         lines.append(f"- where points gave no value: {f['notes'].get('separating', 'no split separates them')}")
         return "\n".join(lines)
@@ -720,19 +799,28 @@ def _md_strategy(s: dict[str, Any]) -> str:
         if r is None:
             lines.append(f"- metric_gp: {s['notes']['metric_gp']}; initial design points {gp['design_points']}")
         else:
+            low, high = REGION_WEIGHTS
             lines += [f"- metric_gp search region {r['index']} (regions ended before it: {r['regions_ended']}), centred on "
-                      f"`{r['centre']}`, side {r['side']:.4g} of the unit cube"
+                      f"`{r['centre']}`, side {r['side']:.4g}"
                       + (", ended: the next batch starts a new region" if r["ended"] else ""),
+                      (f"- the side: per variable the region holds the levels within side × weight / 2 of the centre, in "
+                       f"unit coordinates (every range 1 long, logarithmic where it spans a decade), and always the "
+                       f"centre's level and its two neighbours; a variable's weight, from the models' length scales, lies "
+                       f"between {low:g} and {high:g}; where side × weight reaches 2 the region holds every level of "
+                       "the variable, whatever the centre"),
                       (f"- batches in a row that improved on the region's best: {r['successes']}, that did not: "
                        f"{r['failures']}; initial design points (start points and space-filling): {gp['design_points']}")]
     return "\n".join(lines)
 
 
-def _md_advice(rows: list[dict[str, Any]]) -> str:
+def _md_advice(rows: list[dict[str, Any]], best: dict[str, Any] | None) -> str:
     if not rows:
         return "_no advice given_"
-    lines = [_row(["advice", "given by", "since point", "status", "what", "points under it", "best under it",
-                   "best of the others since", "its start points"]), _rule(9)]
+    lines = [("*Period*: the history sizes (points in the store) from the advice's adoption up to the row that ended it. "
+              "*Under it*: the points whose origin ends in `@<id>`. *Others*: the points proposed in its period that are "
+              "neither under it nor its start points. *Best so far*: the run's best feasible point when it was evaluated."),
+             "", _row(["advice", "given by", "period", "status", "what", "under it", "others in its period",
+                       "its start points"]), _rule(8)]
     for a in rows:
         r = a["row"]
         what = "; ".join(part for part in (
@@ -740,17 +828,37 @@ def _md_advice(rows: list[dict[str, Any]]) -> str:
             "ranges " + ", ".join(f"{k} {lo}..{hi}" for k, (lo, hi) in r["ranges"].items()) if r.get("ranges") else "",
             "fixed " + ", ".join(f"{k}={v}" for k, v in r["fixed"].items()) if r.get("fixed") else "",
             "vary " + ", ".join(r["vary"]) if r.get("vary") else "") if part)
-        starts = ", ".join(f"`{s['id']}` {s['status']} {quantity(s['objective'], '')}" for s in a["start_points"]) or "—"
-        lines.append(_row([a["id"], str(r.get("author", "")), str(r.get("since", "")), a["status"], what or "—",
-                           str(a["points"]), quantity(a["best"], ""), quantity(a["best_others_since"], ""), starts]))
-    lines += ["", *(f"- {a['id']}: {a['row'].get('reason', '')}" for a in rows)]
+        starts = ", ".join(f"`{s['id']}` {s['status']}" + (f" {quantity(s['objective'], '')}" if s["objective"] is not None
+                                                            else "") + (" (best so far)" if s["best_then"] else "")
+                           for s in a["start_points"]) or "—"
+        since, until = a["period"]
+        lines.append(_row([a["id"], str(r.get("author", "")), f"{since} to {until}" if until is not None else f"from {since}",
+                           a["status"], what or "—", _md_side(a["under"]), _md_side(a["others"]), starts]))
+    at_bound = [a for a in rows if a["best_at_bound"]]
+    if at_bound:
+        lines.append("")
+    for a in at_bound:
+        sides = ", ".join(f"{b['variable']} = {b['value']} ({b['side']})" for b in a["best_at_bound"])
+        lines.append(f"- the best point `{best['id']}` lies at {a['id']}'s bound, which is not the spec's: {sides}. Better "
+                     "points may lie beyond it; only a wider advice looks there.")
+    lines += ["", "Reasons given:", "", *(f"- {a['id']}: {a['row'].get('reason', '')}" for a in rows)]
     return "\n".join(lines)
+
+
+def _md_side(counts: dict[str, Any]) -> str:
+    if not counts["points"]:
+        return "none"
+    return (f"{counts['points']} points, {counts['feasible']} feasible, {counts['no_value']} no value, "
+            f"best {quantity(counts['best'], '')}")
 
 
 def _md_operating_points(op: dict[str, Any]) -> str:
     best = op["best"]
     if best is None:
         return f"_{op['notes']['best']}_"
+    if not op["recorded"]:
+        return ("_No point of this run holds operating points (`ic-opt doctor` says per testbench whether the netlist "
+                "asks for them)._")
     if all(table is None for table in best["children"].values()):
         return (f"_none recorded for `{best['id']}`: its results hold no operating points (a store written before ic-opt "
                 "recorded them, a child that is not a Spectre simulation, or a netlist that asked for none)_")

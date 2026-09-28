@@ -75,9 +75,10 @@ The numeric strategies never read this field (D8). A test guards it: no module u
   files. Read-only with respect to the run: it takes no lock and starts nothing; while a run holds the project it
   reads what is there.
 
-### 5.2 Content (`"digest_version": 1`)
+### 5.2 Content (`"digest_version": 2`)
 Every number is computed from the observations. Where there is too little to compute something, the entry says so
-(`null` and a `note`), it is not guessed.
+(`null` and a `note`), it is not guessed. Version 2 (2026-09-29, `T17_3B_DIGEST_SPEC.md`, after the first sessions that
+advised runs from the digest) changed the rows `advice`, `failures`, `strategy` and `operating_points`.
 
 | key | content |
 | --- | --- |
@@ -86,11 +87,11 @@ Every number is computed from the observations. Where there is too little to com
 | `progress` | index and id of the first feasible point; the best feasible point (id, parameters, metrics with units, objective as the spec states it); the best objective after every batch (a batch: the points with the same batch key in their origin, else the step's order in tens) |
 | `constraints` | per constraint: scored points that meet it; points that fail only it; the best feasible point's margin and the margin of the closest point that fails it, both as the constraint states them and divided by the metric's spread |
 | `variables` | per variable: levels visited of levels there are; the span of the `top` best feasible points; `at_bound`: `lower` / `upper` / `null` for the best point; the share of points that gave no value in the lower, middle and upper third of the range; per modelled metric the rank correlation with the variable over the scored points (omitted below 10 scored points) |
-| `failures` | per status the count; per metric how often it is the one missing; for the three variables that separate scored from unscored points best: the level at which one split of the variable separates them, and the shares on either side |
+| `failures` | per status the count; per metric how often it is the one missing; for the three variables that separate scored from unscored points best: the level at which one split of the variable separates them, and the shares on either side; `messages`: the three most frequent texts among the `issues` of the points that gave no value, as stored, each with the number of those points that hold it (`[]` when every point gave a value) |
 | `suggested_ranges` | per variable: the span of the `top` best feasible points widened by one level on each side, clipped to the spec's range; `reaches_bound` when the span touches the spec's bound (the message for a person: the spec's range, which only the user changes, may be too narrow there). With fewer than 3 feasible points: `null` |
-| `strategy` | the strategies the origins name and how many points each; for `metric_gp` the search region as `MetricGpSuggester.region_state` gives it (index, side, successes, failures, the centre's observation id, regions ended) and the design size |
-| `advice` | per advice (section 2): the row; points proposed under it (origin suffix) and the best objective among them; the best objective among the other points proposed since; start points of it and what they scored; `in effect` / `revoked` / `superseded by` |
-| `operating_points` | for the best feasible point and for the first `start` point (the design as exported), per child: the table of section 4; `null` where the store holds none |
+| `strategy` | the strategies the origins name and how many points each; for `metric_gp` the search region as `MetricGpSuggester.region_state` gives it (index, side, successes, failures, the centre's observation id, regions ended) and the design size. The Markdown states what the side means where it prints it: per variable the region holds the levels within `side × weight / 2` of the centre in unit coordinates (a range 1 long; the weight between 0.2 and 5), and always the centre's level and its two neighbours; where `side × weight` reaches 2 it holds every level of the variable |
+| `advice` | per advice (section 2): the row; `in effect` / `revoked` / `superseded by`; `period: [since, until]`: from its `since` up to the `since` of the row that ended it (its revoke row or the next adopt row; `until` is `null` while it is in effect); `under` and `others`, each `{points, feasible, no_value, best}`: the points proposed under it (origin suffix) and the others of its period -- the points proposed at a history size inside the period (the batch key of the origin, else the point's position in the run) that are neither under it nor its start points; `start_points`: per start point id, status, objective (`null` unless feasible), `best_then` (the run's best feasible point when it was evaluated); `best_at_bound`: `[{variable, side, value}]` where the run's best feasible point, proposed under the advice or lying inside its ranges, is at a bound of the advice's range that is not the spec's bound (`[]` when none; `null` when the best point is neither under nor inside the advice, or the advice has no ranges) |
+| `operating_points` | for the best feasible point and for the first `start` point (the design as exported), per child: the table of section 4; `null` where the store holds none; `recorded`: how many points hold operating points (when none does, the Markdown says so in one sentence) |
 
 ### 5.3 Markdown
 For a reader who has not seen the project: what is optimized, how far the run is, what is in the way, where the good

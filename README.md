@@ -430,8 +430,14 @@ are none, and no strategy reads it), `steps.jsonl`, `decks/`, `sims/<obs>/<tb>/<
 `reports/report.md` + `report.html` (best observed, top feasible, constraint
 margins, parameter importance, corners, where the best points are; four figures),
 `reports/digest.md` + `digest.json` (`ic-opt digest`: what is optimized, how far the
-run is, which constraints bind, where the good points are and where points gave no
-value, the strategy's state -- every number computed from the observations).
+run is, which constraints bind, where the good points are, where points gave no
+value and the issue texts they gave most often, the strategy's state, and a table
+of the advice given -- per advice its period, from its adoption to the row that
+ended it; the points under it (`@<id>`) and the others proposed in its period,
+each counted as points, feasible, no value and best objective; its start points,
+and whether each was the run's best when evaluated; a line when the run's best
+point lies at a bound of the advice's range that is not the spec's -- every
+number computed from the observations).
 
 ### Stores written by an earlier version
 

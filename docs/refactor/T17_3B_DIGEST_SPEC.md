@@ -1,7 +1,9 @@
 # T17.3b — the digest after the first sessions that used it
 
 Status: specification, 2026-09-29. One task, one commit. It amends section 5 of `T17_1_5_SPEC.md`
-(`"digest_version": 2`).
+(`"digest_version": 2`). Implemented 2026-09-29; where the implementation reads a point differently from this text,
+section 5.2 of `T17_1_5_SPEC.md` says what it does (2.5: a variable holds every level where `side × weight` reaches 2,
+not from a side of 2, which the side, at most 1.6, never is).
 
 ## 1. Why
 
