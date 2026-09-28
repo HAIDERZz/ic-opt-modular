@@ -61,7 +61,6 @@ MIN_CORRELATED = 10                # scored points below which no rank correlati
 MIN_SIDE = 5                       # points on either side of a split
 MIN_FEASIBLE_RANGES = 3            # feasible points below which no range is suggested
 SEPARATING = 3                     # variables listed as separating scored from unscored points
-LOG_SPAN = 10                      # upper / lower from which a positive range is read logarithmically (metric_gp's)
 QUANTITIES = ("region", "ids", "vgs", "vds", "vbs", "vth", "vdsat", "gm", "gds", "gmoverid", "cgs", "cgd")   # section 4
 QUANTITY_UNITS = {"ids": "A", "vgs": "V", "vds": "V", "vbs": "V", "vth": "V", "vdsat": "V", "gm": "S", "gds": "S",
                   "gmoverid": "1/V", "cgs": "F", "cgd": "F"}
@@ -508,7 +507,7 @@ class _Grid:
         self.step = space.parse_scalar(variable.step)[0]
         self.count = space.grid_count(variable)
         lo, hi = float(self.lower), float(self.lower + (self.count - 1) * self.step)
-        self.log = bool(lo > 0 and hi / lo >= LOG_SPAN)
+        self.log = space.log_scale(lo, hi)    # the strategies' rule
         self._lo, self._hi = lo, hi
 
     def index(self, text: str) -> int:

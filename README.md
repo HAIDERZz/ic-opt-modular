@@ -146,6 +146,19 @@ before anything runs (`initial_trials` both take). A strategy named with
 `auto` chooses it, else OpenBox then TuRBO; `lib_design` stays on `turbo`. The
 comparisons behind the choice: `docs/refactor/T17_OPTIMIZER_PLAN_CN.md`, section 7.
 
+A variable whose range is positive and spans a decade or more
+(`upper / lower >= 10`) is searched on a logarithmic scale by `metric_gp`, the
+`openbox_*` strategies and `turbo`: evenly per decade, the initial design too; every other
+variable linearly. The range alone decides, not what the variable is (a
+transistor width, a bias current and a device's turn width alike; no benchmark
+covers the variables of EM devices). The grid is the spec's either way, and
+`random`, `sobol` and the `points.*` blocks stay linear. On 12 wide-range test
+problems TuRBO did better on 23 of 48 measures with it and worse on none,
+OpenBox better on 14 and worse on 1 (plan, section 7). A spec without such a
+variable is searched exactly as before; one with such a variable, continued by
+this version, proposes differently from the version that started the run (the
+same history read on another scale); nothing stored becomes invalid.
+
 `metric_gp`: one Gaussian process per metric
 the constraints and the objective name, the spec's own formulas applied to their
 posterior samples, a search region on the spec's grid (logarithmic for a range

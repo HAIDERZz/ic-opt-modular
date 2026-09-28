@@ -3,8 +3,9 @@
 A point inside the strategy is a row of level indices, ``k = 0 .. K-1`` per variable (``lower + k * step``, as
 ``ic_opt.space`` defines the grid); models, regions and candidates see it in unit coordinates, logarithmic for a
 variable whose range is positive and spans at least a decade (a width of 0.5 to 10 is searched evenly per octave, not
-per micrometre), linear otherwise. Snapping is to the nearest level in unit coordinates, so a logarithmic variable
-snaps in its own scale; a raw vector leaves the strategy as the level's exact value, which ``space.snap`` keeps.
+per micrometre), linear otherwise (``space.log_scale``: the one rule, which ``openbox_*`` and ``turbo`` search by too).
+Snapping is to the nearest level in unit coordinates, so a logarithmic variable snaps in its own scale; a raw vector
+leaves the strategy as the level's exact value, which ``space.snap`` keeps.
 """
 
 from __future__ import annotations
@@ -16,8 +17,6 @@ import numpy as np
 
 from ic_opt import space
 from ic_opt.spec import Spec
-
-LOG_SPAN = 10          # upper / lower at which a positive range is searched logarithmically
 
 
 class Coords:
@@ -33,7 +32,7 @@ class Coords:
             count = space.grid_count(variable)
             levels = np.array([float(low + Decimal(k) * step) for k in range(count)])   # Decimal: exactly the grid's text
             lo, hi = levels[0], levels[-1]
-            is_log = bool(lo > 0 and hi / lo >= LOG_SPAN)
+            is_log = space.log_scale(lo, hi)
             log.append(is_log)
             lower.append(lo)
             upper.append(hi)

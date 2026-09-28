@@ -84,3 +84,15 @@ next free number), and a line for the next release's notes (`docs/refactor/` has
 - A per-variable override in the spec (`scale: log | linear`): a schema change, and no case for it yet.
 - The `random` and `sobol` strategies and the `points.*` blocks.
 - Threads of the strategies' own computations (BACKLOG N-70).
+
+## 7. As implemented
+
+- The rule is `ic_opt.space.log_scale(lower, upper)`. `metric_gp`'s coordinates, the two strategies and the digest's
+  thirds of a range call it (the digest had its own copy of the rule). The strategies' numeric space is
+  `ic_opt.suggesters.base.SearchScale`.
+- Section 3's "handled by the loop that already handles duplicates" did not hold: OpenBox removes duplicates by
+  configuration, so without `q` its proposals often snapped onto evaluated grid points and `suggest` replaced them with
+  random `:fill` points (8 to 35 of 45 model points on coarse grids). With a variable under the rule, a batch is chosen
+  by `openbox.grid_suggestions`: OpenBox's own steps (`Advisor.get_suggestions` / `get_suggestion`) over its ranked
+  candidates, with "already evaluated" judged on the grid. Without one, OpenBox is called as before. Measured in the
+  plan's section 7; BACKLOG N-71.

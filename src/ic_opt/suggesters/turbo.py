@@ -23,6 +23,13 @@ too. The price: a region's replayed length may differ from the length in force w
 batch that found the first feasible point counted as a failure then, on the violation scale, if it did not reduce the
 violation; it counts as a success now). Keeping each batch's original scale would need the targets of every earlier
 call, i.e. a second record beside the observations, which the suggesters must not keep (CONTRIBUTING).
+
+Logarithmic variables (T17.7). A variable whose range is positive and spans a decade (``space.log_scale``) is searched as
+``log10(value)`` (``base.SearchScale``): ``lb`` / ``ub``, the rows replayed into the region, the Latin hypercube design
+(even per decade) and the trust region's candidates, converted back before they are returned. The replay reads tags and
+targets, not coordinates, so it is unchanged. On the 12 wide-range development problems this was better on 23 of 48
+measures and worse on none. A run continued by this version on such a spec proposes differently from the version that
+started it; a spec without such a variable proposes exactly as before.
 """
 
 from __future__ import annotations
@@ -39,8 +46,8 @@ from ic_opt.observation import Observations
 from ic_opt.spec import Spec
 from ic_opt.suggesters.base import (
     Proposal,
+    SearchScale,
     minimization_objective,
-    scale,
     turbo_missing,
     unit_design,
 )
@@ -65,7 +72,8 @@ class TurboSuggester:
         dim = len(spec.variables)
         n_init = self.n_init or 2 * dim
         _seed_everything(seed + len(history))     # TuRBO's LHS and GP fit use numpy / torch global RNGs
-        lb, ub = (np.array(b, dtype=float) for b in space.bounds(spec))
+        search = SearchScale(spec)                # log10 of a variable under the log rule (T17.7), else the value
+        lb, ub = search.lower, search.upper
         turbo = Turbo1(f=lambda _x: math.inf, lb=lb, ub=ub, n_init=n_init, max_evals=10**9, batch_size=n,
                        verbose=False, n_training_steps=self.n_training_steps)
 
@@ -77,13 +85,13 @@ class TurboSuggester:
         turbo._restart()
         turbo._X, turbo._fX = np.empty((0, dim)), np.empty((0, 1))
         for kind, rows in active:
-            xs = _raw(spec, rows)
+            xs = _raw(spec, rows, search)
             ys = np.array([target[id(o)] for o in rows], dtype=float).reshape(-1, 1)
             if kind == "tr" and len(turbo._fX):
                 turbo._adjust_length(ys)
             turbo._X = np.vstack((turbo._X, xs))
             turbo._fX = np.vstack((turbo._fX, ys))
-        turbo.X, turbo.fX, turbo.n_evals = _raw(spec, history), y_all.reshape(-1, 1), len(history)
+        turbo.X, turbo.fX, turbo.n_evals = _raw(spec, history, search), y_all.reshape(-1, 1), len(history)
 
         init_done = sum(len(rows) for kind, rows in active if kind == "init" and _tag(rows[0].origin) in (("init", restart), None))
         region_dead = len(turbo._fX) and turbo.length < turbo.length_min
@@ -95,13 +103,13 @@ class TurboSuggester:
             chunk = design[init_done + len(pending) : init_done + len(pending) + n]    # this batch's start points are design too
             if len(chunk) == 0:
                 chunk = unit_design("random", n, dim, seed + restart + len(history))
-            return Proposal(scale(chunk, spec), tag=f"init:{restart}:{len(history)}")
+            return Proposal(search.design_raw(chunk), tag=f"init:{restart}:{len(history)}")
 
         x_unit = to_unit_cube(deepcopy(turbo._X), lb, ub)
         y = deepcopy(turbo._fX).ravel()
         x_cand, y_cand, _ = turbo._create_candidates(x_unit, y, length=turbo.length, n_training_steps=self.n_training_steps, hypers={})
         x_next = from_unit_cube(turbo._select_candidates(x_cand, y_cand), lb, ub)
-        return Proposal(x_next.tolist(), tag=f"tr:{restart}:{len(history)}")
+        return Proposal(search.raw_of(x_next), tag=f"tr:{restart}:{len(history)}")
 
 
 def targets(spec: Spec, history: Observations) -> np.ndarray:
@@ -134,8 +142,10 @@ def targets(spec: Spec, history: Observations) -> np.ndarray:
     return y
 
 
-def _raw(spec: Spec, rows) -> np.ndarray:
-    return np.array([space.to_raw(spec, o.params) for o in rows], dtype=float).reshape(len(rows), len(spec.variables))
+def _raw(spec: Spec, rows, search: SearchScale) -> np.ndarray:
+    """The rows' grid points in TuRBO's own values (``SearchScale.of_raw``)."""
+    raw = np.array([space.to_raw(spec, o.params) for o in rows], dtype=float).reshape(len(rows), len(spec.variables))
+    return search.of_raw(raw)
 
 
 def _seed_everything(seed: int) -> None:

@@ -47,7 +47,11 @@ ic-opt run optimize PROJECT budget=60 batch=10 [strategy=auto|metric_gp|openbox_
 # the format of fix_run's points file); origin `start`; never twice, also when the run continues
 # openbox_*: the first initial_trials observations (default min(2 x variables, budget // 2)) are the start points then a Sobol
 # design; the surrogate proposes everything after them, the rest of a straddling batch included -- `--plan` prints "the
-# surrogate proposes K of the N new points" and warns when K is 0; origins end in :init / :acq
+# surrogate proposes K of the N new points" and warns when K is 0; origins end in :init / :acq; a variable whose range is
+# positive and spans a decade (upper / lower >= 10) is searched on a log scale, its design even per decade (as metric_gp's)
+# turbo: a Latin hypercube design of 2 x variables (start points count), then the trust region; origins end in
+# :init:<r>:<k> / :tr:<r>:<k>; the same log scale as openbox_*. A run with such a variable started by an earlier
+# version and continued now proposes differently from the one that started it (same history, other scale); without: as before
 # metric_gp: one model per metric, the spec's formulas on their samples, no penalty; design initial_trials (default
 # min(max(2 x variables, 8), 20, budget // 2)); origins end in :init / :grid:<k> / :tr:<r>:<k> / :wide:<r>:<k> / :anchor:<r>:<k>;
 # named explicitly it refuses EM devices and more than one corner -- run corners='["tt"]'

@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ic_opt.spec import Spec, Variable
 
+LOG_SPAN = 10          # upper / lower from which a positive range is searched on a logarithmic scale (log_scale)
+
 _VALUE_RE = re.compile(
     r"^(?P<value>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)(?P<unit>[A-Za-z]\w*)?$"
 )
@@ -82,6 +84,14 @@ def bounds(spec: Spec) -> tuple[list[float], list[float]]:
         lows.append(float(lower))
         highs.append(float(upper))
     return lows, highs
+
+
+def log_scale(lower: float, upper: float) -> bool:
+    """Whether a range is searched on a logarithmic scale (T17.7 specification, section 2): its lower bound is positive
+    and ``upper / lower >= LOG_SPAN``, a decade or more. The range alone decides, not what the variable is. The one rule
+    of ``metric_gp``'s coordinates, the ``openbox_*`` and ``turbo`` strategies and the digest's thirds of a range; the
+    grid, ``bounds``, ``snap`` and ``to_raw`` stay linear whatever it says."""
+    return bool(lower > 0 and upper / lower >= LOG_SPAN)
 
 
 def snap(spec: Spec, raw: Sequence[float]) -> dict[str, str]:

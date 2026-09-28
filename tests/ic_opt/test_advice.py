@@ -521,7 +521,9 @@ PINNED_REGION = [("0.9", "0.62", "0.72", "0.72", "wide"), ("0.86", "0.7", "0.78"
                  ("0.9", "0.64", "0.7", "0.76", "tr"), ("0.86", "0.74", "0.66", "0.64", "tr"),
                  ("0.94", "0.66", "0.7", "0.78", "tr"), ("0.94", "0.7", "0.68", "0.64", "tr")]
 PINNED_GRID = [("0.425", "1"), ("0.3", "0.6"), ("0.55", "0.725"), ("1", "0.95"), ("0.15", "0")]
-PINNED_OPENBOX = [("51", "5u"), ("52", "5u"), ("50", "5u"), ("50", "5.1u")]
+# PINNED_OPENBOX re-pinned in T17.7: wide_spec's W (0.1u to 10u) spans two decades and openbox_* now searches it on a
+# logarithmic scale; pinned before it: ("51", "5u"), ("52", "5u"), ("50", "5u"), ("50", "5.1u").
+PINNED_OPENBOX = [("56", "10u"), ("57", "9.9u"), ("54", "9.9u"), ("57", "9.7u")]
 # benchmarks/icopt_bench/loop.run_one(syn_hartmann6_c1, metric_gp, seed 0, budget 40): sha256 of its [params, origin] rows
 PINNED_BENCHMARK = "21d3c5b1bcc9b4f1"
 

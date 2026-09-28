@@ -16,6 +16,7 @@ history (``turbo.py``). No strategy uses a penalty number any more.
 
 from __future__ import annotations
 
+import math
 import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -131,6 +132,38 @@ def space_filling(spec: Spec, taken: set[str], n: int, *, method: str, size: int
 def scale(unit: np.ndarray, spec: Spec) -> list[list[float]]:
     lb, ub = (np.array(b, dtype=float) for b in space.bounds(spec))
     return (lb + unit * (ub - lb)).tolist()
+
+
+class SearchScale:
+    """The numeric space the ``openbox_*`` and ``turbo`` strategies search in (T17.7 specification, section 3):
+    ``log10(value)`` for a variable under :func:`ic_opt.space.log_scale`, the value itself for every other. Their bounds,
+    the history they are fed, their initial design and their proposals are in it; what they hand back is converted to the
+    numeric space of :func:`ic_opt.space.bounds` (``10 ** x``), which ``suggest`` snaps as before. On a spec without a
+    variable under the rule every conversion is the identity, so its proposals are what they were before T17.7."""
+
+    def __init__(self, spec: Spec) -> None:
+        lower, upper = (np.array(b, dtype=float) for b in space.bounds(spec))
+        self.log = np.array([space.log_scale(lo, hi) for lo, hi in zip(lower, upper, strict=True)], dtype=bool)
+        self.lower, self.upper = self.of_raw(lower)[0], self.of_raw(upper)[0]
+
+    def of_raw(self, raw) -> np.ndarray:
+        """``(n, D)`` raw values (the numeric space of ``space.bounds``) -> the strategy's own values. ``math.log10``
+        value by value: a bound and a grid point at that bound get the same number, which OpenBox checks."""
+        x = np.array(np.atleast_2d(raw), dtype=float)
+        for i in np.flatnonzero(self.log):
+            x[:, i] = [math.log10(value) for value in x[:, i]]
+        return x
+
+    def raw_of(self, x) -> list[list[float]]:
+        """Inverse of :meth:`of_raw`: the strategy's ``(n, D)`` values -> raw vectors, off the grid (``suggest`` snaps)."""
+        raw = np.array(np.atleast_2d(x), dtype=float)
+        raw[:, self.log] = np.power(10.0, raw[:, self.log])
+        return raw.tolist()
+
+    def design_raw(self, unit: np.ndarray) -> list[list[float]]:
+        """Unit-cube samples -> raw vectors, the cube read between the strategy's own bounds: a logarithmic variable's
+        design is even per decade, a linear one's is :func:`scale`'s."""
+        return self.raw_of(self.lower + unit * (self.upper - self.lower))
 
 
 def turbo_missing(what: str) -> ImportError:
