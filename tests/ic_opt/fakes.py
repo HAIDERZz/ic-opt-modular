@@ -188,10 +188,10 @@ class FakeSpectreExecutor(LocalExecutor):
         return CommandResult(0, "", "", argv, 0.01)
 
     def _oppoints(self, work: Path, script: list[str], params: dict[str, str], tb: str, corner: str | None) -> None:
-        part = [line for line in script[script.index("close(out)"):] if line.lstrip().startswith("when(errset(selectResult('")]
+        part = [line for line in script[script.index("close(out)"):] if 'when(!icoptOpResult && (equal(name "' in line]
         if self.oppoints_fn is None or not part:
             return
-        result = part[0].split("'", 1)[1].split(")", 1)[0]
+        result = part[0].split('equal(name "', 1)[1].split('"', 1)[0]      # the statement's name the script looks up
         self.oppoint_results.append(result)
         table = _call(self.oppoints_fn, params, tb, corner, cwd=str(work))
         netlist = (work / "netlist" / "input.scs").read_text()

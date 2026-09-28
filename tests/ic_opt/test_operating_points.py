@@ -148,8 +148,13 @@ def test_the_script_reads_them_after_the_metrics_file_is_closed():
     head, _, part = script.partition("close(out)\n")
     assert plain == head + "close(out)\nexit()\n"                     # the metrics part is what it was
     assert part.endswith("exit()\n") and "(out " not in part and "(out)" not in part     # never touches the metrics file
-    assert "when(errset(selectResult('dcOpInfo))" in part and "car(errset(outputs()))" in part
-    assert "pv(inst q ?result 'dcOpInfo)" in part and "OP(inst q)" in part
+    # the result is looked up in results() under the statement's name and under "<name>-info" (what OCEAN calls the
+    # result of a statement that does not carry one of the design environment's own names: real run, 2026-09-28)
+    assert 'when(!icoptOpResult && (equal(name "dcOpInfo") || equal(name "dcOpInfo-info"))' in part
+    assert "foreach(icoptOpCandidate car(errset(results()))" in part
+    assert "when(icoptOpResult && errset(selectResult(icoptOpResult))" in part and "car(errset(outputs()))" in part
+    assert "pv(inst q ?result icoptOpResult)" in part and "OP(inst q)" in part
+    assert "selectResult('" not in part                     # never the bare name as a symbol
     assert 'icoptOpOut = car(errset(outfile("metrics/oppoints.tsv" "w")))' in part
     assert "when(icoptOpRead && icoptOpRows" in part            # rows are written only once the whole read went through
     for q in ocean.OP_QUANTITIES:

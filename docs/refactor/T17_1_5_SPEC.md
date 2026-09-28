@@ -203,6 +203,13 @@ made-up netlists (the statement present; absent with a DC analysis; absent witho
 operating points; the cache cases of 7.2; the observation's JSON round trip; a store written before this task reads
 as it did. No test needs a real simulator; no netlist in the tests comes from a real design.
 
+What the real check found (2026-09-28, one point, one testbench, run with the user's approval): Spectre accepts the
+netlist with the DC analysis and the statement appended (0 errors) and the metric is the same to the last digit as
+without them; OCEAN names the result of a statement that does not carry one of the design environment's own names
+`"<name>-info"` (a string), not `<name>`, and `OP()` reads the design environment's own result only, so the first
+version of the script read nothing. The script now looks the result up in `results()` under both names and reads with
+`pv(... ?result ...)`; run on existing results of both kinds it returns twelve quantities for each transistor.
+
 The real check, on the simulation host, is not part of the automated tests: one point of one testbench whose export
 lacks the statement, run once with the statement added, to see that Spectre accepts the rendered netlist and that
 the table comes back. It is run by the maintainer after review, with the user's approval of the run.

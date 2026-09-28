@@ -116,8 +116,12 @@ def oppoint_script(result: str, oppoints_file: str) -> list[str]:
     cannot change one. Every call that can fail is inside ``errset``; rows are collected first and written only when the
     whole read went through, so a failure leaves the file empty (as does a result without operating points).
 
-    A quantity is read with ``pv`` from the named result, then with ``OP`` (the form checked by hand on 2026-09-28,
-    ``OP("/M1" "gm")`` with the result selected) under the name as ``outputs()`` gives it and with a leading ``/``.
+    OCEAN names a result after the statement only when the statement has one of the design environment's own names
+    (``dcOpInfo``, a symbol); any other statement's result is the string ``<name>-info`` (``"icoptOpInfo-info"``), and
+    selecting the bare name fails with "Results ... are not available" (real run, 2026-09-28). So the result is looked up
+    in ``results()`` under both forms. A quantity is read with ``pv`` from that result -- the call that returned numbers
+    in that run for both forms --, then with ``OP``, which reads the design environment's own result only, under the name
+    as ``outputs()`` gives it and with a leading ``/``.
     Instance names are written as ``outputs()`` gives them, with ``\\``, tab and newline escaped
     (:func:`parse_oppoints` undoes it)."""
     _check_selector(result, "operating-point result")
@@ -134,9 +138,18 @@ def oppoint_script(result: str, oppoints_file: str) -> list[str]:
         "    escaped",
         "  )",
         ")",
+        "icoptOpResult = nil",
+        "foreach(icoptOpCandidate car(errset(results()))",
+        "  let((name)",
+        '    name = sprintf(nil "%s" icoptOpCandidate)',
+        f"    when(!icoptOpResult && (equal(name {_skill(result)}) || equal(name {_skill(result + '-info')}))",
+        "      icoptOpResult = icoptOpCandidate",
+        "    )",
+        "  )",
+        ")",
         "procedure(icoptOpValue(inst q)",
         "  let((v)",
-        f"    v = car(errset(pv(inst q ?result '{result})))",
+        "    v = car(errset(pv(inst q ?result icoptOpResult)))",
         "    unless(numberp(v) v = car(errset(OP(inst q))))",
         '    unless(numberp(v) || equal(substring(inst 1 1) "/") v = car(errset(OP(strcat("/" inst) q))))',
         "    if(numberp(v) v nil)",
@@ -144,7 +157,7 @@ def oppoint_script(result: str, oppoints_file: str) -> list[str]:
         ")",
         "icoptOpRows = nil",
         "icoptOpRead = errset(",
-        f"  when(errset(selectResult('{result}))",
+        "  when(icoptOpResult && errset(selectResult(icoptOpResult))",
         "    foreach(icoptOpInst car(errset(outputs()))",
         "      errset(",
         "        let((name gm row v)",
