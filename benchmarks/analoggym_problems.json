@@ -1,0 +1,2755 @@
+{
+ "excluded": {},
+ "feasible_share": 0.005,
+ "problems": {
+  "alfio_raffc_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "38.1"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "83.8"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "61.5"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "61.4"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "70.9"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.00151"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.00000661"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.0000249"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.59"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "496000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.269"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "7.0228p",
+     "10.6228p",
+     "0.9p"
+    ],
+    "CURRENT_0_BIAS": [
+     "1.3u",
+     "2.1u",
+     "0.2u"
+    ],
+    "MOSFET_10_1_L_gm2_PMOS": [
+     "0.55",
+     "0.67",
+     "0.06"
+    ],
+    "MOSFET_11_1_M_gmf_PMOS": [
+     "182",
+     "274",
+     "23"
+    ],
+    "MOSFET_11_1_W_gmf_PMOS": [
+     "0.77",
+     "1.17",
+     "0.1"
+    ],
+    "MOSFET_7_1_M_gm3_PMOS": [
+     "1",
+     "2",
+     "1"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "MOSFET_11_1_M_gmf_PMOS",
+    "CAPACITOR_0",
+    "MOSFET_7_1_M_gm3_PMOS",
+    "MOSFET_10_1_L_gm2_PMOS",
+    "MOSFET_11_1_W_gmf_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "8.8228p",
+    "CAPACITOR_1": "0.6076p",
+    "CURRENT_0_BIAS": "1.7u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "0.75",
+    "MOSFET_0_8_M_BIASCM_PMOS": "1",
+    "MOSFET_0_8_W_BIASCM_PMOS": "5.02",
+    "MOSFET_10_1_L_gm2_PMOS": "0.55",
+    "MOSFET_10_1_M_gm2_PMOS": "1",
+    "MOSFET_10_1_W_gm2_PMOS": "3.01",
+    "MOSFET_11_1_L_gmf_PMOS": "0.54",
+    "MOSFET_11_1_M_gmf_PMOS": "228",
+    "MOSFET_11_1_W_gmf_PMOS": "0.97",
+    "MOSFET_15_2_L_gmb_NMOS": "2.19",
+    "MOSFET_15_2_M_gmb_NMOS": "25",
+    "MOSFET_15_2_W_gmb_NMOS": "6.39",
+    "MOSFET_17_7_L_BIASCM_NMOS": "2.36",
+    "MOSFET_17_7_M_BIASCM_NMOS": "3",
+    "MOSFET_17_7_W_BIASCM_NMOS": "1.43",
+    "MOSFET_21_2_L_LOAD2_NMOS": "1.3",
+    "MOSFET_21_2_M_LOAD2_NMOS": "2",
+    "MOSFET_21_2_W_LOAD2_NMOS": "9.6",
+    "MOSFET_7_1_L_gm3_PMOS": "1.98",
+    "MOSFET_7_1_M_gm3_PMOS": "1",
+    "MOSFET_7_1_W_gm3_PMOS": "0.52",
+    "MOSFET_8_2_L_gm1_PMOS": "1.3",
+    "MOSFET_8_2_M_gm1_PMOS": "19",
+    "MOSFET_8_2_W_gm1_PMOS": "8.58"
+   },
+   "reference_objective": 1123.1021339622478,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.412,
+    "working": 646
+   }
+  },
+  "fan_smc_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "67.4"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "119"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "67.9"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "81.9"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "68.6"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.000219"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.00000129"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.00000929"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.667"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "646000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.247"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "8.0228p",
+     "14.6228p",
+     "1.1p"
+    ],
+    "CURRENT_0_BIAS": [
+     "3u",
+     "5.4u",
+     "0.4u"
+    ],
+    "MOSFET_10_1_L_gm2_PMOS": [
+     "0.55",
+     "0.83",
+     "0.07"
+    ],
+    "MOSFET_11_1_M_gmf2_PMOS": [
+     "8",
+     "14",
+     "1"
+    ],
+    "MOSFET_23_1_M_gm3_NMOS": [
+     "7",
+     "11",
+     "1"
+    ],
+    "MOSFET_8_2_M_gm1_PMOS": [
+     "7",
+     "11",
+     "1"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "MOSFET_11_1_M_gmf2_PMOS",
+    "CAPACITOR_0",
+    "MOSFET_10_1_L_gm2_PMOS",
+    "MOSFET_8_2_M_gm1_PMOS",
+    "MOSFET_23_1_M_gm3_NMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "11.3228p",
+    "CURRENT_0_BIAS": "4.2u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "1.88",
+    "MOSFET_0_8_M_BIASCM_PMOS": "7",
+    "MOSFET_0_8_W_BIASCM_PMOS": "0.83",
+    "MOSFET_10_1_L_gm2_PMOS": "0.69",
+    "MOSFET_10_1_M_gm2_PMOS": "10",
+    "MOSFET_10_1_W_gm2_PMOS": "8.86",
+    "MOSFET_11_1_L_gmf2_PMOS": "1.1",
+    "MOSFET_11_1_M_gmf2_PMOS": "11",
+    "MOSFET_11_1_W_gmf2_PMOS": "2.33",
+    "MOSFET_17_7_L_BIASCM_NMOS": "2.3",
+    "MOSFET_17_7_M_BIASCM_NMOS": "3",
+    "MOSFET_17_7_W_BIASCM_NMOS": "3.65",
+    "MOSFET_21_2_L_LOAD2_NMOS": "0.53",
+    "MOSFET_21_2_M_LOAD2_NMOS": "1",
+    "MOSFET_21_2_W_LOAD2_NMOS": "0.76",
+    "MOSFET_23_1_L_gm3_NMOS": "0.87",
+    "MOSFET_23_1_M_gm3_NMOS": "9",
+    "MOSFET_23_1_W_gm3_NMOS": "1.68",
+    "MOSFET_8_2_L_gm1_PMOS": "2.6",
+    "MOSFET_8_2_M_gm1_PMOS": "9",
+    "MOSFET_8_2_W_gm1_PMOS": "8.67"
+   },
+   "reference_objective": 176.68231591189206,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.402,
+    "working": 772
+   }
+  },
+  "hoilee_affc_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "36.2"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "110"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "66.7"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "70.7"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "78.9"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.000829"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.00000503"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.0000187"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.69"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "949000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.775"
+    }
+   ],
+   "fine_ranges": {
+    "CURRENT_0_BIAS": [
+     "1.1u",
+     "1.7u",
+     "0.1u"
+    ],
+    "MOSFET_12_1_M_gmf2_PMOS": [
+     "6",
+     "10",
+     "1"
+    ],
+    "MOSFET_12_1_W_gmf2_PMOS": [
+     "5.48",
+     "9.38",
+     "0.78"
+    ],
+    "MOSFET_18_7_M_BIASCM_NMOS": [
+     "2",
+     "4",
+     "1"
+    ],
+    "MOSFET_25_1_M_gm3_NMOS": [
+     "10",
+     "16",
+     "1"
+    ],
+    "MOSFET_25_1_W_gm3_NMOS": [
+     "1.68",
+     "3.12",
+     "0.24"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "MOSFET_12_1_M_gmf2_PMOS",
+    "MOSFET_25_1_M_gm3_NMOS",
+    "MOSFET_12_1_W_gmf2_PMOS",
+    "MOSFET_25_1_W_gm3_NMOS",
+    "MOSFET_18_7_M_BIASCM_NMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "11.7228p",
+    "CAPACITOR_1": "1.8152p",
+    "CURRENT_0_BIAS": "1.4u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "0.93",
+    "MOSFET_0_8_M_BIASCM_PMOS": "4",
+    "MOSFET_0_8_W_BIASCM_PMOS": "1.03",
+    "MOSFET_11_1_L_gm2_PMOS": "1.48",
+    "MOSFET_11_1_M_gm2_PMOS": "3",
+    "MOSFET_11_1_W_gm2_PMOS": "1.94",
+    "MOSFET_12_1_L_gmf2_PMOS": "0.95",
+    "MOSFET_12_1_M_gmf2_PMOS": "8",
+    "MOSFET_12_1_W_gmf2_PMOS": "7.82",
+    "MOSFET_17_7_L_BIASCM_NMOS": "1.72",
+    "MOSFET_17_7_M_BIASCM_NMOS": "6",
+    "MOSFET_17_7_W_BIASCM_NMOS": "3.74",
+    "MOSFET_18_7_L_BIASCM_NMOS": "0.58",
+    "MOSFET_18_7_M_BIASCM_NMOS": "3",
+    "MOSFET_18_7_W_BIASCM_NMOS": "3.61",
+    "MOSFET_22_2_L_LOAD2_NMOS": "4.23",
+    "MOSFET_22_2_M_LOAD2_NMOS": "11",
+    "MOSFET_22_2_W_LOAD2_NMOS": "2.74",
+    "MOSFET_25_1_L_gm3_NMOS": "0.58",
+    "MOSFET_25_1_M_gm3_NMOS": "13",
+    "MOSFET_25_1_W_gm3_NMOS": "2.4",
+    "MOSFET_59_2_L_HSBCM_PMOS": "1.93",
+    "MOSFET_59_2_M_HSBCM_PMOS": "1",
+    "MOSFET_59_2_W_HSBCM_PMOS": "3.36",
+    "MOSFET_60_2_L_gma_NMOS": "1.14",
+    "MOSFET_60_2_M_gma_NMOS": "29",
+    "MOSFET_60_2_W_gma_NMOS": "6.7",
+    "MOSFET_9_2_L_gm1_PMOS": "0.55",
+    "MOSFET_9_2_M_gm1_PMOS": "19",
+    "MOSFET_9_2_W_gm1_PMOS": "0.68"
+   },
+   "reference_objective": 2198.2033415538494,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.442,
+    "working": 637
+   }
+  },
+  "ldo_1": {
+   "constraints": [
+    {
+     "metric": "LDR",
+     "op": "le",
+     "value": "0.00283"
+    },
+    {
+     "metric": "LNR_MAXLOAD",
+     "op": "le",
+     "value": "0.295"
+    },
+    {
+     "metric": "LNR_MINLOAD",
+     "op": "le",
+     "value": "0.000397"
+    },
+    {
+     "metric": "POWER_MAXLOAD",
+     "op": "le",
+     "value": "181"
+    },
+    {
+     "metric": "POWER_MINLOAD",
+     "op": "le",
+     "value": "1.85"
+    },
+    {
+     "metric": "VOS_MAXLOAD",
+     "op": "le",
+     "value": "0.00627"
+    },
+    {
+     "metric": "VOS_MINLOAD",
+     "op": "le",
+     "value": "0.00698"
+    },
+    {
+     "metric": "PSRR",
+     "op": "ge",
+     "value": "48"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "348000"
+    },
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "-17.4"
+    },
+    {
+     "metric": "UNDERSHOOT",
+     "op": "le",
+     "value": "219"
+    },
+    {
+     "metric": "OVERSHOOT",
+     "op": "le",
+     "value": "0.198"
+    }
+   ],
+   "fine_ranges": {
+    "L_M0": [
+     "0.433333",
+     "0.673333",
+     "0.06"
+    ],
+    "L_M2": [
+     "1.413333",
+     "1.833333",
+     "0.14"
+    ],
+    "L_M6": [
+     "0.363333",
+     "0.523333",
+     "0.04"
+    ],
+    "L_M8": [
+     "0.623333",
+     "0.943333",
+     "0.08"
+    ],
+    "W_M7": [
+     "1.1",
+     "1.66",
+     "0.14"
+    ],
+    "current_0_bias": [
+     "7.066667u",
+     "10.666667u",
+     "0.9u"
+    ]
+   },
+   "fine_variables": [
+    "L_M0",
+    "L_M8",
+    "W_M7",
+    "current_0_bias",
+    "L_M2",
+    "L_M6"
+   ],
+   "reference": {
+    "L_M0": "0.553333",
+    "L_M2": "1.413333",
+    "L_M4": "0.176667",
+    "L_M6": "0.403333",
+    "L_M7": "1.366667",
+    "L_M8": "0.783333",
+    "M_CL": "397",
+    "M_M0": "1",
+    "M_M2": "2",
+    "M_M4": "1",
+    "M_M6": "2",
+    "M_M7": "2",
+    "M_M8": "332",
+    "W_M0": "6.03",
+    "W_M2": "18.786667",
+    "W_M4": "1.7",
+    "W_M6": "19.263333",
+    "W_M7": "1.38",
+    "W_M8": "89.293333",
+    "current_0_bias": "8.866667u"
+   },
+   "reference_objective": 5491.921965401405,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.397,
+    "working": 263
+   }
+  },
+  "ldo_2": {
+   "constraints": [
+    {
+     "metric": "LDR",
+     "op": "le",
+     "value": "0.000334"
+    },
+    {
+     "metric": "LNR_MAXLOAD",
+     "op": "le",
+     "value": "0.672"
+    },
+    {
+     "metric": "LNR_MINLOAD",
+     "op": "le",
+     "value": "0.608"
+    },
+    {
+     "metric": "POWER_MAXLOAD",
+     "op": "le",
+     "value": "181"
+    },
+    {
+     "metric": "POWER_MINLOAD",
+     "op": "le",
+     "value": "1.97"
+    },
+    {
+     "metric": "VOS_MAXLOAD",
+     "op": "le",
+     "value": "0.174"
+    },
+    {
+     "metric": "VOS_MINLOAD",
+     "op": "le",
+     "value": "0.173"
+    },
+    {
+     "metric": "PSRR",
+     "op": "ge",
+     "value": "-0.593"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "26200"
+    },
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "68.6"
+    },
+    {
+     "metric": "UNDERSHOOT",
+     "op": "le",
+     "value": "3.23"
+    },
+    {
+     "metric": "OVERSHOOT",
+     "op": "le",
+     "value": "0.199"
+    }
+   ],
+   "fine_ranges": {
+    "L_PM0": [
+     "0.786667",
+     "1.186667",
+     "0.1"
+    ],
+    "L_PM2": [
+     "1.593333",
+     "2.393333",
+     "0.2"
+    ],
+    "L_PM3": [
+     "2.28",
+     "4.2",
+     "0.32"
+    ],
+    "L_PM4": [
+     "0.423333",
+     "0.783333",
+     "0.06"
+    ],
+    "M_PM3": [
+     "34",
+     "46",
+     "4"
+    ],
+    "current_0_bias": [
+     "0.766667u",
+     "1.166667u",
+     "0.1u"
+    ]
+   },
+   "fine_variables": [
+    "current_0_bias",
+    "M_PM3",
+    "L_PM4",
+    "L_PM3",
+    "L_PM2",
+    "L_PM0"
+   ],
+   "reference": {
+    "L_NM0": "3.766667",
+    "L_NM1": "2.576667",
+    "L_NM10": "29.83",
+    "L_NM2": "16.42",
+    "L_NM3": "0.373333",
+    "L_NM6": "3.096667",
+    "L_NM7": "5.206667",
+    "L_NM8": "11.71",
+    "L_PM0": "0.986667",
+    "L_PM1": "1.356667",
+    "L_PM2": "1.993333",
+    "L_PM3": "3.24",
+    "L_PM4": "0.603333",
+    "L_PM5": "0.926667",
+    "L_PM6": "2.946667",
+    "L_PM7": "4.14",
+    "L_PM8": "0.936667",
+    "M_C0": "174",
+    "M_C1": "91",
+    "M_C4": "1",
+    "M_CL": "3",
+    "M_NM0": "62",
+    "M_NM1": "5",
+    "M_NM10": "208",
+    "M_NM2": "208",
+    "M_NM3": "1",
+    "M_NM6": "34",
+    "M_NM7": "22",
+    "M_NM8": "2",
+    "M_PM0": "26",
+    "M_PM1": "1",
+    "M_PM2": "77",
+    "M_PM3": "38",
+    "M_PM4": "214",
+    "M_PM5": "195",
+    "M_PM6": "74",
+    "M_PM7": "90",
+    "M_PM8": "206",
+    "M_R0": "152",
+    "W_NM0": "22.883333",
+    "W_NM1": "14.773333",
+    "W_NM10": "13.906667",
+    "W_NM2": "1.24",
+    "W_NM3": "89.453333",
+    "W_NM6": "17.403333",
+    "W_NM7": "8.533333",
+    "W_NM8": "11.496667",
+    "W_PM0": "1.84",
+    "W_PM1": "1.48",
+    "W_PM2": "40.856667",
+    "W_PM3": "2.31",
+    "W_PM4": "34.003333",
+    "W_PM5": "23.136667",
+    "W_PM6": "14.76",
+    "W_PM7": "37.486667",
+    "W_PM8": "7.033333",
+    "current_0_bias": "0.966667u"
+   },
+   "reference_objective": 1558.6745539575727,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.331,
+    "working": 140
+   }
+  },
+  "ldo_folded_cascode": {
+   "constraints": [
+    {
+     "metric": "LDR",
+     "op": "le",
+     "value": "17.2"
+    },
+    {
+     "metric": "LNR_MAXLOAD",
+     "op": "le",
+     "value": "2.61"
+    },
+    {
+     "metric": "LNR_MINLOAD",
+     "op": "le",
+     "value": "0.29"
+    },
+    {
+     "metric": "POWER_MAXLOAD",
+     "op": "le",
+     "value": "28.2"
+    },
+    {
+     "metric": "POWER_MINLOAD",
+     "op": "le",
+     "value": "8.78"
+    },
+    {
+     "metric": "VOS_MAXLOAD",
+     "op": "le",
+     "value": "0.23"
+    },
+    {
+     "metric": "VOS_MINLOAD",
+     "op": "le",
+     "value": "0.189"
+    },
+    {
+     "metric": "PSRR",
+     "op": "ge",
+     "value": "0.484"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "9320000"
+    },
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "9.3"
+    },
+    {
+     "metric": "UNDERSHOOT",
+     "op": "le",
+     "value": "0.678"
+    },
+    {
+     "metric": "OVERSHOOT",
+     "op": "le",
+     "value": "0.184"
+    }
+   ],
+   "fine_ranges": {
+    "L_M1": [
+     "0.393333",
+     "0.593333",
+     "0.05"
+    ],
+    "L_M10": [
+     "0.306667",
+     "0.466667",
+     "0.04"
+    ],
+    "M_CL": [
+     "84",
+     "120",
+     "9"
+    ],
+    "Vb1": [
+     "0.993333",
+     "1.693333",
+     "0.14"
+    ],
+    "W_M1": [
+     "14.196667",
+     "21.316667",
+     "1.78"
+    ],
+    "W_M3": [
+     "38.28",
+     "57.44",
+     "4.79"
+    ]
+   },
+   "fine_variables": [
+    "L_M10",
+    "Vb1",
+    "L_M1",
+    "W_M3",
+    "W_M1",
+    "M_CL"
+   ],
+   "reference": {
+    "L_M1": "0.493333",
+    "L_M10": "0.386667",
+    "L_M3": "0.596667",
+    "L_M5": "0.196667",
+    "L_M7": "3.066667",
+    "L_M9": "1.326667",
+    "M_CL": "93",
+    "M_Cfb": "15",
+    "M_M1": "3",
+    "M_M10": "249",
+    "M_M3": "1",
+    "M_M5": "2",
+    "M_M7": "1",
+    "M_M9": "1",
+    "M_Rfb": "2",
+    "Vb1": "1.413333",
+    "Vb2": "0.05",
+    "W_M1": "17.756667",
+    "W_M10": "3.763333",
+    "W_M3": "47.86",
+    "W_M5": "13.123333",
+    "W_M7": "15.166667",
+    "W_M9": "27.23"
+   },
+   "reference_objective": 4100504.7492576856,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.309,
+    "working": 169
+   }
+  },
+  "ldo_simple": {
+   "constraints": [
+    {
+     "metric": "LDR",
+     "op": "le",
+     "value": "6.45"
+    },
+    {
+     "metric": "LNR_MAXLOAD",
+     "op": "le",
+     "value": "0.195"
+    },
+    {
+     "metric": "LNR_MINLOAD",
+     "op": "le",
+     "value": "0.16"
+    },
+    {
+     "metric": "POWER_MAXLOAD",
+     "op": "le",
+     "value": "20.5"
+    },
+    {
+     "metric": "POWER_MINLOAD",
+     "op": "le",
+     "value": "0.546"
+    },
+    {
+     "metric": "VOS_MAXLOAD",
+     "op": "le",
+     "value": "0.0672"
+    },
+    {
+     "metric": "VOS_MINLOAD",
+     "op": "le",
+     "value": "0.0832"
+    },
+    {
+     "metric": "PSRR",
+     "op": "ge",
+     "value": "10.4"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "2590000"
+    },
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "58.7"
+    },
+    {
+     "metric": "UNDERSHOOT",
+     "op": "le",
+     "value": "1.46"
+    },
+    {
+     "metric": "OVERSHOOT",
+     "op": "le",
+     "value": "0.0904"
+    }
+   ],
+   "fine_ranges": {
+    "L_M3": [
+     "0.536667",
+     "0.956667",
+     "0.07"
+    ],
+    "L_M6": [
+     "0.166667",
+     "0.226667",
+     "0.02"
+    ],
+    "M_M6": [
+     "358",
+     "538",
+     "45"
+    ],
+    "Vb": [
+     "0.43",
+     "0.79",
+     "0.06"
+    ],
+    "W_M1": [
+     "1.556667",
+     "2.876667",
+     "0.22"
+    ],
+    "W_M6": [
+     "12.486667",
+     "23.166667",
+     "1.78"
+    ]
+   },
+   "fine_variables": [
+    "Vb",
+    "L_M6",
+    "L_M3",
+    "M_M6",
+    "W_M6",
+    "W_M1"
+   ],
+   "reference": {
+    "L_M1": "2.326667",
+    "L_M3": "0.746667",
+    "L_M5": "0.416667",
+    "L_M6": "0.186667",
+    "M_CL": "273",
+    "M_Cfb": "5",
+    "M_M1": "1",
+    "M_M3": "3",
+    "M_M5": "2",
+    "M_M6": "448",
+    "M_Rfb": "1",
+    "Vb": "0.61",
+    "W_M1": "2.216667",
+    "W_M3": "98.706667",
+    "W_M5": "81.943333",
+    "W_M6": "17.826667"
+   },
+   "reference_objective": 310699.27819638205,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.433,
+    "working": 354
+   }
+  },
+  "leung_dfcfc1_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "73.1"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "111"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "66.2"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "70.6"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "75.5"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.000794"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.00000428"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.0000101"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.638"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "289000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.148"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "20.6228p",
+     "31.0228p",
+     "2.6p"
+    ],
+    "CURRENT_0_BIAS": [
+     "2.8u",
+     "4.4u",
+     "0.4u"
+    ],
+    "MOSFET_12_1_M_gmf2_PMOS": [
+     "47",
+     "71",
+     "6"
+    ],
+    "MOSFET_25_1_M_gm3_NMOS": [
+     "1",
+     "2",
+     "1"
+    ],
+    "MOSFET_25_1_W_gm3_NMOS": [
+     "2.67",
+     "4.95",
+     "0.38"
+    ],
+    "MOSFET_9_2_M_gm1_PMOS": [
+     "11",
+     "17",
+     "1"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "MOSFET_25_1_M_gm3_NMOS",
+    "MOSFET_12_1_M_gmf2_PMOS",
+    "MOSFET_25_1_W_gm3_NMOS",
+    "CAPACITOR_0",
+    "MOSFET_9_2_M_gm1_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "25.8228p",
+    "CAPACITOR_1": "0.9152p",
+    "CURRENT_0_BIAS": "3.6u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "1.55",
+    "MOSFET_0_8_M_BIASCM_PMOS": "12",
+    "MOSFET_0_8_W_BIASCM_PMOS": "1.46",
+    "MOSFET_11_1_L_gm2_PMOS": "1.47",
+    "MOSFET_11_1_M_gm2_PMOS": "1",
+    "MOSFET_11_1_W_gm2_PMOS": "8.58",
+    "MOSFET_12_1_L_gmf2_PMOS": "1.43",
+    "MOSFET_12_1_M_gmf2_PMOS": "59",
+    "MOSFET_12_1_W_gmf2_PMOS": "3.17",
+    "MOSFET_17_7_L_BIASCM_NMOS": "0.59",
+    "MOSFET_17_7_M_BIASCM_NMOS": "11",
+    "MOSFET_17_7_W_BIASCM_NMOS": "3.68",
+    "MOSFET_18_7_L_BIASCM_NMOS": "1.43",
+    "MOSFET_18_7_M_BIASCM_NMOS": "19",
+    "MOSFET_18_7_W_BIASCM_NMOS": "0.53",
+    "MOSFET_22_2_L_LOAD2_NMOS": "0.78",
+    "MOSFET_22_2_M_LOAD2_NMOS": "2",
+    "MOSFET_22_2_W_LOAD2_NMOS": "5.06",
+    "MOSFET_24_1_L_gm4_NMOS": "1.24",
+    "MOSFET_24_1_M_gm4_NMOS": "2",
+    "MOSFET_24_1_W_gm4_NMOS": "5.13",
+    "MOSFET_25_1_L_gm3_NMOS": "1.01",
+    "MOSFET_25_1_M_gm3_NMOS": "1",
+    "MOSFET_25_1_W_gm3_NMOS": "3.81",
+    "MOSFET_9_2_L_gm1_PMOS": "1.08",
+    "MOSFET_9_2_M_gm1_PMOS": "14",
+    "MOSFET_9_2_W_gm1_PMOS": "6.33"
+   },
+   "reference_objective": 147.87636196629924,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.416,
+    "working": 936
+   }
+  },
+  "leung_dfcfc2_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "77.7"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "113"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "66.9"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "70.4"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "75.2"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.000723"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.00000397"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.0000209"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.511"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "379000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.165"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "5.3228p",
+     "8.1228p",
+     "0.7p"
+    ],
+    "CURRENT_0_BIAS": [
+     "4.7u",
+     "8.3u",
+     "0.6u"
+    ],
+    "MOSFET_11_1_L_gm2_PMOS": [
+     "1.31",
+     "2.39",
+     "0.18"
+    ],
+    "MOSFET_11_1_M_gm2_PMOS": [
+     "15",
+     "27",
+     "2"
+    ],
+    "MOSFET_12_1_M_gmf2_PMOS": [
+     "38",
+     "68",
+     "5"
+    ],
+    "MOSFET_8_2_M_gm1_PMOS": [
+     "15",
+     "23",
+     "2"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "MOSFET_12_1_M_gmf2_PMOS",
+    "CAPACITOR_0",
+    "MOSFET_8_2_M_gm1_PMOS",
+    "MOSFET_11_1_L_gm2_PMOS",
+    "MOSFET_11_1_M_gm2_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "6.7228p",
+    "CAPACITOR_1": "4.2152p",
+    "CURRENT_0_BIAS": "6.5u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "1.78",
+    "MOSFET_0_8_M_BIASCM_PMOS": "7",
+    "MOSFET_0_8_W_BIASCM_PMOS": "5.86",
+    "MOSFET_10_1_L_gm4_PMOS": "2.86",
+    "MOSFET_10_1_M_gm4_PMOS": "16",
+    "MOSFET_10_1_W_gm4_PMOS": "0.98",
+    "MOSFET_11_1_L_gm2_PMOS": "1.85",
+    "MOSFET_11_1_M_gm2_PMOS": "21",
+    "MOSFET_11_1_W_gm2_PMOS": "1.69",
+    "MOSFET_12_1_L_gmf2_PMOS": "1.53",
+    "MOSFET_12_1_M_gmf2_PMOS": "53",
+    "MOSFET_12_1_W_gmf2_PMOS": "2.63",
+    "MOSFET_18_7_L_BIASCM_NMOS": "1.08",
+    "MOSFET_18_7_M_BIASCM_NMOS": "4",
+    "MOSFET_18_7_W_BIASCM_NMOS": "1.87",
+    "MOSFET_23_2_L_LOAD2_NMOS": "2.54",
+    "MOSFET_23_2_M_LOAD2_NMOS": "4",
+    "MOSFET_23_2_W_LOAD2_NMOS": "9.76",
+    "MOSFET_25_1_L_gm3_NMOS": "1.04",
+    "MOSFET_25_1_M_gm3_NMOS": "2",
+    "MOSFET_25_1_W_gm3_NMOS": "2.57",
+    "MOSFET_8_2_L_gm1_PMOS": "3.8",
+    "MOSFET_8_2_M_gm1_PMOS": "19",
+    "MOSFET_8_2_W_gm1_PMOS": "2.96"
+   },
+   "reference_objective": 820.2183813424556,
+   "survey": {
+    "feasible": 12,
+    "points": 2048,
+    "quantile": 0.422,
+    "working": 926
+   }
+  },
+  "leung_nmcf_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "51.4"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "125"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "73"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "85.3"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "74.4"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.000165"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.000000903"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.00000641"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.511"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "576000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.244"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "1.9228p",
+     "2.3228p",
+     "0.2p"
+    ],
+    "CURRENT_0_BIAS": [
+     "1.1u",
+     "1.7u",
+     "0.1u"
+    ],
+    "MOSFET_11_1_M_gmf2_PMOS": [
+     "2",
+     "4",
+     "1"
+    ],
+    "MOSFET_23_1_M_gm3_NMOS": [
+     "4",
+     "6",
+     "1"
+    ],
+    "MOSFET_23_1_W_gm3_NMOS": [
+     "4.2",
+     "7.8",
+     "0.6"
+    ],
+    "MOSFET_8_2_M_gm1_PMOS": [
+     "5",
+     "7",
+     "1"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "CAPACITOR_0",
+    "MOSFET_11_1_M_gmf2_PMOS",
+    "MOSFET_8_2_M_gm1_PMOS",
+    "MOSFET_23_1_M_gm3_NMOS",
+    "MOSFET_23_1_W_gm3_NMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "1.9228p",
+    "CAPACITOR_1": "15.0228p",
+    "CURRENT_0_BIAS": "1.4u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "2.64",
+    "MOSFET_0_8_M_BIASCM_PMOS": "4",
+    "MOSFET_0_8_W_BIASCM_PMOS": "0.52",
+    "MOSFET_10_1_L_gm2_PMOS": "2.93",
+    "MOSFET_10_1_M_gm2_PMOS": "7",
+    "MOSFET_10_1_W_gm2_PMOS": "0.54",
+    "MOSFET_11_1_L_gmf2_PMOS": "0.73",
+    "MOSFET_11_1_M_gmf2_PMOS": "3",
+    "MOSFET_11_1_W_gmf2_PMOS": "9.16",
+    "MOSFET_17_7_L_BIASCM_NMOS": "0.59",
+    "MOSFET_17_7_M_BIASCM_NMOS": "7",
+    "MOSFET_17_7_W_BIASCM_NMOS": "4.42",
+    "MOSFET_21_2_L_LOAD2_NMOS": "1.08",
+    "MOSFET_21_2_M_LOAD2_NMOS": "5",
+    "MOSFET_21_2_W_LOAD2_NMOS": "2.64",
+    "MOSFET_23_1_L_gm3_NMOS": "4.82",
+    "MOSFET_23_1_M_gm3_NMOS": "5",
+    "MOSFET_23_1_W_gm3_NMOS": "6",
+    "MOSFET_8_2_L_gm1_PMOS": "0.75",
+    "MOSFET_8_2_M_gm1_PMOS": "6",
+    "MOSFET_8_2_W_gm1_PMOS": "2.31"
+   },
+   "reference_objective": 253.7399973718706,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.463,
+    "working": 1130
+   }
+  },
+  "leung_nmcnr_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "58"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "127"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "72.9"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "87.1"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "74.2"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.00018"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.000000864"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.0000111"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.251"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "474000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.197"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "11.4228p",
+     "21.0228p",
+     "1.6p"
+    ],
+    "CAPACITOR_1": [
+     "1.8228p",
+     "2.8228p",
+     "0.2p"
+    ],
+    "CURRENT_0_BIAS": [
+     "4.6u",
+     "7u",
+     "0.6u"
+    ],
+    "MOSFET_10_1_M_gm2_PMOS": [
+     "1",
+     "2",
+     "1"
+    ],
+    "MOSFET_8_2_M_gm1_PMOS": [
+     "22",
+     "40",
+     "3"
+    ],
+    "MOSFET_8_2_W_gm1_PMOS": [
+     "1.06",
+     "1.96",
+     "0.15"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "CAPACITOR_0",
+    "MOSFET_8_2_M_gm1_PMOS",
+    "MOSFET_10_1_M_gm2_PMOS",
+    "CAPACITOR_1",
+    "MOSFET_8_2_W_gm1_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "16.2228p",
+    "CAPACITOR_1": "2.2228p",
+    "CURRENT_0_BIAS": "5.8u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "4.68",
+    "MOSFET_0_8_M_BIASCM_PMOS": "26",
+    "MOSFET_0_8_W_BIASCM_PMOS": "0.98",
+    "MOSFET_10_1_L_gm2_PMOS": "0.63",
+    "MOSFET_10_1_M_gm2_PMOS": "1",
+    "MOSFET_10_1_W_gm2_PMOS": "4.13",
+    "MOSFET_17_7_L_BIASCM_NMOS": "2.79",
+    "MOSFET_17_7_M_BIASCM_NMOS": "11",
+    "MOSFET_17_7_W_BIASCM_NMOS": "1.93",
+    "MOSFET_21_2_L_LOAD2_NMOS": "0.62",
+    "MOSFET_21_2_M_LOAD2_NMOS": "2",
+    "MOSFET_21_2_W_LOAD2_NMOS": "0.9",
+    "MOSFET_23_1_L_gm3_NMOS": "0.52",
+    "MOSFET_23_1_M_gm3_NMOS": "21",
+    "MOSFET_23_1_W_gm3_NMOS": "7.64",
+    "MOSFET_8_2_L_gm1_PMOS": "1.19",
+    "MOSFET_8_2_M_gm1_PMOS": "31",
+    "MOSFET_8_2_W_gm1_PMOS": "1.51",
+    "RESISTOR_0": "3.976743k"
+   },
+   "reference_objective": 59.99935413015618,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.457,
+    "working": 815
+   }
+  },
+  "peng_acbc_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "76.3"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "112"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "66.8"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "71"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "76.4"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.000719"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.00000392"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.00000797"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.604"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "332000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.177"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "10.0228p",
+     "18.4228p",
+     "1.4p"
+    ],
+    "CURRENT_0_BIAS": [
+     "3.6u",
+     "6.6u",
+     "0.5u"
+    ],
+    "MOSFET_11_1_L_gm2_PMOS": [
+     "1.56",
+     "2.88",
+     "0.22"
+    ],
+    "MOSFET_11_1_M_gm2_PMOS": [
+     "5",
+     "7",
+     "1"
+    ],
+    "MOSFET_12_1_M_gmf2_PMOS": [
+     "125",
+     "189",
+     "16"
+    ],
+    "MOSFET_25_1_M_gm3_NMOS": [
+     "2",
+     "4",
+     "1"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "CAPACITOR_0",
+    "MOSFET_12_1_M_gmf2_PMOS",
+    "MOSFET_25_1_M_gm3_NMOS",
+    "MOSFET_11_1_L_gm2_PMOS",
+    "MOSFET_11_1_M_gm2_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "14.2228p",
+    "CAPACITOR_1": "2.2152p",
+    "CURRENT_0_BIAS": "5.1u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "3.5",
+    "MOSFET_0_8_M_BIASCM_PMOS": "5",
+    "MOSFET_0_8_W_BIASCM_PMOS": "1.91",
+    "MOSFET_11_1_L_gm2_PMOS": "2.22",
+    "MOSFET_11_1_M_gm2_PMOS": "6",
+    "MOSFET_11_1_W_gm2_PMOS": "5.19",
+    "MOSFET_12_1_L_gmf2_PMOS": "1.01",
+    "MOSFET_12_1_M_gmf2_PMOS": "157",
+    "MOSFET_12_1_W_gmf2_PMOS": "0.58",
+    "MOSFET_17_7_L_BIASCM_NMOS": "2.15",
+    "MOSFET_17_7_M_BIASCM_NMOS": "23",
+    "MOSFET_17_7_W_BIASCM_NMOS": "8.99",
+    "MOSFET_18_7_L_BIASCM_NMOS": "4.7",
+    "MOSFET_18_7_M_BIASCM_NMOS": "2",
+    "MOSFET_18_7_W_BIASCM_NMOS": "1.33",
+    "MOSFET_22_2_L_LOAD2_NMOS": "1.79",
+    "MOSFET_22_2_M_LOAD2_NMOS": "5",
+    "MOSFET_22_2_W_LOAD2_NMOS": "1",
+    "MOSFET_24_1_L_gm4_NMOS": "0.66",
+    "MOSFET_24_1_M_gm4_NMOS": "20",
+    "MOSFET_24_1_W_gm4_NMOS": "2.21",
+    "MOSFET_25_1_L_gm3_NMOS": "0.85",
+    "MOSFET_25_1_M_gm3_NMOS": "3",
+    "MOSFET_25_1_W_gm3_NMOS": "4.89",
+    "MOSFET_59_1_L_ma1_PMOS": "0.67",
+    "MOSFET_59_1_M_ma1_PMOS": "12",
+    "MOSFET_59_1_W_ma1_PMOS": "2.76",
+    "MOSFET_9_2_L_gm1_PMOS": "0.53",
+    "MOSFET_9_2_M_gm1_PMOS": "2",
+    "MOSFET_9_2_W_gm1_PMOS": "1.99"
+   },
+   "reference_objective": 157.5726900411914,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.429,
+    "working": 1005
+   }
+  },
+  "peng_iac_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "20"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "62.4"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "60.2"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "60.1"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "65.9"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.00118"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.00000543"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.0000478"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "1.61"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "1570000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.872"
+    }
+   ],
+   "fine_ranges": {
+    "CURRENT_0_BIAS": [
+     "1u",
+     "1.4u",
+     "0.1u"
+    ],
+    "MOSFET_10_1_L_gm2_PMOS": [
+     "0.89",
+     "1.61",
+     "0.12"
+    ],
+    "MOSFET_11_1_M_gmf_PMOS": [
+     "6",
+     "10",
+     "1"
+    ],
+    "MOSFET_11_1_W_gmf_PMOS": [
+     "0.85",
+     "1.29",
+     "0.11"
+    ],
+    "MOSFET_23_1_M_gm3_NMOS": [
+     "1",
+     "3",
+     "1"
+    ],
+    "MOSFET_8_2_M_gm1_PMOS": [
+     "1",
+     "3",
+     "1"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "MOSFET_23_1_M_gm3_NMOS",
+    "MOSFET_11_1_M_gmf_PMOS",
+    "MOSFET_8_2_M_gm1_PMOS",
+    "MOSFET_11_1_W_gmf_PMOS",
+    "MOSFET_10_1_L_gm2_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "0.6076p",
+    "CAPACITOR_1": "1.4076p",
+    "CURRENT_0_BIAS": "1.1u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "0.88",
+    "MOSFET_0_8_M_BIASCM_PMOS": "1",
+    "MOSFET_0_8_W_BIASCM_PMOS": "1.2",
+    "MOSFET_10_1_L_gm2_PMOS": "1.25",
+    "MOSFET_10_1_M_gm2_PMOS": "11",
+    "MOSFET_10_1_W_gm2_PMOS": "1.59",
+    "MOSFET_11_1_L_gmf_PMOS": "0.61",
+    "MOSFET_11_1_M_gmf_PMOS": "8",
+    "MOSFET_11_1_W_gmf_PMOS": "1.07",
+    "MOSFET_17_7_L_BIASCM_NMOS": "1.66",
+    "MOSFET_17_7_M_BIASCM_NMOS": "2",
+    "MOSFET_17_7_W_BIASCM_NMOS": "0.7",
+    "MOSFET_23_1_L_gm3_NMOS": "0.7",
+    "MOSFET_23_1_M_gm3_NMOS": "2",
+    "MOSFET_23_1_W_gm3_NMOS": "6.41",
+    "MOSFET_66_1_L_gmt_PMOS": "0.93",
+    "MOSFET_66_1_M_gmt_PMOS": "25",
+    "MOSFET_66_1_W_gmt_PMOS": "1.45",
+    "MOSFET_68_1_L_BIASCM_NMOS": "0.67",
+    "MOSFET_68_1_M_BIASCM_NMOS": "9",
+    "MOSFET_68_1_W_BIASCM_NMOS": "0.82",
+    "MOSFET_70_3_L_BIASCM_NMOS": "1.94",
+    "MOSFET_70_3_M_BIASCM_NMOS": "2",
+    "MOSFET_70_3_W_BIASCM_NMOS": "2.02",
+    "MOSFET_8_2_L_gm1_PMOS": "2.04",
+    "MOSFET_8_2_M_gm1_PMOS": "2",
+    "MOSFET_8_2_W_gm1_PMOS": "7.22",
+    "RESISTOR_0": "283.769714k"
+   },
+   "reference_objective": 13381.99016997186,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.354,
+    "working": 194
+   }
+  },
+  "peng_tcfc_pin_3": {
+   "constraints": [
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "68.2"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "66.9"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.00000356"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "1.84"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.000915"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "78.3"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "107"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "607000"
+    },
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "63.9"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.297"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.00000797"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "4.3228p",
+     "6.7228p",
+     "0.6p"
+    ],
+    "CURRENT_0_BIAS": [
+     "2.2u",
+     "4u",
+     "0.3u"
+    ],
+    "MOSFET_11_1_M_gmf_PMOS": [
+     "15",
+     "23",
+     "2"
+    ],
+    "MOSFET_11_1_W_gmf_PMOS": [
+     "0.6",
+     "1.08",
+     "0.08"
+    ],
+    "MOSFET_23_1_M_gm3_NMOS": [
+     "23",
+     "41",
+     "3"
+    ],
+    "MOSFET_8_2_M_gm1_PMOS": [
+     "5",
+     "7",
+     "1"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "CAPACITOR_0",
+    "MOSFET_11_1_M_gmf_PMOS",
+    "MOSFET_23_1_M_gm3_NMOS",
+    "MOSFET_11_1_W_gmf_PMOS",
+    "MOSFET_8_2_M_gm1_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "5.5228p",
+    "CAPACITOR_1": "4.2228p",
+    "CURRENT_0_BIAS": "3.1u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "2.62",
+    "MOSFET_0_8_M_BIASCM_PMOS": "3",
+    "MOSFET_0_8_W_BIASCM_PMOS": "2.37",
+    "MOSFET_10_1_L_gm2_PMOS": "1.53",
+    "MOSFET_10_1_M_gm2_PMOS": "10",
+    "MOSFET_10_1_W_gm2_PMOS": "3.9",
+    "MOSFET_11_1_L_gmf_PMOS": "2.29",
+    "MOSFET_11_1_M_gmf_PMOS": "19",
+    "MOSFET_11_1_W_gmf_PMOS": "0.84",
+    "MOSFET_17_7_L_BIASCM_NMOS": "0.68",
+    "MOSFET_17_7_M_BIASCM_NMOS": "13",
+    "MOSFET_17_7_W_BIASCM_NMOS": "3.58",
+    "MOSFET_23_1_L_gm3_NMOS": "0.87",
+    "MOSFET_23_1_M_gm3_NMOS": "32",
+    "MOSFET_23_1_W_gm3_NMOS": "2.41",
+    "MOSFET_70_3_L_BIASCM_NMOS": "0.66",
+    "MOSFET_70_3_M_BIASCM_NMOS": "13",
+    "MOSFET_70_3_W_BIASCM_NMOS": "4.53",
+    "MOSFET_8_2_L_gm1_PMOS": "0.59",
+    "MOSFET_8_2_M_gm1_PMOS": "6",
+    "MOSFET_8_2_W_gm1_PMOS": "1.87"
+   },
+   "reference_objective": 980.6926124591268,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.462,
+    "working": 1110
+   }
+  },
+  "qu2017_azc_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "11.9"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "60.6"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "38.8"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "39.2"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "74"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.0021"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.0000462"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.0002"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.875"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "726000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.127"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "1.5076p",
+     "2.7076p",
+     "0.2p"
+    ],
+    "CURRENT_0_BIAS": [
+     "3.8u",
+     "5.8u",
+     "0.5u"
+    ],
+    "MOSFET_11_1_L_gm2_PMOS": [
+     "0.76",
+     "1.16",
+     "0.1"
+    ],
+    "MOSFET_11_1_M_gm2_PMOS": [
+     "11",
+     "17",
+     "1"
+    ],
+    "MOSFET_13_1_M_gmf2_PMOS": [
+     "1",
+     "2",
+     "1"
+    ],
+    "MOSFET_9_2_M_gm1_PMOS": [
+     "31",
+     "47",
+     "4"
+    ]
+   },
+   "fine_variables": [
+    "MOSFET_13_1_M_gmf2_PMOS",
+    "CURRENT_0_BIAS",
+    "CAPACITOR_0",
+    "MOSFET_11_1_L_gm2_PMOS",
+    "MOSFET_9_2_M_gm1_PMOS",
+    "MOSFET_11_1_M_gm2_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "2.1076p",
+    "CAPACITOR_1": "2.9076p",
+    "CAPACITOR_2": "0.4076p",
+    "CURRENT_0_BIAS": "4.8u",
+    "MOSFET_0_14_L_BIASCM_PMOS": "0.93",
+    "MOSFET_0_14_M_BIASCM_PMOS": "19",
+    "MOSFET_0_14_W_BIASCM_PMOS": "5.57",
+    "MOSFET_11_1_L_gm2_PMOS": "0.96",
+    "MOSFET_11_1_M_gm2_PMOS": "14",
+    "MOSFET_11_1_W_gm2_PMOS": "7.94",
+    "MOSFET_12_1_L_AZC1_NMOS": "0.88",
+    "MOSFET_12_1_M_AZC1_NMOS": "3",
+    "MOSFET_12_1_W_AZC1_NMOS": "3.02",
+    "MOSFET_13_1_L_gmf2_PMOS": "0.62",
+    "MOSFET_13_1_M_gmf2_PMOS": "1",
+    "MOSFET_13_1_W_gmf2_PMOS": "7.57",
+    "MOSFET_14_4_L_LOAD1_NMOS": "3.41",
+    "MOSFET_14_4_M_LOAD1_NMOS": "2",
+    "MOSFET_14_4_W_LOAD1_NMOS": "2.56",
+    "MOSFET_18_1_L_gm3_NMOS": "0.82",
+    "MOSFET_18_1_M_gm3_NMOS": "1",
+    "MOSFET_18_1_W_gm3_NMOS": "9.26",
+    "MOSFET_19_16_L_BIASCM_NMOS": "4.61",
+    "MOSFET_19_16_M_BIASCM_NMOS": "23",
+    "MOSFET_19_16_W_BIASCM_NMOS": "3.24",
+    "MOSFET_24_8_L_AZC3_NMOS": "4.83",
+    "MOSFET_24_8_M_AZC3_NMOS": "2",
+    "MOSFET_24_8_W_AZC3_NMOS": "1.21",
+    "MOSFET_6_3_L_AZC2_PMOS": "0.94",
+    "MOSFET_6_3_M_AZC2_PMOS": "2",
+    "MOSFET_6_3_W_AZC2_PMOS": "4.44",
+    "MOSFET_9_2_L_gm1_PMOS": "4.88",
+    "MOSFET_9_2_M_gm1_PMOS": "43",
+    "MOSFET_9_2_W_gm1_PMOS": "5.3",
+    "RESISTOR_0": "10.667429k",
+    "RESISTOR_1": "91.567429k",
+    "RESISTOR_2": "195.369714k",
+    "RESISTOR_3": "12.067429k"
+   },
+   "reference_objective": 108315.77831657327,
+   "survey": {
+    "feasible": 15,
+    "points": 2048,
+    "quantile": 0.305,
+    "working": 216
+   }
+  },
+  "ramos_pfc_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "44.7"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "114"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "67.4"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "79.8"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "68"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.000245"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.00000125"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.00000852"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.927"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "632000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.23"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "3.6228p",
+     "5.6228p",
+     "0.5p"
+    ],
+    "CURRENT_0_BIAS": [
+     "2.2u",
+     "4u",
+     "0.3u"
+    ],
+    "MOSFET_10_1_M_gm2_PMOS": [
+     "1",
+     "2",
+     "1"
+    ],
+    "MOSFET_23_1_M_gm3_NMOS": [
+     "1",
+     "2",
+     "1"
+    ],
+    "MOSFET_23_1_W_gm3_NMOS": [
+     "4.2",
+     "6.32",
+     "0.53"
+    ],
+    "MOSFET_8_2_M_gm1_PMOS": [
+     "11",
+     "17",
+     "1"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "MOSFET_23_1_M_gm3_NMOS",
+    "MOSFET_8_2_M_gm1_PMOS",
+    "CAPACITOR_0",
+    "MOSFET_23_1_W_gm3_NMOS",
+    "MOSFET_10_1_M_gm2_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "4.6228p",
+    "CAPACITOR_1": "12.6228p",
+    "CURRENT_0_BIAS": "3.1u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "2.8",
+    "MOSFET_0_8_M_BIASCM_PMOS": "8",
+    "MOSFET_0_8_W_BIASCM_PMOS": "0.78",
+    "MOSFET_10_1_L_gm2_PMOS": "0.59",
+    "MOSFET_10_1_M_gm2_PMOS": "1",
+    "MOSFET_10_1_W_gm2_PMOS": "2.16",
+    "MOSFET_11_1_L_gmf1_PMOS": "0.55",
+    "MOSFET_11_1_M_gmf1_PMOS": "111",
+    "MOSFET_11_1_W_gmf1_PMOS": "0.95",
+    "MOSFET_17_7_L_BIASCM_NMOS": "2.29",
+    "MOSFET_17_7_M_BIASCM_NMOS": "1",
+    "MOSFET_17_7_W_BIASCM_NMOS": "0.53",
+    "MOSFET_21_2_L_LOAD2_NMOS": "0.97",
+    "MOSFET_21_2_M_LOAD2_NMOS": "9",
+    "MOSFET_21_2_W_LOAD2_NMOS": "2.03",
+    "MOSFET_23_1_L_gm3_NMOS": "1",
+    "MOSFET_23_1_M_gm3_NMOS": "1",
+    "MOSFET_23_1_W_gm3_NMOS": "5.26",
+    "MOSFET_8_2_L_gm1_PMOS": "2.4",
+    "MOSFET_8_2_M_gm1_PMOS": "14",
+    "MOSFET_8_2_W_gm1_PMOS": "1.45"
+   },
+   "reference_objective": 441.29170158428633,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.386,
+    "working": 685
+   }
+  },
+  "sau_cfcc_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "-25.7"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "68"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "52.3"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "57.4"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "56.1"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.00193"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.0000128"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.000122"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.488"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "329000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.0864"
+    }
+   ],
+   "fine_ranges": {
+    "CURRENT_0_BIAS": [
+     "6.3u",
+     "11.7u",
+     "0.9u"
+    ],
+    "MOSFET_0_8_L_BIASCM_PMOS": [
+     "1.09",
+     "1.65",
+     "0.14"
+    ],
+    "MOSFET_10_1_L_gm2_PMOS": [
+     "0.59",
+     "0.91",
+     "0.08"
+    ],
+    "MOSFET_11_1_L_gmf2_PMOS": [
+     "0.56",
+     "0.91",
+     "0.07"
+    ],
+    "MOSFET_11_1_M_gmf2_PMOS": [
+     "5",
+     "9",
+     "1"
+    ],
+    "MOSFET_7_1_W_gmf1_PMOS": [
+     "2.15",
+     "3.23",
+     "0.27"
+    ]
+   },
+   "fine_variables": [
+    "MOSFET_11_1_M_gmf2_PMOS",
+    "CURRENT_0_BIAS",
+    "MOSFET_0_8_L_BIASCM_PMOS",
+    "MOSFET_10_1_L_gm2_PMOS",
+    "MOSFET_11_1_L_gmf2_PMOS",
+    "MOSFET_7_1_W_gmf1_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "5.4076p",
+    "CURRENT_0_BIAS": "9u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "1.37",
+    "MOSFET_0_8_M_BIASCM_PMOS": "18",
+    "MOSFET_0_8_W_BIASCM_PMOS": "4.31",
+    "MOSFET_10_1_L_gm2_PMOS": "0.75",
+    "MOSFET_10_1_M_gm2_PMOS": "8",
+    "MOSFET_10_1_W_gm2_PMOS": "1.65",
+    "MOSFET_11_1_L_gmf2_PMOS": "0.7",
+    "MOSFET_11_1_M_gmf2_PMOS": "7",
+    "MOSFET_11_1_W_gmf2_PMOS": "0.84",
+    "MOSFET_15_2_L_gmc_NMOS": "0.69",
+    "MOSFET_15_2_M_gmc_NMOS": "18",
+    "MOSFET_15_2_W_gmc_NMOS": "1.63",
+    "MOSFET_17_7_L_BIASCM_NMOS": "0.76",
+    "MOSFET_17_7_M_BIASCM_NMOS": "3",
+    "MOSFET_17_7_W_BIASCM_NMOS": "0.83",
+    "MOSFET_21_2_L_LOAD2_NMOS": "1.4",
+    "MOSFET_21_2_M_LOAD2_NMOS": "1",
+    "MOSFET_21_2_W_LOAD2_NMOS": "2.27",
+    "MOSFET_23_1_L_gm3_NMOS": "1.34",
+    "MOSFET_23_1_M_gm3_NMOS": "1",
+    "MOSFET_23_1_W_gm3_NMOS": "1.46",
+    "MOSFET_7_1_L_gmf1_PMOS": "0.51",
+    "MOSFET_7_1_M_gmf1_PMOS": "8",
+    "MOSFET_7_1_W_gmf1_PMOS": "2.69",
+    "MOSFET_8_2_L_gm1_PMOS": "0.92",
+    "MOSFET_8_2_M_gm1_PMOS": "26",
+    "MOSFET_8_2_W_gm1_PMOS": "7.06"
+   },
+   "reference_objective": 13068.31209904204,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.277,
+    "working": 181
+   }
+  },
+  "song_dacfc_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "22"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "103"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "62.1"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "63"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "77.9"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.00201"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.0000135"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.0000656"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "169000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.0441"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_0": [
+     "1p",
+     "1.6p",
+     "0.1p"
+    ],
+    "CURRENT_0_BIAS": [
+     "1u",
+     "1.4u",
+     "0.1u"
+    ],
+    "MOSFET_0_8_L_BIASCM_PMOS": [
+     "2.17",
+     "4.03",
+     "0.31"
+    ],
+    "MOSFET_10_1_M_gm2_PMOS": [
+     "21",
+     "39",
+     "3"
+    ],
+    "MOSFET_11_1_W_gmf2_PMOS": [
+     "7.95",
+     "9.95",
+     "1"
+    ],
+    "MOSFET_17_7_L_BIASCM_NMOS": [
+     "1.02",
+     "1.54",
+     "0.13"
+    ]
+   },
+   "fine_variables": [
+    "CURRENT_0_BIAS",
+    "CAPACITOR_0",
+    "MOSFET_0_8_L_BIASCM_PMOS",
+    "MOSFET_10_1_M_gm2_PMOS",
+    "MOSFET_11_1_W_gmf2_PMOS",
+    "MOSFET_17_7_L_BIASCM_NMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "1.3p",
+    "CAPACITOR_1": "0.6p",
+    "CURRENT_0_BIAS": "1.1u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "3.1",
+    "MOSFET_0_8_M_BIASCM_PMOS": "8",
+    "MOSFET_0_8_W_BIASCM_PMOS": "2.59",
+    "MOSFET_10_1_L_gm2_PMOS": "3.49",
+    "MOSFET_10_1_M_gm2_PMOS": "30",
+    "MOSFET_10_1_W_gm2_PMOS": "2.73",
+    "MOSFET_11_1_L_gmf2_PMOS": "2.02",
+    "MOSFET_11_1_M_gmf2_PMOS": "7",
+    "MOSFET_11_1_W_gmf2_PMOS": "9.95",
+    "MOSFET_17_7_L_BIASCM_NMOS": "1.28",
+    "MOSFET_17_7_M_BIASCM_NMOS": "27",
+    "MOSFET_17_7_W_BIASCM_NMOS": "2.39",
+    "MOSFET_21_2_L_LOAD2_NMOS": "2.73",
+    "MOSFET_21_2_M_LOAD2_NMOS": "2",
+    "MOSFET_21_2_W_LOAD2_NMOS": "6",
+    "MOSFET_23_1_L_gm3_NMOS": "0.74",
+    "MOSFET_23_1_M_gm3_NMOS": "5",
+    "MOSFET_23_1_W_gm3_NMOS": "0.75",
+    "MOSFET_58_2_L_gmf1_PMOS": "0.74",
+    "MOSFET_58_2_M_gmf1_PMOS": "4",
+    "MOSFET_58_2_W_gmf1_PMOS": "0.81",
+    "MOSFET_5_2_L_gma1_PMOS": "0.88",
+    "MOSFET_5_2_M_gma1_PMOS": "16",
+    "MOSFET_5_2_W_gma1_PMOS": "1.8",
+    "MOSFET_7_1_L_gma2_PMOS": "0.69",
+    "MOSFET_7_1_M_gma2_PMOS": "2",
+    "MOSFET_7_1_W_gma2_PMOS": "3.66",
+    "MOSFET_8_2_L_gm1_PMOS": "2.83",
+    "MOSFET_8_2_M_gm1_PMOS": "2",
+    "MOSFET_8_2_W_gm1_PMOS": "1.7"
+   },
+   "reference_objective": 5563.869487815458,
+   "survey": {
+    "feasible": 12,
+    "points": 2048,
+    "quantile": 0.37,
+    "working": 191
+   }
+  },
+  "tan_clia_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "1.08"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "117"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "55.9"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "58.2"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "67.3"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.00185"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.0000108"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.000189"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "702000"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.0775"
+    }
+   ],
+   "fine_ranges": {
+    "CAPACITOR_1": [
+     "3.9p",
+     "5.9p",
+     "0.5p"
+    ],
+    "CURRENT_0_BIAS": [
+     "1.8u",
+     "3u",
+     "0.2u"
+    ],
+    "MOSFET_68_1_M_gmf_PMOS": [
+     "1",
+     "3",
+     "1"
+    ],
+    "MOSFET_68_1_W_gmf_PMOS": [
+     "5.53",
+     "9.48",
+     "0.79"
+    ],
+    "MOSFET_70_1_M_gm21_PMOS": [
+     "3",
+     "5",
+     "1"
+    ],
+    "MOSFET_8_2_M_gm1_PMOS": [
+     "5",
+     "7",
+     "1"
+    ]
+   },
+   "fine_variables": [
+    "MOSFET_68_1_M_gmf_PMOS",
+    "CAPACITOR_1",
+    "CURRENT_0_BIAS",
+    "MOSFET_68_1_W_gmf_PMOS",
+    "MOSFET_70_1_M_gm21_PMOS",
+    "MOSFET_8_2_M_gm1_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "7.6p",
+    "CAPACITOR_1": "4.9p",
+    "CURRENT_0_BIAS": "2.4u",
+    "MOSFET_0_8_L_BIASCM_PMOS": "1.11",
+    "MOSFET_0_8_M_BIASCM_PMOS": "5",
+    "MOSFET_0_8_W_BIASCM_PMOS": "0.8",
+    "MOSFET_17_7_L_BIASCM_NMOS": "2.75",
+    "MOSFET_17_7_M_BIASCM_NMOS": "12",
+    "MOSFET_17_7_W_BIASCM_NMOS": "0.88",
+    "MOSFET_5_2_L_LOAD1_PMOS": "4.13",
+    "MOSFET_5_2_M_LOAD1_PMOS": "7",
+    "MOSFET_5_2_W_LOAD1_PMOS": "5.74",
+    "MOSFET_68_1_L_gmf_PMOS": "2.24",
+    "MOSFET_68_1_M_gmf_PMOS": "2",
+    "MOSFET_68_1_W_gmf_PMOS": "7.9",
+    "MOSFET_69_1_L_gm3_NMOS": "3.72",
+    "MOSFET_69_1_M_gm3_NMOS": "5",
+    "MOSFET_69_1_W_gm3_NMOS": "1.14",
+    "MOSFET_70_1_L_gm21_PMOS": "2.34",
+    "MOSFET_70_1_M_gm21_PMOS": "4",
+    "MOSFET_70_1_W_gm21_PMOS": "2.32",
+    "MOSFET_71_1_L_gm23_NMOS": "0.56",
+    "MOSFET_71_1_M_gm23_NMOS": "1",
+    "MOSFET_71_1_W_gm23_NMOS": "0.55",
+    "MOSFET_8_2_L_gm1_PMOS": "2.89",
+    "MOSFET_8_2_M_gm1_PMOS": "6",
+    "MOSFET_8_2_W_gm1_PMOS": "8.75",
+    "RESISTOR_0": "101.656k"
+   },
+   "reference_objective": 9723.635773180047,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.325,
+    "working": 244
+   }
+  },
+  "yan_az_pin_3": {
+   "constraints": [
+    {
+     "metric": "PM",
+     "op": "ge",
+     "value": "-69"
+    },
+    {
+     "metric": "GAIN",
+     "op": "ge",
+     "value": "122"
+    },
+    {
+     "metric": "PSRP",
+     "op": "ge",
+     "value": "46.4"
+    },
+    {
+     "metric": "PSRN",
+     "op": "ge",
+     "value": "52.4"
+    },
+    {
+     "metric": "CMRR",
+     "op": "ge",
+     "value": "55.8"
+    },
+    {
+     "metric": "VOS",
+     "op": "le",
+     "value": "0.000941"
+    },
+    {
+     "metric": "TC",
+     "op": "le",
+     "value": "0.0000236"
+    },
+    {
+     "metric": "TS",
+     "op": "le",
+     "value": "0.000199"
+    },
+    {
+     "metric": "POWER",
+     "op": "le",
+     "value": "0.0804"
+    },
+    {
+     "metric": "GBW",
+     "op": "ge",
+     "value": "56100"
+    },
+    {
+     "metric": "SR",
+     "op": "ge",
+     "value": "0.0043"
+    }
+   ],
+   "fine_ranges": {
+    "MOSFET_11_1_M_gm2_PMOS": [
+     "14",
+     "26",
+     "2"
+    ],
+    "MOSFET_13_1_M_gmf2_PMOS": [
+     "133",
+     "201",
+     "17"
+    ],
+    "MOSFET_16_4_M_gm5_NMOS": [
+     "1",
+     "2",
+     "1"
+    ],
+    "MOSFET_23_1_M_gmb2_NMOS": [
+     "17",
+     "29",
+     "2"
+    ],
+    "MOSFET_23_1_W_gmb2_NMOS": [
+     "1.57",
+     "2.89",
+     "0.22"
+    ],
+    "MOSFET_9_2_M_gm1_PMOS": [
+     "5",
+     "9",
+     "1"
+    ]
+   },
+   "fine_variables": [
+    "MOSFET_13_1_M_gmf2_PMOS",
+    "MOSFET_9_2_M_gm1_PMOS",
+    "MOSFET_16_4_M_gm5_NMOS",
+    "MOSFET_23_1_W_gmb2_NMOS",
+    "MOSFET_23_1_M_gmb2_NMOS",
+    "MOSFET_11_1_M_gm2_PMOS"
+   ],
+   "reference": {
+    "CAPACITOR_0": "0.3076p",
+    "CAPACITOR_1": "1.2076p",
+    "CURRENT_0_BIAS": "15.6u",
+    "MOSFET_0_14_L_BIASCM_PMOS": "1.02",
+    "MOSFET_0_14_M_BIASCM_PMOS": "23",
+    "MOSFET_0_14_W_BIASCM_PMOS": "1.63",
+    "MOSFET_11_1_L_gm2_PMOS": "2.43",
+    "MOSFET_11_1_M_gm2_PMOS": "20",
+    "MOSFET_11_1_W_gm2_PMOS": "7.15",
+    "MOSFET_13_1_L_gmf2_PMOS": "2.68",
+    "MOSFET_13_1_M_gmf2_PMOS": "167",
+    "MOSFET_13_1_W_gmf2_PMOS": "1.46",
+    "MOSFET_14_4_L_gm8_NMOS": "1.98",
+    "MOSFET_14_4_M_gm8_NMOS": "11",
+    "MOSFET_14_4_W_gm8_NMOS": "3.01",
+    "MOSFET_16_4_L_gm5_NMOS": "4.28",
+    "MOSFET_16_4_M_gm5_NMOS": "1",
+    "MOSFET_16_4_W_gm5_NMOS": "3.14",
+    "MOSFET_18_1_L_gm3_NMOS": "1.15",
+    "MOSFET_18_1_M_gm3_NMOS": "1",
+    "MOSFET_18_1_W_gm3_NMOS": "9.18",
+    "MOSFET_19_16_L_BIASCM_NMOS": "0.81",
+    "MOSFET_19_16_M_BIASCM_NMOS": "37",
+    "MOSFET_19_16_W_BIASCM_NMOS": "1.7",
+    "MOSFET_22_1_L_gmb1_NMOS": "1.6",
+    "MOSFET_22_1_M_gmb1_NMOS": "29",
+    "MOSFET_22_1_W_gmb1_NMOS": "8.18",
+    "MOSFET_23_1_L_gmb2_NMOS": "0.58",
+    "MOSFET_23_1_M_gmb2_NMOS": "23",
+    "MOSFET_23_1_W_gmb2_NMOS": "2.23",
+    "MOSFET_9_2_L_gm1_PMOS": "0.56",
+    "MOSFET_9_2_M_gm1_PMOS": "7",
+    "MOSFET_9_2_W_gm1_PMOS": "5.52",
+    "RESISTOR_0": "214.002286k",
+    "RESISTOR_1": "49.767429k",
+    "RESISTOR_2": "69.967429k"
+   },
+   "reference_objective": 96.91460816629211,
+   "survey": {
+    "feasible": 11,
+    "points": 2048,
+    "quantile": 0.254,
+    "working": 139
+   }
+  }
+ },
+ "recipe": "docs/refactor/T17_OPTIMIZER_PLAN_CN.md section 4.3"
+}

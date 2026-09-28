@@ -3,6 +3,7 @@
     python benchmarks/tools/survey_analoggym.py split                     # benchmarks/split.json, before any result
     python benchmarks/tools/survey_analoggym.py survey --jobs 32 --out DIR
     python benchmarks/tools/survey_analoggym.py calibrate --survey DIR    # benchmarks/analoggym_problems.json
+    python benchmarks/tools/survey_analoggym.py verify --jobs 8           # every reference design, through its problem
 
 ``survey`` simulates every circuit's survey points (``icopt_bench.calibrate.survey_points``) and appends one row per
 point to ``DIR/<circuit>.jsonl``; started again, it simulates only the points that are not there yet. ``calibrate``
@@ -137,6 +138,36 @@ def calibrate_all(args: argparse.Namespace) -> int:
     return 0
 
 
+def _verify(name: str) -> tuple[str, str]:
+    """The fine-tuning problem's start is the reference design: evaluated through the problem it must be feasible and
+    give the objective the survey recorded (the whole path from the survey's row to the benchmark's observation)."""
+    from icopt_bench.problem import observe
+
+    from ic_opt.space import Point, grid_size
+
+    entry = json.loads(PROBLEMS_PATH.read_text(encoding="utf-8"))["problems"][name]
+    fine = analoggym.calibrated_problems()[f"ag_{name}_fine"]()
+    wide = analoggym.calibrated_problems()[f"ag_{name}_wide"]()
+    obs = observe(fine, Point(fine.start[0], "start"), 0)
+    expected = entry["reference_objective"]
+    same = obs.fom is not None and abs(obs.fom - expected) <= 1e-6 * max(1.0, abs(expected))
+    verdict = "ok" if obs.feasible and same else f"MISMATCH: status {obs.status}, objective {obs.fom} against {expected}"
+    shape = (f"wide {len(wide.spec.variables)} variables; fine {len(fine.spec.variables)} variables, "
+             f"{grid_size(fine.spec)} grid points")
+    return verdict, shape
+
+
+def verify(args: argparse.Namespace) -> int:
+    held = set(json.loads(SPLIT_PATH.read_text(encoding="utf-8"))["circuits"]["heldout"])
+    names = sorted(json.loads(PROBLEMS_PATH.read_text(encoding="utf-8"))["problems"])
+    bad = 0
+    with ProcessPoolExecutor(max_workers=args.jobs) as pool:
+        for name, (verdict, shape) in zip(names, pool.map(_verify, names), strict=True):
+            bad += verdict != "ok"
+            print(f"{name}: {verdict}" + ("" if name in held else f" ({shape})"))
+    return 1 if bad else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     os.environ.setdefault("OMP_NUM_THREADS", "1")            # one ngspice, one thread: --jobs is the whole load
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -153,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("calibrate")
     p.add_argument("--survey", required=True)
     p.set_defaults(run=calibrate_all)
+    p = sub.add_parser("verify")
+    p.add_argument("--jobs", type=int, required=True)
+    p.set_defaults(run=verify)
     args = parser.parse_args(argv)
     return args.run(args)
 
