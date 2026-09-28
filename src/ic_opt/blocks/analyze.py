@@ -223,7 +223,10 @@ def _importance_section(spec: Spec, obs: Observations) -> str:
         if mask.sum() < 8 or np.allclose(y[mask], y[mask][0]) or not columns:
             continue
         features = x[mask][:, columns]
-        model = lightgbm.LGBMRegressor(n_estimators=200, learning_rate=0.05, min_child_samples=2, verbose=-1).fit(features, y[mask])
+        # n_jobs=1: LightGBM's default is every physical core of the machine, whatever OMP_NUM_THREADS or the spec's
+        # thread settings say; a few hundred rows need one thread, and the many hang when the machine is busy (N-70).
+        model = lightgbm.LGBMRegressor(n_estimators=200, learning_rate=0.05, min_child_samples=2, verbose=-1,
+                                       n_jobs=1).fit(features, y[mask])
         values = np.abs(shap.TreeExplainer(model).shap_values(features)).mean(axis=0)
         total = values.sum() or 1.0
         ranked = sorted(zip([names[i] for i in columns], values / total, strict=True), key=lambda kv: -kv[1])
