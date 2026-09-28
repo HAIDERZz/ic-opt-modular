@@ -277,8 +277,8 @@ def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict, budget: in
     """The initial design of a strategy whose design ic-opt serves: (its size, the successful points the model needs
     before it completes a batch). OpenBox: ``initial_trials`` when given, else min(2 x variables, budget // 2), at least
     one (``suggesters.openbox.initial_design_size``), and the surrogate minimum; metric_gp: ``initial_trials``, else
-    min(max(2 x active variables, 8), 20, budget // 2), and none (its models always complete the batch). None for the
-    others."""
+    min(max(2 x active variables, 8), 20, budget // 2), and one scored point (until then its design goes on). None for
+    the others."""
     if strategy.startswith("openbox"):
         from ic_opt.suggesters.openbox import initial_design_size
 
@@ -286,7 +286,7 @@ def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict, budget: in
     if strategy == "metric_gp":
         from ic_opt.suggesters import metric_gp
 
-        return metric_gp.initial_design_size(spec, strategy_kwargs.get("initial_trials"), budget), 0
+        return metric_gp.initial_design_size(spec, strategy_kwargs.get("initial_trials"), budget), 1
     return None
 
 
@@ -320,7 +320,8 @@ def _print_design(strategy: str, design: tuple[int, int] | None, history: int, n
     first = f" ({start} start point{'s' if start != 1 else ''} first)" if start else ""
     line = f"{tag}{label} initial design {size} points{first}: the {model} proposes {proposed} of the {new} new points"
     if proposed == 0:
-        before = (f" (the {model} needs {needed} successful points before a batch starts)" if needed else "")
+        before = (f" (the {model} needs {needed} successful point{'s' if needed != 1 else ''} before a batch starts)"
+                  if needed else "")
         line += (f" -- WARNING: none; this run is initial design throughout{before}. Raise budget"
                  + (", use a smaller batch," if needed else "") + " or pass a smaller initial_trials")
     print(line)

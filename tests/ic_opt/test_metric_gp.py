@@ -208,6 +208,64 @@ def test_the_value_model_learns_where_points_fail():
     assert models.fit_value_model(np.zeros((3, 2)), np.array([False] * 3), rng).probability(np.zeros((2, 2))).tolist() == [0.5, 0.5]
 
 
+def test_a_region_known_to_fail_is_out_as_a_whole_and_an_unknown_one_every_other_time():
+    """Failures in the half X > 0.5 of two variables, 60 observations. Of 2000 slots the classifier's coherent sample
+    calls a candidate deep in the failing half scored in 11%, one deep in the scored half in 91%, one on the border
+    in half (the latent there: mean 0); the latent's mean and variances are those sklearn's own probability uses."""
+    spec = spec_of([stepped("X", 0, 1, 0.02), stepped("Y", 0, 1, 0.02)], ["m"], objective={"direction": "minimize", "expression": "m"})
+    rng = np.random.default_rng(2)
+    rows = observe(spec, grid_points(spec, rng.random((60, 2))), lambda p: {"m": float(p["Y"])},
+                   status_of=lambda p: "failed:spectre" if float(p["X"]) > 0.5 else None)
+    _models, value = MetricGpSuggester().fit(spec, Coords(spec), list(rows), 0)
+    x = np.array([[0.1, 0.5], [0.9, 0.5], [0.5, 0.5], [0.92, 0.52]])
+    gives = select.gives_a_value(value, x, 2000, np.random.default_rng(0))
+    assert gives.shape == (2000, 4)
+    share = gives.mean(axis=0)
+    assert share[0] > 0.85 and share[1] < 0.15 and 0.35 < share[2] < 0.65, share
+    assert (gives[:, 1] == gives[:, 3]).mean() > 0.97    # coherent: two neighbours in the failing half are in or out together
+    mean, cov = value.latent(x)
+    assert np.allclose(_probability(mean, np.diag(cov)), value.probability(x), atol=1e-9)
+    never_failed = models.fit_value_model(np.zeros((3, 2)), np.array([True] * 3), rng)
+    assert never_failed.latent(x) is None and select.gives_a_value(never_failed, x, 50, rng).all()
+    always_failed = models.fit_value_model(np.zeros((3, 2)), np.array([False] * 3), rng)
+    assert 0.3 < select.gives_a_value(always_failed, x, 500, rng).mean() < 0.7
+
+
+def _probability(mean: np.ndarray, variance: np.ndarray) -> np.ndarray:
+    """The logistic link integrated over a normal latent, by the five-term approximation sklearn uses (Williams and
+    Barber, 1998): what ``predict_proba`` returns for the latent's mean and variance."""
+    from scipy.special import erf
+
+    lambdas = np.array([0.41, 0.4, 0.37, 0.44, 0.39])[:, None]
+    coefs = np.array([-1854.8214151, 3516.89893646, 221.29346712, 128.12323805, -2010.49422654])[:, None]
+    alpha = 1 / (2 * variance)
+    integrals = (np.sqrt(np.pi / alpha) * erf(lambdas * mean * np.sqrt(alpha / (alpha + lambdas**2)))
+                 / (2 * np.sqrt(variance * 2 * np.pi)))
+    return (coefs * integrals).sum(axis=0) + 0.5 * coefs.sum()
+
+
+def test_until_a_point_is_scored_the_design_goes_on():
+    """Every point with A > 0.05 fails to simulate (3 of A's 51 levels do not). The design of 8 holds no scored point
+    (this seed: the first is the 14th of the sequence); it is followed by more of the same sequence, not by a search
+    around a failing point. From the first scored point on the models propose. Without this a run whose design fails throughout
+    never leaves the failing region."""
+    spec = region_spec()
+
+    def fails(p):
+        return "failed:spectre" if float(p["A"]) > 0.05 else None
+
+    history = Observations()
+    while not any(o.status in region.SCORED for o in history):
+        points = suggest(spec, history, 4, strategy="metric_gp", seed=3, initial_trials=8)
+        assert [p.origin for p in points] == ["suggest:metric_gp:init"] * 4
+        history.extend(observe(spec, points, region_metrics, len(history), status_of=fails))
+    assert len(history) == 16 and [o.status in region.SCORED for o in history].index(True) == 13
+    sequence = MetricGpSuggester(initial_trials=16).propose(spec, Observations(), 16, seed=3)
+    assert [space.snap(spec, r) for r in sequence.raw] == [o.params for o in history]        # one sequence, continued
+    after = suggest(spec, history, 4, strategy="metric_gp", seed=3, initial_trials=8)
+    assert all(re.match(r"suggest:metric_gp:(tr|wide):0:16$", p.origin) for p in after)
+
+
 # -- 6 / 7. the choice of a slot -------------------------------------------------------------------------------------------
 
 
@@ -364,17 +422,18 @@ def test_the_region_replayed_from_the_whole_history_is_the_one_each_step_was_in(
 
 
 def test_every_point_carries_its_tag_with_the_history_size_of_its_batch(monkeypatch):
-    """Batches of 10 after a start point: the first is start + 7 design + 2 model points (k = 0). LENGTH_MIN raised to
-    0.5: the region ends after k = 60 and the next batch starts with the anchor of region 1."""
+    """Batches of 10 after a start point, a design of 8: the first batch is start + 9 points of the design's sequence
+    (nothing is scored yet: there is nothing to model). LENGTH_MIN raised to 0.5: the region ends after k = 40 and the
+    next batch starts with the anchor of region 1."""
     monkeypatch.setattr(region, "LENGTH_MIN", 0.5)
     history = run(region_spec(), 80, 10, staged(30), seed=1, start=START)
     pattern = re.compile(r"^suggest:metric_gp:(?:(?P<kind>tr|wide|anchor):(?P<r>\d+):(?P<k>\d+)|init)$")
-    assert history[0].origin == "start" and [o.origin for o in history[1:8]] == ["suggest:metric_gp:init"] * 7
-    for index, obs in enumerate(history[8:], 8):
+    assert history[0].origin == "start" and [o.origin for o in history[1:10]] == ["suggest:metric_gp:init"] * 9
+    for index, obs in enumerate(history[10:], 10):
         match = pattern.match(obs.origin)
         assert match and int(match.group("k")) == 10 * (index // 10), (index, obs.origin)
-        assert int(match.group("r")) == (1 if index >= 70 else 0)
-    assert history[70].origin == "suggest:metric_gp:anchor:1:70" and sum(":anchor:" in o.origin for o in history) == 1
+        assert int(match.group("r")) == (1 if index >= 50 else 0)    # k = 10, 20 improve; k = 30, 40 do not: the side halves
+    assert history[50].origin == "suggest:metric_gp:anchor:1:50" and sum(":anchor:" in o.origin for o in history) == 1
     assert sum(":wide:" in o.origin for o in history[10:20]) == 2               # round(0.2 x 10) slots over the whole space
     small = run(ten_by_ten(objective={"direction": "minimize", "expression": "f"}), 30, 10,
                 lambda p: {"f": float(p["X"]) + float(p["Y"])}, initial_trials=10)
@@ -464,7 +523,8 @@ def test_optimize_prints_the_design_line_and_a_continued_run_is_an_uninterrupted
     finally:
         PLAN_MODE.reset(token)
     assert ("[plan] metric_gp initial design 6 points: the model proposes 0 of the 4 new points -- WARNING: none; this run is "
-            "initial design throughout. Raise budget or pass a smaller initial_trials") in capsys.readouterr().out
+            "initial design throughout (the model needs 1 successful point before a batch starts). Raise budget, use a "
+            "smaller batch, or pass a smaller initial_trials") in capsys.readouterr().out
     token = PLAN_MODE.set(True)
     try:
         optimize(spec, ex, store, deck=deck, strategy="metric_gp", budget=12, batch=4, current=False, limits=FAKE_HOST)

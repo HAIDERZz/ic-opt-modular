@@ -147,8 +147,9 @@ def _prior_vectors(kernel: Kernel, d: int) -> tuple[np.ndarray, np.ndarray]:
 
 
 class ValueModel:
-    """Probability that a point is scored (status ``ok`` or ``constraint_failed``): a Gaussian process classifier when
-    the history holds failures and scored points, 1 everywhere without failures, 0.5 with failures only."""
+    """Whether a point is scored (status ``ok`` or ``constraint_failed``): a Gaussian process classifier when the
+    history holds failures and scored points; without failures every point is, with failures only nothing is known
+    (probability 0.5 everywhere)."""
 
     def __init__(self, gpc: GaussianProcessClassifier | None, constant: float) -> None:
         self.gpc, self.constant = gpc, constant
@@ -157,6 +158,17 @@ class ValueModel:
         if self.gpc is None:
             return np.full(len(x), self.constant)
         return self.gpc.predict_proba(x)[:, 1]
+
+    def latent(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+        """Posterior mean and covariance over ``x`` of the classifier's latent function (positive: scored), from the
+        Laplace approximation sklearn fitted (its binary estimator's ``pi_``, ``W_sr_`` and ``L_``; the mean and the
+        variances are the ones its ``predict_proba`` integrates over). None without a classifier."""
+        if self.gpc is None:
+            return None
+        fitted = self.gpc.base_estimator_
+        cross = fitted.kernel_(fitted.X_train_, x)
+        v = solve_triangular(fitted.L_, fitted.W_sr_[:, None] * cross, lower=True, check_finite=False)
+        return cross.T @ (fitted.y_train_ - fitted.pi_), fitted.kernel_(x) - v.T @ v
 
 
 def fit_value_model(x: np.ndarray, scored: np.ndarray, rng: np.random.Generator) -> ValueModel:

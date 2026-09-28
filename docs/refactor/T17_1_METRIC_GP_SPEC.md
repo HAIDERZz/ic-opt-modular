@@ -83,7 +83,9 @@ classifier for "this point is scored" (status `ok` or `constraint_failed`): `Gau
 same kernel family (no white noise term), inputs in unit coordinates. With no such observation the probability is 1
 everywhere. With failures only (nothing scored yet) the probability is 0.5 everywhere.
 
-Its use: section 8. It is never turned into a target value of another model.
+Its use: section 8, through its latent function (positive: scored), whose posterior mean and covariance over the
+candidates come from the Laplace approximation sklearn fitted. It is never turned into a target value of another
+model.
 
 ## 5. The spec's formulas on arrays (`compose.py`, `objective.py`)
 
@@ -156,8 +158,9 @@ For the candidate set `C` (all candidates of the call, local and wide together) 
    variances); the `n` samples `F = mu + chol @ Z` with `Z` standard normal, one per slot; then drop `S` and the
    factor. Do NOT use `GaussianProcessRegressor.sample_y` (it takes a singular value decomposition of the full
    covariance).
-2. For slot `b`, with sample `b` of every metric; `scored[j]`: a uniform draw per candidate is below the "gives a
-   value" probability of candidate `j`, and the sample has no `nan` there.
+2. For slot `b`, with sample `b` of every metric and sample `b` of the classifier's latent function, drawn jointly
+   over the candidates like a metric's; `scored[j]`: the latent sample is positive at candidate `j`, and the metrics'
+   sample has no `nan` there. (Without a classifier: every candidate when nothing ever failed.)
    - While the history holds no feasible observation (phase 1 of section 6): among the `scored` candidates the
      smallest sampled violation wins; among those the sample calls feasible (violation 0), the one deepest inside
      every constraint (the smallest of its largest normalized residual). The objective has no say.
@@ -218,6 +221,8 @@ The batch key is `k`.
   (the first points do not change when more are drawn). Start points (the `start` keyword of `suggest`) count
   towards `n_init`. `n_init` is the constructor argument `initial_trials`; default `min(max(2 * d, 8), 20)`.
   With the run's budget known (`opt.optimize`) the default is at most half of it.
+  While the history holds no scored observation (status `ok` or `constraint_failed`) the whole batch is taken from
+  the design's sequence, beyond `n_init` if need be: there is nothing to model and nowhere to search around.
   `blocks/optimize.py` prints the design line for this strategy as it does for the OpenBox strategies.
   A batch that reaches the end of the design is completed by the model.
 - `opt.optimize` refuses, before anything is simulated and also under `--plan`:
@@ -275,15 +280,17 @@ change is recorded in `T17_OPTIMIZER_PLAN_CN.md` section 7 with the measurement 
 The first version implemented sections 3 to 11 as they then stood. Checked on the eight synthetic problems (20 seeds,
 200 points, batches of 10) against the corrected OpenBox and TuRBO, it was far better where the objective is composed
 of several metrics and where a region gives no value, slower at the start on the 20-variable problem, and found a
-feasible point on the constrained 10-variable Ackley problem in 10% of the runs within 100 points (TuRBO: 95%). Five
-things were changed (four at first, the fifth after measuring them); the measurements are in
-`T17_OPTIMIZER_PLAN_CN.md`, section 7.
+feasible point on the constrained 10-variable Ackley problem in 10% of the runs within 100 points (TuRBO: 95%). Seven
+things were changed (four at first, the fifth after measuring them, two more after the first runs on the development
+circuits); the measurements are in `T17_OPTIMIZER_PLAN_CN.md`, section 7.
 
 | what | was | is | why |
 | --- | --- | --- | --- |
 | length-scale prior (4.2) | a normal on `ln(l)` around `m` | the density of `l`: a normal on `ln(l)` around `m - s^2` | the specification was ambiguous; the first reading puts the prior's mode at 13 sides of the unit cube for 10 variables: all but linear models at the start |
 | local candidates (7) | every variable redrawn among its levels, never staying | redrawn in the box and snapped; a variable the box does not reach moves one level at a time | on the Ackley problem (three variables of 4 levels) no candidate kept the centre's coarse levels, and the candidates held no point better than the centre |
 | how many variables a candidate changes (7) | each with probability `min(1, 20 / d)`: all of them up to 20 variables | the probability differs from candidate to candidate, from one variable to `min(1, 20 / d)` of them | in the first batches hardly any move of all variables at once is an improvement; better beyond what the seeds differ on five of the six problems that tell methods apart |
+| which candidates a sample calls scored (8.2) | each by a draw against its predicted probability | where one joint sample of the classifier's latent function is positive | a share of every failing region came in at every slot, where the metrics' models know least and their samples look best: on the synthetic problem with such a region 84% of the proposed points gave no value (47% after). On the development circuits no difference beyond the seeds |
+| a design without a scored point (11) | the models took over after `n_init` points | the design goes on until a point is scored | on a circuit where 85% of random points fail to simulate, 4 of 10 runs had no scored point in 200: a region around a failing point keeps what made it fail |
 | phase 1 (8.2) | the smallest objective among the candidates the sample calls feasible | the smallest violation | decision D14, item 3; what a sample calls feasible before anything feasible was seen is mostly uncertainty |
 | batch (8.4) | a slot's sample conditioned on the earlier picks | independent samples | the conditioning narrowed a batch (mean pairwise distance 0.08 against 0.16) and made no difference on the benchmark beyond what the seeds differ |
 

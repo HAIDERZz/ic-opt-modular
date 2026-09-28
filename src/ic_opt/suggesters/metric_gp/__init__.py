@@ -76,8 +76,12 @@ class MetricGpSuggester:
         coords = Coords(spec)
         design = initial_design_size(spec, self.initial_trials)
         taken = history.keys() | {space.point_key(p) for p in pending}
-        raw = space_filling(spec, taken, min(n, max(0, design - len(history) - len(pending))), method="sobol",
-                            size=design, seed=seed, to_raw=coords.design_raw)
+        # Until a point has given every metric there is nothing to model and nowhere to search around: the design goes
+        # on. (A search region around a failing point keeps most of what made it fail. On a circuit where 85% of random
+        # points fail to simulate, 4 of 10 runs whose design held no scored point had none in all their 200 points.)
+        nothing_scored = not any(o.status in region.SCORED for o in history)
+        space_filled = n if nothing_scored else min(n, max(0, design - len(history) - len(pending)))
+        raw = space_filling(spec, taken, space_filled, method="sobol", size=design, seed=seed, to_raw=coords.design_raw)
         tags = ["init"] * len(raw)
         if len(raw) == n:
             return Proposal(raw, tags=tags)
