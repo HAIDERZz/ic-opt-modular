@@ -138,15 +138,22 @@ Checks, each with a message that says what to change:
 ### 6.2 What advice does
 - `start`: the rows not yet evaluated are proposed first in the next batch, origin `advice:<id>`, for every
   strategy, and count as start points do.
-- `ranges`, `fixed`, `vary`: for `metric_gp`. Of a batch's slots, the share that looks over the whole space
-  (`wide_share`, a fifth) is untouched: it is the part of every batch that stays in the spec's full range (D7b). The
-  candidates of the search region are generated as they are without advice, then brought inside the advice: a
-  variable with a range is moved to the nearest level inside it, a fixed variable to its level, a variable not in
-  `vary` (when `vary` is given) to the level of the region's centre; duplicates are dropped. If fewer than the
-  needed slots remain, the batch is completed from the whole-space candidates. Points chosen among the advised
-  candidates carry `@<id>` (section 3).
+- `ranges`, `fixed`, `vary`: for `metric_gp`. A fifth of a batch's slots is free (D7b): a free slot chooses among
+  the candidates the batch has without advice -- the search region's, where they are, and the ones spread over the
+  whole space -- so the search the run was making goes on, at a fifth of its pace, whatever the advice says. The other
+  slots are advised: they choose among the search region's candidates brought inside the advice -- a variable with a
+  range is moved to the nearest level inside it, a fixed variable to its level, a variable not in `vary` (when `vary`
+  is given) to the level of the region's centre; duplicates are dropped. If fewer advised candidates remain than
+  advised slots, the batch is completed from the free candidates. Points chosen by an advised slot carry `@<id>`
+  (section 3); a point chosen by a free slot carries none, also when it lies inside the advice.
+- How many slots are free: `round(wide_share * slots)`, as the whole-space share of a batch without advice. A batch
+  of one or two slots has none by that count; under an advice slot `b` of the batch proposed at history size `k` is
+  then free when `(k + b + 1)` is a multiple of 5, so that a fifth of the points stays free whatever the batch size.
 - The small-grid case (the whole grid is the candidate set, no region): the slots of the batch are divided the same
-  way — a fifth chooses among all grid points, the rest among the grid points inside the advice.
+  way — the free slots choose among all grid points, the rest among the grid points inside the advice.
+- Amended on 2026-09-28 after measurement (section 6.4). As first specified and delivered, the free fifth chose
+  among the whole-space candidates only, and wrong advice ended the local search: the region's candidates were all
+  moved onto the advice's boundary.
 - Other strategies take `start` only. `opt.optimize` prints one line when an advice in effect has `ranges`, `fixed`
   or `vary` and the strategy is not `metric_gp`: which parts are not used and why.
 - The search region's own course (section 9 of the metric_gp specification) is judged as without advice. The replay
@@ -160,15 +167,44 @@ Checks, each with a message that says what to change:
 2. The rule of section 2 for `adopt`, `revoke`, superseding, and rows whose `since` lies after the batch.
 3. `start` rows come first, once, with their origin, for `metric_gp`, `openbox_gp_eic` and `turbo`.
 4. `metric_gp` with ranges on a space with a region: of 10 slots 2 carry no suffix and may lie anywhere, 8 carry the
-   suffix and lie inside the ranges; with `fixed`; with `vary`; on a small grid.
+   suffix and lie inside the ranges; with `fixed`; with `vary`; on a small grid. The free slots' candidates are those
+   of the batch without advice. Batches of one and of two slots: over 10 points proposed one batch after another, 2
+   are free.
 5. An advice whose ranges hold no unevaluated point: the batch is completed from the whole space, no error.
 6. Wrong advice does not end the search: on a problem whose optimum lies outside the advised ranges, a run of 100
-   points with the advice adopted at 20 finds a feasible point, and its best objective is not worse than twice the
-   distance from the optimum of the same run without advice (state the measured numbers).
+   points with the advice adopted at 20 finds a feasible point, and it keeps its share: its best objective at 100
+   points is not worse than that of the same run without advice at 36 points (20, and a fifth of the 80 that
+   followed). For seeds 0 to 4. The first criterion ("not worse than twice the distance from the optimum of the run
+   without advice") asked of a fifth of the points what the whole run achieves; it was not met by any variant and is
+   withdrawn.
 7. Replay and continuation (6.2).
 8. The design line and the `auto` line of `opt.optimize` are unchanged by an advice; the line about unused parts.
 9. The store of a run without advice has no advice file, and everything behaves as before this task (pin the
    proposals of three calls on the commit you started from).
+
+### 6.4 What was measured (2026-09-28)
+
+Scripted advice, adopted at 40 points, runs of 200 points, against the run of the same seed without advice; 8 synthetic
+problems with seeds 0-9 and the 12 wide-range development circuits with seeds 0-4. Three kinds: *right* (ranges of 0.3
+of the axis around the best point any run had found, for up to six variables), *wrong* (the two most influential
+variables sent to the far part of their axis), *digest* (every 40 points the ranges the digest suggests, taken as they
+are). Three variants of what an advice does to a batch: S (as first specified), A (this section's 6.2), B (A, and the
+advised slots search the narrowed problem: a region around the best point inside the advice, and points spread over its
+box). Per cell: problems better / worse / within the seeds at 200 points (one-sided Mann-Whitney, 5%).
+
+| variant | right | wrong | digest | runs that kept their share under wrong advice |
+| --- | --- | --- | --- | --- |
+| S, synthetic | 2 / 0 / 6 | 0 / 5 / 3 | 0 / 3 / 5 | 36 of 80 |
+| A, synthetic | 2 / 0 / 6 | 0 / 1 / 7 | 0 / 0 / 8 | 80 of 80 |
+| B, synthetic | 0 / 0 / 8 | 0 / 1 / 7 | 1 / 1 / 6 | 80 of 80 |
+| S, circuits | 2 / 0 / 10 | 1 / 3 / 8 | 0 / 4 / 8 | 46 of 60 |
+| A, circuits | 4 / 0 / 8 | 0 / 1 / 11 | 0 / 0 / 12 | 59 of 60 |
+| B, circuits | 4 / 0 / 8 | 0 / 1 / 11 | 0 / 0 / 11 | 58 of 60 |
+
+A and B do not differ beyond the seeds; A is the smaller change and is taken. Right advice helps on the circuits (about
+seven runs in ten end better than without). Taking the digest's suggested ranges as they are helps nowhere: seed by seed
+more runs end worse than better (A, circuits: 20 better, 39 worse). The ranges say where the best points found lie; an
+advice needs a reason beyond them.
 
 ## 7. T17.5 — operating points
 
