@@ -200,7 +200,7 @@ box). Per cell: problems better / worse / within the seeds at 200 points (one-si
 | B, synthetic | 0 / 0 / 8 | 0 / 1 / 7 | 1 / 1 / 6 | 80 of 80 |
 | S, circuits | 2 / 0 / 10 | 1 / 3 / 8 | 0 / 4 / 8 | 46 of 60 |
 | A, circuits | 4 / 0 / 8 | 0 / 1 / 11 | 0 / 0 / 12 | 59 of 60 |
-| B, circuits | 4 / 0 / 8 | 0 / 1 / 11 | 0 / 0 / 11 | 58 of 60 |
+| B, circuits | 4 / 0 / 8 | 0 / 1 / 11 | 0 / 0 / 12 | 58 of 60 |
 
 A and B do not differ beyond the seeds; A is the smaller change and is taken. Right advice helps on the circuits (about
 seven runs in ten end better than without). Taking the digest's suggested ranges as they are helps nowhere: seed by seed
