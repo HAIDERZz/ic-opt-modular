@@ -49,6 +49,7 @@
 | 页面 | 生成脚本 | 数据 | artifact | 备注 |
 |---|---|---|---|---|
 | `PROJECT_STRUCTURE_2026-09-25_CN.html` | `build_structure_report.py page` | `structure_facts.json`（同一脚本 `collect`：仓库 / git / `ic-opt blocks` / INDEX / `diagrams/*.json` / `graphify-out/` 实测）、`library_rows.json`（`ic-opt call lib.load` 的行数）；`figs/PROJECT_STRUCTURE_*.png`；内嵌两张 archify 图的浏览器检查截图 | [GyLKpWNBzn8b4HmHU3z9f2](https://claude.ai/artifact/GyLKpWNBzn8b4HmHU3z9f2) | 阶段性收尾的项目结构总览：archify 两图 + graphify 知识图谱 + 包 / 块 / 配方 / 命令行 / 文档 / 测试 / 待办 |
+| T17 第 1 步报告（页面不入仓库） | `/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/optimizer_research/report_step1/build_report.py`（图：同目录 `figures.py`、`make_ag_figures.sh`） | `/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/optimizer_research/bench_results/` 下的运行结果（合成函数、AnalogGym 开发用与留出电路，共 2240 次运行）；表格里的数字全部由脚本算出 | [Gko385A5qcXnZtqMuNTLnw](https://claude.ai/artifact/Gko385A5qcXnZtqMuNTLnw) | 新策略 `metric_gp` 第 0a、0b、1 步：基准、修喂数前后、留出电路上 D11 前三条的判定、局限；记录在 `docs/refactor/T17_OPTIMIZER_PLAN_CN.md` 第 7 节 |
 
 ## 其他
 
