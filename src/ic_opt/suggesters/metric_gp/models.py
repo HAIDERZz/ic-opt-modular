@@ -6,8 +6,7 @@ the dimension (Hvarfner, Hellsten, Nardi, ICML 2024): what lets a plain Gaussian
 and a few dozen points, where maximum likelihood picks short length scales and models noise.
 
 Posterior quantities for the batch selection (section 8) are computed here from the fitted kernel, on the latent
-function (the white-noise term left out): the mean over the candidates, their joint covariance, and the factor ``V``
-from which the covariance between every candidate and one of them is rebuilt later.
+function (the white-noise term left out): the mean over the candidates and their joint covariance.
 """
 
 from __future__ import annotations
@@ -26,14 +25,21 @@ from sklearn.gaussian_process.kernels import ConstantKernel, Kernel, Matern, Whi
 LENGTH_BOUNDS = (0.02, 200.0)
 NOISE_BOUNDS = (1e-8, 1e-1)
 CONSTANT_BOUNDS = (1e-2, 1e2)
-NOISE_PRIOR = (-4.0, 1.0)            # ln(noise) ~ Normal(mean, std), on standardized targets
+NOISE = (-4.0, 1.0)                  # the noise level is log-normal: ln(noise) ~ Normal(-4, 1), on standardized targets
+NOISE_PRIOR = (NOISE[0] - NOISE[1] ** 2, NOISE[1])     # what the MAP estimate adds, in terms of ln(noise): see length_prior
 PRIOR_DRAWS = 2                      # optimizer starts drawn from the prior, after its mode
 LOG_TARGET_SPAN = 100                # max / min of all-positive values from which a metric is modelled as log10
 
 
 def length_prior(d: int) -> tuple[float, float]:
-    """``ln(l) ~ Normal(sqrt(2) + 0.5 ln d, sqrt(3))`` for ``d`` active variables."""
-    return math.sqrt(2.0) + 0.5 * math.log(max(d, 1)), math.sqrt(3.0)
+    """The prior term of the MAP estimate for ``d`` active variables, as mean and standard deviation of a normal in
+    ``ln(l)``. The length scale is log-normal, ``ln(l) ~ Normal(m, s)`` with ``m = sqrt(2) + 0.5 ln d`` and
+    ``s = sqrt(3)``; the estimate maximizes the density of ``l`` itself (as the paper's reference implementation does),
+    and that density, written in ``ln(l)``, is a normal's around ``m - s^2``: the log-normal's mode ``exp(m - s^2)``,
+    0.65 of the unit cube's side for 10 variables. A normal around ``m`` instead (the first version) puts the mode at 13
+    sides: models that are all but linear at the start, and a slower start on the benchmark's 20-variable problem."""
+    s = math.sqrt(3.0)
+    return math.sqrt(2.0) + 0.5 * math.log(max(d, 1)) - s * s, s
 
 
 @dataclass(frozen=True)
@@ -76,19 +82,12 @@ class MetricModel:
             return np.full(len(x), self.constant)
         return self.transform.backward(self.gp.predict(x))
 
-    def joint(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Latent posterior over the points ``x`` in the standardized scale: mean, covariance and
-        ``V = solve(chol(K_train), K(train, x))``, from which :meth:`cross` rebuilds one column of the covariance."""
+    def joint(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Latent posterior over the points ``x`` in the standardized scale: mean and covariance."""
         gp = self.gp
         cross = gp.kernel_.k1(gp.X_train_, x)                  # the white term is zero between distinct inputs
-        mean = cross.T @ gp.alpha_
         v = solve_triangular(gp.L_, cross, lower=True, check_finite=False)
-        cov = gp.kernel_.k1(x) - v.T @ v
-        return mean, cov, v
-
-    def cross(self, x: np.ndarray, j: int, v: np.ndarray) -> np.ndarray:
-        """Column ``j`` of the latent posterior covariance over ``x``: ``k(x, x_j) - V.T @ V[:, j]``."""
-        return self.gp.kernel_.k1(x, x[j : j + 1])[:, 0] - v.T @ v[:, j]
+        return cross.T @ gp.alpha_, gp.kernel_.k1(x) - v.T @ v
 
 
 def fit_metric(name: str, x: np.ndarray, y: np.ndarray, rng: np.random.Generator) -> MetricModel:

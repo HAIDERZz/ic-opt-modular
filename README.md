@@ -138,8 +138,8 @@ the constraints and the objective name, the spec's own formulas applied to their
 posterior samples, a search region on the spec's grid (logarithmic for a range
 that spans a decade), a separate model of where points fail to give a value, and
 no penalty number anywhere; numpy, scipy and scikit-learn only. Its design is
-`initial_trials` points (default twice the variables, at least 8, at most 20),
-start points included, and origins end in `:init`, `:grid:<k>`, `:tr:<r>:<k>`,
+`initial_trials` points (default twice the variables, at least 8, at most 20
+and at most half the budget), start points included, and origins end in `:init`, `:grid:<k>`, `:tr:<r>:<k>`,
 `:wide:<r>:<k>` or `:anchor:<r>:<k>`. It does not take EM devices or several
 corners at once yet: `opt.optimize` refuses both before anything runs; run one
 corner (`corners='["tt"]'`) or the `signoff` recipe.

@@ -1,6 +1,7 @@
 # T17.1 — the `metric_gp` strategy: specification
 
-Status: specification for implementation (2026-09-28). Decisions behind it: `T17_OPTIMIZER_PLAN_CN.md`.
+Status: implemented (2026-09-28); revised after the review of the first version, see section 15. Decisions behind it:
+`T17_OPTIMIZER_PLAN_CN.md`.
 Scope of this stage: one condition (no corners, or a run restricted to one corner), schematic level (no EM devices).
 
 ## 1. What it is
@@ -62,9 +63,13 @@ value with zero variance.
 
 Hyperparameters by MAP, not by maximum likelihood: pass a custom `optimizer` callable that adds the log prior to
 the objective sklearn hands it.
-- length scales: log-normal, `ln(l) ~ Normal(sqrt(2) + 0.5 * ln(d), sqrt(3))`, `d` = number of active variables;
-  bounds `(0.02, 200)`.
+- length scales: log-normal, `ln(l) ~ Normal(m, s)` with `m = sqrt(2) + 0.5 * ln(d)`, `s = sqrt(3)`, `d` = number
+  of active variables; bounds `(0.02, 200)`.
 - noise level (on standardized targets): log-normal, `ln(noise) ~ Normal(-4, 1)`; bounds `(1e-8, 1e-1)`.
+- what is maximized is the likelihood times the density of `l` (and of the noise level) itself, as in the paper's
+  reference implementation. Written in `ln(l)`, which is what the optimizer moves, that density is a normal's around
+  `m - s^2`: the log-normal's mode, `exp(m - s^2)`. (A normal around `m` is a different prior, with its mode 20 times
+  farther out; section 15.)
 - constant: no prior; bounds `(1e-2, 1e2)`.
 - start points of the optimizer: the prior's mode first, then 2 draws from the prior (generator seeded from the
   call's seed and the metric's index); L-BFGS-B; keep the best.
@@ -119,11 +124,21 @@ Let `G` be the number of grid points (`ic_opt.space.grid_size`), `E` the evaluat
 
 The candidate set never holds more than 2000 points: the selection keeps one square matrix of that size at a time.
 
-`local`: per variable the levels inside `[c_i - L * w_i / 2, c_i + L * w_i / 2]` (unit coordinates, `c` the
+`local`: per variable the levels inside the box `[c_i - L * w_i / 2, c_i + L * w_i / 2]` (unit coordinates, `c` the
 region's centre), always including the centre's level and its two neighbours. If the product of these level counts
-is at most 1500 take them all; else draw 1500 by perturbation: start from the centre, and for each candidate
-change each variable with probability `min(1, 20 / d)` to a level drawn uniformly from its allowed levels (at least
-one variable changes).
+is at most 1500 take them all. Else draw 1500 perturbations of the centre; what a perturbation does to a variable
+depends on whether the box reaches beyond the variable's own level (its half-width exceeds half the distance to the
+nearer neighbouring level):
+
+- reached: with probability `min(1, 20 / d)` the variable is redrawn uniformly inside the box and snapped to its
+  nearest level, so a level is drawn as often as the box covers its stretch of the axis;
+- not reached (a coarse variable, or every variable once the region is smaller than the grid): the variable stays,
+  except that with probability `min(1/2, 1 / n)` it moves by one level, `n` the number of such variables: about one
+  of them moves per candidate. Their one-step moves alone (the centre otherwise unchanged) are candidates too, and
+  come first.
+
+A candidate equal to the centre is an evaluated point and drops out. Rationale: on a variable with a handful of
+levels a change is a large move; it must be offered, not imposed on every candidate (section 15).
 
 `wide`: a scrambled Sobol sample of 500 points in unit coordinates (seeded from the call), snapped to the grid.
 
@@ -136,26 +151,22 @@ For the candidate set `C` (all candidates of the call, local and wide together) 
 1. For every modelled metric, one metric at a time: the posterior mean `mu` and covariance `S` over `C`; a
    Cholesky factor of `S` (add jitter `1e-8 * trace / len(C)`, multiplying by 10 up to `1e-4 * trace / len(C)`
    until the factorization succeeds; if it never does, fall back to independent draws from the marginal
-   variances); the `n` base samples `F = mu + chol @ Z` with `Z` standard normal; then drop `S` and the factor and
-   keep `F` and what section 8.4 needs. Do NOT use `GaussianProcessRegressor.sample_y` (it takes a singular value
-   decomposition of the full covariance).
-2. For slot `b`, with sample `b` of every metric:
-   - `scored[j]`: a uniform draw per candidate is below the "gives a value" probability of candidate `j`, and the
-     sample has no `nan` there;
-   - among candidates that are `scored` and whose sampled residuals are all `<= 0`: the smallest sampled objective
-     wins;
-   - if there is none: among the `scored` candidates the smallest sampled violation wins;
-   - if there is none: the candidate with the largest "gives a value" probability wins.
+   variances); the `n` samples `F = mu + chol @ Z` with `Z` standard normal, one per slot; then drop `S` and the
+   factor. Do NOT use `GaussianProcessRegressor.sample_y` (it takes a singular value decomposition of the full
+   covariance).
+2. For slot `b`, with sample `b` of every metric; `scored[j]`: a uniform draw per candidate is below the "gives a
+   value" probability of candidate `j`, and the sample has no `nan` there.
+   - While the history holds no feasible observation (phase 1 of section 6): among the `scored` candidates the
+     smallest sampled violation wins; among those the sample calls feasible (violation 0), the one deepest inside
+     every constraint (the smallest of its largest normalized residual). The objective has no say.
+   - Once it holds one (phase 2): among the `scored` candidates whose sampled residuals are all `<= 0` the smallest
+     sampled objective wins; if there is none, the smallest sampled violation.
+   - With no `scored` candidate: the candidate with the largest "gives a value" probability wins.
 3. A chosen candidate leaves the set. Slots are assigned in this order when the space is large (`G > 2000`): the
    first `n_wide = round(wide_share * n)` slots choose among `wide` only, the others among `local` only (when a set
    runs empty the slot chooses among the other). `wide_share` is a constructor argument, default `0.2`.
-4. Batch spacing: the sample a slot uses is conditioned on the points the earlier slots chose, each with the
-   metric values its own slot's sample gave it, as pretended observations (hyperparameters unchanged). By
-   Matheron's rule, for the picks `J` with pretended values `v_J`, slot `b`'s sample is
-   `F[:, b] + S[:, J] @ solve(S[J, J] + jitter, v_J - F[J, b])`. The columns `S[:, j]` are posterior covariances
-   between every candidate and the pick `j`: compute each from the model when the pick is made
-   (`k(C, c_j) - V.T @ V[:, j]` with `V = solve_triangular(chol(K_train), K(train, C))`, kept per metric,
-   observations x candidates), so that no square matrix outlives step 1.
+4. The slots' samples are independent draws. A batch is as spread as the models are unsure: far apart where they
+   know little, neighbours of the predicted optimum where they know much (section 15).
 
 Each chosen point carries a tag (section 10).
 
@@ -204,13 +215,15 @@ The batch key is `k`.
   design in unit coordinates (so: logarithmic where section 3 says so), seeded from the run's seed, prefix-stable
   (the first points do not change when more are drawn). Start points (the `start` keyword of `suggest`) count
   towards `n_init`. `n_init` is the constructor argument `initial_trials`; default `min(max(2 * d, 8), 20)`.
+  With the run's budget known (`opt.optimize`) the default is at most half of it.
   `blocks/optimize.py` prints the design line for this strategy as it does for the OpenBox strategies.
   A batch that reaches the end of the design is completed by the model.
 - `opt.optimize` refuses, before anything is simulated and also under `--plan`:
   - a spec with devices: "strategy metric_gp does not take EM devices yet; use openbox_gp_eic";
   - a run that covers more than one corner: "strategy metric_gp works on one condition; run one corner
     (corners='["tt"]'), or the signoff recipe, which searches at one corner and re-checks the best points at all".
-  The suggester itself refuses a history whose children carry more than one corner.
+  The suggester itself refuses a history whose children carry more than one corner. `opt.optimize` hands it the
+  rows evaluated at exactly the run's corners: the store of a signoff run also holds its best points at all corners.
 
 ## 12. Cost
 
@@ -236,8 +249,10 @@ lower a threshold, shrink a test problem or pick seeds to make a test pass.
    optimum or one of its grid neighbours in at least 15.
 7. Phase 1: with no feasible observation the chosen point's true violation is smaller than the median violation of
    the candidates in at least 15 of 20 seeds.
-8. Batch spacing: a batch of 10 has 10 distinct points, none evaluated before; on a smooth problem its mean
-   pairwise distance is larger with the conditioning of section 8.4 than without.
+8. A batch of 10 has 10 distinct points, none evaluated before; on a smooth problem its mean pairwise distance is
+   more than twice as large after 6 observations as after 20. Phase 1 chooses by the violation, not the objective.
+   A variable the region does not reach moves one level at a time; a region smaller than the grid searches at the
+   grid's resolution.
 9. Region replay: build a history by calling `suggest` batch by batch (evaluating with a test function) for 60
    points; then call `propose` once on the full history: region index, side and counters equal those of the last
    incremental step; the proposal for the next batch equals the uninterrupted one.
@@ -252,3 +267,22 @@ lower a threshold, shrink a test problem or pick seeds to make a test pass.
 The numbers marked as constructor arguments (`wide_share`, `initial_trials`) and the constants of section 9 are
 first values. They are set on the development problems of the benchmark, never on the held-out ones, and every
 change is recorded in `T17_OPTIMIZER_PLAN_CN.md` section 7 with the measurement that motivated it.
+
+## 15. What the review of the first version changed (2026-09-28)
+
+The first version implemented sections 3 to 11 as they then stood. Checked on the eight synthetic problems (20 seeds,
+200 points, batches of 10) against the corrected OpenBox and TuRBO, it was far better where the objective is composed
+of several metrics and where a region gives no value, slower at the start on the 20-variable problem, and found a
+feasible point on the constrained 10-variable Ackley problem in 10% of the runs within 100 points (TuRBO: 95%). Four
+things were changed; the measurements are in `T17_OPTIMIZER_PLAN_CN.md`, section 7.
+
+| what | was | is | why |
+| --- | --- | --- | --- |
+| length-scale prior (4.2) | a normal on `ln(l)` around `m` | the density of `l`: a normal on `ln(l)` around `m - s^2` | the specification was ambiguous; the first reading puts the prior's mode at 13 sides of the unit cube for 10 variables: all but linear models at the start |
+| local candidates (7) | every variable redrawn among its levels, never staying | redrawn in the box and snapped; a variable the box does not reach moves one level at a time | on the Ackley problem (three variables of 4 levels) no candidate kept the centre's coarse levels, and the candidates held no point better than the centre |
+| phase 1 (8.2) | the smallest objective among the candidates the sample calls feasible | the smallest violation | decision D14, item 3; what a sample calls feasible before anything feasible was seen is mostly uncertainty |
+| batch (8.4) | a slot's sample conditioned on the earlier picks | independent samples | the conditioning narrowed a batch (mean pairwise distance 0.08 against 0.16) and made no difference on the benchmark beyond what the seeds differ |
+
+Measured and not adopted: a fixed kernel amplitude (no difference; the amplitude does reach its upper bound on a
+linear metric, where a long length scale and a large amplitude stand in for a slope); a rule that keeps a batch's
+points apart by 0.11 of the shortest fitted length scale (no difference beyond the seeds on six of seven problems).

@@ -7,7 +7,6 @@ import ast
 import itertools
 import math
 import re
-from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -183,8 +182,7 @@ def test_a_metric_model_predicts_held_out_points_and_constants_and_logs_come_bac
     assert np.corrcoef(model.predict(x[40:]), smooth(x[40:]))[0, 1] > 0.95
     constant = models.fit_metric("k", x[:40], np.full(40, 2.5), rng)
     assert constant.gp is None and constant.predict(x[40:]).tolist() == [2.5] * 20
-    samples = select.MetricSamples(constant, x[40:], 3, rng)
-    assert samples.base is None                                       # zero variance: no sampling
+    assert select.samples(constant, x[40:], 3, rng) is None           # zero variance: no sampling
     assert math.isnan(models.fit_metric("none", x[:0], np.array([]), rng).predict(x[:2])[0])
     span = 10 ** (3 * x[:, 0]) * (1 + 0.2 * x[:, 1])                  # three decades
     logged = models.fit_metric("g", x[:40], span[:40], rng)
@@ -273,47 +271,45 @@ def test_a_batch_has_ten_distinct_points_none_evaluated_before():
     assert len(keys_) == 10 and not keys_ & rows.keys()
 
 
-def test_the_conditioning_makes_a_slot_sample_pass_through_the_earlier_picks():
-    """Matheron's rule (section 8.4): after picks j1 (slot 0) and j2 (slot 1), slot 2's sample equals the values the picks'
-    own slots gave them, and it is not the unconditioned sample."""
-    spec = bowl_spec()
-    rows = observe(spec, grid_points(spec, np.random.default_rng(3).random((20, 2))), bowl)
-    coords = Coords(spec)
-    fitted, _value = MetricGpSuggester().fit(spec, coords, list(rows), 0)
-    x = coords.unit(coords.snap(np.random.default_rng(1).random((300, 2))))
-    samples = select.MetricSamples(fitted[0], x, 3, np.random.default_rng(0))
-    first = samples.slot(0)
-    samples.pick(10, first)
-    second = samples.slot(1)
-    samples.pick(20, second)
-    third = samples.slot(2)
-    assert abs(third[10] - first[10]) < 1e-6 and abs(third[20] - second[20]) < 1e-6
-    assert abs(third[10] - samples.slot(2, condition=False)[10]) > 1e-3
-
-
-@pytest.mark.xfail(strict=True, reason=(
-    "Finding (T17.1): section 8.4's conditioning does not spread a batch. Mean pairwise distance over seeds 0-9, "
-    "this problem (20 observations): 0.0464 with it, 0.0488 without; with 6 observations 0.082 with, 0.157 without. "
-    "A slot's sample is pinned to the earlier picks' low sampled values, which pulls the next pick towards them; "
-    "independent Thompson samples already differ. Kept as specified; see the T17.1 report."))
-def test_a_batch_is_spread_by_the_conditioning(monkeypatch):
+def test_a_batch_is_as_spread_as_the_models_are_unsure():
+    """The slots draw independent samples: where the models know little the samples' minima lie far apart, where they
+    know much they agree. On the bowl, the mean pairwise distance of a batch of 10 over seeds 0-9: 0.16 after 6
+    observations, 0.05 after 20 (two grid steps: ten neighbours of the predicted minimum). Nothing else spreads a batch:
+    conditioning a slot on the earlier picks (the first version) narrowed it (0.08 after 6 observations), and a rule
+    that kept a batch's points apart by the models' length scales made no difference on the benchmark beyond what the
+    seeds differ (T17 plan, section 7)."""
     spec = bowl_spec()                                               # 41 x 41 = 1681 points: the whole grid is the candidate set
-    rows = observe(spec, grid_points(spec, np.random.default_rng(3).random((20, 2))), bowl)
     spread = {}
-    for condition in (True, False):
-        monkeypatch.setattr(select, "select_batch", partial(_select_batch, condition=condition))
-        distances = []
+    for observations in (6, 20):
+        rows = observe(spec, grid_points(spec, np.random.default_rng(3).random((observations, 2))), bowl)
+        found = []
         for seed in range(10):
             proposal = MetricGpSuggester(initial_trials=1).propose(spec, rows, 10, seed=seed)
-            keys = {space.point_key(space.snap(spec, r)) for r in proposal.raw}
-            assert len(keys) == 10 and not keys & rows.keys()
-            x = np.array(proposal.raw)
-            distances.append(np.mean([np.linalg.norm(a - b) for a, b in itertools.combinations(x, 2)]))
-        spread[condition] = float(np.mean(distances))
-    assert spread[True] > spread[False], spread
+            found.append(_spread(np.array(proposal.raw)))
+        spread[observations] = float(np.mean(found))
+    assert spread[6] > 2 * spread[20] and spread[20] > 0.025, spread
 
 
-_select_batch = select.select_batch
+def _spread(points: np.ndarray) -> float:
+    return float(np.mean([np.linalg.norm(a - b) for a, b in itertools.combinations(points, 2)]))
+
+
+def test_while_nothing_is_feasible_the_violation_decides_and_the_objective_does_not():
+    """Five candidates; the sample of g (constraint g < 0) and of the objective f. Nothing feasible observed: the
+    candidate deepest inside the constraint wins although its objective is the worst; with something feasible observed,
+    the best objective among the candidates the sample calls feasible."""
+    spec = ten_by_ten([{"metric": "g", "op": "lt", "value": "0"}], {"direction": "minimize", "expression": "f"}, ("f", "g"))
+    composer = Composer(spec)
+    arrays = {"g": np.array([0.5, -0.1, -2.0, 0.2, -0.3]), "f": np.array([0.0, 1.0, 9.0, -5.0, 2.0])}
+    everything = np.ones(5, dtype=bool)
+    args = (composer, {"f": 1.0, "g": 1.0}, arrays, everything, np.ones(5), everything)
+    assert select.choose(*args, nothing_feasible=True) == 2
+    assert select.choose(*args, nothing_feasible=False) == 1
+    outside = {"g": np.array([0.5, 0.1, 2.0, 0.2, 0.3]), "f": arrays["f"]}                  # the sample calls none feasible
+    for phase in (True, False):
+        assert select.choose(composer, {"f": 1.0, "g": 1.0}, outside, everything, np.ones(5), everything, phase) == 1
+    unscored = np.zeros(5, dtype=bool)
+    assert select.choose(composer, {"f": 1.0, "g": 1.0}, arrays, unscored, np.array([.1, .2, .9, .3, .4]), everything, True) == 2
 
 
 # -- 9 / 10. region replay and tags ----------------------------------------------------------------------------------------
@@ -422,14 +418,41 @@ def test_stage_one_refusals_before_anything_runs_and_under_plan(tmp_path):
         MetricGpSuggester().propose(Spec.model_validate(devices), Observations(), 2, seed=0)
 
 
+def test_a_store_that_also_holds_the_problem_at_all_corners_is_searched_at_the_run_s_corner(tmp_path, monkeypatch):
+    """The signoff recipe searches at one corner and re-checks the best points at all: its store holds both. A search
+    that goes on afterwards is not refused, and the models see the rows of its own corner only."""
+    cornered = make_spec(corners=[{"id": "tt"}, {"id": "ss"}], budget={"max_simulations": 100})
+    store, ex, deck = project(tmp_path, cornered)
+    optimize(cornered, ex, store, deck=deck, strategy="metric_gp", budget=8, batch=4, corners=["tt"], current=False,
+             step="search", limits=FAKE_HOST)
+    optimize(cornered, ex, store, deck=deck, strategy="random", budget=3, batch=3, corners="all", current=False,
+             step="signoff", limits=FAKE_HOST)
+    seen = []
+    propose = MetricGpSuggester.propose
+    monkeypatch.setattr(MetricGpSuggester, "propose", lambda self, spec, history, n, **kw: seen.append(list(history))
+                        or propose(self, spec, history, n, **kw))
+    more = optimize(cornered, ex, store, deck=deck, strategy="metric_gp", budget=12, batch=4, corners=["tt"], current=False,
+                    step="search", limits=FAKE_HOST)
+    assert len(more) == 12 and len(store.observations()) == 15
+    assert [len(h) for h in seen] == [8] and all({c.corner for c in o.children.values()} == {"tt"} for o in seen[0])
+
+
+def test_the_default_design_is_at_most_half_of_a_small_run():
+    spec = make_spec(variables=[integer("F", 20, 60, 2), stepped("W", "0.6u", "3u", "0.2u")])
+    assert mg.initial_design_size(spec) == 8 and mg.initial_design_size(spec, budget=12) == 6
+    assert mg.initial_design_size(spec, budget=200) == 8 and mg.initial_design_size(spec, 5, budget=6) == 5
+
+
 def test_optimize_prints_the_design_line_and_a_continued_run_is_an_uninterrupted_one(tmp_path, capsys):
     spec = make_spec(variables=[integer("F", 20, 60, 2), stepped("W", "0.6u", "3u", "0.2u")], budget={"max_simulations": 100})
     store, ex, deck = project(tmp_path / "whole", spec)
-    whole = optimize(spec, ex, store, deck=deck, strategy="metric_gp", budget=12, batch=4, seed=2, limits=FAKE_HOST)
+    whole = optimize(spec, ex, store, deck=deck, strategy="metric_gp", budget=12, batch=4, seed=2, initial_trials=8,
+                     limits=FAKE_HOST)
     assert "[optimize] metric_gp initial design 8 points: the model proposes 4 of the 12 new points" in capsys.readouterr().out
-    store, ex, deck = project(tmp_path / "parts", spec)
-    optimize(spec, ex, store, deck=deck, strategy="metric_gp", budget=8, batch=4, seed=2, limits=FAKE_HOST)
-    parts = optimize(spec, ex, store, deck=deck, strategy="metric_gp", budget=12, batch=4, seed=2, limits=FAKE_HOST)
+    store, ex, deck = project(tmp_path / "parts", spec)             # the design's size stated: the default follows the budget
+    optimize(spec, ex, store, deck=deck, strategy="metric_gp", budget=8, batch=4, seed=2, initial_trials=8, limits=FAKE_HOST)
+    parts = optimize(spec, ex, store, deck=deck, strategy="metric_gp", budget=12, batch=4, seed=2, initial_trials=8,
+                     limits=FAKE_HOST)
     assert "the model proposes 4 of the 4 new points" in capsys.readouterr().out
     assert [(o.params, o.origin) for o in parts] == [(o.params, o.origin) for o in whole]
     assert [o.origin for o in whole] == ["suggest:metric_gp:init"] * 8 + ["suggest:metric_gp:grid:8"] * 4
@@ -442,6 +465,12 @@ def test_optimize_prints_the_design_line_and_a_continued_run_is_an_uninterrupted
         PLAN_MODE.reset(token)
     assert ("[plan] metric_gp initial design 6 points: the model proposes 0 of the 4 new points -- WARNING: none; this run is "
             "initial design throughout. Raise budget or pass a smaller initial_trials") in capsys.readouterr().out
+    token = PLAN_MODE.set(True)
+    try:
+        optimize(spec, ex, store, deck=deck, strategy="metric_gp", budget=12, batch=4, current=False, limits=FAKE_HOST)
+    finally:
+        PLAN_MODE.reset(token)
+    assert "[plan] metric_gp initial design 6 points: the model proposes 6 of the 12 new points" in capsys.readouterr().out
 
 
 # -- 12. determinism --------------------------------------------------------------------------------------------------------
@@ -496,7 +525,44 @@ def test_candidates_stay_within_the_limits():
     wide = candidates.wide(coords, excluded, rng)
     assert len(local) <= candidates.LOCAL and len(wide) <= candidates.WIDE and len(local) + len(wide) <= candidates.MAX_CANDIDATES
     assert not set(keys(local)) & set(keys(wide)) and len(set(keys(local))) == len(local)
-    assert np.all(np.abs(coords.unit(local) - coords.unit(centre[None, :])) <= 0.4 + 1e-12)   # side 0.8 around the centre
+    assert np.all(np.abs(coords.unit(local) - coords.unit(centre[None, :])) <= 0.4 + 0.01 + 1e-12)   # side 0.8, snapped (step 0.02)
+    assert (local != centre).all(axis=1).mean() > 0.9             # four fine variables, a wide box: a candidate moves them all
     tiny = candidates.local(coords, centre, 1e-6, np.ones(4), set(), rng)            # the centre's level and its neighbours
     assert len(tiny) == 3**4 and np.abs(tiny - centre).max() == 1
     assert len(candidates.local(coords, centre, 0.8, np.ones(4), set(keys(tiny)), rng)) <= candidates.LOCAL
+
+
+def test_a_variable_the_region_does_not_reach_is_moved_one_level_at_a_time():
+    """Three variables of 4 levels and seven of 31 (a region: 4^3 x 31^7 points). With a side of 0.2 the box covers a
+    tenth of the axis to each side: less than half the way to a coarse variable's next level, more than that for a fine
+    one. The perturbations move the fine variables inside the box and a coarse one by a level now and then (about one of
+    the three per candidate); each coarse variable's one-step moves come first, the rest at the centre. (Redrawing every
+    variable among its levels, as the first version did, left no candidate at the centre's coarse levels: on the
+    benchmark's 10-variable Ackley problem the candidates then held no point better than the centre.)"""
+    spec = spec_of([integer(f"C{i}", 0, 3) for i in range(3)] + [stepped(f"F{i}", 0, 3, 0.1) for i in range(7)], ["f"],
+                   objective={"direction": "minimize", "expression": "f"})
+    coords = Coords(spec)
+    centre = np.array([1, 2, 1] + [15] * 7)
+    found = candidates.local(coords, centre, 0.2, np.ones(10), set(), np.random.default_rng(0))
+    assert len(found) > 1000
+    steps, perturbed = found[:6], found[6:]
+    assert (np.abs(steps - centre).sum(axis=1) == 1).all() and (steps[:, 3:] == centre[3:]).all()
+    assert np.abs(perturbed[:, :3] - centre[:3]).max() == 1 and np.abs(perturbed[:, 3:] - centre[3:]).max() <= 3
+    kept = (perturbed[:, :3] == centre[:3]).all(axis=1).mean()
+    assert 0.2 < kept < 0.4, kept                                                      # (1 - 1/3)^3 = 0.30
+    assert 0.8 < (perturbed[:, :3] != centre[:3]).sum(axis=1).mean() < 1.2             # about one coarse move per candidate
+
+
+def test_a_region_smaller_than_the_grid_searches_at_the_grid_s_resolution():
+    """Ten variables of 31 levels, a side of 0.01 (the grid step is 0.033): no variable is reached, so a candidate moves
+    about one of them by one level -- never more than a level, never all of them."""
+    spec = spec_of([stepped(f"F{i}", 0, 3, 0.1) for i in range(10)], ["f"], objective={"direction": "minimize", "expression": "f"})
+    coords = Coords(spec)
+    centre = np.full(10, 15)
+    found = candidates.local(coords, centre, 0.01, np.ones(10), {centre.tobytes()}, np.random.default_rng(0))
+    moves = np.abs(found - centre)
+    assert moves.max() == 1 and len(found) > 200                 # 1500 draws, few distinct: one or two moves each
+    assert (moves.sum(axis=1) == 1).sum() == 20                  # every one-step move, each once
+    assert np.median(moves.sum(axis=1)) <= 3 and moves.sum(axis=1).max() <= 6      # the distinct ones: a few variables each
+    edge = candidates.local(coords, np.zeros(10, dtype=int), 0.01, np.ones(10), set(), np.random.default_rng(0))
+    assert edge.min() == 0 and edge.max() == 1                                         # at the lower end a move goes up

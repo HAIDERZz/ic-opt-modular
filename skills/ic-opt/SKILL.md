@@ -35,7 +35,7 @@ ic-opt run optimize PROJECT budget=60 batch=10 strategy=openbox_gp_eic|turbo|met
 # design; the surrogate proposes everything after them, the rest of a straddling batch included -- `--plan` prints "the
 # surrogate proposes K of the N new points" and warns when K is 0; origins end in :init / :acq
 # metric_gp (new, not the default): one model per metric, the spec's formulas on their samples, no penalty; design
-# initial_trials (default min(max(2 x variables, 8), 20)); refuses EM devices and more than one corner -- run corners='["tt"]'
+# initial_trials (default min(max(2 x variables, 8), 20, budget // 2)); refuses EM devices and more than one corner -- run corners='["tt"]'
 ic-opt run fix_run  PROJECT points=points.json [waveforms=waveforms.json] [corners='["tt","ss"]']
 ic-opt run coarse_to_fine PROJECT coarse_budget=40 fine_budget=40 [current=false] [start=start.json]   # both for the coarse step
 ic-opt run signoff  PROJECT corner=tt budget=60 top=5 [current=false] [start=start.json]               # both for the search step

@@ -160,8 +160,8 @@ def optimize(
         if done >= budget:
             break
         points = suggest(
-            spec, mine, min(batch, budget - done), strategy=strategy, seed=seed, initial=initial,
-            start=[p.params for p in starts], **strategy_kwargs,
+            spec, _at_corners(spec, mine, corners) if strategy == "metric_gp" else mine, min(batch, budget - done),
+            strategy=strategy, seed=seed, initial=initial, start=[p.params for p in starts], **strategy_kwargs,
         )
         if not points:
             break
@@ -170,6 +170,14 @@ def optimize(
             step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
         )
     return Observations(o for o in store.observations() if o.spec_fingerprint in same_problem and o.step == step)
+
+
+def _at_corners(spec: Spec, rows: Observations, corners: str | list[str]) -> Observations:
+    """The rows evaluated at exactly this run's corners. ``metric_gp`` models one condition (T17 stage 1): a store that
+    also holds the same problem at other corners -- the signoff recipe re-checks its best points at all of them -- would
+    put metrics aggregated over different conditions into one model. A row without children (an adopted one) stays."""
+    wanted = set(spec.corner_ids if corners == "all" else corners)
+    return Observations(o for o in rows if not o.children or {c.corner for c in o.children.values()} == wanted)
 
 
 _SI = {"T": 12, "G": 9, "M": 6, "K": 3, "k": 3, "": 0, "m": -3, "u": -6, "n": -9, "p": -12, "f": -15, "a": -18}
@@ -269,7 +277,8 @@ def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict, budget: in
     """The initial design of a strategy whose design ic-opt serves: (its size, the successful points the model needs
     before it completes a batch). OpenBox: ``initial_trials`` when given, else min(2 x variables, budget // 2), at least
     one (``suggesters.openbox.initial_design_size``), and the surrogate minimum; metric_gp: ``initial_trials``, else
-    min(max(2 x active variables, 8), 20), and none (its models always complete the batch). None for the others."""
+    min(max(2 x active variables, 8), 20, budget // 2), and none (its models always complete the batch). None for the
+    others."""
     if strategy.startswith("openbox"):
         from ic_opt.suggesters.openbox import initial_design_size
 
@@ -277,7 +286,7 @@ def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict, budget: in
     if strategy == "metric_gp":
         from ic_opt.suggesters import metric_gp
 
-        return metric_gp.initial_design_size(spec, strategy_kwargs.get("initial_trials")), 0
+        return metric_gp.initial_design_size(spec, strategy_kwargs.get("initial_trials"), budget), 0
     return None
 
 

@@ -61,7 +61,7 @@ class Composer:
 
     def violation(self, arrays: dict[str, np.ndarray], scales: dict[str, float]) -> np.ndarray:
         """``sum_i max(0, residual_i) / scale_i``; nan where a residual is nan."""
-        return (np.maximum(self.residuals(arrays), 0.0) / self._scale_vector(scales)).sum(axis=-1)
+        return (np.maximum(self.residuals(arrays), 0.0) / self.scale_vector(scales)).sum(axis=-1)
 
     def objective(self, arrays: dict[str, np.ndarray], scales: dict[str, float]) -> np.ndarray:
         """The objective in minimization form (negated for maximize). Without an objective, the negative of the smallest
@@ -69,12 +69,12 @@ class Composer:
         if self.spec.objective is not None:
             value = evaluate_expression_array(self.spec.objective.expression, arrays)
             return -value if self.spec.objective.direction == "maximize" else value
-        margins = -self.residuals(arrays) / self._scale_vector(scales)
+        margins = -self.residuals(arrays) / self.scale_vector(scales)
         if margins.shape[-1] == 0:
             return np.zeros(margins.shape[:-1])
         return -margins.min(axis=-1)
 
-    def _scale_vector(self, scales: dict[str, float]) -> np.ndarray:
+    def scale_vector(self, scales: dict[str, float]) -> np.ndarray:
         return np.array([scales[m] for m, _upper, _t in self.constraints], dtype=float)
 
 

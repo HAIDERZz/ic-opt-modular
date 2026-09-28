@@ -36,36 +36,58 @@ def whole_grid(coords: Coords, excluded: set[bytes]) -> np.ndarray:
 
 def local(coords: Coords, centre: np.ndarray, length: float, weights: np.ndarray, excluded: set[bytes],
           rng: np.random.Generator) -> np.ndarray:
-    """Up to :data:`LOCAL` points inside the region: per variable the levels within ``centre +- length * w / 2`` (unit
-    coordinates), always the centre's level and its two neighbours. All of them when their product is at most
-    :data:`LOCAL`, else :data:`LOCAL` perturbations of the centre, each changing every variable with probability
-    ``min(1, 20 / d)`` (at least one) to another of its allowed levels."""
+    """Up to :data:`LOCAL` points around the centre. Per variable the region holds the levels within
+    ``centre +- length * w / 2`` (unit coordinates) and always the centre's level and its two neighbours; when the
+    product of their numbers is at most :data:`LOCAL` the candidates are all of those combinations.
+
+    Otherwise they are perturbations of the centre, and what a perturbation does to a variable depends on whether the
+    region's box reaches beyond the variable's own level:
+
+    - it does (the box covers part of a neighbouring level's stretch of the axis): the variable is redrawn with
+      probability ``min(1, 20 / d)`` uniformly inside the box and snapped to its nearest level, so a level is drawn as
+      often as the box covers it;
+    - it does not (a coarse variable -- a multiplier with four levels -- or every variable once the region is smaller
+      than the grid): the variable stays, except that with probability ``min(1/2, 1 / n)`` it moves by one level, ``n``
+      the number of such variables: about one of them moves per candidate. Their one-step moves alone, the centre
+      otherwise unchanged, come first.
+
+    On a coarse variable a change is a large move: it is offered, not imposed on every candidate. And a region smaller
+    than the grid searches at the grid's resolution, a variable or two at a time."""
     centre_unit = coords.unit(centre[None, :])[0]
+    active = np.flatnonzero(coords.active)
+    halves = length * np.asarray(weights, dtype=float) / 2
     allowed: list[np.ndarray] = []
-    w = iter(weights)
+    reached = np.zeros(len(active), dtype=bool)
+    column = 0
     for i, levels in enumerate(coords.unit_levels):
         if not coords.active[i]:
             allowed.append(np.array([0]))
             continue
-        half = length * next(w) / 2
-        inside = np.flatnonzero(np.abs(levels - centre_unit[i]) <= half)
+        inside = np.flatnonzero(np.abs(levels - centre_unit[i]) <= halves[column])
         near = np.arange(max(centre[i] - 1, 0), min(centre[i] + 2, len(levels)))
         allowed.append(np.union1d(inside, near))
-    sizes = np.array([len(a) for a in allowed], dtype=float)
-    if np.prod(sizes) <= LOCAL:
+        reached[column] = halves[column] > np.abs(levels[near[near != centre[i]]] - centre_unit[i]).min() / 2
+        column += 1
+    if np.prod([float(len(a)) for a in allowed]) <= LOCAL:
         mesh = np.meshgrid(*allowed, indexing="ij")
         return fresh(np.stack([m.ravel() for m in mesh], axis=1), excluded)
-    active = np.flatnonzero(coords.active)
-    rate = min(1.0, PERTURB_VARIABLES / len(active))
-    out = np.repeat(centre[None, :], LOCAL, axis=0)
-    change = rng.random((LOCAL, len(active))) < rate
-    none = ~change.any(axis=1)
-    change[np.flatnonzero(none), rng.integers(len(active), size=int(none.sum()))] = True
-    for column, i in enumerate(active):
-        rows = np.flatnonzero(change[:, column])
-        others = allowed[i][allowed[i] != centre[i]]       # a change moves the variable: never back to the centre's level
-        out[rows, i] = others[rng.integers(len(others), size=len(rows))]
-    return fresh(out, excluded)
+
+    unit = np.repeat(centre_unit[None, :], LOCAL, axis=0)
+    change = rng.random((LOCAL, len(active))) < min(1.0, PERTURB_VARIABLES / len(active))
+    for column in np.flatnonzero(reached):
+        i, rows = active[column], np.flatnonzero(change[:, column])
+        unit[rows, i] = rng.uniform(max(centre_unit[i] - halves[column], 0.0), min(centre_unit[i] + halves[column], 1.0),
+                                    size=len(rows))
+    out = coords.snap(unit)
+    stuck = active[~reached]
+    steps = []
+    for i in stuck:
+        rows = np.flatnonzero(rng.random(LOCAL) < min(0.5, 1.0 / len(stuck)))
+        moved = out[rows, i] + rng.choice([-1, 1], size=len(rows))
+        out[rows, i] = np.where((moved < 0) | (moved >= coords.counts[i]), 2 * out[rows, i] - moved, moved)   # off the end: the other way
+        steps += [centre + move * (np.arange(len(centre)) == i) for move in (-1, 1) if 0 <= centre[i] + move < coords.counts[i]]
+    out[:, ~coords.active] = centre[~coords.active]
+    return fresh(np.vstack([np.array(steps, dtype=np.int64).reshape(-1, len(centre)), out]), excluded)[:LOCAL]
 
 
 def wide(coords: Coords, excluded: set[bytes], rng: np.random.Generator, n: int = WIDE) -> np.ndarray:

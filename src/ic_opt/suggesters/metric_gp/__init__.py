@@ -42,12 +42,14 @@ ANCHOR_SAMPLE = 2000               # Sobol points a new region's anchor is chose
 _WIDE, _LOCAL, _SELECT, _ANCHOR_POINTS, _ANCHOR_SAMPLE, _VALUE, _FIT = range(7)
 
 
-def initial_design_size(spec: Spec, initial_trials: int | None = None) -> int:
+def initial_design_size(spec: Spec, initial_trials: int | None = None, budget: int | None = None) -> int:
     """Observations (start points included) before the models propose: ``initial_trials`` when given, else
-    ``min(max(2 d, 8), 20)`` for ``d`` active variables."""
+    ``min(max(2 d, 8), 20)`` for ``d`` active variables -- and, with the run's ``budget`` known (``opt.optimize`` passes
+    it), at most half of it, so at least half of a small run is the models' (as for the OpenBox strategies, N-30)."""
     if initial_trials:
         return int(initial_trials)
-    return min(max(2 * Coords(spec).d, 8), 20)
+    size = min(max(2 * Coords(spec).d, 8), 20)
+    return size if budget is None else max(1, min(size, int(budget) // 2))
 
 
 def stage_one_refusal(spec: Spec, corners: int) -> str | None:
@@ -103,13 +105,15 @@ class MetricGpSuggester:
     def _model_batch(self, spec: Spec, coords: Coords, rows: list, n: int, excluded: set[bytes],
                      seed: int) -> tuple[np.ndarray, list[str]]:
         k = len(rows)
+        nothing_feasible = not any(o.status == "ok" for o in rows)
         models, value_model = self.fit(spec, coords, rows, seed)
         composer, scales = Composer(spec), metric_scales(spec, rows)
         active = coords.active
         if space.grid_size(spec) <= candidates.MAX_CANDIDATES:
             idx = candidates.whole_grid(coords, excluded)
             picks = select.select_batch(models, value_model, composer, scales, coords.unit(idx)[:, active],
-                                        [None] * min(n, len(idx)), _rng(seed, k, _SELECT))
+                                        [None] * min(n, len(idx)), _rng(seed, k, _SELECT),
+                                        nothing_feasible=nothing_feasible)
             return idx[picks], [f"grid:{k}"] * len(picks)
 
         state = region.replay(spec, rows, coords.d)
@@ -132,7 +136,8 @@ class MetricGpSuggester:
         n_wide = min(round(self.wide_share * slots), slots - len(head))
         preferred = [None] * len(head) + [is_wide] * n_wide + [~is_wide] * (slots - len(head) - n_wide)
         picks = select.select_batch(models, value_model, composer, scales, coords.unit(idx)[:, active], preferred,
-                                    _rng(seed, k, _SELECT), forced=0 if head else None)
+                                    _rng(seed, k, _SELECT), nothing_feasible=nothing_feasible,
+                                    forced=0 if head else None)
         tags = [f"{'wide' if is_wide[j] else 'tr'}:{index}:{k}" for j in picks]
         if head:
             tags[0] = f"anchor:{index}:{k}"
@@ -152,7 +157,8 @@ class MetricGpSuggester:
         if far.any():
             among = np.flatnonzero(far)
             j = among[select.select_batch(models, value_model, composer, scales, unit[among], [None],
-                                          _rng(seed, k, _ANCHOR_SAMPLE))[0]]
+                                          _rng(seed, k, _ANCHOR_SAMPLE),
+                                          nothing_feasible=not any(o.status == "ok" for o in rows))[0]]
         else:
             j = int(np.argmax(distance))
         excluded.update(keys(pool[j : j + 1]))
