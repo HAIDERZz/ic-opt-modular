@@ -97,6 +97,7 @@ ic-opt run my_recipe.py PROJECT --ssh-profile lab  # simulate on a remote host o
 ic-opt blocks | ic-opt describe sim.evaluate       # what a recipe can compose
 ic-opt call points.sobol PROJECT n=12 seed=3       # one block by name
 ic-opt doctor PROJECT                              # tools, license, exports, site envelope, budget
+ic-opt digest PROJECT [--step S] [--top N] [--json]  # what the run found, from its observations; also while it runs
 ic-opt migrate OLD_PROJECT NEW_PROJECT             # 0.1 opt_requirement.md -> spec.yaml (+ MIGRATION.md)
 ic-opt migrate-store PROJECT --dry-run             # a store written by an earlier version: see Results
 ```
@@ -366,7 +367,10 @@ for the instances that report `gm`, with `region`, `ids`, `vgs`, `vds`, `vbs`,
 number -- read after the metrics, it never fails a child; left out when there
 are none, and no strategy reads it), `steps.jsonl`, `decks/`, `sims/<obs>/<tb>/<corner>/`,
 `reports/report.md` + `report.html` (best observed, top feasible, constraint
-margins, parameter importance, corners, space-compression advisory; four figures).
+margins, parameter importance, corners, where the best points are; four figures),
+`reports/digest.md` + `digest.json` (`ic-opt digest`: what is optimized, how far the
+run is, which constraints bind, where the good points are and where points gave no
+value, the strategy's state -- every number computed from the observations).
 
 ### Stores written by an earlier version
 

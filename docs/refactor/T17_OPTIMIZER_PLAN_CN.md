@@ -369,3 +369,16 @@ D11 前三条，新策略对照修好喂数的 OpenBox（括号里是对照 TuRB
 - spec 指纹不变（新字段为默认值时不进 dump，且与线程数一样不属于"问题"）；Spectre 流水线指纹不变，所以本任务之前的观测照常复用，工作点为空。
 - 60 个管子、3 个子任务的一行记录约 61 KB（没有工作点时约 1 KB）；读一行约 0.2 ms。
 - 还需要真机核对一次（规格第 7.3 节）：补了语句的网表 Spectre 是否接受，`pv` 与 `OP` 哪个取到数，`outputs()` 给出的实例名是什么形式。
+
+### 第 1.5 步之一（T17.3，2026-09-28）：运行摘要与报告的范围一节
+
+做了什么（规格 `T17_1_5_SPEC.md` 第 5 节）：
+
+- `ic_opt.digest`：`digest(spec, observations, advice=(), top=5, step=None)` 从观测算出规格第 5.2 节的十项，`markdown(d)` 写成表格；纯计算，不读文件、不调仿真器，基准可以直接调用。模块只导入 numpy、scipy 和 ic-opt 的核心部分；只有观测里出现 `metric_gp` 时，为了取搜索范围的状态才导入该策略（它依赖 scikit-learn，已是声明的依赖）。
+- `analyze.digest` 块与 `ic-opt digest PROJECT [--step S] [--top N] [--json]`：写 `reports/digest.md` 与 `digest.json`（先写临时文件再改名），打印其一；不取锁，运行中也能读；不需要 site.yaml。
+- 报告的 "Space compression advisory" 换成 "Where the best points are"（最好的 5 个可行点在每个变量上的跨度，两边各放宽一档，不超出 spec 的范围；点落在 spec 边界时标出）；`analyze.py` 不再引用 OpenBox，有测试在 OpenBox 不可导入时生成报告。单位与 SI 前缀的格式函数从 `analyze.py` 移到 `digest.py`，报告从那里导入：导入 `ic_opt.blocks` 会带进全部块和各策略的库。
+- origin 的建议后缀（规格第 3 节）：`ic_opt.space.split_origin` 把 `...@a2` 拆成（不带后缀的 origin，建议编号），摘要里读 origin 的地方都经过它；T17.4 可直接用。取搜索范围状态前先去掉观测副本的后缀。
+- 规格留给实现的定义（写在模块说明里）：指标的离散程度用四分位距而不用标准差（少数远离其余的点会让标准差大到所有余量都显示为 0）；秩相关用 Spearman（并列取平均秩），少于 10 个有全部指标的点时不给；"最能把算出数与算不出数的点分开的一刀"取 Gini 不纯度下降最大的阈值，每边至少 5 个点；三等分按变量自己的尺度（对数或线性）；批次按 origin 末尾的批次号，没有批次号的点按所在步骤内的顺序每 10 个一批，建议的起点并入紧随其后的那一批。
+- 工作点表按规格第 4 节用 `getattr(child, "operating_points", None)` 读取，T17.5 合入前后都能工作；建议记录按第 2 节读取 `.icopt/advice.jsonl`，没有这个文件时摘要里写"没有建议"。
+
+检查：新测试 `tests/ic_opt/test_digest.py` 覆盖规格第 5.5 节的七组；另在一次开发用电路的基准运行上用评估缓存重建观测（没有新的仿真），生成了前 40 点与全部 200 点的摘要交审查，未入库。

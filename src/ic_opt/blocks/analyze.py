@@ -1,9 +1,12 @@
-"""analyze.best / analyze.report — the sections and figures that survived the report reviews.
+"""analyze.best / analyze.report / analyze.digest — the sections and figures that survived the report reviews, and the
+run digest's files.
 
 Sections: summary (feasible count, best point, binding constraints, worst corner) · best observed · top feasible ·
 constraint margins · parameter importance (SHAP) · corners (policy, best point per corner as a table, failures and
-violations per corner) · space compression advisory. Values carry their metric's unit with an SI prefix (32 GHz,
-111.4 pH), constraints read `BW > 26 GHz`, advisory ranges keep the variable's suffix (N-42 review, 2026-09-27).
+violations per corner) · where the best points are (the digest's suggested ranges: the span of the best feasible points
+one level wider, T17.1.5; it replaced OpenBox's space compressor, so the report needs no OpenBox). Values carry their
+metric's unit with an SI prefix (32 GHz, 111.4 pH), constraints read `BW > 26 GHz`, ranges keep the variable's suffix
+(N-42 review, 2026-09-27); the helpers that print them live in ``ic_opt.digest``, which the digest shares.
 Figures: feasible_convergence · convergence (all points, failures on a status strip) · constraint_margins (normalized
 by the observed metric range) · bottleneck_weighted_score (only when the objective parses as bottleneck + weighted
 sum; no hard-coded fallback). The HTML places each figure under its section with a caption; the Markdown lists them.
@@ -14,21 +17,27 @@ from __future__ import annotations
 import ast
 import base64
 import html
+import json
 import math
+import os
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from ic_opt import digest as digest_module
 from ic_opt import objective as objective_contract
 from ic_opt import space
+from ic_opt.digest import constraint_text as _constraint
+from ic_opt.digest import constraint_value as _constraint_value
+from ic_opt.digest import margin as _margin
+from ic_opt.digest import metrics_per_corner as _metrics_per_corner
+from ic_opt.digest import quantity as _quantity
+from ic_opt.digest import unit_of as _unit
 from ic_opt.observation import Observation, Observations
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 
 STATUS_COLORS = {"ok": "#2f9e44", "constraint_failed": "#e08b2d", "metric_failed": "#d64545"}
-OPS = {"gt": ">", "ge": "≥", "lt": "<", "le": "≤"}
-SI_UNITS = {"Hz", "H", "F", "s", "A", "V", "W", "Ohm", "m"}                 # units that take an SI prefix when printed
-SI_PREFIXES = [(1e12, "T"), (1e9, "G"), (1e6, "M"), (1e3, "k"), (1.0, ""), (1e-3, "m"), (1e-6, "µ"), (1e-9, "n"), (1e-12, "p"), (1e-15, "f")]
 FIGURES = {   # figure -> (the section it illustrates, its caption)
     "feasible_convergence": ("Best observed", "Objective of the feasible observations in evaluation order, and the best so far."),
     "convergence": ("Best observed", "The same objectives, with every observation's status on the strip below."),
@@ -56,7 +65,7 @@ def report(spec: Spec, observations: Sequence[Observation], store: RunStore, *, 
     ]
     if spec.corners:
         sections.append(("Corners", _corners_section(spec, obs)))
-    sections.append(("Space compression advisory", _advisory_section(spec, obs)))
+    sections.append(("Where the best points are", digest_module.ranges_markdown(digest_module.suggested_ranges(spec, obs))))
     sections.append(("Figures", "\n".join(f"![{FIGURES.get(name, ('', name))[1]}]({path.name})" for name, path in figures.items())
                      or "_no figures_"))
 
@@ -70,6 +79,27 @@ def report(spec: Spec, observations: Sequence[Observation], store: RunStore, *, 
     return out / "report.md"
 
 
+def digest(spec: Spec, observations: Sequence[Observation], store: RunStore, *, top: int = 5, step: str | None = None) -> Path:
+    """``reports/digest.json`` and ``reports/digest.md``: what the run found, computed from its observations
+    (``ic_opt.digest``), with the advice rows of ``.icopt/advice.jsonl`` when there is one. Reads the store and takes no
+    lock, so it runs beside a run that holds the project. Each file is replaced whole (written aside, then renamed): a
+    reader never sees half of one. Returns the Markdown file's path."""
+    advice_path = store.root / "advice.jsonl"
+    advice = ([json.loads(line) for line in advice_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+              if advice_path.exists() else [])
+    d = digest_module.digest(spec, observations, advice=advice, top=top, step=step)
+    out = store.reports_dir()
+    _write_atomic(out / "digest.json", json.dumps(d, indent=2, ensure_ascii=False, allow_nan=False) + "\n")
+    _write_atomic(out / "digest.md", digest_module.markdown(d))
+    return out / "digest.md"
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 # -- sections ---------------------------------------------------------------------
 
 def _status_counts(obs: Observations) -> dict[str, int]:
@@ -81,32 +111,6 @@ def _status_counts(obs: Observations) -> dict[str, int]:
 
 def _fmt(value: float | None) -> str:
     return "—" if value is None else f"{value:.6g}"
-
-
-def _unit(spec: Spec, metric: str) -> str:
-    """The unit a metric's value prints with; dimensionless ones (``ratio``, ``1``) print bare."""
-    m = next((m for m in spec.metrics if m.name == metric), None)
-    unit = m.unit if m else ""
-    return "" if unit in ("ratio", "1") else unit
-
-
-def _quantity(value: float | None, unit: str) -> str:
-    """A value for reading: four significant digits and, for a base unit, an SI prefix (32 GHz, 111.4 pH, -6 dBm)."""
-    if value is None or not math.isfinite(value):
-        return "—"
-    if unit in SI_UNITS and value != 0:
-        magnitude = abs(value)
-        for scale, prefix in SI_PREFIXES:
-            if magnitude >= scale:
-                return f"{value / scale:.4g} {prefix}{unit}"
-        return f"{value:.4g} {unit}"
-    return f"{value:.4g}" + (f" {unit}" if unit else "")
-
-
-def _constraint(spec: Spec, constraint) -> str:
-    """``BW > 26 GHz``: the constraint as a reader says it."""
-    limit = float(space.parse_scalar(constraint.value.replace(" ", ""))[0])
-    return f"{constraint.metric} {OPS[constraint.op]} {_quantity(limit, _unit(spec, constraint.metric))}"
 
 
 def _failures_per_corner(spec: Spec, obs: Observations) -> dict[str, int]:
@@ -133,7 +137,7 @@ def _summary_section(spec: Spec, obs: Observations) -> str:
     if spec.constraints:
         binding = []
         for c in spec.constraints:
-            failed = sum(1 for o in obs if (v := _constraint_value(spec, c, o)) is not None and _margin(spec, c, v) < 0)
+            failed = sum(1 for o in obs if (v := _constraint_value(spec, c, o)) is not None and _margin(c, v) < 0)
             if failed:
                 binding.append(f"{_constraint(spec, c)} ({failed} of {n})")
         lines.append("- binding constraints: " + (", ".join(binding) if binding else "none violated"))
@@ -171,38 +175,13 @@ def _top_section(spec: Spec, obs: Observations, k: int = 5) -> str:
     return "\n".join("| " + " | ".join(r) + " |" for r in table)
 
 
-def _margin(spec: Spec, constraint, value: float) -> float:
-    limit = float(space.parse_scalar(constraint.value.replace(" ", ""))[0])
-    return (limit - value) if constraint.op in ("lt", "le") else (value - limit)
-
-
-def _scored_corners(spec: Spec) -> list[str]:
-    """The corners the constraint policy scores: every corner under ``all_corners``, the nominal one otherwise."""
-    corner_ids = [c.id for c in spec.corners] or ["nominal"]
-    if spec.corner_policy.constraints == "all_corners":
-        return corner_ids
-    return ["nominal"] if "nominal" in corner_ids else corner_ids[:1]
-
-
-def _constraint_value(spec: Spec, constraint, o: Observation) -> float | None:
-    """The metric's value the constraint is judged on for this point: its worst over the scored corners (the smallest for a
-    lower bound, the largest for an upper one), as ``sim.corner.aggregate`` judges it. The point's own ``metrics`` hold one
-    corner's values -- the corner with the largest total penalty -- and a constraint another corner violates alone was
-    counted as passed before N-35 (2026-09-27: BW 43/50 in the report, 41/50 by the policy)."""
-    per_corner = _metrics_per_corner(spec, o)
-    values = [m[constraint.metric] for cid in _scored_corners(spec) if (m := per_corner.get(cid)) and constraint.metric in m]
-    if not values:
-        return o.metrics.get(constraint.metric)
-    return min(values) if constraint.op in ("gt", "ge") else max(values)
-
-
 def _margins_section(spec: Spec, obs: Observations) -> str:
     if not spec.constraints:
         return "_no constraints_"
     scope = "every corner" if spec.corner_policy.constraints == "all_corners" else "the nominal corner"
     lines = [f"- margins are judged on {scope} (the worst one per constraint)"] if spec.corners else []
     for c in spec.constraints:
-        rows = [(o, _margin(spec, c, v)) for o in obs if (v := _constraint_value(spec, c, o)) is not None]
+        rows = [(o, _margin(c, v)) for o in obs if (v := _constraint_value(spec, c, o)) is not None]
         if not rows:
             lines.append(f"- {_constraint(spec, c)}: no data")
             continue
@@ -277,61 +256,9 @@ def _corners_section(spec: Spec, obs: Observations) -> str:
             counts = []
             for cid in corner_ids:
                 judged = [_metrics_per_corner(spec, o).get(cid, {}) for o in obs]
-                counts.append(f"{cid} {sum(1 for m in judged if c.metric in m and _margin(spec, c, m[c.metric]) < 0)}/{len(obs)}")
+                counts.append(f"{cid} {sum(1 for m in judged if c.metric in m and _margin(c, m[c.metric]) < 0)}/{len(obs)}")
             lines.append(f"- {_constraint(spec, c)} violated at: " + ", ".join(counts))
     return "\n".join(lines)
-
-
-def _metrics_per_corner(spec: Spec, o: Observation) -> dict[str, dict[str, float]]:
-    """A corner's metrics: every corner-less child's (devices; on a spec without corners, the testbenches too) and then its own
-    testbench children's. A spec without corners has the one corner ``nominal``."""
-    corner_ids = [c.id for c in spec.corners] or ["nominal"]
-    shared = {k: v for ch in o.children.values() if ch.corner is None for k, v in ch.metrics.items()}
-    out = {cid: dict(shared) for cid in corner_ids}
-    for ch in o.children.values():
-        if ch.corner is not None:
-            out.setdefault(ch.corner, dict(shared)).update(ch.metrics)
-    return out
-
-
-def _advisory_section(spec: Spec, obs: Observations) -> str:
-    rows = [o for o in obs if o.status in ("ok", "constraint_failed") and o.fom is not None]
-    if len(rows) < 3:
-        return f"_needs at least 3 scored observations (have {len(rows)})_"
-    try:
-        from openbox import logger as openbox_logger
-        from openbox.compressor import Compressor, create_steps_from_strings
-        from openbox.utils.config_space import (
-            Configuration,
-            ConfigurationSpace,
-            UniformFloatHyperparameter,
-            UniformIntegerHyperparameter,
-        )
-        from openbox.utils.constants import SUCCESS
-        from openbox.utils.history import History
-        from openbox.utils.history import Observation as ObHistoryObservation
-    except ImportError:
-        return "_not available: openbox compressor missing_"
-    openbox_logger.init(level="WARNING", logdir=None)
-    cs = ConfigurationSpace()
-    for v in spec.variables:
-        lo, hi = float(space.parse_scalar(v.lower)[0]), float(space.parse_scalar(v.upper)[0])
-        cs.add_hyperparameter(UniformIntegerHyperparameter(v.name, int(lo), int(hi)) if v.kind == "integer" else UniformFloatHyperparameter(v.name, lo, hi))
-    history = History(task_id="ic_opt_advisory", num_objectives=1, num_constraints=0, config_space=cs)
-    for o in rows:
-        values = {v.name: (int(space.parse_scalar(o.params[v.name])[0]) if v.kind == "integer" else float(space.parse_scalar(o.params[v.name])[0])) for v in spec.variables}
-        history.update_observation(ObHistoryObservation(config=Configuration(cs, values=values), objectives=[o.objective if o.objective is not None else 1e6 + o.constraint_penalty], trial_state=SUCCESS, elapsed_time=0.0))
-    steps = create_steps_from_strings(["d_none", "r_boundary", "p_none"], step_params={"r_boundary": {"top_ratio": 0.3, "sigma": 2.0}})
-    Compressor(config_space=cs, steps=steps).compress_space(space_history=[history], source_similarities={0: 1.0})
-    lines = []
-    for step in steps:
-        for item in (step.get_step_info().get("compression_info") or {}).get("compressed_params", []) or []:
-            orig, comp = item.get("original_range"), item.get("compressed_range")
-            if item.get("name") in {v.name for v in spec.variables} and orig and comp:
-                suffix = space.parse_scalar(next(v.lower for v in spec.variables if v.name == item["name"]))[1]
-                lines.append(f"- {item['name']}: {orig[0]:g}{suffix}..{orig[1]:g}{suffix} → {comp[0]:g}{suffix}..{comp[1]:g}{suffix} "
-                             "(advisory only, not applied)")
-    return "\n".join(lines) or "_compressor produced no narrower ranges_"
 
 
 # -- figures ----------------------------------------------------------------------
@@ -377,7 +304,7 @@ def _figures(spec: Spec, obs: Observations, out: Path) -> dict[str, Path]:
         cols = 2 if n > 1 else 1
         fig, axes = plt.subplots(math.ceil(n / cols), cols, figsize=(5 * cols, 3.2 * math.ceil(n / cols)), squeeze=False)
         for axis, c in zip(axes.flat, spec.constraints, strict=False):
-            rows = [(index[o.obs_id], _margin(spec, c, o.metrics[c.metric])) for o in obs if c.metric in o.metrics]
+            rows = [(index[o.obs_id], _margin(c, o.metrics[c.metric])) for o in obs if c.metric in o.metrics]
             values = [o.metrics[c.metric] for o in obs if c.metric in o.metrics]
             scale_ = (max(values) - min(values)) if values and max(values) > min(values) else (abs(float(space.parse_scalar(c.value.replace(" ", ""))[0])) or 1.0)
             if rows:

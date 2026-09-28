@@ -149,6 +149,17 @@ class Point:
         object.__setattr__(self, "key", point_key(self.params))
 
 
+_ADVICE_SUFFIX = re.compile(r"^(?P<origin>.+)@(?P<advice>[A-Za-z0-9_]+)$")
+
+
+def split_origin(origin: str) -> tuple[str, str | None]:
+    """``"suggest:metric_gp:tr:0:40@a2"`` -> ``("suggest:metric_gp:tr:0:40", "a2")``; an origin without an advice suffix
+    -> ``(origin, None)``. A strategy's point proposed inside an advice's ranges carries the advice's id after ``@``
+    (T17.1.5 specification, section 3); every reader of origins reads them through this."""
+    match = _ADVICE_SUFFIX.match(origin)
+    return (match.group("origin"), match.group("advice")) if match else (origin, None)
+
+
 def points_from_params(spec: Spec, rows: Sequence[dict[str, str]], origin: str = "user") -> list[Point]:
     """Validate user-supplied parameter rows against the spec and wrap them."""
     points = []

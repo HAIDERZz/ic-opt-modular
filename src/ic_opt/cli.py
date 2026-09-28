@@ -8,6 +8,7 @@
     ic-opt migrate OLD_PROJECT NEW_PROJECT
     ic-opt migrate-store PROJECT [--dry-run]       restamp observations with identities free of machine facts
     ic-opt call points.sobol PROJECT n=12 seed=3   call one block by name (JSON-ish key=value args)
+    ic-opt digest PROJECT [--step S] [--top N] [--json]   what the run found; writes reports/digest.md and .json
 """
 
 from __future__ import annotations
@@ -30,6 +31,8 @@ from ic_opt.blocks.doctor import plan_line
 from ic_opt.library import manifest as library_manifest
 from ic_opt.library import query as library_query
 from ic_opt.site import EnvelopeError, SiteError
+from ic_opt.spec import load_spec
+from ic_opt.store import RunStore
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__)
 _RESOURCE_FIELDS = ("parallel_jobs", "threads_per_run", "timeout_s", "threads", "memory_gb")
@@ -181,6 +184,28 @@ def _ssh_executor(ssh_profile: str, directory: Path):
     scratch = PurePosixPath(limits.scratch_root or "~/.ic-opt/scratch") / directory.resolve().name
     timeout = {} if limits.transfer_timeout_s is None else {"transfer_timeout_s": limits.transfer_timeout_s}
     return SshExecutor(ssh_profile, str(scratch), **timeout)
+
+
+@app.command()
+def digest(
+    project: Annotated[Path, typer.Argument(help="project directory containing spec.yaml")],
+    step: Annotated[str | None, typer.Option("--step", help="only this step's observations")] = None,
+    top: Annotated[int, typer.Option("--top", help="how many of the best feasible points the spans describe")] = 5,
+    as_json: Annotated[bool, typer.Option("--json", help="print the JSON instead of the Markdown")] = False,
+) -> None:
+    """What the run found, computed from its observations: print it and write reports/digest.md and digest.json. Reads
+    the store and takes no lock, so it works while a run holds the project; needs no site.yaml, since nothing runs."""
+    try:
+        spec = load_spec(project / "spec.yaml")
+    except ValidationError as exc:
+        typer.echo(f"error: {_spec_problems(project / 'spec.yaml', exc)}", err=True)
+        raise typer.Exit(code=2) from exc
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    store = RunStore(project)
+    path = blocks.digest(spec, store.observations(), store, top=top, step=step)
+    typer.echo((path.with_suffix(".json") if as_json else path).read_text(encoding="utf-8"), nl=False)
 
 
 @app.command()

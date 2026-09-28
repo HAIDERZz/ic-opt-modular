@@ -66,6 +66,8 @@ suggest = block("opt.suggest", "Propose n new points from observations (stateles
 optimize = block("opt.optimize", "Loop suggest ⇄ evaluate until the step holds its budget")(_optimize)
 best = block("analyze.best", "Best feasible observations under the corner policy")(_analyze.best)
 report = block("analyze.report", "report.md + report.html with six sections and four figures")(_analyze.report)
+digest = block("analyze.digest", "reports/digest.md + digest.json: what the run found, computed from its observations")(
+    _analyze.digest)
 lib_load = block("lib.load", "Build or read each stratum's dataset; integrity evidence")(_library.load)
 lib_coverage = block("lib.coverage", "What a stratum covers: rows, ranges, levels, quantities")(_library.coverage)
 lib_query = block("lib.query", "Measured values, or predictions with calibrated bounds and domain verdicts")(_library.query)
@@ -79,7 +81,7 @@ score_model = _analyze.score_model
 store = RunStore
 
 __all__ = [
-    "REGISTRY", "Block", "best", "block", "describe", "doctor", "evaluate", "import_netlists", "lib_coverage", "lib_densify", "lib_load",
+    "REGISTRY", "Block", "best", "block", "describe", "digest", "doctor", "evaluate", "import_netlists", "lib_coverage", "lib_densify", "lib_load",
     "lib_query", "lib_region", "lib_suggest", "load_spec", "optimize",
     "points_fixed", "points_from", "points_grid", "points_one_at_a_time", "points_sobol", "report", "score_model",
     "spectre_pipeline", "store", "suggest", "validate_profile",
