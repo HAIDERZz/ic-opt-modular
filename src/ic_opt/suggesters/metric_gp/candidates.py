@@ -43,9 +43,12 @@ def local(coords: Coords, centre: np.ndarray, length: float, weights: np.ndarray
     Otherwise they are perturbations of the centre, and what a perturbation does to a variable depends on whether the
     region's box reaches beyond the variable's own level:
 
-    - it does (the box covers part of a neighbouring level's stretch of the axis): the variable is redrawn with
-      probability ``min(1, 20 / d)`` uniformly inside the box and snapped to its nearest level, so a level is drawn as
-      often as the box covers it;
+    - it does (the box covers part of a neighbouring level's stretch of the axis): the variable is redrawn, with the
+      candidate's own probability, uniformly inside the box and snapped to its nearest level, so a level is drawn as
+      often as the box covers it. The probability differs from candidate to candidate, log-uniform between one in the
+      number of such variables and ``min(1, 20 / d)``: some candidates change a variable or two, some nearly all (at
+      least one). With one probability for all, every candidate of a problem of up to 20 variables moved all of them
+      at once, and in the first batches hardly any such move is an improvement;
     - it does not (a coarse variable -- a multiplier with four levels -- or every variable once the region is smaller
       than the grid): the variable stays, except that with probability ``min(1/2, 1 / n)`` it moves by one level, ``n``
       the number of such variables: about one of them moves per candidate. Their one-step moves alone, the centre
@@ -73,7 +76,12 @@ def local(coords: Coords, centre: np.ndarray, length: float, weights: np.ndarray
         return fresh(np.stack([m.ravel() for m in mesh], axis=1), excluded)
 
     unit = np.repeat(centre_unit[None, :], LOCAL, axis=0)
-    change = rng.random((LOCAL, len(active))) < min(1.0, PERTURB_VARIABLES / len(active))
+    most = min(1.0, PERTURB_VARIABLES / len(active))
+    rates = np.exp(rng.uniform(np.log(min(1.0 / max(int(reached.sum()), 1), most)), np.log(most), size=LOCAL))
+    change = rng.random((LOCAL, len(active))) < rates[:, None]
+    if reached.any():
+        none = np.flatnonzero(~change[:, reached].any(axis=1))
+        change[none, np.flatnonzero(reached)[rng.integers(int(reached.sum()), size=len(none))]] = True
     for column in np.flatnonzero(reached):
         i, rows = active[column], np.flatnonzero(change[:, column])
         unit[rows, i] = rng.uniform(max(centre_unit[i] - halves[column], 0.0), min(centre_unit[i] + halves[column], 1.0),

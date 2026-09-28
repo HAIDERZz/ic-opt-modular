@@ -130,8 +130,10 @@ is at most 1500 take them all. Else draw 1500 perturbations of the centre; what 
 depends on whether the box reaches beyond the variable's own level (its half-width exceeds half the distance to the
 nearer neighbouring level):
 
-- reached: with probability `min(1, 20 / d)` the variable is redrawn uniformly inside the box and snapped to its
-  nearest level, so a level is drawn as often as the box covers its stretch of the axis;
+- reached: the variable is redrawn, with the candidate's own probability, uniformly inside the box and snapped to
+  its nearest level, so a level is drawn as often as the box covers its stretch of the axis. A candidate's
+  probability is log-uniform between `1 / (number of reached variables)` and `min(1, 20 / d)`: some candidates change
+  a variable or two, some nearly all; at least one reached variable changes;
 - not reached (a coarse variable, or every variable once the region is smaller than the grid): the variable stays,
   except that with probability `min(1/2, 1 / n)` it moves by one level, `n` the number of such variables: about one
   of them moves per candidate. Their one-step moves alone (the centre otherwise unchanged) are candidates too, and
@@ -273,13 +275,15 @@ change is recorded in `T17_OPTIMIZER_PLAN_CN.md` section 7 with the measurement 
 The first version implemented sections 3 to 11 as they then stood. Checked on the eight synthetic problems (20 seeds,
 200 points, batches of 10) against the corrected OpenBox and TuRBO, it was far better where the objective is composed
 of several metrics and where a region gives no value, slower at the start on the 20-variable problem, and found a
-feasible point on the constrained 10-variable Ackley problem in 10% of the runs within 100 points (TuRBO: 95%). Four
-things were changed; the measurements are in `T17_OPTIMIZER_PLAN_CN.md`, section 7.
+feasible point on the constrained 10-variable Ackley problem in 10% of the runs within 100 points (TuRBO: 95%). Five
+things were changed (four at first, the fifth after measuring them); the measurements are in
+`T17_OPTIMIZER_PLAN_CN.md`, section 7.
 
 | what | was | is | why |
 | --- | --- | --- | --- |
 | length-scale prior (4.2) | a normal on `ln(l)` around `m` | the density of `l`: a normal on `ln(l)` around `m - s^2` | the specification was ambiguous; the first reading puts the prior's mode at 13 sides of the unit cube for 10 variables: all but linear models at the start |
 | local candidates (7) | every variable redrawn among its levels, never staying | redrawn in the box and snapped; a variable the box does not reach moves one level at a time | on the Ackley problem (three variables of 4 levels) no candidate kept the centre's coarse levels, and the candidates held no point better than the centre |
+| how many variables a candidate changes (7) | each with probability `min(1, 20 / d)`: all of them up to 20 variables | the probability differs from candidate to candidate, from one variable to `min(1, 20 / d)` of them | in the first batches hardly any move of all variables at once is an improvement; better beyond what the seeds differ on five of the six problems that tell methods apart |
 | phase 1 (8.2) | the smallest objective among the candidates the sample calls feasible | the smallest violation | decision D14, item 3; what a sample calls feasible before anything feasible was seen is mostly uncertainty |
 | batch (8.4) | a slot's sample conditioned on the earlier picks | independent samples | the conditioning narrowed a batch (mean pairwise distance 0.08 against 0.16) and made no difference on the benchmark beyond what the seeds differ |
 

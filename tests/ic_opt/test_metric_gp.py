@@ -519,14 +519,15 @@ def test_candidates_stay_within_the_limits():
     spec = region_spec()
     coords = Coords(spec)
     rng = np.random.default_rng(0)
-    excluded: set[bytes] = set()
     centre = coords.snap(np.full((1, 4), 0.5))[0]
+    excluded = set(keys(centre[None, :]))                          # the centre is an evaluated point
     local = candidates.local(coords, centre, 0.8, np.ones(4), excluded, rng)
     wide = candidates.wide(coords, excluded, rng)
     assert len(local) <= candidates.LOCAL and len(wide) <= candidates.WIDE and len(local) + len(wide) <= candidates.MAX_CANDIDATES
     assert not set(keys(local)) & set(keys(wide)) and len(set(keys(local))) == len(local)
     assert np.all(np.abs(coords.unit(local) - coords.unit(centre[None, :])) <= 0.4 + 0.01 + 1e-12)   # side 0.8, snapped (step 0.02)
-    assert (local != centre).all(axis=1).mean() > 0.9             # four fine variables, a wide box: a candidate moves them all
+    moved = (local != centre).sum(axis=1)                          # four fine variables, a wide box: one to four of them move
+    assert moved.min() >= 1 and all(0.1 < np.mean(moved == k) < 0.5 for k in (1, 2, 3, 4)), np.bincount(moved)
     tiny = candidates.local(coords, centre, 1e-6, np.ones(4), set(), rng)            # the centre's level and its neighbours
     assert len(tiny) == 3**4 and np.abs(tiny - centre).max() == 1
     assert len(candidates.local(coords, centre, 0.8, np.ones(4), set(keys(tiny)), rng)) <= candidates.LOCAL
