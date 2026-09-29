@@ -94,7 +94,7 @@ def test_every_entry_on_a_run_of_known_structure():
     rows = observe(spec, abc_rows(), abc_metrics, op_of=lambda p: OP)
     d = dg.digest(spec, rows)
 
-    assert d["digest_version"] == 2 and d["top"] == 5
+    assert d["digest_version"] == 3 and d["top"] == 5
     p = d["problem"]
     assert [(v["name"], v["levels"], v["scale"]) for v in p["variables"]] == [("A", 10, "linear"), ("B", 11, "linear"),
                                                                              ("C", 100, "log")]
@@ -142,6 +142,8 @@ def test_every_entry_on_a_run_of_known_structure():
     assert split["below"] == {"points": 72, "no_value": 0, "share": 0.0}
     assert split["above"] == {"points": 48, "no_value": 48, "share": 1.0}
     assert f["messages"] == [{"text": "tb/nominal: spectre did not finish", "count": 48}]
+    assert f["by_stage"] == dict.fromkeys(dg.STAGES, 0) | {"spectre": 48, "metric_failed": 0, "constraint_failed": 36,
+                                                            "stopped_early": 0}
 
     ranges = {r["variable"]: r for r in d["suggested_ranges"]["ranges"]}
     assert ranges["A"]["suggested"] == ["4", "8"] and ranges["A"]["reaches_bound"] is None
@@ -472,6 +474,128 @@ def test_the_markdown_of_an_advice_the_region_s_side_and_a_run_without_operating
         "them)._")
     without = dg.markdown(dg.digest(spec, advised_run(spec)))
     assert "## Advice\n\n_no advice given_" in without
+
+
+# -- T17.10: the stall, an advice's result, where points failed ---------------------------------------------------------
+
+
+def stall_run(spec, *, feasible=True):
+    """80 points: an initial design of 20 (A = 2: none feasible), then metric_gp batches of ten at 20 to 70 (A = 5 when
+    ``feasible``). The best improves in the batch at 20 (the first feasible point, C = 50) and at 30 (C = 40), never
+    after; a second search region starts with its anchor, point 60, in the batch at 60."""
+    rows = []
+    for k in range(80):
+        if k < 20:
+            rows.append(({"A": "2", "B": "0", "C": "50"}, "suggest:metric_gp:init"))
+            continue
+        batch = 10 * (k // 10)
+        c = {20: 50, 30: 40, 40: 60, 50: 45, 60: 70, 70: 80}[batch]
+        kind, region = ("anchor" if k == 60 else "tr"), (1 if batch >= 60 else 0)
+        rows.append(({"A": "5" if feasible else "2", "B": "0", "C": str(c)}, f"suggest:metric_gp:{kind}:{region}:{batch}"))
+    return observe(spec, rows, abc_metrics)
+
+
+def test_the_stall_with_and_without_a_feasible_point():
+    spec = spec_abc()
+    d = dg.digest(spec, stall_run(spec))
+    # batches: the design in two tens, then the keyed batches at 20 to 70 -- 8; the best improved in the 3rd and the 4th
+    assert len(d["progress"]["batches"]) == 8
+    assert d["progress"]["stall"] == {"batches_since_improvement": 4, "batches_since_first_feasible": 5, "stalled": True,
+                                      "region_restarts": 1, "last_restart_batch": 7}
+    assert ("- stall: no improvement for 4 batches: **stalled** (3 or more); region restarted at batch 7 (1 restart)"
+            in dg.markdown(d))
+    improving = dg.digest(spec, stall_run(spec)[:40])
+    assert improving["progress"]["stall"] == {"batches_since_improvement": 0, "batches_since_first_feasible": 1,
+                                              "stalled": False, "region_restarts": 0, "last_restart_batch": None}
+    assert "- stall: improving (the last batch improved the best)\n" in dg.markdown(improving)
+    two = dg.digest(spec, stall_run(spec)[:60])["progress"]["stall"]
+    assert (two["batches_since_improvement"], two["stalled"]) == (2, False)
+    none = dg.digest(spec, stall_run(spec, feasible=False))
+    assert none["progress"]["stall"] == {"batches_since_improvement": None, "batches_since_first_feasible": None,
+                                         "stalled": False, "region_restarts": 1, "last_restart_batch": 7}
+    assert ("- stall: not counted before the first feasible point (8 batches so far); region restarted at batch 7 "
+            "(1 restart)") in dg.markdown(none)
+    other = observe(spec, [(p, "suggest:sobol:sobol") for p, _ in abc_rows()[:30]], abc_metrics)
+    assert dg.digest(spec, other)["progress"]["stall"]["region_restarts"] is None       # no origin names metric_gp
+    assert dg.digest(spec, [])["progress"]["stall"] == {"batches_since_improvement": None,
+                                                        "batches_since_first_feasible": None, "stalled": False,
+                                                        "region_restarts": None, "last_restart_batch": None}
+
+
+def verdict_run(spec, before, under, others):
+    """40 points: an initial design of 20 at C = ``before`` (none feasible when ``before`` is None: A = 2), then feasible
+    batches at 20 and 30 whose odd points carry ``@a1`` (C = ``under``) and whose even points are free (C = ``others``);
+    the objective of a feasible point is C + 0.05."""
+    rows = []
+    for k in range(40):
+        if k < 20:
+            rows.append(({"A": "5" if before else "2", "B": "0", "C": str(before or 50)}, "suggest:metric_gp:init"))
+        else:
+            advised = k % 2 == 1
+            rows.append(({"A": "5", "B": "0", "C": str(under if advised else others)},
+                         f"suggest:metric_gp:tr:0:{10 * (k // 10)}" + ("@a1" if advised else "")))
+    return observe(spec, rows, abc_metrics)
+
+
+def test_an_advice_s_verdict_in_the_three_cases():
+    spec = spec_abc()
+    advice = [adopt("a1", 20), revoke("a1", 40)]
+
+    def result(before, under, others):
+        (a1,) = dg.digest(spec, verdict_run(spec, before, under, others), advice=advice)["advice"]
+        return a1
+
+    helped = result(50, 10, 60)            # its points found the better best, and the run's best improved through them
+    assert helped["verdict"] == "helped" and helped["share_kept"] == {"points": 20, "advised": 0.5, "free": 0.5}
+    assert helped["improved_best"] == {"improved": True, "from": pytest.approx(50.05), "to": pytest.approx(10.05),
+                                       "by": pytest.approx(40.0)}
+    neither = result(50, 70, 60)           # worse than the free points, and the run's best stayed that of the design
+    assert neither["verdict"] == "no_help"
+    assert neither["improved_best"] == {"improved": False, "from": pytest.approx(50.05), "to": pytest.approx(50.05),
+                                        "by": None}
+    assert result(50, 70, 10)["verdict"] == "mixed"       # the run's best improved, through the free points
+    assert result(50, 55, 60)["verdict"] == "mixed"       # its points did better than the free ones; the best did not move
+    # nothing feasible before the period: the first feasible point is an improvement without a size
+    first = result(None, 10, 60)
+    assert first["verdict"] == "helped"
+    assert first["improved_best"] == {"improved": True, "from": None, "to": pytest.approx(10.05), "by": None}
+    rows = verdict_run(spec, 50, 10, 60)
+    (fresh,) = dg.digest(spec, rows[:20], advice=[adopt("a1", 20)])["advice"]      # adopted, nothing proposed since
+    assert fresh["verdict"] is None and fresh["share_kept"] is None and not fresh["improved_best"]["improved"]
+    infeasible = [o.model_copy(update={"feasible": False, "objective": None, "status": "constraint_failed"}) for o in rows]
+    (nothing,) = dg.digest(spec, infeasible, advice=advice)["advice"]
+    assert nothing["verdict"] == "no_help" and nothing["improved_best"] == {"improved": False, "from": None, "to": None,
+                                                                             "by": None}
+    md = dg.markdown(dg.digest(spec, verdict_run(spec, 50, 10, 60), advice=advice))
+    table = md.split("## Advice\n\n")[1].split("\n## ")[0]
+    assert "| its start points | verdict |" in table
+    assert "| — | helped: best 50.05 → 10.05, 50% from the advice |" in table
+    assert "| — | no_help: best not improved, 50% from the advice |" in dg.markdown(
+        dg.digest(spec, verdict_run(spec, 50, 70, 60), advice=advice))
+    assert "| — (no point in its period yet) |" in dg.markdown(dg.digest(spec, rows[:20], advice=[adopt("a1", 20)]))
+
+
+def test_where_points_failed_by_stage():
+    spec = spec_abc()
+    base = observe(spec, abc_rows()[:10], abc_metrics)
+    statuses = ["ok", "failed:spectre", "failed:spectre", "failed:ocean", "failed:extract", "metric_failed",
+                "constraint_failed", "constraint_failed", "ok", "metric_failed"]
+    ran = {"tb/nominal": ChildResult(unit="tb", status="ok", metrics={"m1": 5.0, "m2": 1.0, "spare": 1.0})}
+    rows = [o.model_copy(update={"status": s, "children": ran}) for o, s in zip(base, statuses, strict=True)]
+    rows[7] = rows[7].model_copy(update={"not_run": ["tb/ss"]})            # stopped early, at a constraint
+    # a point whose status names no stage while a child's does (the aggregation never writes it so): the child's stage
+    rows[9] = rows[9].model_copy(update={"children": {"tb/nominal": ChildResult(unit="tb", status="failed:render")}})
+    by_stage = dg.digest(spec, rows)["failures"]["by_stage"]
+    assert list(by_stage) == [*dg.STAGES, "extract", "metric_failed", "constraint_failed", "stopped_early"]
+    assert by_stage == {"render": 1, "spectre": 2, "ocean": 1, "pcell": 0, "emx": 0, "bind_nport": 0, "measure": 0,
+                        "extract": 1, "metric_failed": 1, "constraint_failed": 2, "stopped_early": 1}
+    failures = dg.markdown(dg.digest(spec, rows)).split("## What failed and where\n\n")[1].split("\n## ")[0]
+    assert failures.rstrip().endswith(
+        "- where points failed, by stage (else the status they ended with): render 1, spectre 2, ocean 1, extract 1, "
+        "metric_failed 1, constraint_failed 2; stopped early 1 (counted there too)")
+    ok = dg.digest(spec, [o for o in rows if o.status == "ok"])
+    assert set(ok["failures"]["by_stage"].values()) == {0}
+    assert "- where points failed, by stage (else the status they ended with): none" in dg.markdown(ok)
 
 
 # -- 5. the order of the observations -----------------------------------------------------------------------------------
