@@ -222,7 +222,10 @@ threads_per_run` must fit the host's site.yaml entry), `license_check`
 `operating_points` (default true: every transistor's operating point is kept per
 child; ic-opt adds the `info what=oppoint where=rawfile` statement -- and a DC
 analysis when the export has none -- to the rendered netlist; `false` only when
-the user does not want the netlist touched; not in the fingerprint).
+the user does not want the netlist touched; not in the fingerprint),
+`stop_at_first_failure` (default true: a point stops at its first simulation that
+shows it cannot be feasible; `false` runs every simulation of every point, for a
+characterization run; not in the fingerprint).
 
 ### `budget`
 `max_simulations`: the ceiling on simulations the project may hold. Size it

@@ -116,10 +116,13 @@ def test_the_issues_of_a_child_that_succeeded_reach_the_point_as_warnings():
 
 
 def test_child_failure_marks_observation_and_keeps_going(tmp_path):
+    """With every child simulated (T17.8's stop at the first failure turned off; test_schedule.py has it on) a failed child
+    fails the point and the other children still run."""
     spec = make_spec(**three_by_three())
     store = RunStore(tmp_path)
     ex = FakeSpectreExecutor(store.root / "sims", metrics_by_corner, fail_spectre=lambda tb, c: (tb, c) == ("cg", "ss"))
-    obs = evaluate(spec, [Point({"F": "20", "W": "0.6u"}, "user")], ex, store, deck=deck_for(spec), limits=FAKE_HOST)[0]
+    obs = evaluate(spec, [Point({"F": "20", "W": "0.6u"}, "user")], ex, store, deck=deck_for(spec), limits=FAKE_HOST,
+                   stop_at_first_failure=False)[0]
 
     assert obs.status == "failed:spectre" and not obs.feasible and obs.objective is None
     assert obs.children["cg/ss"].status == "failed:spectre" and obs.children["cg/ff"].status == "ok"

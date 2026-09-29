@@ -447,7 +447,7 @@ def test_optimize_without_a_strategy_over_two_corners_runs_openbox_and_is_not_re
                                    "this run covers 2 corners)")
     assert "[optimize] openbox initial design" in out
     assert len(obs) == 4 and all(o.origin.startswith("suggest:openbox_gp_eic:") for o in obs)
-    assert all(set(o.children) == {"tb/tt", "tb/ss"} for o in obs)
+    assert all(o.corners() == {"tt", "ss"} for o in obs)       # this deck fails every child: each point stops at tt (T17.8)
     # the same rows handed to a circuit at one condition as initial=: metric_gp would refuse them, auto does not pick it
     single, store, ex, deck = project(tmp_path / "one")
     more = optimize(single, ex, store, deck=deck, budget=2, batch=2, seed=1, initial=obs, current=False, limits=FAKE_HOST)

@@ -119,13 +119,18 @@ def _fmt(value: float | None) -> str:
 
 
 def _failures_per_corner(spec: Spec, obs: Observations) -> dict[str, int]:
-    """How many observations fail at each corner: a failed child there, or the corner's metrics failing the spec."""
+    """How many observations fail at each corner: a failed child there, or the corner's metrics failing the spec. A point
+    the schedule stopped early (T17.8, ``not_run``) is judged on what ran: a failed child there, or a constraint it
+    violates among those whose metrics it has (``objective.evaluate_partial``). It counts where it stopped, never at a
+    corner for the metrics it did not get."""
     corner_ids = [c.id for c in spec.corners] or ["nominal"]
     failures = {cid: 0 for cid in corner_ids}
     for o in obs:
         for corner, metrics in _metrics_per_corner(spec, o).items():
             children = [ch for ch in o.children.values() if ch.corner is None or ch.corner == corner]
-            if any(ch.status != "ok" for ch in children) or objective_contract.evaluate(spec, metrics).status != "ok":
+            judged = (objective_contract.evaluate_partial(spec, metrics).status == "constraint_failed" if o.not_run
+                      else objective_contract.evaluate(spec, metrics).status != "ok")
+            if any(ch.status != "ok" for ch in children) or judged:
                 failures[corner] = failures.get(corner, 0) + 1
     return failures
 

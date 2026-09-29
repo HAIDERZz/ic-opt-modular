@@ -16,15 +16,28 @@ the point's issues after its own, whatever its status.
 
 The nominal corner is the one with id ``nominal`` if present, else the first
 evaluated corner in spec order (a run may cover only a subset of the corners).
+
+An incomplete set (T17.8): the engine's schedule stops a point at the first child whose result shows the point cannot be
+feasible (``ic_opt.eval.schedule``), and the children after it never run. Given ``wanted``, the keys of every child the
+point was to run, :func:`aggregate` judges what ran and guesses nothing about the rest: a child that did not run to its
+end fails the point at its stage, as above; a child that lost a metric makes it ``metric_failed``, as above; else the
+point is ``constraint_failed`` at a corner in the constraint scope whose present metrics violate a constraint
+(``objective.evaluate_partial``: the constraints whose metric is there, and only those), with no ``fom`` and no
+objective. It is never feasible, and its issues carry, after the failure's own lines, ``NOT_SIMULATED``: how many
+children were not simulated and after which one the point stopped. That line is for the reader; the engine names the
+children not run in the observation's ``not_run``, which is what code reads.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from ic_opt import objective as objective_contract
 from ic_opt.observation import ChildResult
 from ic_opt.spec import Spec
+
+NOT_SIMULATED = "not simulated: {not_run} of {wanted} children (stopped after {child})"
 
 
 @dataclass
@@ -40,7 +53,13 @@ class Aggregate:
     issues: list[str] = field(default_factory=list)
 
 
-def aggregate(spec: Spec, children: dict[str, ChildResult]) -> Aggregate:
+def aggregate(spec: Spec, children: dict[str, ChildResult], wanted: list[str] | None = None) -> Aggregate:
+    """The point's verdict from its children. ``wanted``: the keys of every child the point was to run; None, or every
+    one of them present, is the complete set above. With some of them absent, the verdict of an incomplete set (module
+    docstring); a ``ValueError`` when nothing in it fails the point -- the engine stops a point only at a child that does."""
+    not_run = [key for key in wanted or () if key not in children]
+    if not_run:
+        return _incomplete(spec, children, len(not_run), len(wanted))
     failed = [c for c in children.values() if c.status not in ("ok", "metric_failed")]
     warnings = [f"{c.unit}/{c.corner or 'nominal'}: {issue}" for c in children.values() if c.status == "ok" for issue in c.issues]
     if failed:
@@ -51,15 +70,7 @@ def aggregate(spec: Spec, children: dict[str, ChildResult]) -> Aggregate:
         )
     partial = [f"{c.unit}/{c.corner or 'nominal'}: {issue}" for c in children.values() if c.status == "metric_failed" for issue in c.issues]
 
-    cornered = [c for c in children.values() if c.corner is not None]
-    shared = {k: v for c in children.values() if c.corner is None for k, v in c.metrics.items()}   # corner-less children (EM devices)
-    present = {c.corner for c in cornered} or {"nominal"}                   # a run may cover a subset of the corners
-    corner_ids = [cid for cid in ([c.id for c in spec.corners] or ["nominal"]) if cid in present]
-    nominal = "nominal" if "nominal" in corner_ids else corner_ids[0]
-    per_corner: dict[str, dict[str, float]] = {cid: dict(shared) for cid in corner_ids}
-    for child in cornered:
-        per_corner[child.corner].update(child.metrics)
-
+    per_corner, corner_ids, nominal = _per_corner(spec, children)
     evaluations = {cid: objective_contract.evaluate(spec, metrics) for cid, metrics in per_corner.items()}
     objectives = {cid: ev.objective for cid, ev in evaluations.items()}
     issues = partial + [f"{cid}: {issue}" for cid, ev in evaluations.items() for issue in ev.issues] + warnings
@@ -88,3 +99,62 @@ def aggregate(spec: Spec, children: dict[str, ChildResult]) -> Aggregate:
         status="ok", metrics=per_corner[selected], fom=ev.fom, objective=ev.objective, feasible=True,
         selected_corner=selected, corner_objectives=objectives, issues=warnings,
     )
+
+
+def _per_corner(spec: Spec, children: dict[str, ChildResult]) -> tuple[dict[str, dict[str, float]], list[str], str]:
+    """Each corner's metrics (its testbench children's and every corner-less child's: EM devices), the corners present in
+    spec order, and the nominal corner among them."""
+    cornered = [c for c in children.values() if c.corner is not None]
+    shared = {k: v for c in children.values() if c.corner is None for k, v in c.metrics.items()}   # corner-less children (EM devices)
+    present = {c.corner for c in cornered} or {"nominal"}                   # a run may cover a subset of the corners
+    corner_ids = [cid for cid in ([c.id for c in spec.corners] or ["nominal"]) if cid in present]
+    nominal = "nominal" if "nominal" in corner_ids else corner_ids[0]
+    per_corner: dict[str, dict[str, float]] = {cid: dict(shared) for cid in corner_ids}
+    for child in cornered:
+        per_corner[child.corner].update(child.metrics)
+    return per_corner, corner_ids, nominal
+
+
+def _incomplete(spec: Spec, children: dict[str, ChildResult], not_run: int, wanted: int) -> Aggregate:
+    """The verdict of a point whose children after the ``stopper`` never ran, the three cases of the module docstring in
+    order. The stopper is the child that shows the failure: the one that did not run to its end, the one that lost a
+    metric, or the one whose own metrics violate a constraint at the selected corner."""
+    warnings = [f"{_key(c)}: {issue}" for c in children.values() if c.status == "ok" for issue in c.issues]
+
+    def stopped(stopper: ChildResult | None, fallback: str = "") -> str:
+        return NOT_SIMULATED.format(not_run=not_run, wanted=wanted, child=_key(stopper) if stopper else fallback)
+
+    failed = [c for c in children.values() if c.status not in ("ok", "metric_failed")]
+    if failed:
+        own = [f"{_key(c)}: {issue}" for c in failed for issue in c.issues]
+        return Aggregate(status=failed[0].status, issues=[*own, stopped(failed[0]), *warnings])
+
+    per_corner, corner_ids, nominal = _per_corner(spec, children)
+    complete = {cid: objective_contract.evaluate(spec, metrics).objective for cid, metrics in per_corner.items()
+                if all(math.isfinite(metrics.get(m.name, math.nan)) for m in spec.metrics)}
+    lost = [c for c in children.values() if c.status == "metric_failed"]
+    if lost:
+        own = [f"{_key(c)}: {issue}" for c in lost for issue in c.issues]
+        return Aggregate(status="metric_failed", metrics=dict(per_corner[nominal]), corner_objectives=complete,
+                         issues=[*own, stopped(lost[0]), *warnings])
+
+    evaluations = {cid: objective_contract.evaluate_partial(spec, metrics) for cid, metrics in per_corner.items()}
+    scope = [nominal] if spec.corner_policy.constraints == "nominal" else corner_ids
+    violating = [cid for cid in scope if evaluations[cid].status == "constraint_failed"]
+    if not violating:
+        raise ValueError(f"{len(children)} of {wanted} children ran and none of them fails the point; the engine stops a "
+                         "point only at a child that shows it cannot be feasible")
+    selected = max(violating, key=lambda cid: evaluations[cid].constraint_penalty)
+    ev = evaluations[selected]
+    stopper = next((c for c in children.values() if c.corner in (None, selected)
+                    and objective_contract.evaluate_partial(spec, c.metrics).status == "constraint_failed"), None)
+    own = [f"{cid}: {issue}" for cid, e in evaluations.items() for issue in e.issues]
+    return Aggregate(
+        status="constraint_failed", metrics=dict(per_corner[selected]), fom=None, objective=None, feasible=False,
+        constraint_penalty=ev.constraint_penalty, selected_corner=selected, corner_objectives=complete,
+        issues=[*own, stopped(stopper, selected), *warnings],
+    )
+
+
+def _key(child: ChildResult) -> str:
+    return f"{child.unit}/{child.corner or 'nominal'}"

@@ -211,7 +211,7 @@ def optimize(
                 break
             evaluate(
                 spec, points, executor, store, deck=deck, pipeline=pipeline, corners=corners, waveforms=waveforms,
-                step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
+                step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits, initial=adopted,   # the schedule learns from them too
             )
     return Observations(o for o in store.observations() if o.spec_fingerprint in same_problem and o.step == step)
 
@@ -236,11 +236,12 @@ def _announce(advice: Sequence[dict], k: int, strategy: str, announced: set[str]
 
 
 def _at_corners(spec: Spec, rows: Observations, corners: str | list[str]) -> Observations:
-    """The rows evaluated at exactly this run's corners. ``metric_gp`` models one condition (T17 stage 1): a store that
-    also holds the same problem at other corners -- the signoff recipe re-checks its best points at all of them -- would
-    put metrics aggregated over different conditions into one model. A row without children (an adopted one) stays."""
-    wanted = set(spec.corner_ids if corners == "all" else corners)
-    return Observations(o for o in rows if not o.children or {c.corner for c in o.children.values()} == wanted)
+    """The rows evaluated at exactly this run's corners (``Observation.corners``: a re-check stopped at its first corner
+    is still a row of all of them, T17.8). ``metric_gp`` models one condition (T17 stage 1): a store that also holds the
+    same problem at other corners -- the signoff recipe re-checks its best points at all of them -- would put metrics
+    aggregated over different conditions into one model. A row without children (an adopted one) stays."""
+    wanted = {c or "nominal" for c in (spec.corner_ids if corners == "all" else corners)}
+    return Observations(o for o in rows if not o.corners() or o.corners() == wanted)
 
 
 def history_size(spec: Spec, rows: Sequence[Observation], corners: str | list[str] | None = None) -> int:
@@ -256,8 +257,8 @@ def history_size(spec: Spec, rows: Sequence[Observation], corners: str | list[st
         return len(_at_corners(spec, mine, corners))
     held: dict[tuple[str, ...], int] = {}
     for o in mine:
-        if o.children:
-            key = tuple(sorted(c.corner or "nominal" for c in o.children.values()))
+        if corners_of := o.corners():                          # a point stopped early counts at every corner it was to run at
+            key = tuple(sorted(corners_of))
             held[key] = held.get(key, 0) + 1
     if len(held) > 1:
         raise ValueError("this problem's observations were evaluated at several sets of corners ("

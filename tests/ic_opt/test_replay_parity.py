@@ -67,7 +67,8 @@ def test_engine_matches_recorded_run(tmp_path, recorded):
     ) + "\ntran tran stop=1n\n"
     deck = Deck(templates={(tb, c): template for tb in spec.testbench_ids for c in spec.corner_ids})
     points = [Point(row["parameters"], "replay") for row in rows]
-    observations = evaluate(spec, points, executor, store, deck=deck, parallel_jobs=8, limits=host_for(spec, 8))
+    observations = evaluate(spec, points, executor, store, deck=deck, parallel_jobs=8, limits=host_for(spec, 8),
+                            stop_at_first_failure=False)     # 0.1.10 simulated every child: compare whole verdicts (T17.8)
 
     mismatches = []
     for row, obs in zip(rows, observations, strict=True):

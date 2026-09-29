@@ -63,6 +63,11 @@ class Composer:
         """``sum_i max(0, residual_i) / scale_i``; nan where a residual is nan."""
         return (np.maximum(self.residuals(arrays), 0.0) / self.scale_vector(scales)).sum(axis=-1)
 
+    def known_violation(self, arrays: dict[str, np.ndarray], scales: dict[str, float]) -> np.ndarray:
+        """:meth:`violation` over the residuals that are known: a nan one -- the metric of a child a point stopped early
+        never ran (T17.8) -- counts as 0, so the result is never nan. Equal to :meth:`violation` where nothing is nan."""
+        return np.nansum(np.maximum(self.residuals(arrays), 0.0) / self.scale_vector(scales), axis=-1)
+
     def objective(self, arrays: dict[str, np.ndarray], scales: dict[str, float]) -> np.ndarray:
         """The objective in minimization form (negated for maximize). Without an objective, the negative of the smallest
         normalized margin ``-residual_i / scale_i``: a feasible point is pushed away from its nearest constraint."""
