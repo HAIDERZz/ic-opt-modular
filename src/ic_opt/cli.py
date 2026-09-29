@@ -264,7 +264,8 @@ def advise(
 ) -> None:
     """Give a run advice as data (no language model is called): start rows to evaluate first, narrower ranges, variables
     to hold. Checked against the spec, recorded in .icopt/advice.jsonl, in effect from the next batch. Not while a run
-    goes: continue the run afterwards (same recipe, larger budget)."""
+    goes: continue the run afterwards (same recipe, larger budget). An advice the check refuses is recorded as refused
+    (never in effect), so that the next digest lists it."""
     from ic_opt import advice as advice_rules
     from ic_opt._lock import LockHeld
     from ic_opt.blocks.optimize import advise as adopt_advice
@@ -291,6 +292,10 @@ def advise(
             if row["event"] == "adopt":
                 typer.echo(f"{row['id']}  since {row['since']}  {states[row['id']]}  by {row['author']}: "
                            f"{advice_rules.describe(row)} -- {row['reason']}")
+            elif row["event"] == advice_rules.REFUSE:
+                author = row["raw"].get("author") if isinstance(row["raw"], dict) else None
+                typer.echo(f"{row['id']}  since {row['since']}  refused"
+                           + (f"  by {author}" if isinstance(author, str) else "") + f": {row['reason']}")
             else:
                 typer.echo(f"{row['id']}  revoked at since {row['since']}: {row['reason']}")
         if not rows:
@@ -301,7 +306,14 @@ def advise(
         if revoke is not None:
             revoke_advice(spec, store, revoke, reason or "", corners=wanted)
         else:
-            adopt_advice(spec, store, yaml.safe_load(file.read_text(encoding="utf-8")), corners=wanted)
+            raw = yaml.safe_load(file.read_text(encoding="utf-8"))
+            try:
+                advice_rules.check(spec, raw)
+            except ValueError as exc:
+                typer.echo(f"error: {exc}", err=True)
+                typer.echo(_record_refusal(spec, store, raw, str(exc), wanted), err=True)
+                raise typer.Exit(code=2) from exc
+            adopt_advice(spec, store, raw, corners=wanted)
     except LockHeld as exc:
         typer.echo(f"error: {exc}; advice is given between runs: stop the run (or let it finish), advise, then "
                    "continue it", err=True)
@@ -309,6 +321,30 @@ def advise(
     except (OSError, ValueError, yaml.YAMLError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
+
+
+def _record_refusal(spec, store, raw: object, message: str, corners: str | list[str] | None) -> str:
+    """Append the row of an advice the check refused to .icopt/advice.jsonl (``ic_opt.advice.refusal``; T17.10
+    specification, 1.5) under the locks an adoption takes, with the ``since`` an adoption would have had; the line that
+    says what was recorded. A store holding this problem at several sets of corners with no ``--corners`` given counts
+    all of this problem's points. While a run holds the project nothing is recorded: advice is given between runs."""
+    from ic_opt import advice as advice_rules
+    from ic_opt._lock import LockHeld, exclusive_lock
+    from ic_opt.blocks.optimize import RUN_LOCK, history_size
+
+    try:
+        with exclusive_lock(store.root / RUN_LOCK, what="project"), store.lock():
+            observations = store.observations()
+            try:
+                since = history_size(spec, observations, corners)
+            except ValueError:
+                same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}
+                since = sum(1 for o in observations if o.spec_fingerprint in same_problem)
+            row = advice_rules.refusal(spec, raw, message, advice_rules.read(store.root), since)
+            advice_rules.append(store.root, row)
+    except LockHeld as exc:
+        return f"[advise] the refusal is not recorded: {exc}"
+    return f"[advise] refused; recorded as {row['id']} (since {since}): the next digest lists it"
 
 
 def _render(result: object) -> str:

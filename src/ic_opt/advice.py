@@ -12,7 +12,14 @@ four fifths of a batch, and those points carry ``@<id>`` in their origin (``spac
 looking over the spec's whole range (D7b): an advice changes where part of a batch looks, never what the spec allows.
 The spec's ranges are the user's; an advice that reaches outside them is refused, not clipped.
 
-Nothing here reads the store's observations or takes a lock: ``blocks.optimize.advise`` does, and computes ``since``.
+A refused advice is recorded too (T17.10 specification, 1.5), so that whoever reads the next digest sees it: ``ic-opt
+advise`` appends a row whose ``event`` is ``refuse`` (:func:`refusal`) -- ``status: "refused"``, the refusal's message
+as ``reason``, the file's content as given as ``raw``. It is never in effect, takes no adopted advice's number, and
+every reader of adopted advice passes over it; :func:`of_problem` keeps it with this problem's rows for the digest and
+``--list``.
+
+Nothing here reads the store's observations or takes a lock: ``blocks.optimize.advise`` does, and computes ``since``
+(for a refused advice, the ``advise`` command).
 """
 
 from __future__ import annotations
@@ -35,6 +42,7 @@ if TYPE_CHECKING:
 FILE = "advice.jsonl"
 PARTS = ("start", "ranges", "fixed", "vary")
 NARROWING = ("ranges", "fixed", "vary")         # what only metric_gp takes; every strategy takes ``start``
+REFUSE = "refuse"                               # the event of a refused advice's row (T17.10 specification, 1.5)
 _FIELDS = ("author", "reason", *PARTS)
 
 
@@ -58,16 +66,19 @@ def append(root: str | Path, row: dict[str, Any]) -> None:
 
 def of_problem(rows: Sequence[dict[str, Any]], fingerprints: set[str]) -> list[dict[str, Any]]:
     """The rows of advice given for this problem (``spec_fingerprint`` in ``fingerprints``, as ``opt.optimize`` tells its
-    observations apart) and the revokes that end them. A spec that changed is another problem: its history starts again,
+    observations apart), the revokes that end them, and the rows of advice refused for it (``refuse``: their ids,
+    ``r1``, ``r2``, ..., are no adopted advice's). A spec that changed is another problem: its history starts again,
     and an advice checked against the old spec -- its ``since``, its variables -- does not carry over."""
     ids = {r["id"] for r in rows if r["event"] == "adopt" and r["spec_fingerprint"] in fingerprints}
-    return [r for r in rows if r["id"] in ids and (r["event"] == "revoke" or r["spec_fingerprint"] in fingerprints)]
+    return [r for r in rows if (r["event"] == REFUSE and r["spec_fingerprint"] in fingerprints)
+            or (r["id"] in ids and (r["event"] == "revoke" or r["spec_fingerprint"] in fingerprints))]
 
 
 def in_effect(rows: Sequence[dict[str, Any]], k: int) -> dict[str, Any] | None:
     """The advice in effect for a batch proposed at history size ``k`` (section 2): the last ``adopt`` row with ``since
     <= k``, unless a ``revoke`` row with ``since <= k`` ends it. Adopting an advice ends the one before, so a revoked
-    advice leaves none in effect; a row whose ``since`` lies after ``k`` did not exist yet for that batch."""
+    advice leaves none in effect; a row whose ``since`` lies after ``k`` did not exist yet for that batch. A refused
+    advice's row is neither: it ends nothing and is never in effect."""
     adopted = [r for r in rows if r["event"] == "adopt" and r["since"] <= k]
     if not adopted:
         return None
@@ -166,11 +177,22 @@ def check(spec: Spec, raw: Any) -> tuple[dict[str, Any], list[str]]:
 
 def adoption(spec: Spec, raw: Any, rows: Sequence[dict[str, Any]], since: int) -> tuple[dict[str, Any], list[str]]:
     """The ``adopt`` row for an advice file's content (checked, :func:`check`) and the notes of the check. Its id is the
-    next of ``a1``, ``a2``, ...; ``since``: the observations of this problem the next batch's strategy will be handed."""
+    next of ``a1``, ``a2``, ... (a refused advice takes none); ``since``: the observations of this problem the next
+    batch's strategy will be handed."""
     fields, notes = check(spec, raw)
     number = 1 + sum(r["event"] == "adopt" for r in rows)
     return {"id": f"a{number}", "event": "adopt", "at": utc_now(), "since": since, **fields,
             "spec_fingerprint": spec.fingerprint()}, notes
+
+
+def refusal(spec: Spec, raw: Any, message: str, rows: Sequence[dict[str, Any]], since: int) -> dict[str, Any]:
+    """The row that records an advice file's content :func:`check` refused with ``message`` (T17.10 specification, 1.5):
+    ``status: "refused"``, ``reason`` the message, ``raw`` the content as given -- its author and reason among it when
+    it has them -- and ``since`` as an adoption's. Its id is the next of ``r1``, ``r2``, ...: the ids of adopted advice,
+    and so every adopted row, are what they would have been without it."""
+    number = 1 + sum(r["event"] == REFUSE for r in rows)
+    return {"id": f"r{number}", "event": REFUSE, "status": "refused", "at": utc_now(), "since": since, "reason": message,
+            "raw": _as_given(raw), "spec_fingerprint": spec.fingerprint()}
 
 
 def revocation(rows: Sequence[dict[str, Any]], advice_id: str, reason: str | None, since: int) -> dict[str, Any]:
@@ -210,6 +232,18 @@ def status(rows: Sequence[dict[str, Any]]) -> dict[str, str]:
     return {advice_id: "revoked" if advice_id in revoked else
             f"superseded by {adopted[i + 1]}" if i + 1 < len(adopted) else "in effect"
             for i, advice_id in enumerate(adopted)}
+
+
+def _as_given(value: Any) -> Any:
+    """An advice file's content as a JSON line holds it: mappings (keys as text), lists, text, numbers, true / false and
+    null as they are; anything else YAML reads -- a date, a number that is not finite -- as its text."""
+    if isinstance(value, dict):
+        return {str(key): _as_given(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_as_given(item) for item in value]
+    if value is None or isinstance(value, bool | int | str) or (isinstance(value, float) and math.isfinite(value)):
+        return value
+    return str(value)
 
 
 def _grid(variable: Variable) -> tuple[Decimal, Decimal, Decimal, str]:
