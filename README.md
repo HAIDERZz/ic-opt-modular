@@ -136,11 +136,12 @@ never a penalty number (`failure_penalty` is accepted and ignored). The same
 seed therefore proposes other points than 0.4.0 did; recorded observations keep
 their meaning and continue as before.
 
-The default strategy is `auto`: `metric_gp` for a spec without EM devices run at
-one condition (no corners, or one corner: `corners='["tt"]'`, the `signoff`
-recipe's search), `openbox_gp_eic` otherwise, and a line says which and why
-(`[optimize] strategy auto: metric_gp (no EM devices, one condition)`, under
-`--plan` too). A strategy keyword the chosen strategy does not take is refused
+The default strategy is `auto`: `metric_gp` for a spec without EM devices, at
+any corners (since T17.9 it takes a run at several corners: each point's metrics
+reach its models at their worst over the corners simulated, and a point stops at
+its first failing simulation by default there), `openbox_gp_eic` for a spec with
+EM devices, and a line says which and why (`[optimize] strategy auto: metric_gp
+(no EM devices)`, under `--plan` too). A strategy keyword the chosen strategy does not take is refused
 before anything runs (`initial_trials` both take). A strategy named with
 `strategy=` runs as named. `coarse_to_fine` runs `metric_gp` in both steps when
 `auto` chooses it, else OpenBox then TuRBO; `lib_design` stays on `turbo`. The

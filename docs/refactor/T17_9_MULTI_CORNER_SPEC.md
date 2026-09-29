@@ -156,3 +156,36 @@ test_engine.py test_corner*.py test_advice.py tests of the recipes`, then `ruff 
 The registry rule for the first simulations of a point (candidate structure 3.2 B) — measured first on the research
 benchmark (`pvt_bench/METHODS_SPEC_3.md`), built here only if it wins. The corner model. EM devices. The digest's
 other additions (T17.10).
+
+## 10. Record (2026-09-30)
+
+Implemented by the coding subagent on `t17-9-multi-corner` (`f6ee461`, `1aa9a2d`, `876487a`), merged `aa3a70d` after
+T17.10 (one conflict in `skills/ic-opt/SKILL.md`, both edits kept); targeted tests 225 passed, ruff clean; the coder's
+whole-suite run 1081 passed, 651 skipped (environment-gated files). How the open points were read (the coder's list):
+
+- `stop_wanted(spec, children, override)` in `blocks/evaluate.py`; `evaluate` and `plan_shape` both build the children
+  with `engine.children_of`. `true` is now written to the dump (a spec stating it gets another `_legacy_fingerprint`,
+  the same `fingerprint`; no pre-T15.2 store can hold the field).
+- `worst_metrics`: under `corner_policy.objective: nominal` an objective-only metric takes the nominal corner
+  (`scored_corners(spec, policy=)`); where no scored corner holds a constrained metric, the point's own value; a metric
+  neither names is left out; "every metric of the objective present" means present and finite; a one-corner point
+  keeps `o.metrics` by an explicit shortcut (the general rule does not reduce to it for a failed point); at several
+  corners a failed / metric_failed point gives the worst of what its other children measured, its status unchanged.
+- The search region's incumbent is ranked by the objective composed from the worst values (more pessimistic than the
+  verdict's worst-corner objective when metrics are worst at different corners); `Observations.best` and the digest
+  keep the verdict.
+- Beyond the spec, accepted: `opt.optimize` filters the `initial=` rows it hands `metric_gp` through `_at_corners`
+  too (otherwise rows adopted from another set of corners would make it refuse at the second batch); such rows are
+  dropped from the models and the schedule's history.
+- `_refuse` names each set of corners with its count (`SETS_REFUSAL`); `stage_one_refusal(spec, corners=None)` keeps
+  its name, `corners` unread. `resolve_auto`'s reason is `no EM devices`.
+- `counts.stopped_at` is always present (`{}` when nothing stopped), keys `<unit>/<corner>`, ordered by count then key;
+  the markdown line lists three. `stopper(spec, o)` is None for a point not stopped and for a row whose children show
+  no failure under this spec (so the sum can be below `stopped_early`); `_incomplete`'s issue line and the count use
+  one `_stopper`.
+- A `metric_gp` proposal on a one-corner history was pinned before the change (`TT_PROPOSAL`) and is unchanged after.
+- `worst_metrics` costs about 0.17 ms per 31-corner row; the region replay recomputes scales per batch (about 0.9 s
+  for 300 points × 28 batches × 31 corners), left as is.
+- Acceptance 8.2 by the coordinator: the 112G mixer's three-corner spec under `--plan` on the merged code prints
+  `strategy auto: metric_gp (no EM devices)` and `up to 9 simulations per point (a point stops at the first simulation
+  that fails it)`; batch 丁 started 2026-09-30 00:23 (`ic-opt-accept/t17_9_corners/`).
