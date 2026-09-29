@@ -1,10 +1,12 @@
-"""OCEAN replay script generation and scalar-output parsing (Spectre/OCEAN kernel)."""
+"""OCEAN replay script generation and scalar-output parsing (Spectre/OCEAN kernel), and the saturation margin read from
+the operating-point table the script writes (T17.11)."""
 
 from __future__ import annotations
 
 import csv
 import math
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -56,6 +58,9 @@ def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf
     """SKILL that reads ``psf_dir`` and writes one TSV row per metric plus waveform CSVs and, with ``oppoint_result``
     (the netlist's ``info what=oppoint where=rawfile`` statement), the operating points to ``oppoints_file``.
 
+    Only metrics with an expression are written: a saturation margin (T17.11) is computed by the extract stage from the
+    operating points (:func:`saturation_margin`), not by OCEAN.
+
     All paths are relative to the OCEAN working directory.
     """
     lines = [
@@ -64,7 +69,7 @@ def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf
         f"out = outfile({_skill(scalars_file)})",
         'fprintf(out "' + "\\t".join(SCALARS_HEADER) + '\\n")',
     ]
-    for metric in metrics:
+    for metric in (m for m in metrics if m.expression is not None):
         if metric.result is not None:
             _check_selector(metric.result, f"metric {metric.name} result")
             lines.append(f"selectResult('{metric.result})")
@@ -213,6 +218,27 @@ def parse_oppoints(path: Path) -> dict[str, dict[str, float]] | None:
 
 def _unescape(name: str) -> str:
     return re.sub(r"\\(.)", lambda m: {"t": "\t", "n": "\n"}.get(m.group(1), m.group(1)), name)
+
+
+def saturation_margin(table: dict[str, dict[str, float]] | None, instances: Sequence[str]) -> tuple[float | None, list[str]]:
+    """The worst saturation margin of ``instances`` in an operating-point table (T17.11): the smallest ``|vds| - |vdsat|``,
+    in volts, positive while a transistor is beyond its saturation voltage -- absolute values, because a PMOS's table
+    carries negative voltages. ``(value, [])``, or ``(None, missing)`` naming every instance without a row, or whose row
+    lacks ``vds`` or ``vdsat``; with no table (``None``: the results held no operating points) that is every instance.
+
+    An instance is found under its own name, else with a leading ``/`` added or taken off: the table names instances as the
+    simulator reports them (``/M1``, ``/I0/M3``), and ``M1`` names the same transistor."""
+    rows = table or {}
+    margins, missing = [], []
+    for name in instances:
+        row = rows.get(name)
+        if row is None:
+            row = rows.get(name[1:] if name.startswith("/") else f"/{name}")
+        if row is None or "vds" not in row or "vdsat" not in row:
+            missing.append(name)
+        else:
+            margins.append(abs(row["vds"]) - abs(row["vdsat"]))
+    return (None, missing) if missing else (min(margins), [])
 
 
 def parse_scalars(path: Path) -> dict[str, ScalarRow]:
