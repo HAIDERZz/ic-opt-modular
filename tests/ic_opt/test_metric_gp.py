@@ -18,6 +18,7 @@ from ic_opt.blocks.optimize import optimize, suggest
 from ic_opt.deck import Deck
 from ic_opt.observation import ChildResult, Observation, Observations
 from ic_opt.recipe import PLAN_MODE
+from ic_opt.sim.corner import aggregate
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
@@ -543,6 +544,62 @@ def test_the_same_history_and_seed_give_the_same_points_and_another_seed_others(
         again = MetricGpSuggester(initial_trials=4).propose(spec, Observations(list(rows)), 6, seed=11)
         other = MetricGpSuggester(initial_trials=4).propose(spec, rows, 6, seed=12)
         assert (first.raw, first.tags) == (again.raw, again.tags) and first.raw != other.raw
+
+
+def tt_spec() -> Spec:
+    """Testbench tb gives NF, g gives G, at corners tt and ss: NF < 9 and G > 1, minimize NF - G; 100 x 100 grid points,
+    so that the search region is replayed."""
+    benches = [{"id": tb, "maestro_point_root": f"/x/{tb}", "virtuoso_library": "l", "cell": "c", "test_name": "t"}
+               for tb in ("tb", "g")]
+    return make_spec(testbenches=benches, corners=[{"id": "tt"}, {"id": "ss"}],
+                     variables=[integer("F", 1, 100), stepped("W", "0.1u", "10u", "0.1u")],
+                     metrics=[{"name": "NF", "unit": "dB", "expression": "nf()", "testbench": "tb"},
+                              {"name": "G", "unit": "dB", "expression": "g()", "testbench": "g"}],
+                     constraints=[{"metric": "NF", "op": "lt", "value": "9"}, {"metric": "G", "op": "gt", "value": "1"}],
+                     objective={"direction": "minimize", "expression": "NF - G"})
+
+
+def tt_history(spec: Spec) -> Observations:
+    """16 points searched at tt, recorded as the engine records them (``aggregate``): an initial design of 8, then two
+    batches of the region. Point 3 was stopped after tb (its NF fails), point 6's g failed to simulate, point 10's g lost
+    G."""
+    wanted = ["tb/tt", "g/tt"]
+    raw = [(1 + 99 * a, 0.1 + 9.9 * b) for a, b in np.random.default_rng(5).random((16, 2))]
+    rows = Observations()
+    for i, point in enumerate(grid_points(spec, raw)):
+        f, w = int(point.params["F"]), float(point.params["W"].rstrip("u"))
+        nf, g = 5.0 + ((f - 60) / 20) ** 2 + (w - 5.0) ** 2 / 4, 3.0 - ((f - 40) / 30) ** 2
+        children = {"tb/tt": ChildResult(unit="tb", corner="tt", status="ok", metrics={"NF": 9.5 if i == 3 else nf})}
+        if i == 6:
+            children["g/tt"] = ChildResult(unit="g", corner="tt", status="failed:spectre", issues=["spectre exited 1"])
+        elif i == 10:
+            children["g/tt"] = ChildResult(unit="g", corner="tt", status="metric_failed", issues=["metric G failed: nil"])
+        elif i != 3:
+            children["g/tt"] = ChildResult(unit="g", corner="tt", status="ok", metrics={"G": g})
+        agg = aggregate(spec, children, wanted)
+        origin = "suggest:metric_gp:init" if i < 8 else f"suggest:metric_gp:tr:0:{8 if i < 12 else 12}"
+        rows.append(Observation(obs_id=f"obs_{i:04d}", params=point.params, origin=origin, children=children,
+                                not_run=[key for key in wanted if key not in children], metrics=agg.metrics, fom=agg.fom,
+                                objective=agg.objective, feasible=agg.feasible, constraint_penalty=agg.constraint_penalty,
+                                status=agg.status, issues=agg.issues, spec_fingerprint=spec.fingerprint(),
+                                pipeline_fingerprint="p", started_at="t", finished_at="t"))
+    return rows
+
+
+# What metric_gp proposed on ``tt_history`` (initial_trials 8, 5 points, seed 7) before T17.9 handed it several corners.
+TT_PROPOSAL = ([[62.0, 5.2], [32.0, 2.4], [27.0, 1.6], [24.0, 0.2], [48.0, 3.8]],
+               ["wide:0:16", "tr:0:16", "tr:0:16", "tr:0:16", "tr:0:16"])
+
+
+def test_a_single_condition_history_gets_the_proposal_it_got_before_several_corners_were_taken():
+    """T17.9, section 6, item 5: at one corner every row's metrics reach the models as they are, byte for byte -- a
+    stopped point, one whose g failed and one whose g lost G among them."""
+    spec = tt_spec()
+    rows = tt_history(spec)
+    assert [rows[i].status for i in (3, 6, 10)] == ["constraint_failed", "failed:spectre", "metric_failed"]
+    assert rows[3].not_run == ["g/tt"] and rows[6].metrics == {} and rows[10].metrics == {"NF": rows[10].metrics["NF"]}
+    proposal = MetricGpSuggester(initial_trials=8).propose(spec, rows, 5, seed=7)
+    assert (proposal.raw, proposal.tags) == TT_PROPOSAL
 
 
 # -- 13. no penalty ---------------------------------------------------------------------------------------------------------

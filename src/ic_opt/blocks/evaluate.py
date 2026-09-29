@@ -40,16 +40,18 @@ def evaluate(
     ``limits`` is the executor host's site.yaml entry (``run.limits`` in a recipe): it caps the concurrency and
     refuses a stage bigger than the host, under ``--plan`` too.
 
-    ``stop_at_first_failure`` (None: the spec's ``simulator.stop_at_first_failure``, on unless the spec turns it off):
-    a point's children run in an order learned from this problem's observations, and a point stops at the first child
-    whose result shows it cannot be feasible (``ic_opt.eval.schedule``, T17.8); False runs every child of every point,
-    for a complete per-corner table. ``initial``: observations from elsewhere the order is learned from too -- the rows
-    ``opt.optimize`` adopted from its ``initial=``; they are neither evaluated nor stored."""
+    ``stop_at_first_failure`` (None: :func:`stop_wanted` decides -- the spec's ``simulator.stop_at_first_failure`` when
+    set, else on when the points run at several corners): a point's children run in an order learned from this problem's
+    observations, and a point stops at the first child whose result shows it cannot be feasible
+    (``ic_opt.eval.schedule``, T17.8); False runs every child of every point, for a complete per-corner table.
+    ``initial``: observations from elsewhere the order is learned from too -- the rows ``opt.optimize`` adopted from its
+    ``initial=``; they are neither evaluated nor stored."""
     from ic_opt.recipe import PLAN_MODE
 
     if pipeline is None:
         pipeline = default_pipeline(spec, deck, waveforms)
-    stop = spec.simulator.stop_at_first_failure if stop_at_first_failure is None else stop_at_first_failure
+    corner_ids = spec.corner_ids if corners == "all" else list(corners)
+    stop = stop_wanted(spec, engine.children_of(spec, pipeline, corner_ids), stop_at_first_failure)
     if PLAN_MODE.get():
         print(f"[plan] sim.evaluate step={step!r}: {len(points)} points × "
               f"{plan_shape(spec, pipeline, corners, executor, parallel_jobs, limits, stop)}")
@@ -62,6 +64,23 @@ def evaluate(
     _report_binding_constraints(obs, step)
     _report_stopped(obs, step)
     return obs
+
+
+def stop_wanted(spec: Spec, children: Sequence[engine.Child], override: bool | None = None) -> bool:
+    """Whether the points of a batch stop at their first failing simulation (``ic_opt.eval.schedule``): ``override`` (a
+    recipe's ``stop_at_first_failure=``) when given, else the spec's ``simulator.stop_at_first_failure`` when set, else on
+    when ``children`` -- what one point runs at the run's corners, ``engine.children_of`` -- hold more than one corner
+    (an EM device has none) and off at one.
+
+    Why the default follows the corners (T17.9; the research benchmark, the same proposer throughout): at 31 corners the
+    stop against every point at every corner gave the better final objective in 17 of 18 paired runs and found a
+    feasible design in 18 of 18 runs, against 12 of 18; at one corner with two testbenches it gave the worse one in 12
+    of 18 (6 better): a point stopped there keeps half of its metrics, and the models miss the other half."""
+    if override is not None:
+        return override
+    if spec.simulator.stop_at_first_failure is not None:
+        return spec.simulator.stop_at_first_failure
+    return len({c.corner for c in children if c.unit_kind != "device"}) > 1
 
 
 def _schedule(spec: Spec, pipeline: list[Stage], corners, store: RunStore, initial: Sequence[Observation]) -> Schedule:
@@ -145,11 +164,12 @@ def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, p
                stop_at_first_failure: bool | None = None) -> str:
     """'<children per point> ... on <host>, N workers (<heaviest stage> threads/memory)' for the --plan lines;
     refuses (EnvelopeError) a pipeline whose stage does not fit the host, so the preview fails where the run would.
-    ``stop_at_first_failure`` as for :func:`evaluate` (None: the spec's); on, the count per point is a ceiling."""
-    stop = spec.simulator.stop_at_first_failure if stop_at_first_failure is None else stop_at_first_failure
+    ``stop_at_first_failure`` as for :func:`evaluate` (None: :func:`stop_wanted`, as the run decides it); on, the count
+    per point is a ceiling."""
     workers = engine.workers_for(spec, pipeline, parallel_jobs, limits)
     corner_ids = spec.corner_ids if corners == "all" else list(corners)
     children = engine.children_of(spec, pipeline, corner_ids)
+    stop = stop_wanted(spec, children, stop_at_first_failure)
     tb = sum(c.unit_kind == "testbench" for c in children)
     dev = sum(c.unit_kind == "device" for c in children)
     em = engine.point_runs(pipeline)
