@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -553,3 +554,54 @@ def test_turbo_never_centres_its_region_on_a_stopped_point():
     feasible = point(spec, 3, at("26"), child("tb", NF=8.0), child("g", G=2.0))
     y = targets(spec, Observations([stopped, feasible, infeasible]))
     assert int(np.argmin(y)) == 1 and y[0] > max(y[1], y[2])
+
+
+def improved_as_before(before: region.Incumbent | None, after: region.Incumbent | None) -> bool | None:
+    """``region.improved`` as it was before rule 3 reached it, for the comparisons below."""
+    if before is None:
+        return None if after is not None else False
+    if not before.feasible:
+        return after.feasible or after.value < before.value - region.IMPROVEMENT * abs(before.value)
+    return after.value < before.value - region.IMPROVEMENT * max(1.0, abs(before.value))
+
+
+def test_improved_is_unchanged_where_no_point_was_stopped(monkeypatch):
+    best = region.Incumbent
+    pairs = [(None, None), (None, best(0, False, 1.0)),
+             (best(0, True, 5.0), best(1, True, 4.0)), (best(0, True, 5.0), best(0, True, 5.0)),
+             (best(0, True, 5.0), best(1, True, 4.999)),                 # better by less than max(1, 5) x 1e-3
+             (best(0, True, -0.5), best(1, True, -1.6)), (best(0, False, 2.0), best(1, True, 9.0)),
+             (best(0, False, 2.0), best(1, False, 1.0)), (best(0, False, 2.0), best(1, False, 1.9995)),
+             (best(0, False, 0.0), best(0, False, 0.0))]
+    verdicts = [region.improved(b, a) for b, a in pairs]
+    assert verdicts == [improved_as_before(b, a) for b, a in pairs]
+    assert verdicts == [False, None, True, False, False, True, True, True, False, False]
+
+    # a history without stopped points: the incumbents of its growing prefixes, and the replay of its batches
+    spec = pair_spec()
+    measured = [(10.0, 2.0), (12.0, 0.2), (9.5, 0.9), (9.6, 0.8), (8.0, 2.0), (8.5, 1.5)]    # NF, G; the 5th is feasible
+    origins = ["suggest:metric_gp:init"] * 2 + [f"suggest:metric_gp:grid:{k}" for k in range(2, 6)]
+    rows = [point(spec, i, at(f), child("tb", NF=nf), child("g", G=g)).model_copy(update={"origin": origin})
+            for i, ((nf, g), f, origin) in enumerate(zip(measured, ("20", "22", "24", "26", "28", "30"), origins, strict=True))]
+    composer, scales, arrays = Composer(spec), metric_scales(spec, rows), true_arrays(spec, rows)
+    prefixes = [region.incumbent(composer, rows, list(range(k)), scales, arrays) for k in range(1, len(rows) + 1)]
+    verdicts = [region.improved(b, a) for b, a in pairwise(prefixes)]
+    assert verdicts == [improved_as_before(b, a) for b, a in pairwise(prefixes)]
+    assert verdicts == [False, True, False, True, False]
+    trace = region.replay(spec, rows, 2).trace
+    monkeypatch.setattr(region, "improved", improved_as_before)
+    assert region.replay(spec, rows, 2).trace == trace
+
+
+def test_improved_when_the_best_moves_from_a_stopped_point_to_one_that_ran_every_child():
+    spec = pair_spec()
+    rows = [point(spec, 0, at("20"), child("tb", NF=9.05), wanted=PAIR).model_copy(update={"origin": "suggest:metric_gp:init"}),
+            point(spec, 1, at("22"), child("tb", NF=12.0), child("g", G=2.0)).model_copy(
+                update={"origin": "suggest:metric_gp:grid:1"})]
+    composer, scales, arrays = Composer(spec), metric_scales(spec, rows), true_arrays(spec, rows)
+    before = region.incumbent(composer, rows, [0], scales, arrays)
+    after = region.incumbent(composer, rows, [0, 1], scales, arrays)
+    assert (before.position, before.not_run, after.position, after.not_run) == (0, 1, 1, 0) and after.value > before.value
+    assert region.improved(before, after) is True and improved_as_before(before, after) is False
+    state = region.replay(spec, rows, 2)                   # the batch that brought the complete point is a success
+    assert (state.successes, state.failures) == (1, 0)

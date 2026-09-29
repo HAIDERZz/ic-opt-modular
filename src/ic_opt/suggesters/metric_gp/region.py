@@ -2,7 +2,8 @@
 grid holds more than 2000 points.
 
 A region is a box around the best of its own points (section 6: the smallest violation until something is feasible,
-then the smallest feasible objective, both from true values). Its side doubles after 3 successful batches in a row and
+then the smallest feasible objective, both from true values; since T17.8 a point stopped early ranks after every point
+that ran all its children, ``Observation.infeasibility_key``). Its side doubles after 3 successful batches in a row and
 halves after ``max(2, ceil(d / batch))`` unsuccessful ones; below ``2**-6`` it ends and the next region starts at a new
 anchor, far from where the earlier ones ended. All observations stay in the models.
 
@@ -45,7 +46,8 @@ BATCH_TAG = re.compile(r"^suggest:metric_gp:(?P<kind>grid|tr|wide|anchor):(?:\d+
 class Incumbent:
     position: int                  # in the history
     feasible: bool
-    value: float                   # the objective when feasible, else the violation
+    value: float                   # the objective when feasible, else the violation over the constraints judged
+    not_run: int = 0               # children the point did not run (T17.8: stopped early); 0 for a feasible one
 
 
 @dataclass
@@ -89,16 +91,20 @@ def incumbent(composer: Composer, rows: list[Observation], positions: list[int],
         return Incumbent(scored[best], True, float(objective[best]))
     violation = composer.known_violation(picked, scales)
     best = min(range(len(scored)), key=lambda i: rows[scored[i]].infeasibility_key(float(violation[i])))
-    return Incumbent(scored[best], False, float(violation[best]))
+    return Incumbent(scored[best], False, float(violation[best]), len(rows[scored[best]].not_run))
 
 
 def improved(before: Incumbent | None, after: Incumbent | None) -> bool | None:
     """Did a batch improve the region's best? None when the region had no best to improve on (its first scored
-    points): the batch sets the baseline and changes no counter."""
+    points): the batch sets the baseline and changes no counter. While nothing is feasible, by the rule that ranks
+    infeasible points (T17.8, ``Observation.infeasibility_key``): the new best got further -- fewer children not run --
+    or as far with a violation smaller by the margin; where no point was stopped, the violation decides as before."""
     if before is None:
         return None if after is not None else False
     if not before.feasible:
-        return after.feasible or after.value < before.value - IMPROVEMENT * abs(before.value)
+        if after.feasible or after.not_run < before.not_run:
+            return True
+        return after.not_run == before.not_run and after.value < before.value - IMPROVEMENT * abs(before.value)
     return after.value < before.value - IMPROVEMENT * max(1.0, abs(before.value))
 
 
