@@ -2,7 +2,8 @@
 
 The strategy models metrics, never a score: whatever the objective and the constraints make of the metrics is computed
 here, by the spec's own formulas, on the true values of the history and on model samples alike. ``nan`` in an
-objective or a residual marks that value as not scored.
+objective or a residual marks that value as not scored. The history's values are its points' metrics as
+``sim.corner.worst_metrics`` gives them: a point evaluated at several corners, each metric at its worst (T17.9).
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import numpy as np
 
 from ic_opt.objective import evaluate_expression_array
 from ic_opt.observation import Observation
+from ic_opt.sim.corner import worst_metrics
 from ic_opt.space import parse_scalar
 from ic_opt.spec import Spec
 
@@ -33,10 +35,11 @@ def modelled_metrics(spec: Spec) -> list[str]:
 def metric_scales(spec: Spec, history: list[Observation]) -> dict[str, float]:
     """Per modelled metric the standard deviation of its finite observed values (1 when it has none, at least 1e-12):
     violations are normalized by the metric's own spread, so a constraint whose threshold is 0 or tiny does not
-    dominate the sum."""
+    dominate the sum. The values are the history's as the models see them (:func:`true_arrays`)."""
     scales = {}
+    viewed = [worst_metrics(spec, o) for o in history]
     for name in modelled_metrics(spec):
-        values = [o.metrics[name] for o in history if name in o.metrics and math.isfinite(o.metrics[name])]
+        values = [m[name] for m in viewed if name in m and math.isfinite(m[name])]
         scales[name] = max(float(np.std(values)), SCALE_FLOOR) if values else 1.0
     return scales
 
@@ -84,5 +87,7 @@ class Composer:
 
 
 def true_arrays(spec: Spec, rows: list[Observation]) -> dict[str, np.ndarray]:
-    """The history's true metric values per modelled metric (nan where a row has none)."""
-    return {name: np.array([o.metrics.get(name, math.nan) for o in rows], dtype=float) for name in modelled_metrics(spec)}
+    """The history's true metric values per modelled metric (nan where a row has none): ``sim.corner.worst_metrics`` of
+    each row -- its own metrics at one corner, each metric at its worst at several."""
+    viewed = [worst_metrics(spec, o) for o in rows]
+    return {name: np.array([m.get(name, math.nan) for m in viewed], dtype=float) for name in modelled_metrics(spec)}

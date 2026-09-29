@@ -14,7 +14,7 @@ def main(run: Run, *, strategy: str = "auto", coarse_budget: int = 40, fine_budg
          current: bool = True, start: str | None = None) -> None:
     """``current`` / ``start`` as for ``optimize``, for the coarse step; the fine step starts from what the coarse found.
 
-    ``strategy``: ``auto`` (the default) resolves as in ``optimize``. To ``metric_gp`` (no EM devices, one condition): both
+    ``strategy``: ``auto`` (the default) resolves as in ``optimize``. To ``metric_gp`` (no EM devices, any corners): both
     steps run it, since its search region narrows onto what it found, which is what the fine step was for; to
     ``openbox_gp_eic``: OpenBox's GP + EIC, then TuRBO warm-started from it (``initial=``), as before T17.2. A named
     strategy runs both steps. A fine step of the coarse step's own strategy continues it from the store, which already

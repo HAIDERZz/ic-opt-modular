@@ -8,9 +8,12 @@ makes of the metrics is computed by the spec's formulas on posterior samples (``
 everything is rebuilt from the history, the search region by replaying the batches its origin tags name
 (``region.py``); the same history and seed give the same proposal.
 
-Stage 1 of T17 (``T17_OPTIMIZER_PLAN_CN.md``, D13): one condition, no EM devices. ``opt.optimize`` refuses both
-before anything is simulated (:func:`stage_one_refusal`); the suggester refuses a history evaluated at more than one
-corner and a spec with devices when called directly.
+Stage 1 of T17 (``T17_OPTIMIZER_PLAN_CN.md``, D13) took one condition and no EM devices. Since T17.9 it takes a run at
+several corners, each point's metrics given to the models at their worst over the corners it was simulated at
+(``sim.corner.worst_metrics``, read by ``compose.true_arrays``); nothing else in it knows of corners. EM devices it does
+not take yet: ``opt.optimize`` refuses them before anything is simulated (:func:`stage_one_refusal`), and the suggester
+refuses them when called directly, as it refuses a history whose points were evaluated at different sets of corners
+(:func:`_refuse`).
 """
 
 from __future__ import annotations
@@ -35,8 +38,8 @@ from ic_opt.suggesters.metric_gp.coords import Coords, keys
 from ic_opt.suggesters.metric_gp.models import MetricModel, ValueModel, fit_metric, fit_value_model
 
 DEVICES_REFUSAL = "strategy metric_gp does not take EM devices yet; use openbox_gp_eic"
-CORNERS_REFUSAL = ("strategy metric_gp works on one condition; run one corner (corners='[\"tt\"]'), or the signoff recipe, "
-                   "which searches at one corner and re-checks the best points at all")
+SETS_REFUSAL = ("strategy metric_gp models points evaluated at one set of corners, and this history holds several ({sets}): "
+                "opt.optimize hands it the points of its run's corners; opt.suggest called directly must be handed one set")
 ANCHOR_SAMPLE = 2000               # Sobol points a new region's anchor is chosen among
 
 # Streams of the call's random numbers: (seed, history size, stream[, metric index]).
@@ -53,13 +56,10 @@ def initial_design_size(spec: Spec, initial_trials: int | None = None, budget: i
     return size if budget is None else max(1, min(size, int(budget) // 2))
 
 
-def stage_one_refusal(spec: Spec, corners: int) -> str | None:
-    """Why a run of ``corners`` corners on ``spec`` is outside stage 1, or None."""
-    if spec.devices:
-        return DEVICES_REFUSAL
-    if corners > 1:
-        return CORNERS_REFUSAL
-    return None
+def stage_one_refusal(spec: Spec, corners: int | None = None) -> str | None:
+    """Why a run on ``spec`` is outside what ``metric_gp`` takes, or None: EM devices. Any number of ``corners`` since
+    T17.9 (the argument stays for its callers)."""
+    return DEVICES_REFUSAL if spec.devices else None
 
 
 class MetricGpSuggester:
@@ -262,16 +262,21 @@ def _advised_candidates(advised: candidates.Advised, head: list[np.ndarray], loc
 
 
 def _refuse(spec: Spec, history: Observations) -> None:
+    """EM devices; a history whose points were evaluated at different sets of corners (the signoff recipe's store holds
+    its one-corner search and its all-corner re-check), whose worst values would mix one corner's with several's."""
     if spec.devices:
         raise ValueError(DEVICES_REFUSAL)
-    corners = set().union(*(o.corners() for o in history))              # a point stopped early: every corner it was to run at
-    if len(corners) > 1:
-        raise ValueError(f"{CORNERS_REFUSAL}; the history holds points evaluated at the corners "
-                         f"{', '.join(sorted(corners))}")
+    sets: dict[tuple[str, ...], int] = {}
+    for o in history:
+        if corners := o.corners():                                     # a point stopped early: every corner it was to run at
+            key = tuple(sorted(corners))
+            sets[key] = sets.get(key, 0) + 1
+    if len(sets) > 1:
+        raise ValueError(SETS_REFUSAL.format(sets="; ".join(f"{', '.join(key)}: {count}" for key, count in sets.items())))
 
 
 def _rng(seed: int, k: int, stream: int, index: int = 0) -> np.random.Generator:
     return np.random.default_rng([seed % 2**63, k, stream, index])
 
 
-__all__ = ["CORNERS_REFUSAL", "DEVICES_REFUSAL", "MetricGpSuggester", "initial_design_size", "stage_one_refusal"]
+__all__ = ["DEVICES_REFUSAL", "SETS_REFUSAL", "MetricGpSuggester", "initial_design_size", "stage_one_refusal"]

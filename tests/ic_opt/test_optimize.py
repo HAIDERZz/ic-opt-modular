@@ -374,7 +374,7 @@ def test_a_continued_optimize_does_not_evaluate_its_start_points_again(tmp_path)
 
 # -- strategy auto (T17.2) ------------------------------------------------------------------------------------------------
 
-ONE = "no EM devices, one condition"
+ONE = "no EM devices"
 # What strategy="openbox_gp_eic", budget 8, batch 4, seed 1 proposed on the bowl before the default changed (8048977).
 OPENBOX_POINTS = [("22", "1u", "init"), ("28", "0.6u", "init"), ("26", "1.2u", "init"), ("24", "0.8u", "init"),
                   ("28", "1u", "acq"), ("20", "0.6u", "acq"), ("20", "1u", "acq"), ("30", "1.2u", "acq")]
@@ -407,17 +407,16 @@ def planned(fn, *args, **kwargs):
         PLAN_MODE.reset(token)
 
 
-def test_auto_resolves_to_metric_gp_for_a_circuit_at_one_condition_and_to_openbox_otherwise():
+def test_auto_resolves_to_metric_gp_for_a_circuit_at_any_corners_and_to_openbox_with_devices():
+    """T17.9: the corners of the run and of the history no longer decide."""
     plain, three = make_spec(), make_spec(corners=[{"id": c} for c in ("tt", "ss", "ff")])
     assert resolve_auto(plain, len(plain.corner_ids)) == ("metric_gp", ONE)            # no corners: one condition
     assert resolve_auto(devices_spec(), 1) == ("openbox_gp_eic", "metric_gp does not take EM devices yet")
-    assert resolve_auto(three, len(three.corner_ids)) == ("openbox_gp_eic",
-                                                          "metric_gp works on one condition; this run covers 3 corners")
+    assert resolve_auto(three, len(three.corner_ids)) == ("metric_gp", ONE)
     assert resolve_auto(three, len(["tt"])) == ("metric_gp", ONE)                      # corners=["tt"]
     rows = some_rows(plain)
     assert resolve_auto(three, 1, at_corners(rows, "tt")) == ("metric_gp", ONE)
-    assert resolve_auto(three, 1, at_corners(rows, "tt", "ss")) == (
-        "openbox_gp_eic", "metric_gp works on one condition; the history holds points evaluated at the corners ss, tt")
+    assert resolve_auto(three, 1, at_corners(rows, "tt", "ss")) == ("metric_gp", ONE)
 
 
 def test_optimize_without_a_strategy_runs_metric_gp_on_a_circuit_at_one_condition(tmp_path, capsys):
@@ -439,21 +438,20 @@ def test_optimize_without_a_strategy_runs_metric_gp_on_a_circuit_at_one_conditio
     assert f"[plan] strategy auto: metric_gp ({ONE})" in capsys.readouterr().out
 
 
-def test_optimize_without_a_strategy_over_two_corners_runs_openbox_and_is_not_refused(tmp_path, capsys):
+def test_optimize_without_a_strategy_over_two_corners_runs_metric_gp_and_is_not_refused(tmp_path, capsys):
     spec, store, ex, deck = project(tmp_path / "two", corners=[{"id": "tt"}, {"id": "ss"}])
     obs = optimize(spec, ex, store, deck=deck, budget=4, batch=2, seed=1, current=False, limits=FAKE_HOST)
     out = capsys.readouterr().out
-    assert out.splitlines()[0] == ("[optimize] strategy auto: openbox_gp_eic (metric_gp works on one condition; "
-                                   "this run covers 2 corners)")
-    assert "[optimize] openbox initial design" in out
-    assert len(obs) == 4 and all(o.origin.startswith("suggest:openbox_gp_eic:") for o in obs)
+    assert out.splitlines()[0] == f"[optimize] strategy auto: metric_gp ({ONE})"
+    assert "[optimize] metric_gp initial design" in out
+    assert len(obs) == 4 and all(o.origin.startswith("suggest:metric_gp:") for o in obs)
     assert all(o.corners() == {"tt", "ss"} for o in obs)       # this deck fails every child: each point stops at tt (T17.8)
-    # the same rows handed to a circuit at one condition as initial=: metric_gp would refuse them, auto does not pick it
+    # the same rows handed to a circuit at one condition as initial=: metric_gp is handed only the rows of its run's
+    # corners (T17.9), so its second batch, whose history also holds the run's own rows, is not refused
     single, store, ex, deck = project(tmp_path / "one")
-    more = optimize(single, ex, store, deck=deck, budget=2, batch=2, seed=1, initial=obs, current=False, limits=FAKE_HOST)
-    assert ("[optimize] strategy auto: openbox_gp_eic (metric_gp works on one condition; the history holds points "
-            "evaluated at the corners ss, tt)") in capsys.readouterr().out
-    assert len(more) == 2 and all(o.origin.startswith("suggest:openbox_gp_eic:") for o in more)
+    more = optimize(single, ex, store, deck=deck, budget=4, batch=2, seed=1, initial=obs, current=False, limits=FAKE_HOST)
+    assert f"[optimize] strategy auto: metric_gp ({ONE})" in capsys.readouterr().out
+    assert len(more) == 4 and all(o.origin.startswith("suggest:metric_gp:") for o in more)
 
 
 def test_optimize_without_a_strategy_on_a_spec_with_a_device_runs_openbox(tmp_path, capsys):
@@ -507,19 +505,21 @@ def test_a_keyword_the_resolved_strategy_does_not_take_is_refused_before_anythin
     assert len(suggest(spec, [], 2, initial_trials=4)) == 2                     # a keyword both take is passed on
 
 
-def test_suggest_resolves_auto_from_the_spec_and_the_history_it_is_handed():
-    """``opt.suggest`` has no corners argument: one corner id in the spec and a history at one condition give metric_gp.
-    A history that also holds points at another corner (a store written while the spec had two, handed over whole by
-    ``ic-opt call opt.suggest``) would make metric_gp refuse it: auto resolves to openbox_gp_eic instead."""
+def test_suggest_resolves_auto_from_the_spec_and_refuses_a_history_of_several_sets_of_corners():
+    """``opt.suggest`` has no corners argument: auto is metric_gp without EM devices, whatever the corners (T17.9). A
+    history whose points were evaluated at different sets of corners (a store written while the spec had one corner and
+    then two, handed over whole by ``ic-opt call opt.suggest``) is refused, auto or named: it must be handed one set."""
     tt = make_spec(corners=[{"id": "tt"}])
     rows = at_corners(some_rows(tt), "tt")
     assert all(p.origin.startswith("suggest:metric_gp:") for p in suggest(tt, rows, 3, seed=0, initial_trials=4))
     mixed = at_corners(rows[:2], "tt", "ss") + rows[2:]
-    with pytest.raises(ValueError, match="corners ss, tt"):
-        suggest(tt, mixed, 3, strategy="metric_gp", seed=0, initial_trials=4)
-    assert all(p.origin.startswith("suggest:openbox_gp_eic:") for p in suggest(tt, mixed, 3, seed=0, initial_trials=4))
+    for strategy in ("metric_gp", "auto"):
+        with pytest.raises(ValueError, match=re.escape("this history holds several (ss, tt: 2; tt: 4)")):
+            suggest(tt, mixed, 3, strategy=strategy, seed=0, initial_trials=4)
+    both = at_corners(rows, "tt", "ss")
+    assert all(p.origin.startswith("suggest:metric_gp:") for p in suggest(tt, both, 3, seed=0, initial_trials=4))
     two = make_spec(corners=[{"id": "tt"}, {"id": "ss"}])
-    assert all(p.origin.startswith("suggest:openbox_gp_eic:") for p in suggest(two, [], 2, seed=0))
+    assert all(p.origin.startswith("suggest:metric_gp:") for p in suggest(two, [], 2, seed=0))
     assert all(p.origin.startswith("suggest:openbox_gp_eic:") for p in suggest(devices_spec(), [], 2, seed=0))
     assert all(p.origin.startswith("suggest:metric_gp:") for p in suggest(make_spec(), [], 2, seed=0))
 

@@ -298,7 +298,7 @@ def test_coarse_to_fine_recipe_runs_metric_gp_in_both_steps_on_a_circuit_at_one_
     assert [len(h) for h in seen] == [0, 2, 4, 6, 8]            # the fine step's first batch sees the six coarse rows once
     assert all(len({o.key for o in h}) == len(h) for h in seen)
     out = capsys.readouterr().out
-    assert out.count("[optimize] strategy auto: metric_gp (no EM devices, one condition)") == 1     # the coarse step's
+    assert out.count("[optimize] strategy auto: metric_gp (no EM devices)") == 1     # the coarse step's
     assert "turbo" not in out and "openbox" not in out
 
 
@@ -324,20 +324,18 @@ def test_coarse_to_fine_recipe_on_a_spec_with_a_device_runs_openbox_then_turbo(t
 
 
 def test_the_recipes_default_strategy_resolves_per_run_under_plan(tmp_path):
-    """T17.2 defaults: optimize, signoff and coarse_to_fine name no strategy and run ``auto``; the plan says what it became."""
+    """T17.2 defaults: optimize, signoff and coarse_to_fine name no strategy and run ``auto``; the plan says what it became
+    (metric_gp at any corners since T17.9)."""
     one = project(tmp_path / "one")
     three = project(tmp_path / "three", corners=("tt", "ss", "ff"))
     cases = [
-        (["optimize", one], "[plan] strategy auto: metric_gp (no EM devices, one condition)",
-         ["step='optimize' strategy=metric_gp"]),
-        (["optimize", three], "[plan] strategy auto: openbox_gp_eic (metric_gp works on one condition; this run covers 3 corners)",
-         ["step='optimize' strategy=openbox_gp_eic"]),
-        (["signoff", three], "[plan] strategy auto: metric_gp (no EM devices, one condition)",
-         ["step='search@tt' strategy=metric_gp"]),
-        (["coarse_to_fine", one], "[plan] strategy auto: metric_gp (no EM devices, one condition)",
+        (["optimize", one], "[plan] strategy auto: metric_gp (no EM devices)", ["step='optimize' strategy=metric_gp"]),
+        (["optimize", three], "[plan] strategy auto: metric_gp (no EM devices)", ["step='optimize' strategy=metric_gp"]),
+        (["signoff", three], "[plan] strategy auto: metric_gp (no EM devices)", ["step='search@tt' strategy=metric_gp"]),
+        (["coarse_to_fine", one], "[plan] strategy auto: metric_gp (no EM devices)",
          ["step='coarse' strategy=metric_gp", "step='fine' strategy=metric_gp"]),
-        (["coarse_to_fine", three], "[plan] strategy auto: openbox_gp_eic (metric_gp works on one condition; this run covers 3 corners)",
-         ["step='coarse' strategy=openbox_gp_eic", "step='fine' strategy=turbo"]),
+        (["coarse_to_fine", three], "[plan] strategy auto: metric_gp (no EM devices)",
+         ["step='coarse' strategy=metric_gp", "step='fine' strategy=metric_gp"]),
     ]
     for (name, root), line, steps in cases:
         result = runner.invoke(app, ["run", name, str(root), "--plan"])

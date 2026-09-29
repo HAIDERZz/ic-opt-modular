@@ -240,21 +240,23 @@ class Simulator(Model):
     keep_failed_runs: bool = True
     keep_successful_runs: bool = True
     operating_points: bool = True        # T17.5: add the statements Spectre needs to write them, read them per child
-    stop_at_first_failure: bool = True   # T17.8: a point stops at its first child that fails it (ic_opt.eval.schedule)
+    # T17.8: a point stops at its first child that fails it (ic_opt.eval.schedule); None (T17.9): when it runs at several
+    # corners (blocks.evaluate.stop_wanted)
+    stop_at_first_failure: bool | None = None
 
     engine: Literal["spectre_x"] = "spectre_x"
     output_format: Literal["psfxl"] = "psfxl"
 
     @model_serializer(mode="wrap")
     def _dump(self, handler):
-        """An unset license queue timeout, and operating points and the stop at the first failure left on, stay out of the
+        """An unset license queue timeout and stop at the first failure, and operating points left on, stay out of the
         dump, so the specs written before they existed keep their legacy fingerprint (``Spec._legacy_fingerprint``)."""
         data = handler(self)
         if self.license_queue_timeout_s is None:
             data.pop("license_queue_timeout_s", None)
         if self.operating_points:
             data.pop("operating_points", None)
-        if self.stop_at_first_failure:
+        if self.stop_at_first_failure is None:
             data.pop("stop_at_first_failure", None)
         return data
 

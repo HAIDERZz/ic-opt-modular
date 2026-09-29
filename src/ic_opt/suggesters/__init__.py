@@ -12,8 +12,8 @@ from ic_opt.suggesters.random import RandomSuggester
 from ic_opt.suggesters.turbo import TurboSuggester
 
 AUTO = "auto"
-# What ``auto`` resolves to (T17.2, D11 decided by the user 2026-09-28): metric_gp inside its stage-1 scope, else the
-# strategy that was the default before it.
+# What ``auto`` resolves to (T17.2, D11 decided by the user 2026-09-28): metric_gp where it applies -- a spec without EM
+# devices, at any corners since T17.9 -- else the strategy that was the default before it.
 _AUTO_CHOICES = {"metric_gp": MetricGpSuggester, "openbox_gp_eic": OpenBoxSuggester}
 
 
@@ -37,21 +37,13 @@ def make(strategy: str, *, failure_penalty: float | None = None, **kwargs) -> Su
 
 
 def resolve_auto(spec: Spec, corners: int, history: Iterable[Observation] = ()) -> tuple[str, str]:
-    """What ``strategy=auto`` runs, and why in words: ``metric_gp`` for a run inside stage 1 of T17 (no EM devices, one
-    condition; ``stage_one_refusal`` decides it from the ``corners`` the run evaluates), else ``openbox_gp_eic``.
-    ``history``: the rows the strategy will be handed that no corner filter reaches (adopted ``initial=`` rows, or all of
-    them for ``opt.suggest`` called directly); rows evaluated at more than one corner would make ``metric_gp`` refuse the
-    history, so they resolve to ``openbox_gp_eic`` too."""
-    refusal = stage_one_refusal(spec, corners)
-    if refusal == DEVICES_REFUSAL:
+    """What ``strategy=auto`` runs, and why in words: ``metric_gp`` for a spec without EM devices, whatever the corners
+    (T17.9: it takes a run at several), else ``openbox_gp_eic``. ``corners`` (how many the run evaluates) and ``history``
+    (the rows no corner filter reaches) are passed by the callers and no longer decide anything: a history whose points
+    were evaluated at different sets of corners is ``metric_gp``'s to refuse, and ``opt.optimize`` hands it none."""
+    if stage_one_refusal(spec, corners) == DEVICES_REFUSAL:
         return "openbox_gp_eic", "metric_gp does not take EM devices yet"
-    if refusal:
-        return "openbox_gp_eic", f"metric_gp works on one condition; this run covers {corners} corners"
-    held = sorted(set().union(*(o.corners() for o in history)))          # a point stopped early: every corner it was to run at
-    if len(held) > 1:
-        return "openbox_gp_eic", ("metric_gp works on one condition; the history holds points evaluated at the corners "
-                                  + ", ".join(held))
-    return "metric_gp", "no EM devices, one condition"
+    return "metric_gp", "no EM devices"
 
 
 def auto_keywords(strategy: str) -> list[str]:

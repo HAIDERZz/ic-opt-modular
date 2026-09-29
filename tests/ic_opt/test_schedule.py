@@ -382,9 +382,11 @@ def test_evaluate_partial_judges_the_metrics_that_are_there():
 
 
 def test_the_switch_is_not_the_problem_and_its_default_stays_out_of_the_dump():
+    """The default is unset since T17.9 (the stop follows the run's corners): ``true`` is written like ``false``."""
     before = golden()                                                           # GOLDEN: written before the field existed
-    default = golden(simulator={**GOLDEN["simulator"], "stop_at_first_failure": True})
-    assert before.simulator.stop_at_first_failure and "stop_at_first_failure" not in before.model_dump(mode="json")["simulator"]
+    default = golden(simulator={**GOLDEN["simulator"], "stop_at_first_failure": None})
+    assert before.simulator.stop_at_first_failure is None
+    assert "stop_at_first_failure" not in before.model_dump(mode="json")["simulator"]
     assert default.model_dump(mode="json") == before.model_dump(mode="json")
     assert (default.fingerprint(), default._legacy_fingerprint()) == (before.fingerprint(), before._legacy_fingerprint()) == (
         "15d08ed68b2dfd7c", "87ca2259471db3ad")                                  # test_engine's pinned values
@@ -496,9 +498,8 @@ def test_a_stopped_point_is_a_row_of_every_corner_it_was_to_run_at():
         history_size(spec, rows)
     assert history_size(spec, Observations(recheck)) == 2              # one set of corners: no refusal
     assert digest_module.digest(spec, recheck[1:])["problem"]["corners"] == ["ss", "tt"]
-    assert resolve_auto(spec, 1, [recheck[1]]) == (
-        "openbox_gp_eic", "metric_gp works on one condition; the history holds points evaluated at the corners ss, tt")
-    with pytest.raises(ValueError, match="evaluated at the corners ss, tt"):
+    assert resolve_auto(spec, 1, [recheck[1]]) == ("metric_gp", "no EM devices")     # T17.9: corners do not decide
+    with pytest.raises(ValueError, match=r"this history holds several \(tt: 3; ss, tt: 1\)"):
         MetricGpSuggester().propose(spec, Observations(search + recheck[1:]), 2, seed=0)
 
 
