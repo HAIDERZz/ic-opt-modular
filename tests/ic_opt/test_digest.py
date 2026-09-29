@@ -442,9 +442,15 @@ def test_the_block_reads_this_problem_s_rows_and_advice_only(tmp_path):
                                      **fields})
     advice_rules.append(store.root, {"id": "a2", "since": 30, "ranges": ranges, "spec_fingerprint": spec.fingerprint(),
                                      **fields})
+    # an advice refused for this problem and one refused for the spec before the edit (T17.10 specification, 1.5)
+    advice_rules.append(store.root, advice_rules.refusal(spec, {"author": "a"}, "reason is missing: say why",
+                                                         advice_rules.read(store.root), 40))
+    advice_rules.append(store.root, advice_rules.refusal(spec, None, "an advice is a mapping", advice_rules.read(store.root),
+                                                         5) | {"spec_fingerprint": "the spec before an edit"})
     path = analyze.digest(spec, other + rows, store)
     d = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
     assert d["counts"]["points"] == 60 and [a["id"] for a in d["advice"]] == ["a2"]
+    assert d["advice_refused"] == [{"id": "r1", "since": 40, "reason": "reason is missing: say why"}]
 
 
 def test_the_markdown_of_an_advice_the_region_s_side_and_a_run_without_operating_points():
@@ -642,6 +648,28 @@ def test_the_unit_coordinate_is_metric_gp_s():
     coords = Coords(spec)
     mine = [[g.coordinate(p[g.name]) for g in (dg._Grid(v) for v in spec.variables)] for p in params]
     assert np.allclose(mine, coords.unit(coords.indices(params)), rtol=0, atol=1e-12)
+
+
+def test_a_refused_advice_is_listed_and_never_taken_for_an_adopted_one():
+    from ic_opt import advice as advice_rules
+
+    spec = spec_abc()
+    refused = {"id": "r1", "event": "refuse", "status": "refused", "at": "t", "since": 60,
+               "reason": "ranges: A [0, 20] reaches outside the spec's range [0, 9]",
+               "raw": {"author": "someone", "reason": "what the file said stays in it", "ranges": {"A": [0, 20]}},
+               "spec_fingerprint": "s"}
+    advice = [adopt("a1", 40, start=A1_STARTS), refused, revoke("a1", 80)]
+    d = dg.digest(spec, advised_run(spec), advice=advice)
+    assert [a["id"] for a in d["advice"]] == ["a1"] and d["advice"][0]["period"] == [40, 80]     # it ends nothing
+    assert d["advice_refused"] == [{"id": "r1", "since": 60, "reason": refused["reason"]}]
+    assert advice_rules.in_effect(advice, 60)["id"] == "a1" and advice_rules.in_effect(advice, 80) is None
+    md = dg.markdown(d)
+    section = md.split("## Advice\n\n")[1].split("\n## ")[0]
+    assert ("|\n\n- r1, refused at 60: ranges: A [0, 20] reaches outside the spec's range [0, 9]\n\nReasons given:"
+            in section)
+    assert "stays in it" not in md and "stays in it" not in json.dumps(d)          # what it said is not copied
+    alone = dg.markdown(dg.digest(spec, advised_run(spec), advice=[refused]))
+    assert "## Advice\n\n_no advice adopted_\n\n- r1, refused at 60: ranges: A [0, 20]" in alone
 
 
 # -- 5. the order of the observations -----------------------------------------------------------------------------------

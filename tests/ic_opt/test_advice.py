@@ -132,6 +132,32 @@ def test_the_advice_in_effect_follows_from_the_rows_and_the_history_size_alone()
     assert advice_rules.of_problem(other + rows, {spec.fingerprint()}) == rows
 
 
+def test_a_refused_advice_is_recorded_and_never_taken_for_an_adopted_one():
+    """T17.10 specification, 1.5: the row of an advice the check refused -- the refusal's message, the content as given
+    -- takes no adopted advice's number, ends nothing, is never in effect, and stays with its own problem's rows."""
+    spec = check_spec()
+    rows = [adopted(spec, 10, fixed={"N": 2})]
+    raw = yaml.safe_load("author: a person\nreason: wider\nranges: {W: [0.4u, 3u]}\nwhen: 2026-09-29\n")
+    with pytest.raises(ValueError, match="unknown field") as refused_by:
+        advice_rules.check(spec, raw)
+    row = advice_rules.refusal(spec, raw, str(refused_by.value), rows, 20)
+    assert row == {"id": "r1", "event": "refuse", "status": "refused", "at": row["at"], "since": 20,
+                   "reason": "unknown field(s) when: an advice has author, reason, start, ranges, fixed, vary",
+                   "raw": {"author": "a person", "reason": "wider", "ranges": {"W": ["0.4u", "3u"]}, "when": "2026-09-29"},
+                   "spec_fingerprint": spec.fingerprint()}
+    assert json.loads(json.dumps(row, allow_nan=False)) == row             # a JSON line, whatever YAML read (a date)
+    rows.append(row)
+    rows.append(adopted(spec, 30, rows, fixed={"N": 3}))
+    assert [r["id"] for r in rows] == ["a1", "r1", "a2"]
+    assert advice_rules.refusal(spec, ["N"], "an advice is a mapping", rows, 40)["id"] == "r2"
+    assert {k: advice_rules.in_effect(rows, k)["id"] for k in (10, 20, 29, 30)} == {10: "a1", 20: "a1", 29: "a1", 30: "a2"}
+    assert advice_rules.status(rows) == {"a1": "superseded by a2", "a2": "in effect"}
+    with pytest.raises(ValueError, match="no advice r1 was adopted; adopted: a1, a2"):
+        advice_rules.revocation(rows, "r1", "x", 40)
+    other = row | {"id": "r0", "spec_fingerprint": "another spec"}
+    assert advice_rules.of_problem([other, *rows], {spec.fingerprint()}) == rows
+
+
 def test_split_origin_reads_the_advice_suffix_and_nothing_else():
     assert space.split_origin("suggest:metric_gp:tr:0:40@a2") == ("suggest:metric_gp:tr:0:40", "a2")
     assert space.split_origin("suggest:metric_gp:tr:0:40") == ("suggest:metric_gp:tr:0:40", None)
@@ -497,18 +523,30 @@ def test_the_advise_command_adopts_lists_revokes_and_refuses(tmp_path):
     bad.write_text("author: a person\nreason: wider\nranges:\n  F: [10, 30]\n", encoding="utf-8")
     result = runner.invoke(app, ["advise", str(project), str(bad)])
     assert result.exit_code == 2 and "an advice cannot widen what the spec allows" in result.output
+    # refused, and recorded as such (T17.10 specification, 1.5): the next digest lists it
+    assert "[advise] refused; recorded as r1 (since 0): the next digest lists it" in result.output
+    widen = ("ranges: F [10, 30] reaches outside the spec's range [20, 30]: an advice cannot widen what the spec allows; "
+             "the spec's range is the user's to change (spec.yaml)")
+    refused = advice_rules.read(project / ".icopt")[1]
+    assert refused == {"id": "r1", "event": "refuse", "status": "refused", "at": refused["at"], "since": 0,
+                       "reason": widen, "raw": {"author": "a person", "reason": "wider", "ranges": {"F": [10, 30]}},
+                       "spec_fingerprint": row["spec_fingerprint"]}
     result = runner.invoke(app, ["advise", str(project), "--revoke", "a1", "--reason", "the range was too narrow"])
     assert result.exit_code == 0 and "[advise] revoked a1 (since 0): the range was too narrow" in result.output
     result = runner.invoke(app, ["advise", str(project), "--list"])
     assert result.exit_code == 0 and result.output.splitlines() == [
         ("a1  since 0  revoked  by a person: 1 start row; ranges F [26, 30]; fixed W=0.8u -- the digest shows the best "
          "points at F 26 to 30"),
+        f"r1  since 0  refused  by a person: {widen}",
         "a1  revoked at since 0: the range was too narrow"]
     assert runner.invoke(app, ["advise", str(project)]).exit_code == 2
     with exclusive_lock(project / ".icopt" / RUN_LOCK, what="project"):
         result = runner.invoke(app, ["advise", str(project), str(good)])
-    assert result.exit_code == 2 and "advice is given between runs" in result.output
-    assert len(advice_rules.read(project / ".icopt")) == 2
+        assert result.exit_code == 2 and "advice is given between runs" in result.output
+        result = runner.invoke(app, ["advise", str(project), str(bad)])   # refused; while a run goes, not recorded
+    assert result.exit_code == 2 and "an advice cannot widen what the spec allows" in result.output
+    assert "[advise] the refusal is not recorded: project is locked by another run" in result.output
+    assert len(advice_rules.read(project / ".icopt")) == 3
 
 
 # -- 9. without advice, everything is as it was -------------------------------------------------------------------------------

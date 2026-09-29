@@ -69,6 +69,10 @@ when there are points enough to compute it. Its definitions:
   others of its period). ``verdict``: ``helped`` when the advice's side has the better best (a best where the other side
   has none is better) and the run's best improved, ``no_help`` when neither, ``mixed`` when one of the two; ``None``
   while the period holds no point.
+- *a refused advice* (``advice_refused``): a row ``ic-opt advise`` wrote for an advice file it refused
+  (``ic_opt.advice.refusal``, ``status: "refused"``): its id (``r1``, ``r2``, ...), the history size it was given at and
+  the refusal's message. What the file said is not copied; the row keeps it (``raw``). No reader of adopted advice takes
+  such a row for one.
 - *a variable's importance* (``variables[].importance``): for a variable of more than one level and per metric the
   constraints or the objective name, the mutual information between the variable's unit coordinate (``metric_gp``'s
   ``Coords``: 0 to 1 over the range, logarithmic where it spans a decade) and the metric's values over the points that
@@ -222,6 +226,7 @@ def digest(spec: Spec, observations: Iterable[Observation], *, advice: Sequence[
         "suggested_ranges": suggested_ranges(spec, rows, top=top),
         "strategy": _strategy(spec, rows),
         "advice": _advice(rows, sizes, advice, grid, feasible[0] if feasible else None),
+        "advice_refused": _advice_refused(advice),
         "operating_points": _operating_points(rows, feasible),
     }
 
@@ -681,6 +686,13 @@ def _verdict(advised: list[Observation], others: list[Observation], improved: di
     return "mixed" if better or improved["improved"] else "no_help"
 
 
+def _advice_refused(advice: Sequence[dict]) -> list[dict[str, Any]]:
+    """``advice_refused`` (T17.10 specification, 1.5): per advice ``ic-opt advise`` refused, in file order, its id, the
+    history size it was given at and why it was refused -- not what it said (``raw``, which the advice file keeps)."""
+    return [{"id": r.get("id"), "since": r.get("since"), "reason": r.get("reason")} for r in advice
+            if r.get("status") == "refused"]
+
+
 def _best_of(rows: list[Observation]) -> Observation | None:
     """The feasible point of the lowest objective (minimization form) among ``rows``, the first of equals."""
     feasible = [o for o in rows if o.feasible and o.objective is not None]
@@ -850,7 +862,7 @@ def markdown(d: dict[str, Any]) -> str:
              "## Where the good points are", _md_variables(d),
              "## What failed and where", _md_failures(d["failures"]),
              "## Strategy", _md_strategy(d["strategy"]),
-             "## Advice", _md_advice(d["advice"], d["progress"]["best"]),
+             "## Advice", _md_advice(d["advice"], d["progress"]["best"], d["advice_refused"]),
              "## Operating points of the best point", _md_operating_points(d["operating_points"]),
              "## What these numbers are not", NOT_SAID]
     return "\n\n".join(parts) + "\n"
@@ -1054,9 +1066,10 @@ def _md_strategy(s: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _md_advice(rows: list[dict[str, Any]], best: dict[str, Any] | None) -> str:
+def _md_advice(rows: list[dict[str, Any]], best: dict[str, Any] | None, refused: Sequence[dict[str, Any]] = ()) -> str:
+    refusals = [f"- {r['id']}, refused at {r['since']}: {r['reason']}" for r in refused]      # one line each (1.5)
     if not rows:
-        return "_no advice given_"
+        return "\n".join(["_no advice adopted_", "", *refusals]) if refusals else "_no advice given_"
     lines = [("*Period*: the history sizes (points in the store) from the advice's adoption up to the row that ended it. "
               "*Under it*: the points whose origin ends in `@<id>`. *Others*: the points proposed in its period that are "
               "neither under it nor its start points. *Best so far*: the run's best feasible point when it was evaluated. "
@@ -1087,6 +1100,8 @@ def _md_advice(rows: list[dict[str, Any]], best: dict[str, Any] | None) -> str:
         sides = ", ".join(f"{b['variable']} = {b['value']} ({b['side']})" for b in a["best_at_bound"])
         lines.append(f"- the best point `{best['id']}` lies at {a['id']}'s bound, which is not the spec's: {sides}. Better "
                      "points may lie beyond it; only a wider advice looks there.")
+    if refusals:
+        lines += ["", *refusals]
     lines += ["", "Reasons given:", "", *(f"- {a['id']}: {a['row'].get('reason', '')}" for a in rows)]
     return "\n".join(lines)
 
