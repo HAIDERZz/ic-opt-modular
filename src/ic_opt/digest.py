@@ -53,9 +53,12 @@ libraries, and this module imports only numpy, scipy and the core of ic-opt. One
 names ``metric_gp``: the search region is what ``MetricGpSuggester.region_state`` gives, and that package loads
 scikit-learn (a declared dependency).
 
-Version 3 (``docs/refactor/T17_10_DIGEST_SPEC.md``: what an agent outside the tool needs to advise) adds entries and
-changes none of version 2's. The variables' importance takes scikit-learn's mutual information estimate, imported only
-when there are points enough to compute it. Its definitions:
+Version 3 (``docs/refactor/T17_10_DIGEST_SPEC.md``: what an agent outside the tool needs to advise) adds entries, and
+changes one of version 2's: the issue texts of ``failures.messages`` are kept to their first ``TEXT_LIMIT`` (200)
+characters -- a run's own output, but a simulator's message can go on to name files of the host. Nothing else the
+digest carries comes from the project's or the host's text: no file path, no metric's expression, nothing of the
+spec's ``simulator`` block or its descriptions (``tests/ic_opt/test_digest_leak.py``). The variables' importance takes
+scikit-learn's mutual information estimate, imported only when there are points enough to compute it. Its definitions:
 
 - *a stall* (``progress.stall``): counted in the batches of ``progress.batches``. The best improves in a batch where the
   point it names changes, the first feasible point included; ``stalled`` from ``STALL_BATCHES`` batches without an
@@ -111,6 +114,7 @@ MIN_SIDE = 5                       # points on either side of a split
 MIN_FEASIBLE_RANGES = 3            # feasible points below which no range is suggested
 SEPARATING = 3                     # variables listed as separating scored from unscored points
 MESSAGES = 3                       # issue texts listed for the points that gave no value
+TEXT_LIMIT = 200                   # characters of an issue text the digest keeps (T17.10 specification, 1.6)
 STALL_BATCHES = 3                  # batches without improvement from which a run is stalled (T17.10 specification, 1.1)
 MIN_IMPORTANCE = 20                # points with a metric's value below which no mutual information is given (1.3)
 MI_NEIGHBOURS = 3                  # the k of the mutual information's k-nearest-neighbour estimate (1.3)
@@ -489,7 +493,7 @@ def _failures(spec: Spec, rows: list[Observation], grid: list[_Grid]) -> dict[st
         if o.status not in SCORED:
             for text in _causes(o):
                 said[text] = said.get(text, 0) + 1
-    messages = [{"text": text, "count": count}
+    messages = [{"text": _clip(text), "count": count}
                 for text, count in sorted(said.items(), key=lambda kv: (-kv[1], kv[0]))[:MESSAGES]]
     return {"by_status": dict(sorted(by_status.items())), "missing_in_partial": missing,
             "partial_points": len(partial), "separating": separating, "messages": messages,
@@ -522,6 +526,12 @@ def _failed_stage(o: Observation) -> str | None:
         if status.startswith("failed:"):
             return status.split(":", 1)[1]
     return None
+
+
+def _clip(text: str) -> str:
+    """An issue text as the digest keeps it: at most ``TEXT_LIMIT`` characters, the last of a longer one an ellipsis.
+    Texts are counted whole; only what is printed is cut."""
+    return text if len(text) <= TEXT_LIMIT else text[: TEXT_LIMIT - 1] + "…"
 
 
 _CHILD_SAID = re.compile(r"metric (\w+) failed")
