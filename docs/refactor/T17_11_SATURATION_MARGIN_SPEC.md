@@ -23,7 +23,7 @@ metrics:
   saturation_margin:       # the transistors watched, by the instance names the operating-point table uses
     instances: [M1, M2, M3, M4, M7]
 constraints:
-- {metric: SAT_MARGIN, op: ge, value: 50m V}
+- {metric: SAT_MARGIN, op: ge, value: 0.05 V}   # a constraint's value takes no SI prefix: 50m V would read as 50 V
 ```
 
 Value = the smallest, over the listed instances, of `|vds| − |vdsat|` (absolute values: a PMOS's table carries
@@ -57,7 +57,7 @@ says so too), and the digest's operating-point table (T17.5) shows the names to 
 
 - `skills/author-spec/SKILL.md`: a subsection "a DC-only testbench as the first gate": export a testbench with only a
   DC analysis (or let T17.5 add one), one `saturation_margin` metric naming the transistors that must stay in
-  saturation (not the switches), a constraint `ge 0 V` or `ge 50m V`; with the schedule on (several corners by default,
+  saturation (not the switches), a constraint `ge 0 V` or `ge 0.05 V`; with the schedule on (several corners by default,
   or `simulator.stop_at_first_failure: true`) a point that fails it runs nothing else. Two sentences on where the rule
   comes from (PhysicsSAO, TradeOffMTS) and that it was not measured on this project's circuits yet.
 - `skills/ic-opt/SKILL.md`: one sentence in step 5 (the metric appears like any other; its failure issue names the
@@ -96,3 +96,28 @@ test_schedule.py test_digest.py test_skill_author_spec.py` (whatever of these ex
   message saying what and why; trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Hand back: branch and commits; the verbatim test and ruff output (last 30 lines); what the specification left open
   and how it was read (a numbered list); what could not be done and why.
+
+## 6. Record (2026-09-30)
+
+Implemented by the coding subagent on `t17-11-saturation` (`309828c`, `d991862`, `9b3bd99`), merged `8c3cb2f`;
+targeted tests 146 passed, ruff clean. How the open points were read (the coder's list, kept here):
+
+- The spec's constraint example `50m V` was wrong: a constraint's value takes no SI prefix (`parse_scalar("50mV")`
+  gives 50 with unit mV, compared as 50 V). The docs and tests write `0.05 V`; `objective.py` was left as it is (a
+  change there would alter what existing specs mean). Corrected above.
+- The failure issue reads `metric SAT_MARGIN failed: no operating point for M7` (the `metric X failed:` form the
+  per-batch line and the digest recognise), one issue naming every missing instance; a row lacking `vds` or `vdsat`
+  counts as missing; with no table at all every instance is named.
+- Instance names are looked up as given, then with a leading `/` added or removed (T17.5's table writes `/M1`); no
+  other normalisation. The real table's format on the user's netlists is unverified (no Spectre run here).
+- `testbench` is required on the metric even in a one-testbench spec.
+- The `operating_points: false` refusal lives in `Spec._cross_references`' metric loop; the instance checks on
+  `Metric`. `Metric._dump` keeps the unset field out of the dump, so every existing fingerprint is unchanged (pinned
+  tests); a spec that gains the metric simulates again (the spec fingerprint), a spec without it reuses its records
+  (the pipeline fingerprint is unchanged).
+- The script and `Extract` list expression metrics through `metrics_for`; `replay_script` filters by itself too; the
+  EM circuit pipeline reuses `Extract`, so the metric works there (untested with EM).
+- The end-to-end schedule test passes `stop_at_first_failure=True` (at one condition the stop is off by default since
+  T17.9) and shows the DC child running first and stopping the point once the history says it fails often.
+- Not done: a real Spectre check of the instance-name format; the per-batch line's "fix the expression" wording in
+  `blocks/evaluate.py` (another branch's file) reads oddly for this metric.
