@@ -11,7 +11,7 @@ from ic_opt.blocks.optimize import optimize
 from ic_opt.executor import LocalExecutor
 from ic_opt.observation import ChildResult, Observation, Observations
 from ic_opt.recipe import PLAN_MODE
-from ic_opt.sim.corner import aggregate, worst_metrics
+from ic_opt.sim.corner import aggregate, stopper, worst_metrics
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
@@ -21,7 +21,7 @@ from ic_opt.suggesters.metric_gp import MetricGpSuggester
 from tests.ic_opt.fakes import FAKE_HOST, minimal_spec
 from tests.ic_opt.test_metric_gp import tt_history, tt_spec
 from tests.ic_opt.test_optimize import devices_spec
-from tests.ic_opt.test_schedule import Prepared, run_batch, two_by_two
+from tests.ic_opt.test_schedule import EVERYWHERE, Prepared, at, child, point, run_batch, two_by_two
 
 
 def switched(value: bool | None):
@@ -183,3 +183,32 @@ def test_auto_is_metric_gp_at_any_corners_and_optimize_runs_it_there(tmp_path, c
                    budget=8, batch=4, corners="all", current=False, seed=1, limits=FAKE_HOST)
     assert len(obs) == 8 and all(o.corners() == {"tt", "ss"} for o in obs)
     assert [o.origin for o in obs] == ["suggest:metric_gp:init"] * 4 + ["suggest:metric_gp:grid:4"] * 4
+
+
+# -- 6. where points stopped -----------------------------------------------------------------------------------------------------
+
+
+def test_the_digest_says_after_which_child_points_stopped(tmp_path):
+    spec = two_by_two()
+    _, _, obs = run_batch(tmp_path / "on", spec)            # F=20 stops after tb/tt, F=24 after g/tt, F=26 after tb/ss
+    stopped = [o for o in obs if o.not_run]
+    assert [stopper(spec, o) for o in stopped] == ["tb/tt", "g/tt", "tb/ss"]
+    assert all(f"(stopped after {stopper(spec, o)})" in o.issues[-1] for o in stopped)   # the child its line names
+    assert all(stopper(spec, o) is None for o in obs if not o.not_run)
+    d = digest.digest(spec, obs)
+    assert d["counts"]["stopped_at"] == {"g/tt": 1, "tb/ss": 1, "tb/tt": 1}
+    assert "\n\nstopped early: 3 points; at g/tt: 1, tb/ss: 1, tb/tt: 1\n\n## What is optimized" in digest.markdown(d)
+
+    _, _, whole = run_batch(tmp_path / "off", spec, stop_at_first_failure=False)
+    d = digest.digest(spec, whole)
+    assert d["counts"]["stopped_at"] == {} and "stopped early" not in digest.markdown(d)
+
+    rows = [point(spec, 0, at("20"), child("tb", "tt", NF=8.0), child("tb", "ss", NF=9.5), wanted=EVERYWHERE),
+            point(spec, 1, at("22"), child("tb", "tt", NF=8.0), child("tb", "ss", NF=9.6), wanted=EVERYWHERE),
+            point(spec, 2, at("24"), child("tb", "tt", NF=9.5), wanted=EVERYWHERE),
+            point(spec, 3, at("26"), child("tb", "tt", NF=8.0), child("tb", "ss", NF=8.0), child("g", "tt", G=0.5),
+                  wanted=EVERYWHERE),
+            point(spec, 4, at("28"), child("g", "ss", G=0.5), wanted=EVERYWHERE)]     # g/ss ran first (a learned order)
+    counts = digest.digest(spec, rows)["counts"]
+    assert counts["stopped_at"] == {"tb/ss": 2, "g/ss": 1, "g/tt": 1, "tb/tt": 1}
+    assert "stopped early: 5 points; at tb/ss: 2, g/ss: 1, g/tt: 1, ..." in digest.markdown(digest.digest(spec, rows))

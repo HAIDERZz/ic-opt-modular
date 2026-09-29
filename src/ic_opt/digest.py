@@ -44,8 +44,10 @@ Definitions the specification leaves open:
 - *what the unscored points said*: the texts of their ``issues`` as stored, each counted once per point that holds it;
   not the line of a point stopped early that says how many of its children were not simulated (below).
 - *stopped early* (T17.8): a point whose ``not_run`` names children it did not run: the schedule stopped it at its first
-  failing child. ``counts`` gives how many (``stopped_early``) and those children added up (``simulations_not_run``).
-  Such a point holds only the children that ran, so its metrics are those of the corners it reached.
+  failing child. ``counts`` gives how many (``stopped_early``), those children added up (``simulations_not_run``) and
+  where they stopped (``stopped_at``, T17.9: per child ``<unit>/<corner>`` the points stopped after it, most first; the
+  child ``sim.corner.stopper`` names, as the point's "not simulated" line does). Such a point holds only the children
+  that ran, so its metrics are those of the corners it reached.
 
 The value helpers (units, SI prefixes, a constraint as a reader says it, a point's value per corner) live here and the
 report (``blocks/analyze.py``) imports them: importing ``ic_opt.blocks`` loads every block and the strategies'
@@ -68,7 +70,7 @@ from scipy import stats
 
 from ic_opt import space
 from ic_opt.observation import Observation
-from ic_opt.sim.corner import NOT_SIMULATED, metrics_per_corner, scored_corners
+from ic_opt.sim.corner import NOT_SIMULATED, metrics_per_corner, scored_corners, stopper
 from ic_opt.space import split_origin
 from ic_opt.spec import Spec
 
@@ -161,7 +163,7 @@ def digest(spec: Spec, observations: Iterable[Observation], *, advice: Sequence[
         "step": step,
         "top": top,
         "problem": _problem(spec, rows, grid),
-        "counts": _counts(rows),
+        "counts": _counts(spec, rows),
         "progress": _progress(spec, rows, feasible),
         "constraints": _constraints(spec, rows, feasible),
         "variables": _variables(spec, rows, feasible[:top], grid),
@@ -210,16 +212,20 @@ def _problem(spec: Spec, rows: list[Observation], grid: list[_Grid]) -> dict[str
     }
 
 
-def _counts(rows: list[Observation]) -> dict[str, Any]:
+def _counts(spec: Spec, rows: list[Observation]) -> dict[str, Any]:
     by_status: dict[str, int] = {}
     per_step: dict[str, int] = {}
+    stopped_at: dict[str, int] = {}
     for o in rows:
         by_status[o.status] = by_status.get(o.status, 0) + 1
         per_step[o.step] = per_step.get(o.step, 0) + 1
+        if (child := stopper(spec, o)) is not None:
+            stopped_at[child] = stopped_at.get(child, 0) + 1
     unknown = sum(1 for o in rows if o.simulations is None)
     return {"points": len(rows), "by_status": dict(sorted(by_status.items())),
             "simulations": sum(o.simulations or 0 for o in rows), "per_step": per_step,
             "stopped_early": sum(1 for o in rows if o.not_run), "simulations_not_run": sum(len(o.not_run) for o in rows),
+            "stopped_at": dict(sorted(stopped_at.items(), key=lambda kv: (-kv[1], kv[0]))),
             "notes": {"simulations": f"{unknown} points recorded before 0.2.x carry no count"} if unknown else {}}
 
 
@@ -652,7 +658,7 @@ def markdown(d: dict[str, Any]) -> str:
     if counts["stopped_early"]:
         head += f" · {counts['stopped_early']} stopped early ({counts['simulations_not_run']} simulations not run)"
     head += f" · step `{d['step']}`" if d["step"] else ""
-    parts = [f"# Run digest — {d['project']}", head,
+    parts = [f"# Run digest — {d['project']}", head, *_md_stopped_at(counts),
              "## What is optimized", _md_problem(problem),
              "## How far the run is", _md_progress(d["progress"]),
              "## What is in the way", _md_constraints(d["constraints"]),
@@ -663,6 +669,14 @@ def markdown(d: dict[str, Any]) -> str:
              "## Operating points of the best point", _md_operating_points(d["operating_points"]),
              "## What these numbers are not", NOT_SAID]
     return "\n\n".join(parts) + "\n"
+
+
+def _md_stopped_at(counts: dict[str, Any]) -> list[str]:
+    """The line under the counts that says where points stopped early: the three children that stopped the most."""
+    if not counts["stopped_at"]:
+        return []
+    most = ", ".join(f"{child}: {n}" for child, n in list(counts["stopped_at"].items())[:3])
+    return [f"stopped early: {counts['stopped_early']} points; at {most}" + (", ..." if len(counts["stopped_at"]) > 3 else "")]
 
 
 def ranges_markdown(entry: dict[str, Any]) -> str:
