@@ -10,6 +10,7 @@ import json
 
 import pytest
 
+from ic_opt import objective
 from ic_opt.blocks import analyze
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
@@ -301,3 +302,15 @@ def test_the_digest_and_the_report_list_it_with_its_unit(tmp_path):
     report = analyze.report(spec, obs, store).read_text(encoding="utf-8")
     assert "- metrics: NF=8 dB, SAT_MARGIN=300 mV" in report
     assert "- binding constraints: SAT_MARGIN ≥ 50 mV (1 of 3)" in report
+
+
+# -- the documents ------------------------------------------------------------------------------------------------------------
+
+
+def test_the_constraint_is_written_in_volts_as_the_documents_say():
+    """The skills and the README write the constraint ``ge 0.05 V``: a constraint's number takes no SI prefix, so the
+    specification's ``50m V`` reads as 50 V and fails every point (``objective`` keeps the number, drops the unit)."""
+    volts = Spec.model_validate(sat_spec())
+    prefixed = Spec.model_validate(sat_spec(constraints=[{"metric": "SAT_MARGIN", "op": "ge", "value": "50m V"}]))
+    assert objective.constraint_violations(volts, {"NF": 8.0, "SAT_MARGIN": 0.3}) == (0.0, [])
+    assert objective.constraint_violations(prefixed, {"SAT_MARGIN": 0.3})[1] == ["SAT_MARGIN ge 50m V violated by 0.3"]

@@ -53,3 +53,18 @@ def test_the_skill_states_the_rules_the_acceptances_tripped_over():
     for rule in ("top-level\n`parameters` entry of **every** testbench", "non_scalar", "sNp column order",
                  "`simultaneous_frequencies: 0`", "the same\nnumbers at every corner", "approval point"):
         assert rule in text, rule
+
+
+def test_the_dc_gate_snippet_completes_a_valid_spec():
+    """T17.11: the saturation-margin snippet, added to the complete circuit example, is a valid spec; the skill says why
+    its constraint is written in volts."""
+    text = SKILL.read_text(encoding="utf-8")
+    block = re.search(r"```yaml\n(# part of a spec: a DC-only testbench as the first gate\n.*?)```", text, flags=re.DOTALL)
+    snippet = yaml.safe_load(block.group(1))
+    spec = examples()["circuit"]
+    for key in ("testbenches", "metrics", "constraints"):
+        spec[key] = spec[key] + snippet[key]
+    loaded = Spec.model_validate(spec)
+    assert loaded.metrics[-1].saturation_margin.instances == ["M1", "M2", "M3", "M4", "M7"]
+    assert loaded.metrics_for("dc") == [] and loaded.constraints[-1].value == "0.05 V"
+    assert "`50m V` reads as 50 V" in " ".join(text.split()) and "#### A DC-only testbench as the first gate" in text
