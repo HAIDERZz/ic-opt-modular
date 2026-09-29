@@ -479,8 +479,11 @@ def test_stage_one_refusals_before_anything_runs_and_under_plan(tmp_path):
 
 def test_a_store_that_also_holds_the_problem_at_all_corners_is_searched_at_the_run_s_corner(tmp_path, monkeypatch):
     """The signoff recipe searches at one corner and re-checks the best points at all: its store holds both. A search
-    that goes on afterwards is not refused, and the models see the rows of its own corner only."""
-    cornered = make_spec(corners=[{"id": "tt"}, {"id": "ss"}], budget={"max_simulations": 100})
+    that goes on afterwards is not refused, and the models see the rows of its own corner only. Every child of every
+    point runs (T17.8's stop off): this deck has no corner template, so each child fails, and a stopped re-check would
+    hold its first corner only."""
+    cornered = make_spec(corners=[{"id": "tt"}, {"id": "ss"}], budget={"max_simulations": 100},
+                         simulator={**minimal_spec()["simulator"], "stop_at_first_failure": False})
     store, ex, deck = project(tmp_path, cornered)
     optimize(cornered, ex, store, deck=deck, strategy="metric_gp", budget=8, batch=4, corners=["tt"], current=False,
              step="search", limits=FAKE_HOST)

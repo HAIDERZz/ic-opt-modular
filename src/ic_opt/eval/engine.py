@@ -14,6 +14,17 @@ legacy flow. A stage that fails -- a ``StageFailure``, or a command past its
 deadline (``CommandTimeout``) -- fails its child, or every child of the point
 for a point-level stage, as ``failed:<stage>``; the other points run on.
 
+Schedule (T17.8). Given a ``Schedule`` (``ic_opt.eval.schedule``; ``sim.evaluate``
+builds one per batch unless the run turns it off), a point's children run in
+its order and the point stops after the first child whose result shows it
+cannot be feasible: the children after it are not run, the observation holds
+those that ran (``simulations`` counts them), and ``aggregate`` judges the
+incomplete set. The children keep the engine's own order in the observation
+whatever order they ran in, so a point that is not stopped is recorded as
+without a schedule. The budget check still reserves every child of a point.
+The step log counts the points stopped early and the children not run.
+Without a schedule: the engine's order, no stop.
+
 Interrupts. Ctrl-C reaches the running commands through the executors' signal
 forwarding (``process_group``), which counts it before anything else; the
 KeyboardInterrupt comes to the thread waiting for the points. From then on no
@@ -43,6 +54,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ic_opt.eval.stage import Stage, StageContext, StageFailure, pipeline_fingerprint
 from ic_opt.executor import CommandTimeout, Executor, process_group
@@ -52,6 +64,9 @@ from ic_opt.site import EnvelopeError, HostLimits
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore, utc_now
+
+if TYPE_CHECKING:
+    from ic_opt.eval.schedule import Schedule
 
 
 class BudgetExceeded(RuntimeError):
@@ -72,6 +87,8 @@ class Job:
     seconds: float = 0.0
     started: bool = False                 # a worker took it up
     recorded: bool = False                # its observation is in the store
+    stopped_after: str | None = None      # why the schedule stopped the point early (Schedule.stop_after)
+    not_run: int = 0                      # its children that stop left out
 
 
 @dataclass(frozen=True)
@@ -143,6 +160,7 @@ def run(
     cshrc: str | None = None,
     parallel_jobs: int | None = None,
     limits: HostLimits,
+    schedule: Schedule | None = None,
 ) -> Observations:
     point_stages = [s for s in pipeline if s.level == "point"]
     child_stages = [s for s in pipeline if s.level == "child"]
@@ -153,6 +171,7 @@ def run(
     if not children:
         raise ValueError("pipeline produces no children for this spec (no testbenches for its testbench chain, no devices for its device chain)")
     children_wanted = {c.key for c in children}
+    wanted = [c.key for c in children]
     child_sims = child_simulates(pipeline)
     sims_per_point = (len(children) if child_sims else 0) + point_runs(pipeline)         # worst case: every cacheable point stage misses
     workers = workers_for(spec, pipeline, parallel_jobs, limits)
@@ -194,10 +213,11 @@ def run(
             job.started = True
             started = time.monotonic()
             started_at = utc_now()
-            results, cache = _run_point(spec, point_stages, child_stages, job, children, executor, store, cshrc, stopping)
+            results, cache, job.stopped_after, job.not_run = _run_point(
+                spec, point_stages, child_stages, job, children, executor, store, cshrc, stopping, schedule)
             if stopping() and any(r.status != "ok" for r in results.values()):
                 raise Interrupted(f"{job.obs_id}: interrupted")      # its commands got the interrupt: not the point's own failure
-            agg = aggregate(spec, results)
+            agg = aggregate(spec, results, wanted)                    # an incomplete set when the schedule stopped the point
             job.observation = Observation(
                 obs_id=job.obs_id, params=job.point.params, origin=job.point.origin, children=results,
                 metrics=agg.metrics, fom=agg.fom, objective=agg.objective, feasible=agg.feasible,
@@ -228,6 +248,7 @@ def run(
     store.log_step(
         step, "ok", points=len(points), new=sum(not j.reused for j in jobs), reused=sum(j.reused for j in jobs),
         simulations=sum(simulations(j.observation) for j in jobs if not j.reused), workers=workers,
+        stopped=sum(1 for j in jobs if j.not_run), not_run=sum(j.not_run for j in jobs),    # the schedule's stops
         seconds=round(sum(j.seconds for j in jobs), 1),              # the points' own durations added up (they overlap)
         wall_seconds=round(time.monotonic() - began, 1),             # what the batch took on the clock
     )
@@ -243,6 +264,7 @@ def _log_interrupted(store: RunStore, step: str, jobs: list[Job], workers: int) 
         step, "interrupted", points=len(jobs), reused=len(jobs) - len(new), recorded=[j.obs_id for j in done],
         interrupted=[j.obs_id for j in new if j.started and not j.recorded], not_started=[j.obs_id for j in new if not j.started],
         simulations=sum(simulations(j.observation) for j in done), workers=workers, seconds=round(sum(j.seconds for j in done), 1),
+        stopped=sum(1 for j in done if j.not_run), not_run=sum(j.not_run for j in done),
     )
 
 
@@ -307,7 +329,10 @@ def _run_cached(stage: Stage, value, ctx: StageContext, stopping=None):
     return out
 
 
-def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child], executor, store, cshrc, stopping=None):
+def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child], executor, store, cshrc, stopping=None,
+               schedule: Schedule | None = None):
+    """The point's results (in the order of ``children``), its point-level cache use, and -- when ``schedule`` stopped
+    it early -- why and how many of its children did not run (else None and 0)."""
     point_dir = store.root / "sims" / job.obs_id
     point_dir.mkdir(parents=True, exist_ok=True)
     ctx = StageContext(spec=spec, executor=executor, store=store, obs_id=job.obs_id, workdir=point_dir,
@@ -316,10 +341,12 @@ def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child]
         point_output = _run_stages(point_stages, job.point, ctx, stopping)
     except StageFailure as failure:
         failed = {c.key: ChildResult(unit=c.unit, corner=c.corner, status=f"failed:{failure.stage}", issues=failure.issues) for c in children}
-        return failed, dict(ctx.cache)
+        return failed, dict(ctx.cache), None, 0
 
-    results: dict[str, ChildResult] = {}
-    for child in children:
+    ran: dict[str, ChildResult] = {}
+    order = children if schedule is None else schedule.order(children)
+    reason = None
+    for place, child in enumerate(order):
         _unless_stopping(stopping, f"{job.obs_id} {child.key}")     # before the child's scratch directory, too
         chain = [s for s in child_stages if getattr(s, "unit", "testbench") == child.unit_kind]
         workdir = store.sim_dir(job.obs_id, child.unit, child.corner)
@@ -333,8 +360,11 @@ def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child]
             result = ChildResult(unit=child.unit, corner=child.corner, status=f"failed:{failure.stage}", issues=failure.issues)
         result.seconds = round(time.monotonic() - started, 3)
         result.sim_dir = store.relative(workdir)
-        results[child.key] = result
-    return results, dict(ctx.cache)
+        ran[child.key] = result
+        if schedule is not None and place + 1 < len(order) and (reason := schedule.stop_after(result, child.corner)):
+            break                                                   # the point cannot be feasible: nothing more runs for it
+    results = {c.key: ran[c.key] for c in children if c.key in ran}  # the engine's order, whatever order they ran in
+    return results, dict(ctx.cache), reason, (len(order) - len(ran)) if reason else 0
 
 
 def _retain(spec: Spec, job: Job, children: dict[str, ChildResult], executor: Executor, store: RunStore) -> None:

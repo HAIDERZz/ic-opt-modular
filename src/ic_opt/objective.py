@@ -114,7 +114,7 @@ def _eval_array(node: ast.AST, arrays: dict[str, np.ndarray]) -> np.ndarray:
 class Evaluation:
     """What one point's aggregated metrics mean under the spec."""
 
-    status: str                      # "ok" | "metric_failed" | "constraint_failed"
+    status: str                      # "ok" | "metric_failed" | "constraint_failed"; evaluate_partial: "incomplete" too
     fom: float | None                # objective expression value as written
     objective: float | None          # minimization form (negated for maximize)
     feasible: bool
@@ -140,9 +140,24 @@ def evaluate(spec: Spec, metrics: dict[str, float]) -> Evaluation:
     return Evaluation("ok", fom, objective, True)
 
 
+def evaluate_partial(spec: Spec, metrics: dict[str, float]) -> Evaluation:
+    """:func:`evaluate` for metrics of a point whose simulations did not all run (T17.8: the point stopped at its first
+    failing simulation): the constraints whose metric is there and finite, and only those; no ``fom``. The status is
+    ``constraint_failed`` with the violations, else ``incomplete`` -- nothing seen fails, nothing is known to pass."""
+    present = [c for c in spec.constraints if c.metric in metrics and math.isfinite(metrics[c.metric])]
+    penalty, violations = _violations(present, metrics)
+    if violations:
+        return Evaluation("constraint_failed", None, None, False, penalty, violations)
+    return Evaluation("incomplete", None, None, False)
+
+
 def constraint_violations(spec: Spec, metrics: dict[str, float]) -> tuple[float, list[str]]:
+    return _violations(spec.constraints, metrics)
+
+
+def _violations(constraints, metrics: dict[str, float]) -> tuple[float, list[str]]:
     penalty, issues = 0.0, []
-    for c in spec.constraints:
+    for c in constraints:
         value = float(metrics[c.metric])
         threshold = float(parse_scalar(c.value.replace(" ", ""))[0])
         scale = abs(threshold) or 1.0

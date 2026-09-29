@@ -102,7 +102,8 @@ def test_every_entry_on_a_run_of_known_structure():
     assert [m["modelled"] for m in p["metrics"]] == [True, True, False] and p["corners"] == ["nominal"]
 
     assert d["counts"] == {"points": 120, "by_status": {"constraint_failed": 36, "failed:spectre": 48, "ok": 36},
-                           "simulations": 120, "per_step": {"optimize": 120}, "notes": {}}
+                           "simulations": 120, "per_step": {"optimize": 120}, "stopped_early": 0, "simulations_not_run": 0,
+                           "notes": {}}
 
     prog = d["progress"]
     first = next(i for i, o in enumerate(rows) if o.feasible)

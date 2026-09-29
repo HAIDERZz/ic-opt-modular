@@ -211,7 +211,7 @@ def optimize(
                 break
             evaluate(
                 spec, points, executor, store, deck=deck, pipeline=pipeline, corners=corners, waveforms=waveforms,
-                step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
+                step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits, initial=adopted,   # the schedule learns from them too
             )
     return Observations(o for o in store.observations() if o.spec_fingerprint in same_problem and o.step == step)
 

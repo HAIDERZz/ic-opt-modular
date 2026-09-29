@@ -35,6 +35,7 @@ from ic_opt.digest import metrics_per_corner as _metrics_per_corner
 from ic_opt.digest import quantity as _quantity
 from ic_opt.digest import unit_of as _unit
 from ic_opt.observation import Observation, Observations
+from ic_opt.sim.corner import stopped_early
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 
@@ -119,10 +120,17 @@ def _fmt(value: float | None) -> str:
 
 
 def _failures_per_corner(spec: Spec, obs: Observations) -> dict[str, int]:
-    """How many observations fail at each corner: a failed child there, or the corner's metrics failing the spec."""
+    """How many observations fail at each corner: a failed child there, or the corner's metrics failing the spec. A point
+    the schedule stopped early (T17.8) counts only at the corner of the child it stopped after (at every corner when that
+    child is corner-less, an EM device), not at the corners it never reached or reached in part."""
     corner_ids = [c.id for c in spec.corners] or ["nominal"]
     failures = {cid: 0 for cid in corner_ids}
     for o in obs:
+        if (stop := stopped_early(o.issues)) is not None:
+            child = o.children.get(stop[2])
+            for corner in [child.corner] if child is not None and child.corner is not None else corner_ids:
+                failures[corner] = failures.get(corner, 0) + 1
+            continue
         for corner, metrics in _metrics_per_corner(spec, o).items():
             children = [ch for ch in o.children.values() if ch.corner is None or ch.corner == corner]
             if any(ch.status != "ok" for ch in children) or objective_contract.evaluate(spec, metrics).status != "ok":

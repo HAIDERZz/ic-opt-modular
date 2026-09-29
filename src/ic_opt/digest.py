@@ -41,7 +41,12 @@ Definitions the specification leaves open:
   proposed at a history size inside its period that are neither under it (``@<id>``) nor its start points.
 - *the best then*: a feasible point whose objective is lower than that of every feasible point before it in
   observation-number order.
-- *what the unscored points said*: the texts of their ``issues`` as stored, each counted once per point that holds it.
+- *what the unscored points said*: the texts of their ``issues`` as stored, each counted once per point that holds it;
+  not the line of a point stopped early that says how many of its children were not simulated (below).
+- *stopped early* (T17.8): a point whose ``issues`` hold the line ``not simulated: <n> of <m> children (stopped after
+  <child>)`` (``sim.corner.stopped_early``): the schedule stopped it at its first failing child. ``counts`` gives how
+  many (``stopped_early``) and the ``n`` added up (``simulations_not_run``). Such a point holds only the children that
+  ran, so its metrics are those of the corners it reached.
 
 The value helpers (units, SI prefixes, a constraint as a reader says it, a point's value per corner) live here and the
 report (``blocks/analyze.py``) imports them: importing ``ic_opt.blocks`` loads every block and the strategies'
@@ -64,6 +69,7 @@ from scipy import stats
 
 from ic_opt import space
 from ic_opt.observation import Observation
+from ic_opt.sim.corner import stopped_early
 from ic_opt.space import split_origin
 from ic_opt.spec import Spec
 
@@ -232,8 +238,10 @@ def _counts(rows: list[Observation]) -> dict[str, Any]:
         by_status[o.status] = by_status.get(o.status, 0) + 1
         per_step[o.step] = per_step.get(o.step, 0) + 1
     unknown = sum(1 for o in rows if o.simulations is None)
+    stops = [stop for o in rows if (stop := stopped_early(o.issues)) is not None]
     return {"points": len(rows), "by_status": dict(sorted(by_status.items())),
             "simulations": sum(o.simulations or 0 for o in rows), "per_step": per_step,
+            "stopped_early": len(stops), "simulations_not_run": sum(not_run for not_run, _wanted, _child in stops),
             "notes": {"simulations": f"{unknown} points recorded before 0.2.x carry no count"} if unknown else {}}
 
 
@@ -399,8 +407,9 @@ _POINT_SAID = re.compile(r"metric (\w+) missing or non-finite$")
 
 def _causes(issues: Sequence[str]) -> list[str]:
     """A point's issue texts, each once, without the point's own "metric X missing or non-finite" where a child's text
-    says why X failed: the two are one cause, and the child's text is the one that names it."""
-    texts = list(dict.fromkeys(issues))
+    says why X failed: the two are one cause, and the child's text is the one that names it. Nor the line of a point
+    stopped early: it says what was not simulated, not why the point gave no value (``counts`` has it)."""
+    texts = [text for text in dict.fromkeys(issues) if stopped_early([text]) is None]
     named = {m.group(1) for text in texts if (m := _CHILD_SAID.search(text))}
     return [text for text in texts if not ((m := _POINT_SAID.search(text)) and m.group(1) in named)]
 
@@ -660,7 +669,10 @@ def markdown(d: dict[str, Any]) -> str:
     """The digest for a reader who has not seen the project: tables, values with their units."""
     counts, problem = d["counts"], d["problem"]
     head = f"{counts['points']} points · " + (" · ".join(f"{k} {v}" for k, v in counts["by_status"].items()) or "none")
-    head += f" · {counts['simulations']} simulations" + (f" · step `{d['step']}`" if d["step"] else "")
+    head += f" · {counts['simulations']} simulations"
+    if counts["stopped_early"]:
+        head += f" · {counts['stopped_early']} stopped early ({counts['simulations_not_run']} simulations not run)"
+    head += f" · step `{d['step']}`" if d["step"] else ""
     parts = [f"# Run digest — {d['project']}", head,
              "## What is optimized", _md_problem(problem),
              "## How far the run is", _md_progress(d["progress"]),

@@ -107,7 +107,8 @@ def test_em_circuit_pipeline_matches_recorded_run(tmp_path, project):
     deck = import_netlists(spec, executor, store)
     spec.budget.max_simulations = 10_000
     points = [Point(row["parameters"], "replay") for row in rows]
-    observations = evaluate(spec, points, executor, store, deck=deck, parallel_jobs=4, limits=host_for(spec, 4))
+    observations = evaluate(spec, points, executor, store, deck=deck, parallel_jobs=4, limits=host_for(spec, 4),
+                            stop_at_first_failure=False)     # em-opt simulated every child: compare whole verdicts (T17.8)
 
     mismatches = []
     for row, obs in zip(rows, observations, strict=True):

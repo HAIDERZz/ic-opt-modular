@@ -240,19 +240,22 @@ class Simulator(Model):
     keep_failed_runs: bool = True
     keep_successful_runs: bool = True
     operating_points: bool = True        # T17.5: add the statements Spectre needs to write them, read them per child
+    stop_at_first_failure: bool = True   # T17.8: a point stops at its first child that fails it (ic_opt.eval.schedule)
 
     engine: Literal["spectre_x"] = "spectre_x"
     output_format: Literal["psfxl"] = "psfxl"
 
     @model_serializer(mode="wrap")
     def _dump(self, handler):
-        """An unset license queue timeout and operating points left on stay out of the dump, so the specs written before
-        they existed keep their legacy fingerprint (``Spec._legacy_fingerprint``)."""
+        """An unset license queue timeout, and operating points and the stop at the first failure left on, stay out of the
+        dump, so the specs written before they existed keep their legacy fingerprint (``Spec._legacy_fingerprint``)."""
         data = handler(self)
         if self.license_queue_timeout_s is None:
             data.pop("license_queue_timeout_s", None)
         if self.operating_points:
             data.pop("operating_points", None)
+        if self.stop_at_first_failure:
+            data.pop("stop_at_first_failure", None)
         return data
 
 
@@ -557,9 +560,9 @@ class Spec(Model):
 
     def problem(self) -> dict:
         """The problem this spec states: ``model_dump(mode="json")`` without how it is run -- the simulator's parallel jobs,
-        threads per run, timeout, license check, license queue timeout, retention and operating points, EMX threads, memory
-        cap, timeout and verbosity, and the budget. Unset (None) fields are left out too, so an optional field added to the schema later
-        leaves every existing problem's identity alone."""
+        threads per run, timeout, license check, license queue timeout, retention, operating points and stop at the first
+        failure, EMX threads, memory cap, timeout and verbosity, and the budget. Unset (None) fields are left out too, so
+        an optional field added to the schema later leaves every existing problem's identity alone."""
         return self.model_dump(mode="json", exclude=_NOT_PROBLEM, exclude_none=True)
 
     def fingerprint(self) -> str:
@@ -584,7 +587,8 @@ def _unique(values: list[str], label: str) -> None:
 # How a problem is run, not which problem it is: left out of Spec.problem() and so of Spec.fingerprint().
 _NOT_PROBLEM = {
     "simulator": {"parallel_jobs", "threads_per_run", "timeout_s", "license_check", "license_queue_timeout_s",
-                  "keep_failed_runs", "keep_successful_runs", "operating_points"},   # operating points: read beside the metrics, never change one
+                  "keep_failed_runs", "keep_successful_runs", "operating_points",   # operating points: read beside the metrics, never change one
+                  "stop_at_first_failure"},    # which children of a point run, not what any of them gives: a stopped point is never reused
     "em": {"threads", "memory_gb", "parallel_jobs", "timeout_s", "verbose", "binary"},      # the binary: a path on the host, not physics
     "budget": True,
 }
