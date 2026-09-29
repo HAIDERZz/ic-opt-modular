@@ -185,3 +185,47 @@ recipes need no change.
 
 The multi-corner view for the proposer and the corner model (steps 2 and 3), running one point's children in
 parallel or in portions, scheduling EM devices, any change to a strategy.
+
+## 14. Revision 1 (2026-09-29, after the first implementation): what a stopped point means to the rest
+
+The first implementation (branch `t17-8-schedule`, `7e05ba0`) found four consequences of a stopped point in code
+outside sections 2 to 11. They are part of this step, since the switch is on by default; section 13 is narrowed
+accordingly: the strategies' *proposals* do not change, only what they are handed and how they rank a stopped point.
+
+1. **The record says what was not run.** `Observation.not_run: list[str]` (child keys the point wanted but did not
+   run, in the engine's child order), written by the engine; left out of the dump when empty, so an unstopped point's
+   line is byte for byte what it was. The "not simulated" issues line of section 6 stays for the reader; code reads
+   the field, never the line (`corner.stopped_early` goes). `digest` and `analyze` use the field.
+2. **Which corners a row was evaluated at** = the corners of its children and of its `not_run` children. One helper,
+   `Observation.corners()` (a method: `{c.corner or "nominal"}` over both), used by `optimize._at_corners`,
+   `optimize.history_size`, `suggesters.resolve_auto` and `metric_gp._refuse` in place of reading `children` alone.
+   A signoff point stopped at its first corner is an all-corner row and stays out of the one-corner search.
+3. **Ranking a stopped point among infeasible points.** A point that stopped early is not "less infeasible" because
+   fewer of its constraints were judged: the constraints it never reached are unknown. Among scored infeasible
+   points the one that got furthest comes first — fewest `not_run` (a complete point has none) — and among equals the
+   smallest violation over the constraints judged (a missing metric's residual counts as 0). This rule is one
+   function, `Observation.infeasibility_key(violation) -> tuple[int, float]`, applied in:
+   - `metric_gp.region.incumbent`, whose violation over the true arrays becomes a known violation: NaN residuals
+     count as 0 (`Composer.known_violation`, `np.nansum`); NaN is never the argmin;
+   - `turbo` (its centre when nothing is feasible), with `sqrt(constraint_penalty)` as the violation.
+4. **OpenBox and TuRBO are handed a stopped point as a failed trial** (as they are handed `metric_failed` today): they
+   take an objective and every constraint's residual, and a stopped point has neither. `openbox._residuals` is only
+   reached for complete points, so the `KeyError` of a spec without objective and constraints on two testbenches
+   cannot happen. TuRBO's rule 3 applies to the complete infeasible points it ranks; a stopped point is a failed
+   trial to it too (it never becomes a centre).
+5. **metric_gp keeps scoring stopped points**: their present metrics train the per-metric models (NaN where absent,
+   as today), their status is `constraint_failed`; only the incumbent rule (3) changes.
+
+Tests, added to `tests/ic_opt/test_schedule.py`:
+- `not_run`: present in the dump only when non-empty; an unstopped point's line unchanged; the engine fills it in
+  the child order; `digest` and `analyze` read it (their tests of section 11 item 7 switch to the field).
+- `corners()`: a stopped all-corner row is an all-corner row for `_at_corners`, `history_size` (no refusal when the
+  store holds a one-corner search and an all-corner re-check with stopped points) and `resolve_auto`.
+- Rule 3 in `metric_gp`: a history without a feasible point where a stopped point has the smaller known violation
+  and a complete infeasible point exists — the complete point is the centre; two stopped points — the one with fewer
+  `not_run`; a NaN violation is never chosen.
+- OpenBox with a spec without objective and constraints on metrics of two testbenches, one stopped point in the
+  history: proposes without error; the stopped point went in as a failed trial.
+- TuRBO: the centre among infeasible points is a complete one when one exists.
+- Recorded-run replays (`test_replay_parity.py`, `test_em_replay.py`) keep the switch off: they replay full
+  evaluations.
