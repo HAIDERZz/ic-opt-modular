@@ -174,8 +174,19 @@ class Variable(Model):
         return self
 
 
+class SaturationMargin(Model):
+    """The transistors a saturation-margin metric watches (T17.11), by the instance names of the testbench's
+    operating-point table (``ChildResult.operating_points``, which the digest prints). The metric is the smallest
+    ``|vds| - |vdsat|`` over them, computed by the extract stage. A switch, or any device meant to leave saturation, is
+    not listed. ``Metric`` checks the list, so that its messages name the metric."""
+
+    instances: list[str]
+
+
 class Metric(Model):
-    """A scalar the evaluation must produce: an OCEAN expression on a testbench, or a quantity of an EM device."""
+    """A scalar the evaluation must produce: an OCEAN expression on a testbench, a quantity of an EM device, or the worst
+    saturation margin of named transistors, which the extract stage computes from the operating points of the testbench's
+    DC analysis (T17.11) instead of OCEAN."""
 
     name: str
     unit: str = Field(min_length=1)
@@ -186,6 +197,16 @@ class Metric(Model):
     device: str | None = None                # EM device metrics: quantity of the device's S-parameters
     quantity: str | None = None              # e.g. Lp, Qp, k (curves, need frequency_hz) or Lp_res, Qp_peak, SRF_p (scalars)
     frequency_hz: float | None = None
+    saturation_margin: SaturationMargin | None = None   # T17.11: from the operating points; no expression, device, quantity
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        """An unset saturation margin stays out of the dump, so the specs written before it existed keep their legacy
+        fingerprint (``Spec._legacy_fingerprint``); ``Spec.problem()`` leaves every unset field out anyway."""
+        data = handler(self)
+        if self.saturation_margin is None:
+            data.pop("saturation_margin", None)
+        return data
 
     @field_validator("name")
     @classmethod
@@ -201,12 +222,34 @@ class Metric(Model):
 
     @model_validator(mode="after")
     def _one_source(self) -> Metric:
+        if self.saturation_margin is not None:
+            return self._saturation_source()
         if (self.expression is None) == (self.quantity is None):
             raise ValueError(f"metric {self.name}: give either expression (testbench) or quantity (device)")
         if self.quantity is not None and self.device is None:
             raise ValueError(f"metric {self.name}: a quantity metric must name its device")
         if self.expression is not None and self.device is not None:
             raise ValueError(f"metric {self.name}: an expression metric belongs to a testbench, not a device")
+        return self
+
+    def _saturation_source(self) -> Metric:
+        """A saturation-margin metric reads one testbench's operating points: it names that testbench -- in a spec of one
+        testbench too, where an expression metric is given it by default (T17.11 asks for it present) -- and at least one
+        transistor, each once."""
+        named = [field for field in ("expression", "device", "quantity") if getattr(self, field) is not None]
+        if named:
+            raise ValueError(f"metric {self.name}: a saturation_margin metric takes no {', '.join(named)}; the extract "
+                             "stage computes it from the operating points")
+        if self.testbench is None:
+            raise ValueError(f"metric {self.name}: a saturation_margin metric must name its testbench")
+        instances = self.saturation_margin.instances
+        if not instances:
+            raise ValueError(f"metric {self.name}: saturation_margin needs at least one instance")
+        if any(not name for name in instances):
+            raise ValueError(f"metric {self.name}: saturation_margin instances must be non-empty names")
+        twice = sorted({name for name in instances if instances.count(name) > 1})
+        if twice:
+            raise ValueError(f"metric {self.name}: saturation_margin instances must be distinct ({', '.join(twice)} twice)")
         return self
 
 
@@ -476,6 +519,8 @@ class Spec(Model):
                 if metric.device not in device_ids:
                     raise ValueError(f"metric {metric.name} references unknown device {metric.device}")
                 continue
+            if metric.saturation_margin is not None and not self.simulator.operating_points:   # T17.11: nothing to read
+                raise ValueError(f"metric {metric.name} reads the operating points; set simulator.operating_points true")
             if metric.testbench is None:
                 if len(tb_ids) != 1:
                     raise ValueError(f"metric {metric.name} must name its testbench")
