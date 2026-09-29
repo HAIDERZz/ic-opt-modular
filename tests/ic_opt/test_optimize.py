@@ -440,17 +440,14 @@ def test_optimize_without_a_strategy_runs_metric_gp_on_a_circuit_at_one_conditio
 
 
 def test_optimize_without_a_strategy_over_two_corners_runs_openbox_and_is_not_refused(tmp_path, capsys):
-    """Every child of every point runs (T17.8's stop off): this deck has no corner template, so each child fails, and a
-    point stopped at its first corner would hold one corner only."""
-    spec, store, ex, deck = project(tmp_path / "two", corners=[{"id": "tt"}, {"id": "ss"}],
-                                    simulator={**minimal_spec()["simulator"], "stop_at_first_failure": False})
+    spec, store, ex, deck = project(tmp_path / "two", corners=[{"id": "tt"}, {"id": "ss"}])
     obs = optimize(spec, ex, store, deck=deck, budget=4, batch=2, seed=1, current=False, limits=FAKE_HOST)
     out = capsys.readouterr().out
     assert out.splitlines()[0] == ("[optimize] strategy auto: openbox_gp_eic (metric_gp works on one condition; "
                                    "this run covers 2 corners)")
     assert "[optimize] openbox initial design" in out
     assert len(obs) == 4 and all(o.origin.startswith("suggest:openbox_gp_eic:") for o in obs)
-    assert all(set(o.children) == {"tb/tt", "tb/ss"} for o in obs)
+    assert all(o.corners() == {"tt", "ss"} for o in obs)       # this deck fails every child: each point stops at tt (T17.8)
     # the same rows handed to a circuit at one condition as initial=: metric_gp would refuse them, auto does not pick it
     single, store, ex, deck = project(tmp_path / "one")
     more = optimize(single, ex, store, deck=deck, budget=2, batch=2, seed=1, initial=obs, current=False, limits=FAKE_HOST)

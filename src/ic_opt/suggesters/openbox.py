@@ -22,7 +22,8 @@ What OpenBox is fed, per observation (checked against the vendored OpenBox 0.9.0
   constraint residuals, as a successful trial. OpenBox itself replaces the objective of every infeasible trial with the
   largest objective among the successful ones before training (``History.get_objectives(transform='infeasible')``); it
   expects true values there, and until 0.4.0 got ``1e6 + penalty`` marked as successes, so that maximum was 1e6.
-- ``metric_failed`` and ``failed:<stage>``: a trial with ``trial_state=FAILED``. ``History`` then counts it in
+- ``metric_failed``, ``failed:<stage>`` and a point stopped early (T17.8: ``not_run``, a ``constraint_failed`` point that
+  has neither an objective nor every constraint's residual): a trial with ``trial_state=FAILED``. ``History`` then counts it in
   ``len(history)`` but not in ``get_success_count()``, never as feasible, and before training replaces its objective and
   each of its constraints with the largest value of that column among the successful trials (``_get_transformed_values``:
   failed rows are set to nan, the column maxima taken, the rows filled with them): the failed point enters both models
@@ -238,7 +239,8 @@ def _values(spec: Spec, params: dict[str, str], search: SearchScale) -> dict[str
 
 
 def _residuals(spec: Spec, obs: Observation) -> list[float]:
-    """<= 0 means satisfied (OpenBox EIC convention). Only successful trials carry them: every metric is there."""
+    """<= 0 means satisfied (OpenBox EIC convention). Only successful trials carry them: every metric is there (a point
+    stopped early, which lacks some, is a failed trial: ``base.minimization_objective``)."""
     out = []
     for c in spec.constraints:
         value = float(obs.metrics[c.metric])

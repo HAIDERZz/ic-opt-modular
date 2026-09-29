@@ -47,7 +47,7 @@ def resolve_auto(spec: Spec, corners: int, history: Iterable[Observation] = ()) 
         return "openbox_gp_eic", "metric_gp does not take EM devices yet"
     if refusal:
         return "openbox_gp_eic", f"metric_gp works on one condition; this run covers {corners} corners"
-    held = sorted({c.corner or "nominal" for o in history for c in o.children.values()})
+    held = sorted(set().union(*(o.corners() for o in history)))          # a point stopped early: every corner it was to run at
     if len(held) > 1:
         return "openbox_gp_eic", ("metric_gp works on one condition; the history holds points evaluated at the corners "
                                   + ", ".join(held))

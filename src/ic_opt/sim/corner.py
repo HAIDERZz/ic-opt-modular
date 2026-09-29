@@ -24,14 +24,13 @@ end fails the point at its stage, as above; a child that lost a metric makes it 
 point is ``constraint_failed`` at a corner in the constraint scope whose present metrics violate a constraint
 (``objective.evaluate_partial``: the constraints whose metric is there, and only those), with no ``fom`` and no
 objective. It is never feasible, and its issues carry, after the failure's own lines, ``NOT_SIMULATED``: how many
-children were not simulated and after which one the point stopped (:func:`stopped_early` reads it back).
+children were not simulated and after which one the point stopped. That line is for the reader; the engine names the
+children not run in the observation's ``not_run``, which is what code reads.
 """
 
 from __future__ import annotations
 
 import math
-import re
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from ic_opt import objective as objective_contract
@@ -39,7 +38,6 @@ from ic_opt.observation import ChildResult
 from ic_opt.spec import Spec
 
 NOT_SIMULATED = "not simulated: {not_run} of {wanted} children (stopped after {child})"
-_NOT_SIMULATED = re.compile(r"^not simulated: (\d+) of (\d+) children \(stopped after (.+)\)$")
 
 
 @dataclass
@@ -101,15 +99,6 @@ def aggregate(spec: Spec, children: dict[str, ChildResult], wanted: list[str] | 
         status="ok", metrics=per_corner[selected], fom=ev.fom, objective=ev.objective, feasible=True,
         selected_corner=selected, corner_objectives=objectives, issues=warnings,
     )
-
-
-def stopped_early(issues: Iterable[str]) -> tuple[int, int, str] | None:
-    """(children not simulated, children the point was to run, the key of the child it stopped after) from the
-    ``NOT_SIMULATED`` line of a point stopped early; None for a point that ran every child."""
-    for issue in issues:
-        if match := _NOT_SIMULATED.match(issue):
-            return int(match.group(1)), int(match.group(2)), match.group(3)
-    return None
 
 
 def _per_corner(spec: Spec, children: dict[str, ChildResult]) -> tuple[dict[str, dict[str, float]], list[str], str]:

@@ -6,22 +6,30 @@ from __future__ import annotations
 import json
 import math
 
+import numpy as np
 import pytest
 
+from ic_opt import digest as digest_module
 from ic_opt import objective
 from ic_opt.blocks import analyze
 from ic_opt.blocks.evaluate import evaluate, plan_shape
-from ic_opt.blocks.optimize import optimize
+from ic_opt.blocks.optimize import _at_corners, history_size, optimize, suggest
 from ic_opt.eval.engine import Child
 from ic_opt.eval.schedule import ChildHistory, Schedule
 from ic_opt.eval.stage import Resources, StageContext
 from ic_opt.executor import LocalExecutor
-from ic_opt.observation import ChildResult, Observation
+from ic_opt.observation import ChildResult, Observation, Observations
 from ic_opt.recipes import signoff
-from ic_opt.sim.corner import aggregate, stopped_early
+from ic_opt.sim.corner import aggregate
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
+from ic_opt.suggesters import resolve_auto
+from ic_opt.suggesters.base import minimization_objective
+from ic_opt.suggesters.metric_gp import MetricGpSuggester, region
+from ic_opt.suggesters.metric_gp.compose import Composer, metric_scales, true_arrays
+from ic_opt.suggesters.openbox import OpenBoxSuggester
+from ic_opt.suggesters.turbo import targets
 from tests.ic_opt.fakes import FAKE_HOST, minimal_spec
 from tests.ic_opt.test_engine import GOLDEN, golden
 
@@ -226,24 +234,28 @@ def test_the_engine_stops_a_point_at_its_first_failing_child(tmp_path, capsys):
     assert first.simulations == 1 and first.fom is None and first.objective is None and first.metrics == {"NF": 9.5}
     assert first.constraint_penalty == pytest.approx((0.5 / 9) ** 2)
     assert first.issues == ["tt: NF lt 9 violated by 9.5", "not simulated: 3 of 4 children (stopped after tb/tt)"]
+    assert first.not_run == ["tb/ss", "g/tt", "g/ss"] and first.corners() == {"tt", "ss"}
     assert [c for c in stage.ran if c[0] == "20"] == [("20", "tb", "tt")]                 # nothing more ran for it
 
     feasible = by_f["22"]
     assert list(feasible.children) == ["tb/tt", "tb/ss", "g/tt", "g/ss"] and feasible.status == "ok" and feasible.feasible
     assert feasible.objective == pytest.approx(7.0) and feasible.simulations == 4 and feasible.issues == []
+    assert feasible.not_run == [] and "not_run" not in line_of(store, feasible.obs_id)
+    assert line_of(store, first.obs_id)["not_run"] == ["tb/ss", "g/tt", "g/ss"]
 
     failed = by_f["24"]
     assert list(failed.children) == ["tb/tt", "tb/ss", "g/tt"] and failed.status == "failed:spectre"
     assert failed.issues == ["g/tt: spectre exited 1", "not simulated: 1 of 4 children (stopped after g/tt)"]
-    assert failed.simulations == 3
+    assert failed.simulations == 3 and failed.not_run == ["g/ss"]
 
     at_ss = by_f["26"]
     assert list(at_ss.children) == ["tb/tt", "tb/ss"] and at_ss.status == "constraint_failed" and at_ss.metrics == {"NF": 9.5}
     assert at_ss.issues == ["ss: NF lt 9 violated by 9.5", "not simulated: 2 of 4 children (stopped after tb/ss)"]
+    assert at_ss.not_run == ["g/tt", "g/ss"]
 
     last = by_f["28"]                                               # its failing child was its last: recorded whole
     assert len(last.children) == 4 and last.status == "constraint_failed" and last.fom == pytest.approx(7.5)
-    assert stopped_early(last.issues) is None and last.issues == ["ss: G gt 1 violated by 0.5"]
+    assert last.not_run == [] and last.issues == ["ss: G gt 1 violated by 0.5"]
 
     step = last_step(store)
     assert (step["stopped"], step["not_run"], step["simulations"], step["new"]) == (3, 6, 14, 5)
@@ -271,10 +283,13 @@ def test_the_engine_runs_the_learned_order_and_records_the_engine_s_order(tmp_pa
         store.append(row(spec, i, child("tb", "tt", NF=8.0), child("tb", "ss", NF=8.0), child("g", "tt", G=2.0),
                          child("g", "ss", G=0.5), status="constraint_failed"))
     stage = Prepared()
-    (o,) = evaluate(spec, [Point({"F": "22", "W": "0.6u"}, "user")], LocalExecutor(store.root / "sims"), store,
-                    pipeline=[stage], limits=FAKE_HOST)
-    assert stage.ran == [("22", "g", "ss"), ("22", "tb", "tt"), ("22", "tb", "ss"), ("22", "g", "tt")]
-    assert list(o.children) == ["tb/tt", "tb/ss", "g/tt", "g/ss"] and o.status == "ok"
+    ok, stopped = evaluate(spec, [Point({"F": f, "W": "0.6u"}, "user") for f in ("22", "28")], LocalExecutor(store.root / "sims"),
+                           store, pipeline=[stage], limits=FAKE_HOST)
+    assert [c for c in stage.ran if c[0] == "22"] == [("22", "g", "ss"), ("22", "tb", "tt"), ("22", "tb", "ss"), ("22", "g", "tt")]
+    assert list(ok.children) == ["tb/tt", "tb/ss", "g/tt", "g/ss"] and ok.status == "ok" and ok.not_run == []
+    # F=28 fails G > 1 at g/ss, which now runs first: the others are not run, and not_run keeps the engine's order
+    assert [c for c in stage.ran if c[0] == "28"] == [("28", "g", "ss")]
+    assert list(stopped.children) == ["g/ss"] and stopped.not_run == ["tb/tt", "tb/ss", "g/tt"]
 
 
 def test_the_plan_says_a_point_may_stop(tmp_path):
@@ -380,22 +395,29 @@ def test_the_switch_is_not_the_problem_and_its_default_stays_out_of_the_dump():
 
 
 def test_the_digest_and_the_report_read_stopped_points(tmp_path):
+    """Section 14, item 1: they read ``not_run``, never the "not simulated" line. Without that line the numbers are the
+    same, and a point that carries the line but ran every child is not counted as stopped."""
     spec = two_by_two()
     store, _, obs = run_batch(tmp_path, spec)
-    analyze.digest(spec, obs, store)
-    d = json.loads((store.reports_dir() / "digest.json").read_text(encoding="utf-8"))
-    counts = d["counts"]
-    assert (counts["points"], counts["simulations"], counts["stopped_early"], counts["simulations_not_run"]) == (5, 14, 3, 6)
-    assert counts["by_status"] == {"constraint_failed": 3, "failed:spectre": 1, "ok": 1}
-    assert d["failures"]["messages"] == [{"text": "g/tt: spectre exited 1", "count": 1}]     # not the "not simulated" line
-    md = (store.reports_dir() / "digest.md").read_text(encoding="utf-8")
-    assert "· 14 simulations · 3 stopped early (6 simulations not run)" in md
+    plain = [o.model_copy(update={"issues": [t for t in o.issues if not t.startswith("not simulated")]}) for o in obs]
+    posing = [plain[0], plain[1].model_copy(update={"issues": ["not simulated: 1 of 4 children (stopped after tb/tt)"]}),
+              *plain[2:]]
+    assert plain[1].status == "ok" and plain[1].not_run == []
+    for rows in (obs, plain, posing):
+        analyze.digest(spec, rows, store)
+        d = json.loads((store.reports_dir() / "digest.json").read_text(encoding="utf-8"))
+        counts = d["counts"]
+        assert (counts["points"], counts["simulations"], counts["stopped_early"], counts["simulations_not_run"]) == (5, 14, 3, 6)
+        assert counts["by_status"] == {"constraint_failed": 3, "failed:spectre": 1, "ok": 1}
+        assert d["failures"]["messages"] == [{"text": "g/tt: spectre exited 1", "count": 1}]    # not the "not simulated" line
+        md = (store.reports_dir() / "digest.md").read_text(encoding="utf-8")
+        assert "· 14 simulations · 3 stopped early (6 simulations not run)" in md
 
-    report = analyze.report(spec, obs, store).read_text(encoding="utf-8")
-    # a stopped point counts at the corner it stopped at (20 and 24 at tt, 26 at ss); 28 ran whole and fails at ss
-    assert "- failures per corner (a point counts at every corner it fails at): tt 2/5, ss 2/5" in report
-    assert "- worst corner: tt (2 of 5 observations fail there)" in report
-    assert "- NF < 9 dB violated at: tt 1/5, ss 1/5" in report and "- G > 1 dB violated at: tt 0/5, ss 1/5" in report
+        report = analyze.report(spec, rows, store).read_text(encoding="utf-8")
+        # a stopped point is judged on what ran: 20 at tt, 24 at tt (its failed g/tt), 26 at ss; 28 ran whole, fails at ss
+        assert "- failures per corner (a point counts at every corner it fails at): tt 2/5, ss 2/5" in report
+        assert "- worst corner: tt (2 of 5 observations fail there)" in report
+        assert "- NF < 9 dB violated at: tt 1/5, ss 1/5" in report and "- G > 1 dB violated at: tt 0/5, ss 1/5" in report
 
 
 # -- the signoff recipe ---------------------------------------------------------------------------------------------------------
@@ -413,3 +435,121 @@ def test_signoff_stops_a_point_at_its_first_failing_corner_unless_full(tmp_path)
         signoff.main(run, corner="tt", budget=4, batch=2, top=2, strategy="random", seed=2, full=full)
         check = run.store.observations().by_step("signoff")
         assert len(check) == 2 and all(list(o.children) == ran and o.status == "constraint_failed" for o in check), full
+
+
+# -- section 14 (revision 1): what a stopped point means to the rest ------------------------------------------------------
+
+
+EVERYWHERE = ["tb/tt", "tb/ss", "g/tt", "g/ss"]
+PAIR = ["tb/nominal", "g/nominal"]
+
+
+def pair_spec(**overrides) -> Spec:
+    """tb gives NF, g gives G, at one condition: NF < 9 and G > 1, minimize NF - G."""
+    return Spec.model_validate({**minimal_spec(
+        testbenches=[bench("tb"), bench("g")],
+        metrics=[{"name": "NF", "unit": "dB", "expression": "nf()", "testbench": "tb"},
+                 {"name": "G", "unit": "dB", "expression": "g()", "testbench": "g"}],
+        constraints=[{"metric": "NF", "op": "lt", "value": "9"}, {"metric": "G", "op": "gt", "value": "1"}],
+        objective={"direction": "minimize", "expression": "NF - G"}), **overrides})
+
+
+def point(spec: Spec, i: int, params: dict[str, str], *children: ChildResult, wanted: list[str] | None = None) -> Observation:
+    """What the engine records for a point whose ``children`` ran, of ``wanted`` (None: every child ran)."""
+    ran = {f"{c.unit}/{c.corner or 'nominal'}": c for c in children}
+    agg = aggregate(spec, ran, wanted)
+    return Observation(obs_id=f"obs_{i + 1:04d}", params=params, origin="user", children=ran,
+                       not_run=[key for key in wanted or () if key not in ran], metrics=agg.metrics, fom=agg.fom,
+                       objective=agg.objective, feasible=agg.feasible, constraint_penalty=agg.constraint_penalty,
+                       status=agg.status, issues=agg.issues, simulations=len(ran), spec_fingerprint=spec.fingerprint(),
+                       pipeline_fingerprint="recorded", started_at="t", finished_at="t")
+
+
+def at(f: str, w: str = "0.6u") -> dict[str, str]:
+    return {"F": f, "W": w}
+
+
+def test_not_run_is_in_the_record_only_when_a_point_stopped():
+    spec = two_by_two()
+    whole = point(spec, 0, at("20"), child("tb", "tt", NF=8.0), child("tb", "ss", NF=8.0), child("g", "tt", G=2.0),
+                  child("g", "ss", G=2.0), wanted=EVERYWHERE)
+    stopped = point(spec, 1, at("22"), child("tb", "tt", NF=9.5), wanted=EVERYWHERE)
+    assert whole.not_run == [] and "not_run" not in json.loads(whole.model_dump_json())
+    assert json.loads(stopped.model_dump_json())["not_run"] == ["tb/ss", "g/tt", "g/ss"]
+    assert Observation.model_validate_json(stopped.model_dump_json()) == stopped
+    assert Observation.model_validate_json(whole.model_dump_json()).not_run == []     # a line of a store written before
+
+
+def test_a_stopped_point_is_a_row_of_every_corner_it_was_to_run_at():
+    """``Observation.corners``: a re-check at all corners stopped at its first corner stays out of the one-corner search."""
+    spec = two_by_two()
+    search = [point(spec, i, at(f), child("tb", "tt", NF=8.0), child("g", "tt", G=2.0)) for i, f in enumerate(("20", "22", "24"))]
+    recheck = [point(spec, 3, at("20", "0.8u"), child("tb", "tt", NF=8.0), child("tb", "ss", NF=8.2), child("g", "tt", G=2.0),
+                     child("g", "ss", G=1.5), wanted=EVERYWHERE),
+               point(spec, 4, at("22", "0.8u"), child("tb", "tt", NF=9.5), wanted=EVERYWHERE)]    # stopped at tt
+    assert set(recheck[1].children) == {"tb/tt"} and recheck[1].corners() == {"tt", "ss"}
+    rows = Observations(search + recheck)
+    assert _at_corners(spec, rows, ["tt"]) == search and _at_corners(spec, rows, "all") == recheck
+    assert history_size(spec, rows, ["tt"]) == 3 and history_size(spec, rows, "all") == 2
+    with pytest.raises(ValueError, match=r"several sets of corners \(tt: 3; ss, tt: 2\)"):
+        history_size(spec, rows)
+    assert history_size(spec, Observations(recheck)) == 2              # one set of corners: no refusal
+    assert digest_module.digest(spec, recheck[1:])["problem"]["corners"] == ["ss", "tt"]
+    assert resolve_auto(spec, 1, [recheck[1]]) == (
+        "openbox_gp_eic", "metric_gp works on one condition; the history holds points evaluated at the corners ss, tt")
+    with pytest.raises(ValueError, match="evaluated at the corners ss, tt"):
+        MetricGpSuggester().propose(spec, Observations(search + recheck[1:]), 2, seed=0)
+
+
+def test_metric_gp_ranks_a_point_that_ran_every_child_before_a_stopped_one():
+    """Rule 3: among infeasible points the one that got furthest, then the smallest violation of the constraints judged
+    (a metric the point never got counts 0); a nan violation is never chosen."""
+    spec = pair_spec()
+    rows = [point(spec, 0, at("20"), child("tb", NF=9.05), wanted=PAIR),                     # stopped: the smallest violation
+            point(spec, 1, at("22"), child("tb", NF=12.0), child("g", G=0.2)),
+            point(spec, 2, at("24"), child("tb", NF=8.0), child("g", G=0.9))]
+    assert [o.status for o in rows] == ["constraint_failed"] * 3 and rows[0].not_run == ["g/nominal"]
+    composer, scales, arrays = Composer(spec), metric_scales(spec, rows), true_arrays(spec, rows)
+    assert math.isnan(composer.violation(arrays, scales)[0])                                  # what argmin chose before
+    known = composer.known_violation(arrays, scales)
+    assert np.isfinite(known).all() and known[0] == min(known)
+    best = region.incumbent(composer, rows, [0, 1, 2], scales, arrays)
+    assert (best.position, best.feasible, best.value) == (2, False, pytest.approx(known[2]))
+    assert region.centre(composer, rows, region.Region(own=[0, 1, 2]), scales, arrays) == 2
+
+    spec = three_testbenches()                                                               # two stopped points
+    rows = [point(spec, 0, at("20"), child("a", A=1.01), wanted=["a/nominal", "b/nominal", "c/nominal"]),
+            point(spec, 1, at("22"), child("a", A=0.5), child("b", B=5.0), wanted=["a/nominal", "b/nominal", "c/nominal"])]
+    composer, scales, arrays = Composer(spec), metric_scales(spec, rows), true_arrays(spec, rows)
+    assert region.incumbent(composer, rows, [0, 1], scales, arrays).position == 1            # fewer children not run
+
+
+def test_openbox_takes_a_stopped_point_as_a_failed_trial():
+    """No objective and constraints on metrics of two testbenches: a stopped point was fed as a successful trial and
+    OpenBox's residuals asked for the metric it never got (KeyError); it goes in as a failed trial."""
+    from openbox.utils.constants import FAILED, SUCCESS
+
+    spec = pair_spec(objective=None)
+    rows = Observations([point(spec, 0, at("20"), child("tb", NF=8.0), child("g", G=2.0)),
+                         point(spec, 1, at("22"), child("tb", NF=10.0), child("g", G=2.0)),
+                         point(spec, 2, at("24"), child("tb", NF=12.0), wanted=PAIR),
+                         point(spec, 3, at("26", "0.8u"), child("tb", NF=7.0), child("g", G=3.0)),
+                         point(spec, 4, at("28", "0.8u"), child("tb", NF=8.0), child("g", G=0.5))])
+    assert rows[2].status == "constraint_failed" and rows[2].not_run == ["g/nominal"]
+    assert minimization_objective(spec, rows[2]) is None and minimization_objective(pair_spec(), rows[2]) is None
+    assert OpenBoxSuggester().advisor(spec, rows, seed=0).history.trial_states == [SUCCESS, SUCCESS, FAILED, SUCCESS, SUCCESS]
+    assert len(suggest(spec, rows, 2, strategy="openbox_gp_eic", seed=0, initial_trials=4)) == 2
+
+
+def test_turbo_never_centres_its_region_on_a_stopped_point():
+    """TuRBO centres its region on the smallest target, the first of equal ones: a stopped point is a failed trial, one
+    float step above the others, so the centre is a point that ran every child whenever there is one."""
+    spec = pair_spec()
+    stopped = point(spec, 0, at("20"), child("tb", NF=9.05), wanted=PAIR)                  # the smallest penalty, and first
+    infeasible = point(spec, 1, at("22"), child("tb", NF=12.0), child("g", G=2.0))
+    failed = point(spec, 2, at("24"), child("tb", status="failed:spectre", issues=["spectre exited 1"]), child("g", G=2.0))
+    y = targets(spec, Observations([stopped, infeasible, failed]))
+    assert int(np.argmin(y)) == 1 and y[2] == y[1] == pytest.approx(1 / 3) and y[0] == np.nextafter(y[1], np.inf)
+    feasible = point(spec, 3, at("26"), child("tb", NF=8.0), child("g", G=2.0))
+    y = targets(spec, Observations([stopped, feasible, infeasible]))
+    assert int(np.argmin(y)) == 1 and y[0] > max(y[1], y[2])

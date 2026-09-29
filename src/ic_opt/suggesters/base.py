@@ -53,8 +53,10 @@ def minimization_objective(spec: Spec, obs: Observation) -> float | None:
     """A point's true objective in minimization form, what a model is fed: the objective of an ``ok`` point, the
     ``fom`` of a ``constraint_failed`` one with the sign of the spec's direction (``-fom`` for maximize); 0.0 for every
     point that is not failed when the spec has no objective (a pure feasibility problem: before T17.0b its points fell
-    through to the failure penalty). None for a failed point (``metric_failed``, ``failed:<stage>``): there is no value."""
-    if obs.status not in ("ok", "constraint_failed"):
+    through to the failure penalty). None for a failed point (``metric_failed``, ``failed:<stage>``): there is no value.
+    None too for a point stopped early (T17.8, ``not_run``): it has neither an objective nor every constraint's residual,
+    so OpenBox and TuRBO take it as a failed trial."""
+    if obs.status not in ("ok", "constraint_failed") or obs.not_run:
         return None
     if spec.objective is None:
         return 0.0

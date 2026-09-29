@@ -35,10 +35,14 @@ class ChildResult(BaseModel):
 
 
 class Observation(BaseModel):
+    """One evaluated point. A point the evaluation schedule stopped early (T17.8) holds the children that ran and names
+    the others in ``not_run``; code reads that field, never the "not simulated" line its ``issues`` carry for the reader."""
+
     obs_id: str
     params: dict[str, str]
     origin: str
     children: dict[str, ChildResult] = Field(default_factory=dict)   # "<unit>/<corner>" -> result
+    not_run: list[str] = Field(default_factory=list)                 # children it was to run and did not, in the engine's order
     metrics: dict[str, float] = Field(default_factory=dict)          # aggregated across corners
     fom: float | None = None
     objective: float | None = None                                   # minimization form
@@ -54,6 +58,14 @@ class Observation(BaseModel):
     started_at: str
     finished_at: str
 
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        """``not_run`` is left out while empty: a point that ran every child is written as before T17.8, byte for byte."""
+        data = handler(self)
+        if not self.not_run:
+            data.pop("not_run", None)
+        return data
+
     @property
     def point(self) -> Point:
         return Point(self.params, self.origin)
@@ -61,6 +73,17 @@ class Observation(BaseModel):
     @property
     def key(self) -> str:
         return self.point.key
+
+    def corners(self) -> set[str]:
+        """The corners the point was evaluated at: those of its children and of the children it did not run -- a point
+        stopped at its first corner was still evaluated at all of them; ``nominal`` for a corner-less child."""
+        return {c.corner or "nominal" for c in self.children.values()} | {key.split("/", 1)[1] for key in self.not_run}
+
+    def infeasibility_key(self, violation: float) -> tuple[int, float]:
+        """Where the point ranks among infeasible points, smallest first (T17.8): the one that got furthest -- fewest
+        children not run, a complete point none -- then the smallest ``violation`` over the constraints it was judged on.
+        A point stopped early is not less infeasible for having had fewer of its constraints judged."""
+        return len(self.not_run), violation
 
 
 class Observations(list[Observation]):

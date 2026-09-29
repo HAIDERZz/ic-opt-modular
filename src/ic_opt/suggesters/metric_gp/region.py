@@ -74,8 +74,10 @@ def batch_key(origin: str) -> tuple[str, int] | None:
 
 def incumbent(composer: Composer, rows: list[Observation], positions: list[int], scales: dict[str, float],
               arrays: dict[str, np.ndarray]) -> Incumbent | None:
-    """Section 6 over the rows at ``positions``: the feasible one with the smallest objective, else the scored one with
-    the smallest violation; None when none is scored. ``arrays``: the true metric values of every row."""
+    """Section 6 over the rows at ``positions``: the feasible one with the smallest objective, else the scored one that
+    ranks first among infeasible points (``Observation.infeasibility_key``, T17.8: the one that got furthest -- a point
+    stopped early after one that ran every child -- then the smallest violation over the constraints judged, a metric
+    it never got counting 0); None when none is scored. ``arrays``: the true metric values of every row."""
     scored = [p for p in positions if rows[p].status in SCORED]
     if not scored:
         return None
@@ -85,8 +87,8 @@ def incumbent(composer: Composer, rows: list[Observation], positions: list[int],
         objective = np.where(feasible, composer.objective(picked, scales), np.inf)
         best = int(np.argmin(objective))
         return Incumbent(scored[best], True, float(objective[best]))
-    violation = composer.violation(picked, scales)
-    best = int(np.argmin(violation))
+    violation = composer.known_violation(picked, scales)
+    best = min(range(len(scored)), key=lambda i: rows[scored[i]].infeasibility_key(float(violation[i])))
     return Incumbent(scored[best], False, float(violation[best]))
 
 

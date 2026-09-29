@@ -121,9 +121,15 @@ def targets(spec: Spec, history: Observations) -> np.ndarray:
     root of the summed squared normalized violations, ``objective.constraint_violations``): infeasible points sit one to
     four spreads above the worst feasible one, so the standardization keeps the feasible points' spread, and violations
     beyond three times the threshold tie; a failed point the largest target among all other points.
-    With none: a ``constraint_failed`` point ``v``; a failed point the largest ``v`` seen (1.0 when there is none)."""
+    With none: a ``constraint_failed`` point ``v``; a failed point the largest ``v`` seen (1.0 when there is none).
+
+    A point stopped early (T17.8, ``not_run``) is a failed trial too: it has no objective, and its penalty covers only the
+    constraints it was judged on. Every point that ran all its children ranks before it (``Observation.infeasibility_key``),
+    so its target is the failed one raised by one float step: TuRBO centres its region on the smallest target, the first
+    of equal ones, and a stopped point never becomes that centre while the region holds a point that is not stopped."""
     values = [minimization_objective(spec, o) for o in history]
-    violation = np.array([math.sqrt(o.constraint_penalty) if o.status == "constraint_failed" else math.nan for o in history])
+    violation = np.array([math.sqrt(o.constraint_penalty) if o.status == "constraint_failed" and not o.not_run else math.nan
+                          for o in history])
     feasible = np.array([v for v, o in zip(values, history, strict=True) if o.status == "ok" and v is not None])
     y = np.full(len(history), math.nan)
     infeasible = ~np.isnan(violation)
@@ -139,6 +145,9 @@ def targets(spec: Spec, history: Observations) -> np.ndarray:
     failed = np.isnan(y)
     if failed.any():
         y[failed] = np.max(y[~failed]) if (~failed).any() else 1.0
+    stopped = np.array([bool(o.not_run) for o in history], dtype=bool)
+    if stopped.any():
+        y[stopped] = np.nextafter(y[failed].max(), np.inf)
     return y
 
 

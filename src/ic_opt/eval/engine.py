@@ -18,12 +18,12 @@ Schedule (T17.8). Given a ``Schedule`` (``ic_opt.eval.schedule``; ``sim.evaluate
 builds one per batch unless the run turns it off), a point's children run in
 its order and the point stops after the first child whose result shows it
 cannot be feasible: the children after it are not run, the observation holds
-those that ran (``simulations`` counts them), and ``aggregate`` judges the
-incomplete set. The children keep the engine's own order in the observation
-whatever order they ran in, so a point that is not stopped is recorded as
-without a schedule. The budget check still reserves every child of a point.
-The step log counts the points stopped early and the children not run.
-Without a schedule: the engine's order, no stop.
+those that ran (``simulations`` counts them) and names the others in
+``not_run``, and ``aggregate`` judges the incomplete set. The children keep the
+engine's own order in the observation whatever order they ran in, so a point
+that is not stopped is recorded as without a schedule. The budget check still
+reserves every child of a point. The step log counts the points stopped early
+and the children not run. Without a schedule: the engine's order, no stop.
 
 Interrupts. Ctrl-C reaches the running commands through the executors' signal
 forwarding (``process_group``), which counts it before anything else; the
@@ -88,7 +88,6 @@ class Job:
     started: bool = False                 # a worker took it up
     recorded: bool = False                # its observation is in the store
     stopped_after: str | None = None      # why the schedule stopped the point early (Schedule.stop_after)
-    not_run: int = 0                      # its children that stop left out
 
 
 @dataclass(frozen=True)
@@ -213,13 +212,14 @@ def run(
             job.started = True
             started = time.monotonic()
             started_at = utc_now()
-            results, cache, job.stopped_after, job.not_run = _run_point(
+            results, cache, job.stopped_after = _run_point(
                 spec, point_stages, child_stages, job, children, executor, store, cshrc, stopping, schedule)
             if stopping() and any(r.status != "ok" for r in results.values()):
                 raise Interrupted(f"{job.obs_id}: interrupted")      # its commands got the interrupt: not the point's own failure
             agg = aggregate(spec, results, wanted)                    # an incomplete set when the schedule stopped the point
             job.observation = Observation(
                 obs_id=job.obs_id, params=job.point.params, origin=job.point.origin, children=results,
+                not_run=[key for key in wanted if key not in results],   # the children a stop left out, in the engine's order
                 metrics=agg.metrics, fom=agg.fom, objective=agg.objective, feasible=agg.feasible,
                 constraint_penalty=agg.constraint_penalty, status=agg.status, issues=agg.issues,
                 spec_fingerprint=spec_fp, pipeline_fingerprint=pipe_fp, step=step, cache=cache,
@@ -248,7 +248,7 @@ def run(
     store.log_step(
         step, "ok", points=len(points), new=sum(not j.reused for j in jobs), reused=sum(j.reused for j in jobs),
         simulations=sum(simulations(j.observation) for j in jobs if not j.reused), workers=workers,
-        stopped=sum(1 for j in jobs if j.not_run), not_run=sum(j.not_run for j in jobs),    # the schedule's stops
+        stopped=sum(1 for j in jobs if j.observation.not_run), not_run=sum(len(j.observation.not_run) for j in jobs),
         seconds=round(sum(j.seconds for j in jobs), 1),              # the points' own durations added up (they overlap)
         wall_seconds=round(time.monotonic() - began, 1),             # what the batch took on the clock
     )
@@ -264,7 +264,7 @@ def _log_interrupted(store: RunStore, step: str, jobs: list[Job], workers: int) 
         step, "interrupted", points=len(jobs), reused=len(jobs) - len(new), recorded=[j.obs_id for j in done],
         interrupted=[j.obs_id for j in new if j.started and not j.recorded], not_started=[j.obs_id for j in new if not j.started],
         simulations=sum(simulations(j.observation) for j in done), workers=workers, seconds=round(sum(j.seconds for j in done), 1),
-        stopped=sum(1 for j in done if j.not_run), not_run=sum(j.not_run for j in done),
+        stopped=sum(1 for j in done if j.observation.not_run), not_run=sum(len(j.observation.not_run) for j in done),
     )
 
 
@@ -331,8 +331,8 @@ def _run_cached(stage: Stage, value, ctx: StageContext, stopping=None):
 
 def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child], executor, store, cshrc, stopping=None,
                schedule: Schedule | None = None):
-    """The point's results (in the order of ``children``), its point-level cache use, and -- when ``schedule`` stopped
-    it early -- why and how many of its children did not run (else None and 0)."""
+    """The point's results (in the order of ``children``), its point-level cache use, and why ``schedule`` stopped it
+    early (None when every child ran)."""
     point_dir = store.root / "sims" / job.obs_id
     point_dir.mkdir(parents=True, exist_ok=True)
     ctx = StageContext(spec=spec, executor=executor, store=store, obs_id=job.obs_id, workdir=point_dir,
@@ -341,7 +341,7 @@ def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child]
         point_output = _run_stages(point_stages, job.point, ctx, stopping)
     except StageFailure as failure:
         failed = {c.key: ChildResult(unit=c.unit, corner=c.corner, status=f"failed:{failure.stage}", issues=failure.issues) for c in children}
-        return failed, dict(ctx.cache), None, 0
+        return failed, dict(ctx.cache), None
 
     ran: dict[str, ChildResult] = {}
     order = children if schedule is None else schedule.order(children)
@@ -364,7 +364,7 @@ def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child]
         if schedule is not None and place + 1 < len(order) and (reason := schedule.stop_after(result, child.corner)):
             break                                                   # the point cannot be feasible: nothing more runs for it
     results = {c.key: ran[c.key] for c in children if c.key in ran}  # the engine's order, whatever order they ran in
-    return results, dict(ctx.cache), reason, (len(order) - len(ran)) if reason else 0
+    return results, dict(ctx.cache), reason
 
 
 def _retain(spec: Spec, job: Job, children: dict[str, ChildResult], executor: Executor, store: RunStore) -> None:

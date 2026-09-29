@@ -43,10 +43,9 @@ Definitions the specification leaves open:
   observation-number order.
 - *what the unscored points said*: the texts of their ``issues`` as stored, each counted once per point that holds it;
   not the line of a point stopped early that says how many of its children were not simulated (below).
-- *stopped early* (T17.8): a point whose ``issues`` hold the line ``not simulated: <n> of <m> children (stopped after
-  <child>)`` (``sim.corner.stopped_early``): the schedule stopped it at its first failing child. ``counts`` gives how
-  many (``stopped_early``) and the ``n`` added up (``simulations_not_run``). Such a point holds only the children that
-  ran, so its metrics are those of the corners it reached.
+- *stopped early* (T17.8): a point whose ``not_run`` names children it did not run: the schedule stopped it at its first
+  failing child. ``counts`` gives how many (``stopped_early``) and those children added up (``simulations_not_run``).
+  Such a point holds only the children that ran, so its metrics are those of the corners it reached.
 
 The value helpers (units, SI prefixes, a constraint as a reader says it, a point's value per corner) live here and the
 report (``blocks/analyze.py``) imports them: importing ``ic_opt.blocks`` loads every block and the strategies'
@@ -69,7 +68,7 @@ from scipy import stats
 
 from ic_opt import space
 from ic_opt.observation import Observation
-from ic_opt.sim.corner import stopped_early
+from ic_opt.sim.corner import NOT_SIMULATED
 from ic_opt.space import split_origin
 from ic_opt.spec import Spec
 
@@ -218,7 +217,7 @@ def suggested_ranges(spec: Spec, observations: Iterable[Observation], *, top: in
 
 def _problem(spec: Spec, rows: list[Observation], grid: list[_Grid]) -> dict[str, Any]:
     modelled = set(_modelled(spec))
-    corners = sorted({ch.corner or "nominal" for o in rows for ch in o.children.values()})
+    corners = sorted(set().union(*(o.corners() for o in rows)))      # a point stopped early: every corner it was to run at
     return {
         "variables": [{"name": g.name, "lower": g.text(0), "upper": g.text(g.count - 1), "step": g.variable.step,
                        "levels": g.count, "scale": "log" if g.log else "linear"} for g in grid],
@@ -238,10 +237,9 @@ def _counts(rows: list[Observation]) -> dict[str, Any]:
         by_status[o.status] = by_status.get(o.status, 0) + 1
         per_step[o.step] = per_step.get(o.step, 0) + 1
     unknown = sum(1 for o in rows if o.simulations is None)
-    stops = [stop for o in rows if (stop := stopped_early(o.issues)) is not None]
     return {"points": len(rows), "by_status": dict(sorted(by_status.items())),
             "simulations": sum(o.simulations or 0 for o in rows), "per_step": per_step,
-            "stopped_early": len(stops), "simulations_not_run": sum(not_run for not_run, _wanted, _child in stops),
+            "stopped_early": sum(1 for o in rows if o.not_run), "simulations_not_run": sum(len(o.not_run) for o in rows),
             "notes": {"simulations": f"{unknown} points recorded before 0.2.x carry no count"} if unknown else {}}
 
 
@@ -393,7 +391,7 @@ def _failures(spec: Spec, rows: list[Observation], grid: list[_Grid]) -> dict[st
     said: dict[str, int] = {}
     for o in rows:
         if o.status not in SCORED:
-            for text in _causes(o.issues):
+            for text in _causes(o):
                 said[text] = said.get(text, 0) + 1
     messages = [{"text": text, "count": count}
                 for text, count in sorted(said.items(), key=lambda kv: (-kv[1], kv[0]))[:MESSAGES]]
@@ -403,13 +401,14 @@ def _failures(spec: Spec, rows: list[Observation], grid: list[_Grid]) -> dict[st
 
 _CHILD_SAID = re.compile(r"metric (\w+) failed")
 _POINT_SAID = re.compile(r"metric (\w+) missing or non-finite$")
+_NOT_SIMULATED = NOT_SIMULATED.split("{", 1)[0]          # how the line of a point stopped early begins
 
 
-def _causes(issues: Sequence[str]) -> list[str]:
+def _causes(o: Observation) -> list[str]:
     """A point's issue texts, each once, without the point's own "metric X missing or non-finite" where a child's text
-    says why X failed: the two are one cause, and the child's text is the one that names it. Nor the line of a point
-    stopped early: it says what was not simulated, not why the point gave no value (``counts`` has it)."""
-    texts = [text for text in dict.fromkeys(issues) if stopped_early([text]) is None]
+    says why X failed: the two are one cause, and the child's text is the one that names it. Nor, for a point stopped
+    early (``not_run``), its line saying what was not simulated: not why the point gave no value (``counts`` has it)."""
+    texts = [text for text in dict.fromkeys(o.issues) if not (o.not_run and text.startswith(_NOT_SIMULATED))]
     named = {m.group(1) for text in texts if (m := _CHILD_SAID.search(text))}
     return [text for text in texts if not ((m := _POINT_SAID.search(text)) and m.group(1) in named)]
 

@@ -10,7 +10,6 @@ from ic_opt.eval.schedule import Schedule
 from ic_opt.eval.stage import Stage
 from ic_opt.executor import Executor
 from ic_opt.observation import Observation, Observations
-from ic_opt.sim.corner import stopped_early
 from ic_opt.sim.ocean import WaveformExport
 from ic_opt.site import HostLimits
 from ic_opt.space import Point
@@ -79,10 +78,10 @@ def _schedule(spec: Spec, pipeline: list[Stage], corners, store: RunStore, initi
 
 def _report_stopped(obs, step: str) -> None:
     """One line per batch in which the schedule stopped points early (T17.8): how many, and the simulations not run."""
-    stops = [s for o in obs if (s := stopped_early(o.issues)) is not None]
-    if stops:
-        print(f"[evaluate] step={step!r}: {len(stops)} of {len(obs)} points stopped early, "
-              f"{sum(not_run for not_run, _wanted, _child in stops)} simulations not run")
+    stopped = [o for o in obs if o.not_run]
+    if stopped:
+        print(f"[evaluate] step={step!r}: {len(stopped)} of {len(obs)} points stopped early, "
+              f"{sum(len(o.not_run) for o in stopped)} simulations not run")
 
 
 def _report_binding_constraints(obs, step: str) -> None:

@@ -264,10 +264,10 @@ def _advised_candidates(advised: candidates.Advised, head: list[np.ndarray], loc
 def _refuse(spec: Spec, history: Observations) -> None:
     if spec.devices:
         raise ValueError(DEVICES_REFUSAL)
-    corners = {c.corner for o in history for c in o.children.values()}
+    corners = set().union(*(o.corners() for o in history))              # a point stopped early: every corner it was to run at
     if len(corners) > 1:
         raise ValueError(f"{CORNERS_REFUSAL}; the history holds points evaluated at the corners "
-                         f"{', '.join(sorted(str(c) for c in corners))}")
+                         f"{', '.join(sorted(corners))}")
 
 
 def _rng(seed: int, k: int, stream: int, index: int = 0) -> np.random.Generator:
