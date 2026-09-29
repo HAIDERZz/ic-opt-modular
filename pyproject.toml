@@ -21,7 +21,7 @@ dependencies = [
     "PyYAML>=6.0",
     "scikit-learn>=1.3",       # ic_opt.library GP models; the CLI imports the library at start-up
     "scipy>=1.10",
-    "threadpoolctl>=3.0",      # ic_opt.library BLAS thread limits
+    "threadpoolctl>=3.0",      # ic_opt.library BLAS thread limits; the strategy's threads (opt.suggest)
     "typer>=0.12",
 ]
 

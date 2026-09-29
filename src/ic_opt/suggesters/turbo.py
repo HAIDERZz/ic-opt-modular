@@ -62,7 +62,9 @@ class TurboSuggester:
         self.n_training_steps = n_training_steps
 
     def propose(self, spec: Spec, history: Observations, n: int, *, seed: int,
-                pending: Sequence[dict[str, str]] = ()) -> Proposal:
+                pending: Sequence[dict[str, str]] = (), threads: int | None = None) -> Proposal:
+        """``threads``: torch's threads for this call, set before anything is fitted (``opt.suggest`` passes the
+        strategy's, N-73); None leaves torch as it is."""
         try:
             from turbo import Turbo1
             from turbo.utils import from_unit_cube, to_unit_cube
@@ -71,8 +73,8 @@ class TurboSuggester:
 
         dim = len(spec.variables)
         n_init = self.n_init or 2 * dim
-        _seed_everything(seed + len(history))     # TuRBO's LHS and GP fit use numpy / torch global RNGs
-        search = SearchScale(spec)                # log10 of a variable under the log rule (T17.7), else the value
+        _set_globals(seed + len(history), threads)     # TuRBO's LHS and GP fit use numpy / torch global state
+        search = SearchScale(spec)                     # log10 of a variable under the log rule (T17.7), else the value
         lb, ub = search.lower, search.upper
         turbo = Turbo1(f=lambda _x: math.inf, lb=lb, ub=ub, n_init=n_init, max_evals=10**9, batch_size=n,
                        verbose=False, n_training_steps=self.n_training_steps)
@@ -157,11 +159,16 @@ def _raw(spec: Spec, rows, search: SearchScale) -> np.ndarray:
     return search.of_raw(raw)
 
 
-def _seed_everything(seed: int) -> None:
+def _set_globals(seed: int, threads: int | None) -> None:
+    """numpy's and torch's global RNGs, which TuRBO's design and GP fit draw from, and torch's threads (N-73): torch
+    sizes its pool from the machine's cores, not from the BLAS / OpenMP limits ``opt.suggest`` puts in place, so it is
+    told, once per call; it keeps the value after the call, torch having no scoped setting."""
     import torch
 
     np.random.seed(seed % (2**32))
     torch.manual_seed(seed)
+    if threads is not None:
+        torch.set_num_threads(threads)
 
 
 _TAG_RE = re.compile(r"^suggest:turbo:(?P<kind>init|tr):(?P<restart>\d+):(?P<k>\d+)$")

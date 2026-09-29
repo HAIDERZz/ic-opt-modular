@@ -233,8 +233,8 @@ an ADE export writes it there as a literal that no parameter follows, as the
 2026-09-27 multi-corner acceptance found. Sections:
 `testbenches` (Maestro export roots), `corners` + `corner_policy`, `variables`
 (grid: lower / upper / step), `metrics` (OCEAN expressions), `constraints`,
-`objective`, `simulator` (preset, retention, and the required `threads_per_run`,
-`parallel_jobs`, `timeout_s`) and `budget.max_simulations`. A spec with no metrics
+`objective`, `simulator` (preset, retention, the required `threads_per_run`,
+`parallel_jobs`, `timeout_s`, and `strategy_threads`) and `budget.max_simulations`. A spec with no metrics
 is a valid waveform-only fix-run. Resource fields have no defaults: a spec that
 leaves one out is refused with the field's name. `simulator.license_queue_timeout_s`
 is optional: how many seconds Spectre waits in its license queue, passed as
@@ -242,6 +242,12 @@ is optional: how many seconds Spectre waits in its license queue, passed as
 itself. Like `timeout_s`, it says how the problem is run, so it is not part of
 the spec's fingerprint. `ic-opt migrate` writes `900` into a spec it converts from
 a 0.1 project, which passed `+lqtimeout 900` to every Spectre run.
+`simulator.strategy_threads` is the one resource with a default, `1`: the threads the
+strategy's own computation may use while it proposes a batch (numpy / scipy /
+scikit-learn through BLAS and OpenMP, and torch for `turbo`), on the machine running
+ic-opt; without a limit these libraries take every core of it. An `OMP_NUM_THREADS`,
+`OPENBLAS_NUM_THREADS` or `MKL_NUM_THREADS` set lower still applies. Not part of the
+fingerprint either.
 `simulator.operating_points` (default `true`) keeps every transistor's operating
 point with each observation: an export without `info what=oppoint where=rawfile`
 after a plain DC analysis gets `icoptOpInfo info what=oppoint where=rawfile` right
