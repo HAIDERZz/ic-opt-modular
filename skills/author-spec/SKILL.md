@@ -77,6 +77,7 @@ below.
 | "at tt / ss / ff", "at 125 degrees" | `corners`: `model_section` per corner (the PDK's section names); the temperature through `options: { temp: "125" }` (the `simulatorOptions` statement); `variables` only for names on the `parameters` line the netlist uses; `corner_policy` says how corners score |
 | "the input transformer is a real EM device", "let EMX size the primary width" | `devices` (+ `em`, + a `bindings` entry per nport it feeds) and `variables` named `<device>.<field>` |
 | "what are L, Q and k of the transformer at 60 GHz" | device `metrics`: `quantity` (`Lp / Qp / Ls / Qs / k` with `frequency_hz`, or the scalars `Lp_lf / Lp_res / Qp_peak / SRF_p / k_lf` and their `s` / system `SRF` forms) |
+| "M1 to M4 must stay in saturation", "50 mV of headroom" | a `saturation_margin` metric on a DC testbench + a constraint `ge 0.05 V` (`#### A DC-only testbench as the first gate`) |
 | "12 points", "no more than 300 simulations" | `budget.max_simulations` (every simulation the project's store holds counts, also the ones a later spec edit stops reusing); the point count is the recipe's `budget=` |
 
 ## 4. Section reference
@@ -162,6 +163,61 @@ a batch; stop and fix the expression before spending more budget. Device metric:
 `frequency_hz`; scalars `Lp_lf / Lp_res / Qp_peak / SRF_p / Ls_lf / Ls_res /
 Qs_peak / SRF_s / k_lf / SRF` do not). A metric whose expression returns nil or
 a waveform makes the point `metric_failed` (its other metrics are kept).
+Saturation-margin metric: `name`, `unit: V`, `testbench` (always, also in a
+spec of one testbench), `saturation_margin: {instances: [...]}` -- below.
+
+#### A DC-only testbench as the first gate
+
+A third kind of metric reads the operating points instead of an OCEAN
+expression: `saturation_margin` names transistors, and the metric is the
+smallest `|vds| - |vdsat|` over them, in volts -- positive while each one is
+beyond its saturation voltage (absolute values: a PMOS's `vds` and `vdsat` are
+negative). Written as a first gate:
+
+1. a testbench whose export has only a DC analysis, from the same cell as the
+   others (its `parameters` line carries every circuit variable, as every
+   testbench's must). The metric also works on a testbench you already have:
+   ic-opt adds a DC operating-point analysis to an export without one, but that
+   testbench is no cheaper for it. `simulator.operating_points` stays on: a spec
+   with this metric and `operating_points: false` is refused;
+2. one `saturation_margin` metric on it, naming the transistors that must stay
+   in saturation -- never a switch, nor any device meant to work in the triode
+   region. Take the names from an operating-point table: the digest's
+   (`ic-opt digest`, "Operating points of the best point") or a child's
+   `operating_points` in `observations.jsonl`; `M1` and `/M1` both find `/M1`;
+3. a constraint `ge 0 V`, or `ge 0.05 V` for 50 mV of margin: the number in
+   volts, because a constraint's value takes no SI prefix (`50m V` reads as
+   50 V and fails every point).
+
+```yaml
+# part of a spec: a DC-only testbench as the first gate
+testbenches:
+  - id: dc
+    maestro_point_root: /home/user/simulation/LNA/DC_Test/results/maestro/Interactive.1/1/DC_Test
+    virtuoso_library: LNA_lib
+    cell: LNA_DC
+    test_name: DC_Test
+metrics:
+  - name: SAT_MARGIN
+    unit: V
+    testbench: dc
+    saturation_margin:
+      instances: [M1, M2, M3, M4, M7]     # the transistors that must stay in saturation; not the switches
+constraints:
+  - { metric: SAT_MARGIN, op: ge, value: 0.05 V }
+```
+
+With the schedule on -- by default when the run has several corners, or with
+`simulator.stop_at_first_failure: true` -- a point that fails this constraint
+runs nothing else, and once the project holds 10 points the schedule runs first
+the simulation that fails often and costs little, which a DC testbench is. A
+transistor the table lacks makes the point `metric_failed` (`metric SAT_MARGIN
+failed: no operating point for M7`), as an expression that returns nil does;
+the other metrics are kept. Where the rule comes from: in PhysicsSAO (TCAS-I
+2026, 20 runs) the worst transistor's margin as a continuous metric did better
+than a yes/no "every transistor saturated" check, and industrial specifications
+carry it on most transistors (TradeOffMTS: 20 of 31 constraints). It has not
+been measured on this project's circuits yet.
 
 ### `constraints`
 `metric`, `op` (`lt`, `le`, `gt`, `ge`), `value` ("28e9 Hz", "-6 dBm": the

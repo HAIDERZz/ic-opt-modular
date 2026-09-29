@@ -232,7 +232,8 @@ names its model section and, through `options` (values on the netlist's
 an ADE export writes it there as a literal that no parameter follows, as the
 2026-09-27 multi-corner acceptance found. Sections:
 `testbenches` (Maestro export roots), `corners` + `corner_policy`, `variables`
-(grid: lower / upper / step), `metrics` (OCEAN expressions), `constraints`,
+(grid: lower / upper / step), `metrics` (OCEAN expressions, or a saturation
+margin read from the operating points: below), `constraints`,
 `objective`, `simulator` (preset, retention, and the required `threads_per_run`,
 `parallel_jobs`, `timeout_s`) and `budget.max_simulations`. A spec with no metrics
 is a valid waveform-only fix-run. Resource fields have no defaults: a spec that
@@ -251,6 +252,20 @@ a comment, and `doctor` / `--plan` print one `operating points:<tb>` line per
 testbench (`in the export (<name>)`, `added by ic-opt (statement) ...`, `added by
 ic-opt (DC analysis and statement) ...`, `off`). `false` adds and reads nothing.
 Not part of the fingerprint: it changes no metric.
+
+A metric may read those operating points instead of an OCEAN expression:
+`saturation_margin: {instances: [M1, M2]}`, with `unit: V` and its `testbench`,
+is the smallest `|vds| - |vdsat|` over the named transistors -- positive while
+each is beyond its saturation voltage; absolute values, so a PMOS reads the
+same way. Name the transistors as an operating-point table does (the digest
+prints one; `M1` and `/M1` both find `/M1`), never a switch. A transistor the
+table lacks makes the point `metric_failed` (`metric SAT_MARGIN failed: no
+operating point for M7`), and a spec with such a metric and `operating_points:
+false` is refused. Constrain it in volts, `ge 0.05 V` for 50 mV: a constraint's
+value takes no SI prefix, and `50m V` reads as 50 V. On a testbench whose export
+has only a DC analysis it is the cheapest simulation a point has, and the
+schedule, when on, runs it first once it fails often (`skills/author-spec/SKILL.md`,
+"A DC-only testbench as the first gate").
 
 ### Recipes
 
@@ -426,7 +441,8 @@ nominal corner's, so a wrong expression costs that metric, not the point; a
 Spectre child also carries `operating_points`, `{instance: {quantity: value}}`
 for the instances that report `gm`, with `region`, `ids`, `vgs`, `vds`, `vbs`,
 `vth`, `vdsat`, `gm`, `gds`, `gmoverid`, `cgs`, `cgd` where the simulator gives a
-number -- read after the metrics, it never fails a child; left out when there
+number -- read after the metrics, it never fails a child by itself (a
+`saturation_margin` metric computed from it can); left out when there
 are none, and no strategy reads it), `steps.jsonl`, `decks/`, `sims/<obs>/<tb>/<corner>/`,
 `reports/report.md` + `report.html` (best observed, top feasible, constraint
 margins, parameter importance, corners, where the best points are; four figures),

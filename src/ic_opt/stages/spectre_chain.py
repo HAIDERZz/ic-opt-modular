@@ -8,7 +8,13 @@ Working directory layout (identical on the local and the remote side):
 
 Operating points (T17.5, ``simulator.operating_points``): the render stage adds what the netlist lacks for Spectre to
 write them (``sim.netlist.with_operating_points``), the OCEAN stage reads them after the metrics, the extract stage
-keeps them in the child's result. None of it can fail a child or change a metric.
+keeps them in the child's result. None of it can fail a child or change a metric OCEAN computes.
+
+A saturation-margin metric (T17.11, ``Metric.saturation_margin``) is the one metric read from them: the extract stage
+computes it, and it fails as an OCEAN expression does when the table lacks a transistor it names (:class:`Extract`).
+The cache: a spec that gains such a metric is another problem (``Spec.fingerprint``: the metric is in it), so no
+observation recorded without it is reused for it; the pipeline's fingerprint is what it was (the stages' names), and a
+spec without such a metric extracts what it did before.
 """
 
 from __future__ import annotations
@@ -182,7 +188,14 @@ class Extract:
         """Every metric OCEAN gave a scalar for is kept. One that came back nil, non-scalar or not at all, or a requested
         waveform that came back nil, makes the child ``metric_failed`` with that as its issue -- the simulation ran and the
         other metrics stand (N-31, 2026-09-27: a wrong expression used to fail the child and lose every metric).
-        Operating points are kept when OCEAN wrote them; none, or a file that does not parse, is ``None``, never an issue."""
+        Operating points are kept when OCEAN wrote them; none, or a file that does not parse, is ``None``, never an issue
+        by itself.
+
+        A saturation-margin metric of this testbench (T17.11) is computed here from those operating points
+        (``sim.ocean.saturation_margin``). An instance it names that the table lacks -- no row, no ``vds`` or ``vdsat``,
+        no table at all -- leaves it out and makes the child ``metric_failed``, as an expression that returned nil does,
+        with one issue naming every such instance: ``metric SAT_MARGIN failed: no operating point for M7``, the form the
+        per-batch line of ``sim.evaluate`` and the digest read for an expression's failure."""
         metrics, issues = {}, []
         for metric in ctx.spec.metrics_for(ctx.unit):
             row = scalars.rows.get(metric.name)
@@ -192,13 +205,21 @@ class Extract:
                 issues.append(f"metric {metric.name} failed: {row.message or row.status}")
             else:
                 metrics[metric.name] = row.value
-        issues += [f"waveform {name} returned nil" for name, path in scalars.waveforms.items() if path is None]
         operating_points = None
         if scalars.oppoints is not None:
             try:
                 operating_points = ocean_kernel.parse_oppoints(scalars.oppoints)
             except ValueError:
                 pass
+        for metric in ctx.spec.metrics:
+            if metric.saturation_margin is None or metric.testbench != ctx.unit:
+                continue
+            value, missing = ocean_kernel.saturation_margin(operating_points, metric.saturation_margin.instances)
+            if missing:
+                issues.append(f"metric {metric.name} failed: no operating point for {', '.join(missing)}")
+            else:
+                metrics[metric.name] = value
+        issues += [f"waveform {name} returned nil" for name, path in scalars.waveforms.items() if path is None]
         return ChildResult(
             unit=ctx.unit, corner=ctx.corner, metrics=metrics, issues=issues,
             status="ok" if not issues else "metric_failed", operating_points=operating_points,
