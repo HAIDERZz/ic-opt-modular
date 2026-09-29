@@ -8,8 +8,9 @@ child-level chains — the testbench chain for every testbench × corner, the
 device chain for every device — (5) aggregates the children under the corner
 policy, (6) appends one Observation, (7) applies the retention policy to raw
 simulation directories. Points run in parallel, capped by the executor host's
-site.yaml entry for the heaviest stage (a stage bigger than the whole entry is
-refused before anything starts); a point's children run serially, like the
+site.yaml entry for the heaviest stage, a testbench one counted with the metric
+extraction beside its simulator (N-78); a stage or job bigger than the whole
+entry is refused before anything starts. A point's children run serially, like the
 legacy flow. A stage that fails -- a ``StageFailure``, or a command past its
 deadline (``CommandTimeout``) -- fails its child, or every child of the point
 for a point-level stage, as ``failed:<stage>``; the other points run on.
@@ -60,7 +61,7 @@ from ic_opt.eval.stage import Stage, StageContext, StageFailure, pipeline_finger
 from ic_opt.executor import CommandTimeout, Executor, process_group
 from ic_opt.observation import ChildResult, Observation, Observations
 from ic_opt.sim.corner import aggregate
-from ic_opt.site import EnvelopeError, HostLimits
+from ic_opt.site import EXTRACTION_NOTE, EXTRACTION_THREADS, EnvelopeError, HostLimits
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore, utc_now
@@ -129,11 +130,22 @@ def simulations(observation: Observation) -> int:
     return len(observation.children) + sum(1 for v in observation.cache.values() if v == "miss")
 
 
+def extraction_threads(stage: Stage) -> int:
+    """Threads a job running ``stage`` takes beside the stage's own: ``site.EXTRACTION_THREADS`` for a testbench child that
+    simulates -- the process that extracts its metrics (OCEAN) runs beside the simulator (N-78) -- and none for any other
+    stage (an EMX run counts ``em.threads``, as before)."""
+    testbench = stage.level == "child" and getattr(stage, "unit", "testbench") == "testbench"
+    return EXTRACTION_THREADS if testbench and getattr(stage, "simulates", True) else 0
+
+
 def workers_for(spec: Spec, pipeline: list[Stage], parallel_jobs: int | None, limits: HostLimits) -> int:
-    """Concurrent points: the requested parallelism, capped by what the executor host allows for the heaviest stage.
+    """Concurrent points: the requested parallelism, capped by what the executor host allows for the heaviest job -- its
+    heaviest stage's threads, a testbench stage's with :func:`extraction_threads` more (per job ``threads_per_run + 1``
+    for the Spectre chain), and its largest stage's memory.
 
     A stage that alone needs more threads or memory than the host's entry is refused here -- also under
-    ``--plan`` -- instead of running one at a time past the limit the user wrote down (audit row 2)."""
+    ``--plan`` -- instead of running one at a time past the limit the user wrote down (audit row 2); so is a testbench
+    job whose simulator fits the entry alone but not with the extraction beside it."""
     for stage in pipeline:
         need = stage.resources
         if need.threads > limits.max_threads or need.memory_gb > limits.max_memory_gb:
@@ -142,8 +154,13 @@ def workers_for(spec: Spec, pipeline: list[Stage], parallel_jobs: int | None, li
                 f"max_threads {limits.max_threads} / max_memory_gb {limits.max_memory_gb:g} (site.yaml); lower the "
                 "stage's threads / memory in spec.yaml or raise that host's entry")
     wanted = max(1, parallel_jobs or spec.simulator.parallel_jobs)
-    threads = max([s.resources.threads for s in pipeline] + [1])
+    threads = max([s.resources.threads + extraction_threads(s) for s in pipeline] + [1])
     memory = max([s.resources.memory_gb for s in pipeline] + [0.0])
+    if threads > limits.max_threads:          # every stage fits alone: a testbench one does not with the extraction beside it
+        raise EnvelopeError(
+            f"a testbench job needs {threads - EXTRACTION_THREADS} + {EXTRACTION_THREADS} threads but the executor host "
+            f"allows max_threads {limits.max_threads} (site.yaml): {EXTRACTION_NOTE}; lower threads_per_run in spec.yaml "
+            "or raise that host's entry")
     return min(wanted, limits.slots(threads, memory))
 
 

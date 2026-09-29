@@ -44,6 +44,20 @@ class EnvelopeError(ValueError):
     """A job needs more threads or memory than its host's entry allows: refused before anything starts."""
 
 
+# N-78 (measured 2026-09-29): a run of ``parallel_jobs: 10, threads_per_run: 1`` occupied about 12 cores -- Spectre at one
+# thread takes 1.0 to 1.35 cores, and the OCEAN process that extracts the metrics runs beside it. Every envelope counts a
+# testbench job as ``threads_per_run + EXTRACTION_THREADS`` (env.doctor, run.jobs, the engine's workers, the plan lines);
+# an EMX job as ``em.threads``, as before.
+EXTRACTION_THREADS = 1
+EXTRACTION_NOTE = (f"each testbench job is counted as threads_per_run + {EXTRACTION_THREADS} threads: the metric "
+                   "extraction runs beside the simulator")
+
+
+def per_job(threads: int, extraction: int = 0) -> str:
+    """A job's threads as the envelope lines print them: ``(4 + 1)`` with the extraction beside the simulator, else ``4``."""
+    return f"({threads} + {extraction})" if extraction else str(threads)
+
+
 @dataclass(frozen=True)
 class HostLimits:
     """One machine's entry, as the user wrote it. The two limits have no default on purpose."""

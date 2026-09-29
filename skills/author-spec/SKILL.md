@@ -216,13 +216,13 @@ device still appears exactly once.
 ### `simulator`
 `preset` (`ax` default; `cx`, `mx`, `lx`, `vx`), `threads_per_run`,
 `parallel_jobs`, `timeout_s` (required, the user's; `parallel_jobs x
-threads_per_run` must fit the host's site.yaml entry), `strategy_threads`
+(threads_per_run + 1)` must fit the host's site.yaml entry: the `+ 1` is the
+OCEAN process that extracts the metrics beside Spectre), `strategy_threads`
 (default 1: the threads the strategy's own computation may use while it
 proposes a batch, on the machine running ic-opt; more only when the user gives
 a number, within that machine's `hosts.local` entry; not in the fingerprint),
 `license_check` (default true), `license_queue_timeout_s` (only when the user
-gives it),
-`keep_failed_runs` / `keep_successful_runs` (raw psf retention),
+gives it), `keep_failed_runs` / `keep_successful_runs` (raw psf retention),
 `operating_points` (default true: every transistor's operating point is kept per
 child; ic-opt adds the `info what=oppoint where=rawfile` statement -- and a DC
 analysis when the export has none -- to the rendered netlist; `false` only when

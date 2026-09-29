@@ -41,16 +41,19 @@ class Run:
 
     @property
     def jobs(self) -> int:
-        """Concurrent simulations: the spec's parallel_jobs, capped by the executor host's threads.
+        """Concurrent simulations: the spec's parallel_jobs, capped by the executor host's threads -- a testbench job
+        counted as threads_per_run + 1, the metric extraction beside the simulator (``site.EXTRACTION_THREADS``, N-78).
 
         A Spectre job bigger than the whole host is refused, not run one at a time (audit row 2)."""
         sim = self.spec.simulator
-        slots = self.limits.slots(sim.threads_per_run)
+        extraction = site_module.EXTRACTION_THREADS if self.spec.testbenches else 0
+        slots = self.limits.slots(sim.threads_per_run + extraction)
         if not slots:
             raise site_module.EnvelopeError(
-                f"{self.spec.project}: simulator.threads_per_run {sim.threads_per_run} exceeds max_threads "
-                f"{self.limits.max_threads} of host {self.executor.host!r} ({self.site.source}); lower "
-                "threads_per_run in spec.yaml or raise that host's entry")
+                f"{self.spec.project}: simulator.threads_per_run {site_module.per_job(sim.threads_per_run, extraction)} "
+                f"exceeds max_threads {self.limits.max_threads} of host {self.executor.host!r} ({self.site.source}); "
+                + (f"{site_module.EXTRACTION_NOTE}; " if extraction else "")
+                + "lower threads_per_run in spec.yaml or raise that host's entry")
         return min(sim.parallel_jobs, slots)
 
     def note(self, text: str) -> None:
