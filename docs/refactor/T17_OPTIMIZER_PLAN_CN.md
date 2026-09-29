@@ -828,3 +828,17 @@ AnalogGym 的开发电路，ngspice 与 SKY130。31 个 corner：标称，加 5 
 待补的运行（机器恢复、用户重新给出线程数之后）：第二步的 54 次运行从干净的部分接着跑；逐个 corner 失败即停的 6 次运行；单条件的三个变体；运行中的 corner 模型在真实电路上的精度。合计约 230 线程小时。
 
 文件都在 `/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/optimizer_research/`（不在仓库里）：`papers_2024_2026/`（清单、笔记、`LEARNINGS_CN.md`）、`mgp_dev/exp9/`（单条件的复现，`REPORT_CN.md`）、`pvt_bench/`（多 corner 基准：`SPEC.md`、代码、仿真结果库、`runs_r1/`、`offline/`、各份方法报告、`removed_20260929/`）、`report_lit/`（报告页的生成脚本）。
+
+**2026-09-29 15:37 用户的决定**：服务器已恢复；补跑用整机 120 线程的上限；改进方案的方向同意，先写规格、从第 1 步做起；多 corner 基准扩到 5 个种子放在补跑完成之后。第 1 步的规格 `T17_8_SCHEDULE_SPEC.md`（`2a5aa56`）已写并派给编码子代理；补跑 15:40 启动（两组基准运行不暂停，其余在暂停状态下由调度脚本按上限放开，每步最多放开 8 个进程）。
+
+### 第 2 步之一：评估调度的第 1 步（T17.8，2026-09-29）
+
+规格 `T17_8_SCHEDULE_SPEC.md`（第 1 到 13 节，`2a5aa56`；第 14 节修订 1，`76c7165`）；实现由编码子代理在分支 `t17-8-schedule` 上分三次提交（`7e05ba0`、`a651bf1`、`b0f70b3`），复核后合入 `f8338a5`。
+
+做了什么：一个点的各次仿真（测试平台 × corner）按从历史学到的顺序一次一个地跑（`(不达标次数 + 1) / (到达次数 + 2) / 耗时` 从高到低，不足 10 个观测时按 spec 的顺序），第一个使它不可行的仿真之后不再仿。记录仍是一个点一行：仿过的子项照旧，没仿的子项列在新字段 `not_run`（空时不写出，所以没被停的点逐字节不变）；判定只用仿过的部分（`sim.corner.aggregate` 的不完整集合分支，`objective.evaluate_partial`），没仿完的点永不算可行。开关 `simulator.stop_at_first_failure`（默认开，不进指纹）；`sim.evaluate` 可按次覆盖；`signoff` 配方多 `full=`。
+
+第一版暴露、修订 1 处理的连带问题：提前停的点在策略里"看上去更不糟"（只判了一部分约束）——现在按"没仿的子项数、再按已判约束的违约量"排名（`Observation.infeasibility_key`，`metric_gp` 的搜索范围中心与改进判断、TuRBO 的中心）；OpenBox 与 TuRBO 把它当失败点（否则无目标的 spec 上会因缺指标崩溃）；一行属于哪些 corner 按"仿过的加没仿的"判断（`Observation.corners()`，`_at_corners`、`history_size`、`resolve_auto`、`metric_gp._refuse`），signoff 在第一个 corner 就停下的点仍算全 corner 的行。
+
+验证：`tests/ic_opt/test_schedule.py` 20 个测试，定向测试 313 通过、4 跳过，ruff 干净；六个点的假仿真链前后对比，没被停的四个点的记录逐字节相同。复核时机器占用短时到 126（上限 120，约 20 秒）：我在补跑之上跑了测试，教训是跑测试前先降低放开的数量。
+
+留下的：(1) 采用的 `initial=` 外来行若带 `not_run`，按其部分指标重新判定后可能变成 `ok`，但对 OpenBox / TuRBO 仍是失败点——少见，未处理；(2) OpenBox / TuRBO 的代理模型启动前要够数的成功点，多数点提前停的运行里空间填充阶段会拉长；(3) 验收：规格第 12 节的 2（基准上按仿真次数比成本，`pvt_bench` 的标称 corner 变体与 `stop_each` 方法已备好）与 3（用户 mixer 上真实 Spectre，需批准）未做。
