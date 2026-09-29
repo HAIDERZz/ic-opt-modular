@@ -25,7 +25,6 @@ from ic_opt.store import RunStore
 from ic_opt.suggesters import make
 from ic_opt.suggesters import metric_gp as mg
 from ic_opt.suggesters.metric_gp import (
-    CORNERS_REFUSAL,
     DEVICES_REFUSAL,
     MetricGpSuggester,
     candidates,
@@ -450,30 +449,31 @@ def project(tmp_path, spec):
     return store, ex, Deck(templates={("tb", None): "parameters F={{F}} W={{W}}\n"})
 
 
-def test_stage_one_refusals_before_anything_runs_and_under_plan(tmp_path):
+def test_refusals_before_anything_runs_and_under_plan(tmp_path):
+    """EM devices are refused before anything runs; several corners are not since T17.9 (``test_multi_corner.py``). A
+    history whose points were evaluated at different sets of corners is refused when the strategy is called directly."""
     devices = minimal_spec()
     devices["devices"] = [{"id": "d", "generator": "demo", "profile": "demo_6m", "ports": ["P1", "N1"], "fixed": {"turns": 1}}]
     devices["variables"] = devices["variables"] + [{"name": "d.od", "kind": "integer", "lower": "20", "upper": "60", "step": "10"}]
-    cornered = make_spec(corners=[{"id": "tt"}, {"id": "ss"}])
-    cases = [(Spec.model_validate(devices), "all", DEVICES_REFUSAL), (cornered, "all", CORNERS_REFUSAL),
-             (cornered, ["tt", "ss"], CORNERS_REFUSAL)]
-    for index, ((spec, corners, message), plan) in enumerate(itertools.product(cases, (False, True))):
-        store, ex, deck = project(tmp_path / str(index), spec)
+    for index, plan in enumerate((False, True)):
+        store, ex, deck = project(tmp_path / str(index), Spec.model_validate(devices))
         token = PLAN_MODE.set(plan)
         try:
-            with pytest.raises(ValueError, match=re.escape(message)):
-                optimize(spec, ex, store, deck=deck, strategy="metric_gp", budget=4, corners=corners, limits=FAKE_HOST)
+            with pytest.raises(ValueError, match=re.escape(DEVICES_REFUSAL)):
+                optimize(Spec.model_validate(devices), ex, store, deck=deck, strategy="metric_gp", budget=4, limits=FAKE_HOST)
         finally:
             PLAN_MODE.reset(token)
         assert ex.commands == [] and store.observations() == []
+    cornered = make_spec(corners=[{"id": "tt"}, {"id": "ss"}])
     store, ex, deck = project(tmp_path / "one", cornered)
     obs = optimize(cornered, ex, store, deck=deck, strategy="metric_gp", budget=4, batch=4, corners=["tt"], current=False,
                    limits=FAKE_HOST)
     assert len(obs) == 4 and {c.corner for o in obs for c in o.children.values()} == {"tt"}
     both = [o.model_copy(update={"children": {"tb/tt": ChildResult(unit="tb", corner="tt", status="ok"),
                                               "tb/ss": ChildResult(unit="tb", corner="ss", status="ok")}}) for o in obs]
-    with pytest.raises(ValueError, match="corners ss, tt"):
-        MetricGpSuggester().propose(cornered, Observations(both), 2, seed=0)
+    assert len(MetricGpSuggester().propose(cornered, Observations(both), 2, seed=0).raw) == 2     # one set of corners
+    with pytest.raises(ValueError, match=re.escape("this history holds several (tt: 4; ss, tt: 2): opt.optimize")):
+        MetricGpSuggester().propose(cornered, Observations([*obs, *both[:2]]), 2, seed=0)
     with pytest.raises(ValueError, match=re.escape(DEVICES_REFUSAL)):
         MetricGpSuggester().propose(Spec.model_validate(devices), Observations(), 2, seed=0)
 

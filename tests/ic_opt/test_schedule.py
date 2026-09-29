@@ -498,9 +498,8 @@ def test_a_stopped_point_is_a_row_of_every_corner_it_was_to_run_at():
         history_size(spec, rows)
     assert history_size(spec, Observations(recheck)) == 2              # one set of corners: no refusal
     assert digest_module.digest(spec, recheck[1:])["problem"]["corners"] == ["ss", "tt"]
-    assert resolve_auto(spec, 1, [recheck[1]]) == (
-        "openbox_gp_eic", "metric_gp works on one condition; the history holds points evaluated at the corners ss, tt")
-    with pytest.raises(ValueError, match="evaluated at the corners ss, tt"):
+    assert resolve_auto(spec, 1, [recheck[1]]) == ("metric_gp", "no EM devices")     # T17.9: corners do not decide
+    with pytest.raises(ValueError, match=r"this history holds several \(tt: 3; ss, tt: 1\)"):
         MetricGpSuggester().propose(spec, Observations(search + recheck[1:]), 2, seed=0)
 
 

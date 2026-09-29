@@ -26,16 +26,23 @@ point is ``constraint_failed`` at a corner in the constraint scope whose present
 objective. It is never feasible, and its issues carry, after the failure's own lines, ``NOT_SIMULATED``: how many
 children were not simulated and after which one the point stopped. That line is for the reader; the engine names the
 children not run in the observation's ``not_run``, which is what code reads.
+
+The point as a strategy sees it (T17.9): :func:`worst_metrics`, each metric the constraints or the objective name at its
+worst over the corners the point was simulated at, is what ``metric_gp``'s models are given; the verdict above stays the
+point's own. It is computed from a point's metrics per corner and the corners a policy scores
+(:func:`metrics_per_corner`, :func:`scored_corners`), which the digest and the report read too.
 """
 
 from __future__ import annotations
 
+import ast
 import math
 from dataclasses import dataclass, field
 
 from ic_opt import objective as objective_contract
-from ic_opt.observation import ChildResult
-from ic_opt.spec import Spec
+from ic_opt.observation import ChildResult, Observation
+from ic_opt.space import parse_scalar
+from ic_opt.spec import Constraint, Spec
 
 NOT_SIMULATED = "not simulated: {not_run} of {wanted} children (stopped after {child})"
 
@@ -158,3 +165,112 @@ def _incomplete(spec: Spec, children: dict[str, ChildResult], not_run: int, want
 
 def _key(child: ChildResult) -> str:
     return f"{child.unit}/{child.corner or 'nominal'}"
+
+
+# -- the point as a strategy sees it (T17.9) ------------------------------------------------------------------------------
+
+
+def metrics_per_corner(spec: Spec, o: Observation) -> dict[str, dict[str, float]]:
+    """A corner's metrics: every corner-less child's (devices; on a spec without corners, the testbenches too) and then its own
+    testbench children's. A spec without corners has the one corner ``nominal``."""
+    corner_ids = [c.id for c in spec.corners] or ["nominal"]
+    shared = {k: v for ch in o.children.values() if ch.corner is None for k, v in ch.metrics.items()}
+    out = {cid: dict(shared) for cid in corner_ids}
+    for ch in o.children.values():
+        if ch.corner is not None:
+            out.setdefault(ch.corner, dict(shared)).update(ch.metrics)
+    return out
+
+
+def scored_corners(spec: Spec, policy: str | None = None) -> list[str]:
+    """The corners a corner policy scores: every corner under ``all_corners`` (``worst_case`` for the objective), the
+    nominal one under ``nominal``. ``policy``: the constraints' unless given."""
+    corner_ids = [c.id for c in spec.corners] or ["nominal"]
+    if (policy or spec.corner_policy.constraints) != "nominal":
+        return corner_ids
+    return ["nominal"] if "nominal" in corner_ids else corner_ids[:1]
+
+
+def worst_metrics(spec: Spec, o: Observation) -> dict[str, float]:
+    """The point's metrics as ``metric_gp``'s models are given them: each metric the constraints or the objective name at
+    its worst over the corners the point was simulated at (a point stopped early: those it reached).
+
+    - A constrained metric: its worst value over the scored corners (:func:`scored_corners`) -- the smallest for a lower
+      bound, the largest for an upper one, as the digest's ``constraint_value`` judges a constraint; under bounds of both
+      kinds the value with the smallest margin over all of them, below 0 when one is violated. Where no scored corner
+      holds it, the point's own value.
+    - A metric only the objective names: its value at the corner whose objective is worst (the largest, minimization
+      form) among the corners the objective's policy scores where every metric of the objective is there; absent when
+      no corner has them all.
+    - A metric neither names is left out: it has no worst, and no model reads it.
+
+    A point evaluated at one corner (a single-condition run, the signoff recipe's search, a spec without corners) keeps
+    its own ``metrics`` as they are -- what the verdict made of that corner, none for a point that failed -- so a
+    single-condition run proposes what it did before T17.9, byte for byte. At several corners a point that failed gives
+    what its other children measured, as a stopped point does; its status tells the models it gave no value.
+
+    Why not the point's own ``metrics`` at several corners: they are one corner's values (the corner with the largest
+    penalty, or the worst objective of a feasible point), and a constraint another corner violates alone would reach the
+    models as a passing value. The objective is composed from these values, as from every metric in ``metric_gp``."""
+    if len(o.corners()) < 2:
+        return dict(o.metrics)
+    per_corner = metrics_per_corner(spec, o)
+    scored = scored_corners(spec)
+    bounds: dict[str, list[Constraint]] = {}
+    for c in spec.constraints:
+        bounds.setdefault(c.metric, []).append(c)
+    out = {}
+    for name, constraints in bounds.items():
+        values = [m[name] for cid in scored if (m := per_corner.get(cid)) and name in m]
+        value = _worst(values, constraints) if values else o.metrics.get(name)
+        if value is not None:
+            out[name] = value
+    named = _objective_metrics(spec)
+    only = [name for name in named if name not in bounds]
+    if only and (corner := _worst_objective_corner(spec, per_corner, named)) is not None:
+        out.update({name: per_corner[corner][name] for name in only})
+    return out
+
+
+def _worst(values: list[float], constraints: list[Constraint]) -> float:
+    """Of one metric's ``values``, the one its ``constraints`` judge worst (:func:`worst_metrics`)."""
+    lower = any(c.op in ("gt", "ge") for c in constraints)
+    upper = any(c.op in ("lt", "le") for c in constraints)
+    if lower != upper:
+        return min(values) if lower else max(values)
+    return min(values, key=lambda v: min(_margin(c, v) for c in constraints))
+
+
+def _margin(constraint: Constraint, value: float) -> float:
+    """How far ``value`` is inside the constraint, in the metric's unit: positive passes (``digest.margin``)."""
+    limit = float(parse_scalar(constraint.value.replace(" ", ""))[0])
+    return (limit - value) if constraint.op in ("lt", "le") else (value - limit)
+
+
+def _objective_metrics(spec: Spec) -> list[str]:
+    """The metrics the objective expression names, in spec order; none without an objective."""
+    if spec.objective is None:
+        return []
+    tree = ast.parse(spec.objective.expression, mode="eval")
+    called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
+    named = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and id(n) not in called}
+    return [m.name for m in spec.metrics if m.name in named]
+
+
+def _worst_objective_corner(spec: Spec, per_corner: dict[str, dict[str, float]], named: list[str]) -> str | None:
+    """The corner the objective's policy scores whose objective, from that corner's metrics, is the largest in
+    minimization form -- the first of equal ones -- among those where every metric in ``named`` is there and finite and
+    the objective has a value; None when there is none."""
+    worst, where = -math.inf, None
+    for cid in scored_corners(spec, spec.corner_policy.objective):
+        metrics = per_corner.get(cid, {})
+        if not all(math.isfinite(metrics.get(name, math.nan)) for name in named):
+            continue
+        try:
+            value = objective_contract.evaluate_expression(spec.objective.expression, metrics)
+        except (ArithmeticError, ValueError):
+            continue
+        value = -value if spec.objective.direction == "maximize" else value
+        if where is None or value > worst:
+            worst, where = value, cid
+    return where

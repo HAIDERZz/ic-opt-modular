@@ -68,7 +68,7 @@ from scipy import stats
 
 from ic_opt import space
 from ic_opt.observation import Observation
-from ic_opt.sim.corner import NOT_SIMULATED
+from ic_opt.sim.corner import NOT_SIMULATED, metrics_per_corner, scored_corners
 from ic_opt.space import split_origin
 from ic_opt.spec import Spec
 
@@ -123,26 +123,6 @@ def margin(constraint, value: float) -> float:
     """How far ``value`` is inside the constraint, in the metric's unit: positive passes."""
     limit = _limit(constraint)
     return (limit - value) if constraint.op in ("lt", "le") else (value - limit)
-
-
-def metrics_per_corner(spec: Spec, o: Observation) -> dict[str, dict[str, float]]:
-    """A corner's metrics: every corner-less child's (devices; on a spec without corners, the testbenches too) and then its own
-    testbench children's. A spec without corners has the one corner ``nominal``."""
-    corner_ids = [c.id for c in spec.corners] or ["nominal"]
-    shared = {k: v for ch in o.children.values() if ch.corner is None for k, v in ch.metrics.items()}
-    out = {cid: dict(shared) for cid in corner_ids}
-    for ch in o.children.values():
-        if ch.corner is not None:
-            out.setdefault(ch.corner, dict(shared)).update(ch.metrics)
-    return out
-
-
-def scored_corners(spec: Spec) -> list[str]:
-    """The corners the constraint policy scores: every corner under ``all_corners``, the nominal one otherwise."""
-    corner_ids = [c.id for c in spec.corners] or ["nominal"]
-    if spec.corner_policy.constraints == "all_corners":
-        return corner_ids
-    return ["nominal"] if "nominal" in corner_ids else corner_ids[:1]
 
 
 def constraint_value(spec: Spec, constraint, o: Observation) -> float | None:
