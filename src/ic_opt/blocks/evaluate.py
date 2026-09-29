@@ -11,7 +11,7 @@ from ic_opt.eval.stage import Stage
 from ic_opt.executor import Executor
 from ic_opt.observation import Observation, Observations
 from ic_opt.sim.ocean import WaveformExport
-from ic_opt.site import HostLimits
+from ic_opt.site import HostLimits, per_job
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.stages import spectre_pipeline
@@ -162,8 +162,9 @@ def default_pipeline(spec: Spec, deck: Deck | None, waveforms=()) -> list[Stage]
 
 def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, parallel_jobs: int | None, limits: HostLimits,
                stop_at_first_failure: bool | None = None) -> str:
-    """'<children per point> ... on <host>, N workers (<heaviest stage> threads/memory)' for the --plan lines;
-    refuses (EnvelopeError) a pipeline whose stage does not fit the host, so the preview fails where the run would.
+    """'<children per point> ... on <host>, N workers (<heaviest stage> threads/memory)' for the --plan lines, a
+    testbench stage's threads with the metric extraction beside the simulator (``(4 + 1)``: ``engine.extraction_threads``,
+    N-78); refuses (EnvelopeError) a pipeline whose job does not fit the host, so the preview fails where the run would.
     ``stop_at_first_failure`` as for :func:`evaluate` (None: :func:`stop_wanted`, as the run decides it); on, the count
     per point is a ceiling."""
     workers = engine.workers_for(spec, pipeline, parallel_jobs, limits)
@@ -174,13 +175,13 @@ def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, p
     dev = sum(c.unit_kind == "device" for c in children)
     em = engine.point_runs(pipeline)
     parts = [f"{em} EMX runs" if em else "", f"{tb} testbench sims" if tb else "", f"{dev} device measurements" if dev else ""]
-    heaviest = max(pipeline, key=lambda s: (s.resources.threads, s.resources.memory_gb))
+    heaviest = max(pipeline, key=lambda s: (s.resources.threads + engine.extraction_threads(s), s.resources.memory_gb))
     cap = spec.em.parallel_jobs if em and spec.em is not None else None
     count = f"{len(children) + em} simulations per point"
     if stop:
         count = f"up to {count} (a point stops at the first simulation that fails it)"
     return (f"({' + '.join(p for p in parts if p)}) = {count} on {executor.host}, "
-            f"{workers} workers × {heaviest.resources.threads} threads"
+            f"{workers} workers × {per_job(heaviest.resources.threads, engine.extraction_threads(heaviest))} threads"
             + (f" / {heaviest.resources.memory_gb:g} GB" if heaviest.resources.memory_gb else "") + f" ({heaviest.name})"
             + (f", EMX at once ≤ {cap} (em.parallel_jobs)" if cap else "")
             + (", EMX results cached per geometry: a repeated geometry costs no run" if em else ""))

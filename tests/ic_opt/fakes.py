@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from ic_opt.executor import CommandResult, LocalExecutor, process_group
-from ic_opt.site import HostLimits
+from ic_opt.site import EXTRACTION_THREADS, HostLimits
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 
@@ -64,8 +64,10 @@ def make_spec(**overrides) -> Spec:
 
 
 def host_for(spec: Spec, jobs: int) -> HostLimits:
-    """A fake host entry that fits ``jobs`` of this spec's heaviest Spectre / EMX run at once (replays of recorded specs)."""
-    threads = max([spec.simulator.threads_per_run] + ([spec.em.threads] if spec.em else []))
+    """A fake host entry that fits ``jobs`` of this spec's heaviest Spectre / EMX run at once (replays of recorded specs),
+    a Spectre run with the metric extraction beside it (N-78)."""
+    spectre = spec.simulator.threads_per_run + (EXTRACTION_THREADS if spec.testbenches else 0)
+    threads = max([spectre] + ([spec.em.threads] if spec.em else []))
     return HostLimits(max_threads=jobs * threads, max_memory_gb=jobs * (spec.em.memory_gb if spec.em else 1.0))
 
 

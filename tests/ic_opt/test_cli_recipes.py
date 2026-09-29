@@ -138,7 +138,7 @@ def test_run_plan_prints_shape_and_simulates_nothing(tmp_path):
     assert "[plan] netlist.import tb:" in out and "corners ['tt', 'ss']" in out
     assert ("[plan] opt.optimize step='optimize' strategy=turbo: 0/12 points done, up to 12 more in batches of 4 × "
             "(2 testbench sims) = up to 2 simulations per point (a point stops at the first simulation that fails it) on "
-            "local, 2 workers × 4 threads (spectre)") in out
+            "local, 2 workers × (4 + 1) threads (spectre)") in out
     assert not (root / ".icopt" / "observations.jsonl").exists() and not any((root / ".icopt" / "decks").iterdir())
 
 
@@ -220,11 +220,11 @@ def test_optimize_recipe_end_to_end(tmp_path, capsys):
     assert (run.store.reports_dir() / "report.md").exists()
     printed = capsys.readouterr().out
     assert "[doctor] [ok] tools: /cad/bin/spectre, /cad/bin/ocean" in printed and "[doctor] [ok] license: spectre version 23.1.0.242.isr4 64bit; lmstat 1 features (spectre 2/10)" in printed
-    assert ("[doctor] [ok] envelope: 2 jobs × 4 threads / 0 GB per job → 8 threads / 0 GB of 16 / 64 "
+    assert ("[doctor] [ok] envelope: 2 jobs × (4 + 1) threads / 0 GB per job → 10 threads / 0 GB of 16 / 64 "
             "(max_threads / max_memory_gb of local)") in printed
     assert "[doctor] [ok] machine: local: 96 cores / 384.0 GB; the entry fits" in printed
     assert "[run] report:" in printed
-    assert run.jobs == 2                                       # spec parallel_jobs 2, host 16/4 = 4 slots
+    assert run.jobs == 2                                       # spec parallel_jobs 2, host 16 // (4 + 1) = 3 slots
 
 
 def test_optimize_recipe_evaluates_the_exported_design_and_the_start_file_first_and_once(tmp_path, capsys):
@@ -248,7 +248,7 @@ def test_optimize_recipe_evaluates_the_exported_design_and_the_start_file_first_
 
 def test_optimize_recipe_stops_when_doctor_fails(tmp_path):
     run = fake_run(project(tmp_path))
-    run.spec.simulator.parallel_jobs = 8                       # 8 × 4 threads > the host's max 16
+    run.spec.simulator.parallel_jobs = 8                       # 8 × (4 + 1) threads > the host's max 16
     with pytest.raises(RuntimeError, match="envelope"):
         optimize.main(run, strategy="random", budget=2)
     assert not run.store.observations()

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from ic_opt.executor import Executor, ExecutorError
 from ic_opt.sim import netlist as netlist_kernel
-from ic_opt.site import HostLimits
+from ic_opt.site import EXTRACTION_NOTE, EXTRACTION_THREADS, HostLimits, per_job
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 
@@ -141,21 +141,27 @@ def _operating_points_check(spec: Spec, tb_id: str, path: str, executor: Executo
     return Check(name, True, netlist_kernel.operating_points(text.stdout).describe())
 
 
-def _job(spec: Spec) -> tuple[int, float]:
-    """One concurrent job of the spec's pipeline, sized as the engine sizes it: its heaviest Spectre / EMX run."""
-    runs = [(spec.simulator.threads_per_run, 0.0)] if spec.testbenches else []
+def _job(spec: Spec) -> tuple[int, int, float]:
+    """One concurrent job of the spec's pipeline, sized as the engine sizes it: its heaviest Spectre / EMX run, as (the
+    run's threads, the threads beside it, memory). Beside a Spectre run the process that extracts its metrics runs
+    (``site.EXTRACTION_THREADS``, N-78); beside an EMX run nothing."""
+    runs = [(spec.simulator.threads_per_run, EXTRACTION_THREADS, 0.0)] if spec.testbenches else []
     if spec.devices and spec.em is not None:
-        runs.append((spec.em.threads, spec.em.memory_gb))
-    return max((t for t, _ in runs), default=1), max((m for _, m in runs), default=0.0)
+        runs.append((spec.em.threads, 0, spec.em.memory_gb))
+    threads, extraction, _ = max(runs, key=lambda run: run[0] + run[1], default=(1, 0, 0.0))
+    return threads, extraction, max((m for *_, m in runs), default=0.0)
 
 
 def _envelope_check(spec: Spec, limits: HostLimits, host: str) -> Check:
-    """What the spec asks for at once -- parallel_jobs of its heaviest job -- against the host's entry; beyond it fails."""
+    """What the spec asks for at once -- parallel_jobs of its heaviest job, a testbench job with the metric extraction
+    beside its simulator -- against the host's entry; beyond it fails, naming the extraction when it is counted."""
     jobs = spec.simulator.parallel_jobs
-    threads, memory = _job(spec)
-    return Check("envelope", jobs * threads <= limits.max_threads and jobs * memory <= limits.max_memory_gb,
-                 f"{jobs} jobs × {threads} threads / {memory:g} GB per job → {jobs * threads} threads / {jobs * memory:g} GB "
-                 f"of {limits.max_threads} / {limits.max_memory_gb:g} (max_threads / max_memory_gb of {host})")
+    threads, extraction, memory = _job(spec)
+    total = jobs * (threads + extraction)
+    return Check("envelope", total <= limits.max_threads and jobs * memory <= limits.max_memory_gb,
+                 f"{jobs} jobs × {per_job(threads, extraction)} threads / {memory:g} GB per job → {total} threads / "
+                 f"{jobs * memory:g} GB of {limits.max_threads} / {limits.max_memory_gb:g} (max_threads / max_memory_gb "
+                 f"of {host})" + (f"; {EXTRACTION_NOTE}" if extraction and total > limits.max_threads else ""))
 
 
 def _machine_check(executor: Executor, limits: HostLimits) -> Check:
@@ -213,8 +219,13 @@ def _device_check(device) -> Check:
 
 
 def plan_line(spec: Spec, executor: Executor, limits: HostLimits) -> str:
-    """One line for --plan: where and how hard this spec will hit the machine, against that host's entry."""
+    """One line for --plan: where and how hard this spec will hit the machine, against that host's entry -- its jobs,
+    each at its heaviest run (:func:`_job`: a testbench job with the metric extraction beside the simulator), and their
+    peak. The strategy's threads (``simulator.strategy_threads``) are not in the peak: the strategy runs between batches,
+    when no simulation of its run does; the line names them apart."""
     sim = spec.simulator
-    return (f"host={executor.host} jobs={sim.parallel_jobs} threads/job={sim.threads_per_run} "
-            f"peak_threads={sim.parallel_jobs * sim.threads_per_run} (max_threads {limits.max_threads}) "
+    threads, extraction, _ = _job(spec)
+    return (f"host={executor.host} jobs={sim.parallel_jobs} × {per_job(threads, extraction)} threads → "
+            f"peak_threads={sim.parallel_jobs * (threads + extraction)} (max_threads {limits.max_threads}), "
+            f"strategy {sim.strategy_threads} threads between batches, "
             f"budget={spec.budget.max_simulations} sims, preset={shlex.quote(sim.preset)}")

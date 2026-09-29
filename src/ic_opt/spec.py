@@ -272,12 +272,18 @@ class Objective(Model):
 class Simulator(Model):
     """Spectre resources are the user's to state (T15): no thread count, job count or timeout is assumed. Nor is a
     license queue wait: ``license_queue_timeout_s`` is passed as ``+lqtimeout`` only when set; unset, Spectre waits
-    as it does by itself."""
+    as it does by itself.
+
+    ``strategy_threads`` (N-73): the threads the strategy's own computation may use while it proposes a batch, on the
+    machine running ic-opt -- ``metric_gp`` (numpy / scipy / scikit-learn through BLAS and OpenMP), ``openbox_*`` (their
+    BLAS) and ``turbo`` (torch too). Without a limit these libraries take every core of that machine. One by default:
+    the least a strategy can run on, which assumes nothing about the machine (``opt.suggest`` applies it)."""
 
     preset: Literal["cx", "ax", "mx", "lx", "vx"] = "ax"
     threads_per_run: int = Field(ge=1)
     parallel_jobs: int = Field(ge=1)
     timeout_s: int = Field(gt=0)
+    strategy_threads: int = Field(default=1, ge=1)   # N-73: the strategy's BLAS / OpenMP / torch threads (opt.suggest)
     license_check: bool = True
     license_queue_timeout_s: int | None = Field(default=None, ge=0)   # Spectre +lqtimeout <s>; None: the flag is not passed
     keep_failed_runs: bool = True
@@ -292,11 +298,14 @@ class Simulator(Model):
 
     @model_serializer(mode="wrap")
     def _dump(self, handler):
-        """An unset license queue timeout and stop at the first failure, and operating points left on, stay out of the
-        dump, so the specs written before they existed keep their legacy fingerprint (``Spec._legacy_fingerprint``)."""
+        """An unset license queue timeout and stop at the first failure, operating points left on and one strategy thread
+        stay out of the dump, so the specs written before they existed keep their legacy fingerprint
+        (``Spec._legacy_fingerprint``)."""
         data = handler(self)
         if self.license_queue_timeout_s is None:
             data.pop("license_queue_timeout_s", None)
+        if self.strategy_threads == 1:
+            data.pop("strategy_threads", None)
         if self.operating_points:
             data.pop("operating_points", None)
         if self.stop_at_first_failure is None:
@@ -635,7 +644,8 @@ def _unique(values: list[str], label: str) -> None:
 _NOT_PROBLEM = {
     "simulator": {"parallel_jobs", "threads_per_run", "timeout_s", "license_check", "license_queue_timeout_s",
                   "keep_failed_runs", "keep_successful_runs", "operating_points",   # operating points: read beside the metrics, never change one
-                  "stop_at_first_failure"},    # which children of a point run, not what any of them gives: a stopped point is never reused
+                  "stop_at_first_failure",     # which children of a point run, not what any of them gives: a stopped point is never reused
+                  "strategy_threads"},         # how fast a batch is proposed, on the machine running ic-opt
     "em": {"threads", "memory_gb", "parallel_jobs", "timeout_s", "verbose", "binary"},      # the binary: a path on the host, not physics
     "budget": True,
 }

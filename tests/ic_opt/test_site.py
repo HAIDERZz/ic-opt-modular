@@ -152,10 +152,10 @@ def test_run_jobs_refuses_a_spectre_job_bigger_than_the_host(tmp_path):
     spec = make_spec(simulator={"parallel_jobs": 4, "threads_per_run": 10, "timeout_s": 60})
     hosts = Site({"local": HostLimits(max_threads=8, max_memory_gb=16), "big": HostLimits(max_threads=24, max_memory_gb=16)})
     too_small = Run(tmp_path, spec, RunStore(tmp_path), FakeSpectreExecutor(tmp_path / "sims"), None, hosts, hosts.host("local"))
-    with pytest.raises(EnvelopeError, match=r"threads_per_run 10 exceeds max_threads 8 of host 'local'"):
+    with pytest.raises(EnvelopeError, match=r"threads_per_run \(10 \+ 1\) exceeds max_threads 8 of host 'local'"):
         _ = too_small.jobs
     fits = Run(tmp_path, spec, RunStore(tmp_path), FakeSpectreExecutor(tmp_path / "sims"), None, hosts, hosts.host("big"))
-    assert fits.jobs == 2                                                              # min(parallel_jobs 4, 24 // 10)
+    assert fits.jobs == 2                                                              # min(parallel_jobs 4, 24 // (10 + 1))
 
 
 def test_plan_mode_refuses_a_stage_bigger_than_the_host(tmp_path):
@@ -231,7 +231,7 @@ def test_cli_refuses_a_spec_without_its_resource_fields(tmp_path, monkeypatch):
 def test_cli_refuses_a_job_bigger_than_the_host_under_plan(tmp_path, monkeypatch):
     root = project(tmp_path)                                                    # threads_per_run 4
     monkeypatch.setattr(site, "SITE_FILE", write(tmp_path, "hosts:\n  local: {max_threads: 2, max_memory_gb: 64}\n"))
-    _refused(runner.invoke(app, ["run", "optimize", str(root), "--plan"]), "threads_per_run 4 exceeds max_threads 2 of host 'local'")
+    _refused(runner.invoke(app, ["run", "optimize", str(root), "--plan"]), "threads_per_run (4 + 1) exceeds max_threads 2 of host 'local'")
     assert not (root / ".icopt" / "observations.jsonl").exists()
 
 
@@ -239,7 +239,7 @@ def test_cli_call_hands_the_host_entry_to_the_block(tmp_path, monkeypatch):
     root = project(tmp_path)
     monkeypatch.setattr(site, "SITE_FILE", write(tmp_path, "hosts:\n  local: {max_threads: 16, max_memory_gb: 64}\n"))
     result = runner.invoke(app, ["call", "env.doctor", str(root)])
-    assert "[ok] envelope: 2 jobs × 4 threads / 0 GB per job → 8 threads / 0 GB of 16 / 64" in result.output, result.output
+    assert "[ok] envelope: 2 jobs × (4 + 1) threads / 0 GB per job → 10 threads / 0 GB of 16 / 64" in result.output, result.output
 
 
 # -- env.doctor: the envelope line and the machine probe (D2) ---------------------------------
@@ -288,8 +288,10 @@ def test_doctor_keeps_the_spectre_checks_for_a_spec_with_testbenches(tmp_path):
 def test_doctor_envelope_counts_threads_and_memory_of_the_heaviest_job(tmp_path):
     spectre = next(c for c in _doctor(tmp_path, spectre_spec(tmp_path, parallel_jobs=5), HostLimits(max_threads=16, max_memory_gb=8)).checks
                    if c.name == "envelope")
-    assert not spectre.ok and spectre.detail == ("5 jobs × 4 threads / 0 GB per job → 20 threads / 0 GB of 16 / 8 "
-                                                 "(max_threads / max_memory_gb of local)")
+    assert not spectre.ok and spectre.detail == ("5 jobs × (4 + 1) threads / 0 GB per job → 25 threads / 0 GB of 16 / 8 "
+                                                 "(max_threads / max_memory_gb of local); each testbench job is counted "
+                                                 "as threads_per_run + 1 threads: the metric extraction runs beside the "
+                                                 "simulator")
     d = minimal_spec(testbenches=[], metrics=[], constraints=[], objective=None)
     d["devices"] = [{"id": "ind", "generator": "clean_port_ind_sym", "profile": "demo_6m", "ports": ["P1", "N1"]}]
     d["em"] = {"process_file": "/site/demo.proc", "frequencies": [1e10], "threads": 4, "memory_gb": 64, "timeout_s": 600}

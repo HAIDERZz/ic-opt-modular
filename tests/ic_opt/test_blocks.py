@@ -86,7 +86,7 @@ def test_doctor_reports_each_check(tmp_path):
     names = {c.name: c for c in report.checks}
     assert names["executor"].ok and names["export:tb"].ok and names["budget"].ok
     assert not names["envelope"].ok
-    assert names["envelope"].detail.startswith("20 jobs × 10 threads / 0 GB per job → 200 threads / 0 GB of 128 / 256")
+    assert names["envelope"].detail.startswith("20 jobs × (10 + 1) threads / 0 GB per job → 220 threads / 0 GB of 128 / 256")
     assert not report.ok
     with pytest.raises(RuntimeError, match=r"envelope: 20 jobs"):
         report.require_pass()

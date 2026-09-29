@@ -297,9 +297,9 @@ def test_the_plan_says_a_point_may_stop(tmp_path):
     spec, executor = two_by_two(), LocalExecutor(tmp_path)
     assert plan_shape(spec, [Prepared()], "all", executor, None, FAKE_HOST) == (
         "(4 testbench sims) = up to 4 simulations per point (a point stops at the first simulation that fails it) on local, "
-        "2 workers × 1 threads (prepared)")
+        "2 workers × (1 + 1) threads (prepared)")
     assert plan_shape(spec, [Prepared()], "all", executor, None, FAKE_HOST, stop_at_first_failure=False) == (
-        "(4 testbench sims) = 4 simulations per point on local, 2 workers × 1 threads (prepared)")
+        "(4 testbench sims) = 4 simulations per point on local, 2 workers × (1 + 1) threads (prepared)")
 
 
 def test_optimize_hands_the_schedule_the_rows_it_adopted(tmp_path, monkeypatch):

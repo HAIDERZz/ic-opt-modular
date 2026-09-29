@@ -192,9 +192,9 @@ def test_points_of_one_batch_with_the_same_fingerprint_do_the_work_once(tmp_path
 
 def test_workers_are_capped_by_the_host_entry_of_the_heaviest_stage():
     spec = em_spec()
-    pipeline = [Build(), Measure(), CircuitChild()]              # threads: circuit 10; memory: build 32 GB
+    pipeline = [Build(), Measure(), CircuitChild()]              # threads: circuit 10 + 1 (N-78); memory: build 32 GB
     assert engine.workers_for(spec, pipeline, 10, HostLimits(max_threads=128, max_memory_gb=128)) == 4     # memory-bound: 128/32
-    assert engine.workers_for(spec, pipeline, 10, HostLimits(max_threads=40, max_memory_gb=1024)) == 4     # thread-bound: 40/10
+    assert engine.workers_for(spec, pipeline, 10, HostLimits(max_threads=40, max_memory_gb=1024)) == 3     # thread-bound: 40/11
     assert engine.workers_for(spec, [CircuitChild()], 3, HostLimits(max_threads=128, max_memory_gb=1)) == 3
 
 

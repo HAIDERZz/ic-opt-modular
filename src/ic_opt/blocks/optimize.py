@@ -28,6 +28,8 @@ from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import Path
 
+from threadpoolctl import threadpool_limits
+
 from ic_opt import advice as advice_rules
 from ic_opt import objective as objective_contract
 from ic_opt import space, suggesters
@@ -36,6 +38,7 @@ from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
 from ic_opt.eval.stage import Stage
 from ic_opt.executor import Executor, ExecutorError
+from ic_opt.library.query import omp_cap
 from ic_opt.localpath import literal
 from ic_opt.observation import Observation, Observations
 from ic_opt.sim import netlist as kernel
@@ -75,7 +78,15 @@ def suggest(
     ``strategy="auto"`` is resolved from the spec: ``metric_gp`` unless it has EM devices. ``metric_gp`` refuses a
     history whose points were evaluated at different sets of corners (a store holding the signoff recipe's search and
     its re-check, handed over whole): hand it one set. Nothing is printed (``ic-opt call opt.suggest`` prints the points
-    as JSON); the origins name the strategy."""
+    as JSON); the origins name the strategy.
+
+    Threads (N-73). The strategy's calls run with ``simulator.strategy_threads`` threads (:func:`strategy_threads`):
+    every BLAS / OpenMP pool the process has loaded is limited to them for the duration of the calls
+    (``threadpoolctl.threadpool_limits``, all user APIs), and ``turbo``, whose torch sizes its own pool, sets torch's
+    threads to them before it fits. An OMP_NUM_THREADS, OPENBLAS_NUM_THREADS or MKL_NUM_THREADS set lower than the field
+    keeps its effect: the limit is then that value. One set higher than the field is lowered to the field during the
+    calls and applies again after them; torch keeps the limit after the call (it has no scoped setting), and every call
+    sets it again."""
     history = Observations(list(adopt(spec, initial)) + list(observations))
     if strategy == suggesters.AUTO:
         strategy, reason = suggesters.resolve_auto(spec, len(spec.corner_ids), history)
@@ -92,23 +103,26 @@ def suggest(
         return points
     suggester = suggesters.make(strategy, **strategy_kwargs)
     narrowing = {"advice": advice} if advice and suggester.name == "metric_gp" else {}
+    threads = strategy_threads(spec)
+    torch_threads = {"threads": threads} if suggester.name == "turbo" else {}     # torch sizes its own pool
     base = f"suggest:{suggester.name}"
     batch_tag = fill = None
-    for attempt in range(4):
-        missing = n - len(points)
-        if missing <= 0:
-            break
-        proposal = suggester.propose(spec, history, missing, seed=seed + attempt, pending=[p.params for p in points],
-                                     **narrowing)
-        if batch_tag is None:
-            batch_tag = proposal.tag          # a batch tag is the batch's: replacements share it (TuRBO replays by it)
-            fill = f"{base}:fill" if proposal.tags else f"{base}:{batch_tag}" if batch_tag else base
-        for index, raw in enumerate(proposal.raw):
-            tag = proposal.tags[index] if proposal.tags else batch_tag
-            point = Point(space.snap(spec, raw), f"{base}:{tag}" if tag else base)
-            if point.key not in taken:
-                taken.add(point.key)
-                points.append(point)
+    with threadpool_limits(limits=threads):
+        for attempt in range(4):
+            missing = n - len(points)
+            if missing <= 0:
+                break
+            proposal = suggester.propose(spec, history, missing, seed=seed + attempt,
+                                         pending=[p.params for p in points], **narrowing, **torch_threads)
+            if batch_tag is None:
+                batch_tag = proposal.tag      # a batch tag is the batch's: replacements share it (TuRBO replays by it)
+                fill = f"{base}:fill" if proposal.tags else f"{base}:{batch_tag}" if batch_tag else base
+            for index, raw in enumerate(proposal.raw):
+                tag = proposal.tags[index] if proposal.tags else batch_tag
+                point = Point(space.snap(spec, raw), f"{base}:{tag}" if tag else base)
+                if point.key not in taken:
+                    taken.add(point.key)
+                    points.append(point)
     if len(points) < n:      # the model keeps landing on evaluated grid points: fill with random ones
         filler = suggesters.RandomSuggester("random")
         for raw in filler.propose(spec, history, 4 * (n - len(points)), seed=seed + len(taken)).raw:
@@ -117,6 +131,15 @@ def suggest(
                 taken.add(point.key)
                 points.append(point)
     return points
+
+
+def strategy_threads(spec: Spec) -> int:
+    """The threads a strategy's calls may use in :func:`suggest` (N-73): ``simulator.strategy_threads``, or, when it is
+    lower, the smallest of OMP_NUM_THREADS, OPENBLAS_NUM_THREADS and MKL_NUM_THREADS that is set, read as the device
+    library reads them (``library.query.omp_cap``). ``threadpool_limits`` sets a pool's size, it does not only lower it,
+    so a limit above such a variable would raise the pools past it."""
+    cap = omp_cap()
+    return spec.simulator.strategy_threads if cap is None else min(spec.simulator.strategy_threads, cap)
 
 
 def optimize(
