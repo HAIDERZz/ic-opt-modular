@@ -67,3 +67,28 @@ thread takes 1.0 to 1.35 cores, and the OCEAN process that extracts the metrics 
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Hand back: branch and commits; the verbatim test and ruff output (last 30 lines); what the specification left open
   and how it was read (a numbered list); what could not be done and why.
+
+## 6. Record (2026-09-30)
+
+Implemented by the coding subagent on `t17-12-threads` (`02360a6` N-73, `b1eb72b` N-78), merged `14eddf9` after
+T17.11 (two text conflicts in `README.md` and `skills/ic-opt/SKILL.md`, both sides kept); targeted tests 273 passed,
+ruff clean. How the open points were read (the coder's list, kept here):
+
+- `threadpool_limits` sets each pool's size rather than lowering it: with `OMP_NUM_THREADS=1` and `limits=4` OpenBLAS
+  went to 4. So the limit applied is `blocks.optimize.strategy_threads(spec)`: the field, or the smaller environment
+  cap read as `library.query.omp_cap` reads it; an outer `threadpool_limits` of a caller is not detected.
+- The limit wraps the strategy's `propose` attempts inside `suggest`; start rows, advice rows and the random filler
+  are outside it. TuRBO gets the same capped figure as `threads=` and calls `torch.set_num_threads` once per call
+  before it fits (process-wide, set again on every call; torch loaded inside the limit block still sized itself to
+  every core when measured, hence the explicit call). The vendored OpenBox never imports torch.
+- The +1: `site.EXTRACTION_THREADS` is added by `engine.extraction_threads(stage)` to every child stage whose unit is a
+  testbench and that simulates (the engine knows nothing of Spectre); an EMX job stays `em.threads`; the fake
+  testbench stages of the tests count it too. `Run.jobs` in `recipe.py` counts it as well (README and the skill say
+  `run.jobs` trims to fit). A testbench job that fits alone but not with the +1 is refused with a message naming it.
+- The run header (`plan_line`) reads `host=local jobs=10 × (1 + 1) threads → peak_threads=20 (max_threads 96),
+  strategy 1 threads between batches, ...`; it prints the field's value, for recipes without a strategy too.
+- The skill has no spec cheat-sheet: one line went into its "Recipe cheatsheet", the field into author-spec's
+  `simulator` list. `strategy_threads` is not checked against any host entry (the field is `ge=1` only). A spec with
+  `strategy_threads` other than 1 has no 0.2.0 fingerprint (as every field added after 0.2.0).
+- Not done: a measurement of real core use after the change (no simulator run); `Spec.problem()`'s docstring does
+  not name the new field.
