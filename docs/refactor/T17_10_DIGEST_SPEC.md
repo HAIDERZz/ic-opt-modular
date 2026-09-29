@@ -115,3 +115,30 @@ count as machine load: run them once per commit, not in a loop.
 
 Section 3 green, ruff clean; a digest of an existing development run (rebuilt from its observations, no
 simulation) read by eye: every new entry present and sensible; the leak test green.
+
+## 6. Record (2026-09-30)
+
+Implemented by the coding subagent on `t17-10-digest` (`ef6e567`, `60e62ec`, `e613494`, `7baa4bb`), merged `ed59525`;
+targeted tests 111 passed, ruff clean. How the specification's open points were read (the coder's list, kept here):
+
+- A refused advice's row: `{"id": "r<n>", "event": "refuse", "status": "refused", "at", "since", "reason", "raw", "spec_fingerprint"}`;
+  refused ids are their own series, so adopted rows are byte for byte what they were. Only refusals of `advice.check` are
+  recorded (not an unreadable file, not `--revoke`, not while a run holds the project), and only by the `ic-opt advise`
+  command (`opt.advise` called from code records nothing: `blocks/optimize.py` was out of this step's files).
+- `stall`: batches of `progress.batches`; any strict improvement counts, the first feasible point included; before it,
+  `stalled` is false and the markdown says so. `region_restarts` counts distinct `anchor:<r>:<k>` regions.
+- `improved_best` compares the best before the period with the best up to its end; `share_kept` counts the advice's
+  start points as its own; `verdict` is `None` while the period holds no point.
+- Importance: the unit coordinate is `Coords`' formula repeated in `digest._Grid.coordinate` (pinned equal by a test),
+  so the digest does not import the strategies; one `mutual_info_regression` call per metric; a one-level variable is
+  `None` and unranked; scikit-learn is imported only when there are points enough.
+- `violations` is JSON only and counts every point whose judged value violates, whatever its status.
+- `by_stage` always lists the seven spec stages; other stages (`ngspice`, `extract`, `predict`) appear when met.
+- The leak test caught issue texts copied whole: they are cut to 200 characters (counted whole). Paths inside the first
+  200 characters of a simulator's message can still appear; scrubbing them is a separate decision. `cshrc` reaches no
+  digest input.
+- 1.7 as written said a saturation margin bounds gm/ID from above; the coder wrote "from below" (V_DSAT is bounded
+  from above, gm/ID ~ 2 / V_DSAT), which is right and matches `T17_STRUCTURE_CANDIDATES_CN.md` 3.6.
+- Not done here: the version-3 entries are described in `skills/ic-opt/SKILL.md` step 5 and this section, not in
+  `T17_1_5_SPEC.md` 5.2; the digest of a metric at several corners still reads `Observation.metrics` for the
+  importance (T17.9 adds `worst_metrics`; switching the importance to it is a later choice).
