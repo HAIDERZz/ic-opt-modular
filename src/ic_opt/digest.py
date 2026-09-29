@@ -54,7 +54,8 @@ names ``metric_gp``: the search region is what ``MetricGpSuggester.region_state`
 scikit-learn (a declared dependency).
 
 Version 3 (``docs/refactor/T17_10_DIGEST_SPEC.md``: what an agent outside the tool needs to advise) adds entries and
-changes none of version 2's. Its definitions:
+changes none of version 2's. The variables' importance takes scikit-learn's mutual information estimate, imported only
+when there are points enough to compute it. Its definitions:
 
 - *a stall* (``progress.stall``): counted in the batches of ``progress.batches``. The best improves in a batch where the
   point it names changes, the first feasible point included; ``stalled`` from ``STALL_BATCHES`` batches without an
@@ -68,6 +69,14 @@ changes none of version 2's. Its definitions:
   others of its period). ``verdict``: ``helped`` when the advice's side has the better best (a best where the other side
   has none is better) and the run's best improved, ``no_help`` when neither, ``mixed`` when one of the two; ``None``
   while the period holds no point.
+- *a variable's importance* (``variables[].importance``): for a variable of more than one level and per metric the
+  constraints or the objective name, the mutual information between the variable's unit coordinate (``metric_gp``'s
+  ``Coords``: 0 to 1 over the range, logarithmic where it spans a decade) and the metric's values over the points that
+  gave one (``sklearn.feature_selection.mutual_info_regression``, ``n_neighbors=3``, ``random_state=0``: a k-nearest-
+  neighbour estimate in nats, no model fitted); ``None`` for a metric fewer than ``MIN_IMPORTANCE`` points gave, and for
+  the whole entry when every metric is so. ``rank``: by the sum over the metrics, ties in the spec's order. A
+  constraint's ``violations``: the points whose value of its metric (the worst over the scored corners, as the
+  constraint is judged) violates it, whatever their status.
 - *where points failed* (``failures.by_stage``): a point counts under the stage of its ``failed:<stage>`` status (its
   first failed child's, as ``sim.corner.aggregate`` sets it; a child's where the point's status names none), else under
   its status ``metric_failed`` or ``constraint_failed``; a point stopped early counts in ``stopped_early`` besides.
@@ -99,6 +108,8 @@ MIN_FEASIBLE_RANGES = 3            # feasible points below which no range is sug
 SEPARATING = 3                     # variables listed as separating scored from unscored points
 MESSAGES = 3                       # issue texts listed for the points that gave no value
 STALL_BATCHES = 3                  # batches without improvement from which a run is stalled (T17.10 specification, 1.1)
+MIN_IMPORTANCE = 20                # points with a metric's value below which no mutual information is given (1.3)
+MI_NEIGHBOURS = 3                  # the k of the mutual information's k-nearest-neighbour estimate (1.3)
 STAGES = ("render", "spectre", "ocean", "pcell", "emx", "bind_nport", "measure")   # failed:<stage>, always counted (1.4)
 REGION_WEIGHTS = (0.2, 5.0)        # metric_gp's per-variable weights of the region's side (region.WEIGHT_CLIP)
 QUANTITIES = ("region", "ids", "vgs", "vds", "vbs", "vth", "vdsat", "gm", "gds", "gmoverid", "cgs", "cgd")   # section 4
@@ -366,6 +377,7 @@ def _constraints(spec: Spec, rows: list[Observation], feasible: list[Observation
         out.append({
             "constraint": constraint_text(spec, c), "metric": c.metric, "unit": unit_of(spec, c.metric),
             "scored": len(mine), "met": sum(1 for _o, x in mine if x >= 0), "fails_only_this": only,
+            "violations": sum(1 for o in rows if (v := constraint_value(spec, c, o)) is not None and margin(c, v) < 0),
             "spread": _num(spread),
             "best_margin": None if best_value is None else _margin_entry(best.obs_id, margin(c, best_value), spread),
             "closest_failing": None if closest is None else _margin_entry(closest[0].obs_id, closest[1], spread),
@@ -380,6 +392,7 @@ def _margin_entry(obs_id: str, value: float, spread: float | None) -> dict[str, 
 def _variables(spec: Spec, rows: list[Observation], best: list[Observation], grid: list[_Grid]) -> list[dict[str, Any]]:
     scored = [o for o in rows if o.status in SCORED]
     modelled = _modelled(spec)
+    importance = _importance(spec, rows, grid)
     out = []
     for g in grid:
         visited = {g.index(o.params[g.name]) for o in rows}
@@ -403,7 +416,37 @@ def _variables(spec: Spec, rows: list[Observation], best: list[Observation], gri
                 correlation[name] = _spearman(pairs)
         out.append({"name": g.name, "levels_visited": len(visited), "levels": g.count,
                     "top_span": [g.text(min(span)), g.text(max(span))] if span else None, "at_bound": at_bound,
-                    "no_value": thirds, "correlation": correlation})
+                    "no_value": thirds, "correlation": correlation, "importance": importance[g.name]})
+    return out
+
+
+def _importance(spec: Spec, rows: list[Observation], grid: list[_Grid]) -> dict[str, dict[str, Any] | None]:
+    """``variables[].importance`` (T17.10 specification, 1.3), per variable name: per modelled metric the mutual
+    information between the variable's unit coordinate and the metric's values over the points that gave one, those
+    points' count (``rows_used``), the sum over the metrics (``total``) and the variable's ``rank`` by it. Nothing is
+    fitted: the digest is read while a run goes. ``None`` for a variable of one level (it takes no part), and for every
+    variable when no metric has ``MIN_IMPORTANCE`` points with a value."""
+    names = _modelled(spec)
+    active = [g for g in grid if g.count > 1]
+    used = {name: [o for o in rows if math.isfinite(o.metrics.get(name, math.nan))] for name in names}
+    measured = [name for name in names if len(used[name]) >= MIN_IMPORTANCE]
+    out: dict[str, dict[str, Any] | None] = dict.fromkeys((g.name for g in grid), None)
+    if not active or not measured:
+        return out
+    # scikit-learn, a declared dependency: loaded only here, so a digest with too few points does without it
+    from sklearn.feature_selection import mutual_info_regression
+
+    mi = {}
+    for name in measured:                              # one call per metric: each variable's estimate is its own
+        x = np.array([[g.coordinate(o.params[g.name]) for g in active] for o in used[name]])
+        y = np.array([o.metrics[name] for o in used[name]])
+        mi[name] = mutual_info_regression(x, y, n_neighbors=MI_NEIGHBOURS, random_state=0)
+    totals = {g.name: float(sum(mi[name][j] for name in measured)) for j, g in enumerate(active)}
+    ranks = {g.name: r for r, g in enumerate(sorted(active, key=lambda g: -totals[g.name]), 1)}   # stable: spec order
+    for j, g in enumerate(active):
+        out[g.name] = {"rank": ranks[g.name], "total": _num(totals[g.name]),
+                       "mi": {name: _num(float(mi[name][j])) if name in mi else None for name in names},
+                       "rows_used": {name: len(used[name]) for name in names}}
     return out
 
 
@@ -732,6 +775,16 @@ class _Grid:
     def value(self, text: str) -> float:
         return float(space.parse_scalar(text)[0])
 
+    def coordinate(self, text: str) -> float:
+        """The value's unit coordinate as ``metric_gp``'s ``Coords`` gives it: 0 to 1 over the range, logarithmic where
+        the range spans a decade; 0 for a range of one level."""
+        if self._hi == self._lo:
+            return 0.0
+        v = self.value(text)
+        if self.log:
+            return (math.log(v) - math.log(self._lo)) / (math.log(self._hi) - math.log(self._lo))
+        return (v - self._lo) / (self._hi - self._lo)
+
     def third(self, text: str) -> str:
         if self._hi == self._lo:
             return "lower"
@@ -922,7 +975,27 @@ def _md_variables(d: dict[str, Any]) -> str:
                   _row(["variable", *metrics]), _rule(1 + len(metrics))]
         lines += [_row([v["name"], *(f"{r:+.2f}" if (r := v["correlation"][m]) is not None else "—" for m in metrics)])
                   for v in d["variables"]]
-    return "\n".join(lines)
+    return "\n".join([*lines, "", "### Variables by importance", "", *_md_importance(d)])
+
+
+def _md_importance(d: dict[str, Any]) -> list[str]:
+    """The table of ``variables[].importance``: rank, variable, its two metrics of the most mutual information, and the
+    points those were computed over."""
+    ranked = sorted((v for v in d["variables"] if v["importance"] is not None), key=lambda v: v["importance"]["rank"])
+    if not any(m["modelled"] for m in d["problem"]["metrics"]):
+        return ["_no metric is named by the constraints or the objective_"]
+    if not ranked:
+        return [f"_needs at least {MIN_IMPORTANCE} points that gave a metric the constraints or the objective name_"]
+    lines = [("Mutual information between the variable (in unit coordinates, logarithmic where its range spans a decade) "
+              "and each metric the spec names, over the points that gave the metric: 0 when the metric says nothing "
+              "about the variable, in nats. Ranked by its sum over the metrics. Like a correlation, it is not a cause."),
+             "", _row(["rank", "variable", "top metrics (mutual information)", "points"]), _rule(4)]
+    for v in ranked:
+        importance = v["importance"]
+        top = sorted(((m, x) for m, x in importance["mi"].items() if x is not None), key=lambda mx: -mx[1])[:2]
+        lines.append(_row([str(importance["rank"]), v["name"], " · ".join(f"{m} {x:.2f}" for m, x in top),
+                           " · ".join(dict.fromkeys(str(importance["rows_used"][m]) for m, _x in top))]))
+    return lines
 
 
 def _md_failures(f: dict[str, Any]) -> str:

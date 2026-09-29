@@ -11,6 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 import yaml
 from typer.testing import CliRunner
@@ -118,7 +119,7 @@ def test_every_entry_on_a_run_of_known_structure():
     assert bests == sorted(bests, reverse=True)                 # minimize: the best only improves
 
     (c,) = d["constraints"]
-    assert (c["scored"], c["met"], c["fails_only_this"]) == (72, 36, 36)
+    assert (c["scored"], c["met"], c["fails_only_this"], c["violations"]) == (72, 36, 36, 36)
     assert c["spread"] == 5.0                                   # IQR of m1 over the points that have it: 7 - 2
     assert c["best_margin"] == {"id": best["id"], "margin": 0.0, "normalized": 0.0}
     assert c["closest_failing"]["margin"] == -1.0 and c["closest_failing"]["normalized"] == pytest.approx(-0.2)
@@ -598,6 +599,51 @@ def test_where_points_failed_by_stage():
     assert "- where points failed, by stage (else the status they ended with): none" in dg.markdown(ok)
 
 
+def driven(p):
+    """m1 is A and m2 is C, no other variable moves either; B above 0.7 gives no value."""
+    if float(p["B"]) > 0.7:
+        return None
+    return {"m1": float(p["A"]), "m2": float(p["C"]), "spare": 1.0}
+
+
+def test_the_variables_by_importance():
+    spec = spec_abc()
+    rng = random.Random(5)
+    rows = observe(spec, [({"A": str(rng.randint(0, 9)), "B": f"{rng.randint(0, 10) / 10:g}",
+                            "C": str(rng.randint(1, 100))}, "suggest:sobol:sobol") for _ in range(60)], driven)
+    d = dg.digest(spec, rows)
+    importance = {v["name"]: v["importance"] for v in d["variables"]}
+    # the variable that drives a metric has the largest mutual information with it; the one that drives none ranks last
+    assert max(importance, key=lambda n: importance[n]["mi"]["m1"]) == "A"
+    assert max(importance, key=lambda n: importance[n]["mi"]["m2"]) == "C"
+    assert importance["B"]["rank"] == 3 and {importance["A"]["rank"], importance["C"]["rank"]} == {1, 2}
+    assert importance["A"]["mi"]["m1"] > 1 and importance["C"]["mi"]["m2"] > 1 and importance["B"]["total"] < 0.2
+    with_values = sum(o.status in dg.SCORED for o in rows)
+    assert all(i["rows_used"] == {"m1": with_values, "m2": with_values} for i in importance.values())  # modelled only
+    (c,) = d["constraints"]            # every point whose m1 = A lies below 5, whatever else it failed
+    assert c["violations"] == sum(1 for o in rows if o.status in dg.SCORED and int(o.params["A"]) < 5)
+    table = dg.markdown(d).split("### Variables by importance\n\n")[1].split("\n## ")[0]
+    assert "| rank | variable | top metrics (mutual information) | points |" in table
+    assert f"| 3 | B | m2 {importance['B']['mi']['m2']:.2f} · m1 0.00 | {with_values} |" in table
+    # fewer than 20 points with a value: no entry, and the digest says so; from 20 on, one
+    scored = [o for o in rows if o.status in dg.SCORED]
+    unscored = [o for o in rows if o.status not in dg.SCORED]
+    few = dg.digest(spec, scored[:19] + unscored)
+    assert all(v["importance"] is None for v in few["variables"])
+    assert "_needs at least 20 points that gave a metric the constraints or the objective name_" in dg.markdown(few)
+    assert dg.digest(spec, scored[:20] + unscored)["variables"][0]["importance"]["rows_used"] == {"m1": 20, "m2": 20}
+
+
+def test_the_unit_coordinate_is_metric_gp_s():
+    from ic_opt.suggesters.metric_gp.coords import Coords
+
+    spec = spec_abc()                                  # C spans two decades: logarithmic
+    params = [p for p, _origin in abc_rows()]
+    coords = Coords(spec)
+    mine = [[g.coordinate(p[g.name]) for g in (dg._Grid(v) for v in spec.variables)] for p in params]
+    assert np.allclose(mine, coords.unit(coords.indices(params)), rtol=0, atol=1e-12)
+
+
 # -- 5. the order of the observations -----------------------------------------------------------------------------------
 
 
@@ -676,17 +722,20 @@ def test_the_report_needs_no_openbox(tmp_path, monkeypatch):
 
 
 def test_the_digest_module_imports_no_optimizer_library():
-    """numpy, scipy and ic-opt's core: not OpenBox, torch, BoTorch or scikit-learn (the metric_gp region, taken only when
-    an origin names metric_gp, is the one exception), and no block."""
+    """numpy, scipy and ic-opt's core: not OpenBox, torch or BoTorch, no strategy and no block (the metric_gp region,
+    taken only when an origin names metric_gp, is the one exception). scikit-learn only for the variables' importance
+    (T17.10), once enough points gave a value to compute it."""
     spec = spec_abc()
     rows = observe(spec, [(p, "suggest:sobol:sobol") for p, _ in abc_rows()], abc_metrics)
     lines = "\n".join(o.model_dump_json() for o in rows)
     code = ("import json, sys\nfrom ic_opt import digest\nfrom ic_opt.observation import Observation\nfrom ic_opt.spec import Spec\n"
             f"spec = Spec.model_validate(json.loads({spec.model_dump_json()!r}))\n"
             f"rows = [Observation.model_validate_json(line) for line in {lines!r}.splitlines()]\n"
+            "few = digest.markdown(digest.digest(spec, rows[:10]))\n"
+            "print('sklearn' in sys.modules)\n"
             "text = digest.markdown(digest.digest(spec, rows))\n"
-            "print(sorted(m for m in ('openbox', 'torch', 'botorch', 'sklearn', 'ic_opt.blocks', 'ic_opt.suggesters') "
+            "print(sorted(m for m in ('openbox', 'torch', 'botorch', 'ic_opt.blocks', 'ic_opt.suggesters') "
             "if m in sys.modules))\n")
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, check=True)
-    assert out.stdout.strip() == "[]", out.stdout + out.stderr
+    assert out.stdout.split() == ["False", "[]"], out.stdout + out.stderr
