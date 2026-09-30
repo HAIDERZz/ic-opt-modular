@@ -10,7 +10,13 @@ it from its own ``run.site.host("local")``. ``rel_sigma_max`` is the confidence 
 Every block takes ``cache_dir``: the directory for the library's cache files (datasets, calibrations, models).
 Without it they go to the library's own ``.cache``, or, when that cannot be written, to
 ``~/.cache/ic-opt/<key>/`` (``ic_opt.library.cache``), and the answer's ``notes`` say so; the files already in
-the library's own ``.cache`` are read either way."""
+the library's own ``.cache`` are read either way.
+
+A column name may be a declared curve at any frequency, ``<curve>@<GHz>`` (T18.1): ``lib.query`` (``quantities``),
+``lib.suggest`` and ``lib.region`` (targets, objective, trend) and ``lib.densify`` (``quantities``) take it. A design's
+``footprint`` is the box around the drawn device without its ground fixture (``ic_opt.em.pcell.footprint``).
+``lib.index`` and ``lib.pick`` show a stratum's rows by their electrical values at one frequency
+(``ic_opt.library.index``)."""
 
 from __future__ import annotations
 
@@ -19,6 +25,7 @@ import math
 from pathlib import Path
 
 from ic_opt.library import cache as _cache
+from ic_opt.library import index as _index
 from ic_opt.library import query as _query
 from ic_opt.library import region as _region
 
@@ -80,15 +87,35 @@ def coverage(library: _query.Library | str | Path, stratum: str, cache_dir: str 
 
 
 def query(library: _query.Library | str | Path, stratum: str, params: dict, quantities: str | list[str] | None = None, k: float = 2.0,
-          rel_sigma_max: float | None = None, cache_dir: str | None = None) -> dict:
+          rel_sigma_max: float | None = None, footprint: bool = False, cache_dir: str | None = None) -> dict:
     """Measured values at an exact library point; elsewhere mu with calibrated k-sigma bounds, the domain verdict and nearest measured rows.
 
-    ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns). A
+    ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns),
+    where a declared curve may be asked at any frequency inside the parts' sweeps, ``<curve>@<GHz>`` (``Lp@33``). A
     prediction with sigma / mu above its ceiling -- ``rel_sigma_max`` when given, else the quantity's in library.yaml, else
-    0.15; each prediction reports the one it was held to -- is ``uncertain``. ``cache_dir`` holds the library's cache
-    files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).
+    0.15; each prediction reports the one it was held to -- is ``uncertain``. ``footprint`` is the box around the drawn
+    device without its ground fixture: a library point's row's; elsewhere null unless ``footprint=true``, which draws the
+    geometry with the stratum's generator (no EMX); ``footprint_why`` says why a footprint is null. ``cache_dir`` holds the
+    library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).
     """
-    return _query.query(_lib(library, cache_dir), stratum, params, _names(quantities), k=float(k), rel_sigma_max=_ceiling(rel_sigma_max))
+    from ic_opt.library import suggest as _suggest
+
+    lib = _lib(library, cache_dir)
+    answer = _query.query(lib, stratum, params, _names(quantities), k=float(k), rel_sigma_max=_ceiling(rel_sigma_max))
+    answer.update(_suggest.footprint_fields(*_query.footprint_at(lib, stratum, answer["params"], build=_flag(footprint))))
+    return _strict_json(answer)
+
+
+def _flag(value: bool | str | None) -> bool:
+    """A yes/no parameter: a bool, or its command-line spelling (``true`` / ``false``, ``1`` / ``0``)."""
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ("true", "1", "yes"):
+        return True
+    if text in ("false", "0", "no", "none", ""):
+        return False
+    raise ValueError(f"expected true or false, got {value!r}")
 
 
 def suggest(library: _query.Library | str | Path, stratum: str, targets: dict, objective: str | None = None, n: int = 5,
@@ -185,3 +212,70 @@ def densify(library: _query.Library | str | Path, stratum: str, n: int, quantiti
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(answer, indent=1, allow_nan=False) + "\n", encoding="utf-8")
     return answer
+
+
+def _grid(value: dict | None) -> dict | None:
+    """``grid`` as the index takes it: ``{coordinate: [lower, upper, step]}`` (JSON on the command line)."""
+    if value is not None and not isinstance(value, dict):          # the shell ate the quotes, or a list was given
+        raise ValueError(f'grid: expected a JSON object {{"<column>": [lower, upper, step], ...}}, got {value!r}')
+    return value
+
+
+def index(library: _query.Library | str | Path, stratum: str, frequency_ghz: float, srf_margin: float | None = None,
+          grid: dict | None = None, prefer: str | None = None, out: str | None = None, cache_dir: str | None = None) -> dict:
+    """A stratum's rows by their electrical values at ``frequency_ghz``: the index of ``ic_opt.library.index``.
+
+    The index's columns are every declared curve at that frequency under its bare name (``Lp``, ``Qp``; ``Ls``, ``Qs``,
+    ``k`` for a coupled pair), every declared scalar, ``Qmin`` = min(Qp, Qs) when both exist and ``area`` (um2, the
+    footprint's). Its rows are the rows with every curve there; ``srf_margin`` above the manifest's also drops the rows
+    whose system SRF is at or below it x f. Without ``grid`` the answer summarizes the index: rows kept and dropped (and
+    why), each column's range, the footprints, the parts' sweeps. ``grid`` (JSON) puts the rows on a grid of electrical
+    values, ``{"<column>": [lower, upper, step], ...}`` in the column's unit (H, 1, Hz): levels lower + i x step, searched
+    logarithmically where lower > 0 and upper / lower >= 10; each row goes to the cell of its nearest levels, ranked in
+    the cell by ``prefer`` (``max:<column>`` or ``min:<column>``; default ``max:Qmin``, else ``max:Qp``). The answer then
+    also has ``table``: cells occupied of how many, rows per occupied cell (median, largest) and per coordinate the span of
+    occupied levels and how many hold no row. ``out`` writes the table (``grid`` needed): per occupied cell its levels,
+    the level values and its best row (values, params, footprint, part, obs id, the sNp path relative to the library
+    root). ``cache_dir`` holds the library's cache files. The answer is strict JSON, every non-finite number null.
+    """
+    lib = _lib(library, cache_dir)
+    grid = _grid(grid)
+    if out and grid is None:
+        raise ValueError("out= writes the table of a grid: give grid= too")
+    built = _index.build(lib, stratum, float(frequency_ghz) * 1e9, srf_margin=None if srf_margin is None else float(srf_margin))
+    answer = _index.summary(lib, built)
+    if grid is not None:
+        table = _index.table(built, grid, prefer)
+        answer["table"] = _index.table_summary(table)
+        if out:
+            answer["out"] = str(_index.write(out, _strict_json(_index.table_json(lib, built, table))))
+    answer["notes"] = lib.notes + (_index.notes(built, table) if grid is not None else [])
+    return _strict_json(answer)
+
+
+def pick(library: _query.Library | str | Path, stratum: str, frequency_ghz: float, targets: dict | None = None, grid: dict | None = None,
+         prefer: str | None = None, n: int = 1, srf_margin: float | None = None, cache_dir: str | None = None) -> dict:
+    """The library rows nearest to target electrical values at ``frequency_ghz``: ``ic_opt.library.index.pick``.
+
+    ``targets`` (JSON) gives a value per coordinate of ``grid``, e.g. ``{"Lp": 3e-10, "Ls": 2.5e-10, "k": 0.6}``; ``grid``
+    (JSON, required: it says what counts as the same value) is ``{"<column>": [lower, upper, step], ...}`` as in
+    ``lib.index``. The answer is the nearest occupied cell -- by the Euclidean distance over the coordinates in the grid's
+    unit coordinates, a tie to the smallest cell -- its level values and its best ``n`` rows by ``prefer`` (default
+    ``max:Qmin``, else ``max:Qp``): electrical values, geometry, footprint, part and obs id, the sNp path relative to the
+    library root. ``exact`` says whether the targets' own cell holds a row; ``distance`` is per coordinate the cell's level
+    minus the target's, in levels. ``srf_margin`` and ``cache_dir`` as in ``lib.index``. Strict JSON.
+    """
+    if targets is None or not isinstance(targets, dict):
+        raise ValueError(f'targets is required, a JSON object {{"<column>": value, ...}}; got {targets!r}')
+    grid = _grid(grid)
+    if grid is None:
+        raise ValueError('grid is required, {"<column>": [lower, upper, step], ...}: it says what counts as the same value')
+    lib = _lib(library, cache_dir)
+    if isinstance(n, bool) or int(n) < 1:
+        raise ValueError(f"n must be a positive integer, got {n!r}")
+    built = _index.build(lib, stratum, float(frequency_ghz) * 1e9, srf_margin=None if srf_margin is None else float(srf_margin))
+    table = _index.table(built, grid, prefer)
+    answer = _index.pick_json(lib, built, table, _index.pick(table, targets), int(n))
+    answer["targets"] = targets
+    answer["notes"] = lib.notes + _index.notes(built, table)
+    return _strict_json(answer)

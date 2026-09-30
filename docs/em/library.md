@@ -167,6 +167,35 @@ of the stratum -- unlike `rel_sigma_max`, it changes what is fitted: its
 dataset and every model of that stratum are rebuilt once. A library that
 never names `model` keeps its caches.
 
+### Asking at any frequency
+
+A declared curve answers at any frequency inside its parts' sweeps, not only
+at its anchors. Name the column `<curve>@<f>`, `<f>` in GHz with at most six
+significant digits: `Lp@<f>`, `Qp@<f>`; `Lp@28.0` is `Lp@28`. At a frequency
+the curve does not anchor this is an *extension column*: every row's sNp is
+measured again at `<f>` by the rule of an anchor above -- empty outside the
+row's sweep and where the row's system SRF is at or below the curve's
+`srf_margin` times `<f>` -- in one pass over the rows, which also gives the
+stratum's other curves there, and the values are kept in the cache as
+`anchors-<stratum>-<dataset key>-<f>.json`. From then on the column is used
+like a declared one: a library point answers with its row's value, and
+elsewhere the column has its own model, calibrated and cached under the
+column's name like any other; the curve's `srf_margin`, `feature_map`,
+`model` and `rel_sigma_max` apply unchanged. `lib.query` (`quantities`),
+`lib.suggest` and `lib.region` (targets, objective, trend: an extension
+target implies `SRF ≥ srf_margin × f0` as an anchored one does),
+`lib.densify` (`quantities`) and a `lib_design` device metric at a
+frequency all take it.
+
+Nothing is measured or fitted for a column nobody asks for, and the dataset,
+its key and every cache file the library already has stay as they are. A
+curve the stratum does not declare is refused with the curves it does
+declare; a frequency outside every part's sweep, or one where no row has a
+value, is refused with the parts' sweeps (it is not an empty answer).
+`lib.coverage` keeps listing the declared columns and adds one line,
+`any_frequency`, naming the curves that answer anywhere and the parts'
+sweeps.
+
 ## 3. Check it
 
 ```bash
@@ -224,6 +253,36 @@ low-frequency value such as `Lp_lf`, or for `Qp` / `Qs` the peak `Qp_peak` /
 `Qs_peak`), and the `ratio`, or the `SRF` (in Hz), the `resonance_factor`
 1 / (1 - (f0/SRF)^2) and the `residual`. Their product is `value`.
 
+`quantities` may name a declared curve at any frequency inside the parts'
+sweeps, `Lp@<f>` ([Asking at any frequency](#asking-at-any-frequency)); the
+answer names each column in its canonical spelling.
+
+### Footprint
+
+Answers carry the footprint of a design: the bounding box of what the
+generator draws for the device -- windings, crossovers, leads -- without the
+ground fixture it adds for EMX (the ring, the stubs and a shield's strips),
+as `{"width_um": .., "height_um": .., "area_um2": ..}` rounded to 0.001.
+Every built-in family draws that fixture last, and only it, on the process
+profile's fixture conductor, the bottom metal of its stack, and refuses that
+conductor as a product metal (directly and through a crossunder below a
+winding); the footprint is the box around every shape on the other layers.
+A generator of another plugin gives no such guarantee: its footprint is
+null, never a box that may hold the fixture. A null footprint comes with
+`footprint_why`.
+
+A library row's footprint comes from the GDS kept beside its sNp, read once
+per stratum when an answer needs it and cached as
+`footprint-<stratum>-<dataset key>.json`; a row without its GDS has none.
+`lib.query` gives a library point its row's; elsewhere `footprint` is null
+unless the call says `footprint=true`, which draws the geometry with the
+stratum's generator (no EMX). `lib.suggest` gives it for its `measured`
+designs, and for its `candidates` when `verify_build` drew them; `lib.region`
+likewise (its default draws nothing). The rows and picks of section 5d carry
+it, and so do the leaders of `lib_design`, from the GDS each leader's pcell
+drew. It is part of the answer, not of the search: `lib.suggest` and
+`lib.region` neither rank nor filter by it.
+
 ## 5. Inverse questions: `lib.suggest`
 
 ```bash
@@ -240,7 +299,8 @@ guard, meet every target with its whole calibrated interval, and build: the
 real generator draws it and the product DRC audit checks it. An anchored
 target such as `Lp@28` adds `SRF ≥ srf_margin × f0` (the manifest's
 `srf_margin`, 1.25 in the example manifest, which keeps the default: here
-SRF ≥ 35 GHz) unless SRF is already constrained.
+SRF ≥ 35 GHz) unless SRF is already constrained; a target at a frequency the
+curve does not anchor (an extension column, section 2) does the same.
 
 ## 5b. Region questions: `lib.region`
 
@@ -252,10 +312,11 @@ ic-opt call lib.region <library root> stratum=<stratum> \
 
 Every value in angle brackets is a placeholder. For example, an inductance
 window and a minimum Q at one frequency: `Lp@<f>` between `<a>` and `<b>`
-henries, `Qp@<f>` at least `<c>`. An anchored column exists only at its
-curve's anchors, so `<f>` must be one of the `anchors_ghz` the stratum
-declares in `library.yaml` (the manifest of section 2 answers `Lp@10`,
-`Lp@28`, `Qp@10` and `Qp@28`).
+henries, `Qp@<f>` at least `<c>`. `<f>` may be any frequency inside the
+parts' sweeps: at one of the curve's `anchors_ghz` (the manifest of section 2
+declares 10 and 28 GHz for `Lp` and `Qp`) it reads the declared column,
+anywhere else an extension column measured from the rows
+([Asking at any frequency](#asking-at-any-frequency)).
 
 `lib.suggest` names a few good geometries; `lib.region` describes all of
 them, the region of the stratum whose predictions meet the targets, so that
@@ -361,6 +422,56 @@ calibrations and models are refitted on first use because their cache keys
 follow the data. A second `lib.densify` with the same `seed` then shows
 what the batch bought: its `before` against the first one's `after`.
 
+## 5d. Rows by electrical values: `lib.index`, `lib.pick`
+
+```bash
+ic-opt call lib.index <library root> stratum=<stratum> frequency_ghz=<f>
+ic-opt call lib.index <library root> stratum=<stratum> frequency_ghz=<f> 'grid={"Lp": [<lower>, <upper>, <step>]}' out=<file>
+ic-opt call lib.pick <library root> stratum=<stratum> frequency_ghz=<f> 'targets={"Lp": <v>, "Ls": <v>, "k": <v>}' \
+    'grid={"Lp": [<lower>, <upper>, <step>], "Ls": [<lower>, <upper>, <step>], "k": [<lower>, <upper>, <step>]}' n=<n>
+```
+
+`lib.suggest` asks for geometries that meet windows. `lib.index` shows the
+rows themselves by their electrical values at one working frequency `<f>`:
+measured values, no model. Its columns are every declared curve at `<f>`
+under its bare name (`Lp`, `Qp`, and for a coupled pair `Ls`, `Qs`, `k`),
+every declared scalar under its own name, `Qmin` (the smaller of `Qp` and
+`Qs`, for a stratum with both) and `area` (the footprint's, in um²; null
+without one). Its rows are the rows that have every curve at `<f>`: each
+curve's rule already leaves out a row whose sweep does not reach `<f>` or
+whose resonance lies within the curve's `srf_margin`; `srf_margin=<m>` above
+the manifest's also leaves out the rows whose system SRF is at or below
+`<m>` × `<f>` (a row with no resonance inside its sweep stays). Without
+`grid` the answer counts the rows kept and dropped, and why, and gives each
+column's range, how many rows have a footprint and the parts' sweeps.
+
+`grid` puts the rows on a grid of electrical values: per column
+`[<lower>, <upper>, <step>]` in the column's unit (H, 1, Hz), levels
+`<lower> + i × <step>`. A range whose lower end is positive and whose upper
+end is at least ten times it is searched on a logarithmic scale, as the
+optimizer searches such a variable; any other linearly. Each row goes to the
+cell of its nearest levels in that scale, a tie to the lower level -- the
+rule the optimizer's own grid follows -- and a row beyond an end by more
+than half the end interval stays out of the table. Within a cell the rows
+are ranked by `prefer`, `max:<column>` or `min:<column>` (default
+`max:Qmin`, else `max:Qp`); a row without that value comes last, and ties go
+by part and obs id. The answer adds `table`: the cells occupied of how many,
+the rows per occupied cell (median and largest), and per coordinate the span
+of occupied levels and how many levels hold no row. `out=<file>` writes the
+table: per occupied cell its levels, their values and its best row (values,
+geometry, footprint, part, obs id and the sNp path relative to the library
+root).
+
+`lib.pick` answers one target on such a grid: the occupied cell nearest to
+`targets` -- the Euclidean distance over the grid's coordinates, each mapped
+to [0, 1] in its search scale, a tie to the smaller cell -- and its best `n`
+rows with their values, geometry, footprint, part, obs id, sNp path and the
+sNp's port labels. `exact` says whether the targets' own cell holds a row,
+and `distance` how many levels the picked cell lies from it per coordinate.
+`grid` is required: it says what counts as the same value. A frequency
+outside the parts' sweeps, or one where no row keeps every curve, is refused
+with the parts' sweeps.
+
 ## 6. Design on the library: `lib_design`
 
 The same em_only spec you would optimize with EMX (device, variables,
@@ -372,11 +483,13 @@ ic-opt run lib_design <project> library=<library root> budget=200 strategy=turbo
 
 The pipeline is `pcell -> predict`: every point is still built by the
 generator, and each device metric comes from the library (a metric such as
-`{quantity: Lp, frequency_hz: 28e9}` reads the `Lp@28` column). A point the
+`{quantity: Lp, frequency_hz: 28e9}` reads the `Lp@28` column; at a
+frequency the stratum does not anchor, its extension column). A point the
 library cannot vouch for fails as `failed:predict` with the reason.
 Predictions spend none of the spec's simulation budget and get their own
-pipeline fingerprint, so they never pass for EMX measurements. The leaders
-and their intervals land in `.icopt/reports/lib_design.json`.
+pipeline fingerprint, so they never pass for EMX measurements. The leaders,
+their intervals and their footprints (from the GDS each one's pcell drew)
+land in `.icopt/reports/lib_design.json`.
 
 ## 7. Sign off and grow: `lib_signoff`
 
@@ -438,7 +551,9 @@ sweep, needs its own share: lower `hosts.local` or set `OMP_NUM_THREADS`
 
 Datasets, calibrations and fitted models are cached as files named after
 what they are made of: the rows, the quantity definitions, the model
-settings and the code. A file that no longer matches is never read, and
+settings and the code. So are the extension columns (`anchors-*`, one per
+stratum and frequency asked) and the rows' footprints (`footprint-*`), both
+keyed by the dataset's content. A file that no longer matches is never read, and
 deleting the directory only costs the time to compute it again. By default
 the files go to the library's own `.cache/`. Every `lib.*` block,
 `lib_design` and `lib_signoff` take `cache_dir=` to put them in another
@@ -460,7 +575,8 @@ computed is computed again, into that user's directory.
 Two commands that need the same model at the same time do not both fit it.
 The first holds a lock file next to the model's calibration file (its name
 plus `.lock`) while it calibrates and fits; the second waits for it and then
-loads what the first wrote. That holds for commands on one machine and, on a
+loads what the first wrote. An extension column's measurement and a
+stratum's footprints hold a lock next to their own file the same way. That holds for commands on one machine and, on a
 file system that honours file locks, for machines sharing a cache
 directory; where locks are not supported both fit, and the last one to
 finish writes the file. The lock files are empty.

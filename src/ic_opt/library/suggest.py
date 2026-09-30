@@ -29,10 +29,16 @@ the interval inside every window; mean: the predicted value) and ``rank``.
 A GP call's memory grows with (rows predicted) x (training rows), so a large batch is predicted in chunks
 sized by bytes, not rows: ``predict_budget`` is a share of the machine's ``max_memory_gb`` (the library's
 ``limits``), ``rows_per_call`` the rows that fit in it for a given model.
+
+A target, the objective or a trend may name a declared curve at any frequency (``Library.columns``: an extension column,
+T18.1); ``resolve`` puts them in canonical form first, so the implied SRF follows the frequency asked. Each design carries
+its ``footprint`` (``ic_opt.em.pcell.footprint``): a measured one its row's, a candidate the one ``build_check`` drew
+(None when the build was not asked for).
 """
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import tempfile
 from dataclasses import dataclass
@@ -104,6 +110,17 @@ def parse_objective(text: str | None) -> tuple[str, str] | None:
     if sense not in ("max", "min") or not quantity:
         raise ValueError(f"objective {text!r}: expected max:<quantity> or min:<quantity>")
     return sense, quantity
+
+
+def resolve(library: query.Library, stratum: str, targets: list[Target], objective: tuple[str, str] | None,
+            *extra: str) -> tuple[list[Target], tuple[str, str] | None, list[str]]:
+    """The targets, the objective and ``extra`` names (a trend's quantity) as columns of the stratum (``Library.columns``:
+    canonical names, extension columns measured), refused together when one is no column."""
+    names = [t.quantity for t in targets] + ([objective[1]] if objective else []) + list(extra)
+    columns = library.columns(stratum, names)
+    goals = [dataclasses.replace(t, quantity=c) for t, c in zip(targets, columns)]
+    obj = (objective[0], columns[len(targets)]) if objective else None
+    return goals, obj, columns[len(targets) + (1 if objective else 0):]
 
 
 def implied_srf(targets: list[Target], objective: tuple[str, str] | None, margin: float, columns: list[str] | tuple[str, ...] = ()) -> list[Target]:
@@ -309,7 +326,11 @@ def diversify(x: np.ndarray, ranked: list[int], ranges: dict[str, tuple[float, f
 
 
 def build_check(library: query.Library, stratum: str, params: dict) -> dict:
-    """Build the geometry with the stratum's own device definition through the Pcell stage (config, generator, product DRC, ports)."""
+    """Build the geometry with the stratum's own device definition through the Pcell stage (config, generator, product DRC,
+    ports), and measure its ``footprint`` from the GDS it drew (None, with ``footprint_why``, when the fixture cannot be told
+    from the device: ``ic_opt.em.pcell.footprint``)."""
+    from ic_opt.em.pcell import footprint as fp
+
     part = library.manifest.strata[stratum].parts[0].store
     spec = dataset._spec(library.root / part)
     point = Point({d: f"{v:g}" if not float(v).is_integer() else str(int(v)) for d, v in params.items()}, "suggest")
@@ -323,21 +344,35 @@ def build_check(library: query.Library, stratum: str, params: dict) -> dict:
         except StageFailure as exc:
             return {"built": False, "why": "; ".join(exc.issues)}
         g = next(iter(geometry.devices.values()))
-        return {"built": True, "ports": sorted(p.signal for p in g.ports), "gds_sha256": g.gds_sha256}
+        device = spec.device(g.device)
+        try:
+            box, why = fp.footprint(g.gds_path, profile=device.profile, generator=device.generator, plugin=device.plugin), None
+        except fp.FootprintError as exc:
+            box, why = None, str(exc)
+        return {"built": True, "ports": sorted(p.signal for p in g.ports), "gds_sha256": g.gds_sha256, "footprint": box,
+                "footprint_why": why}
+
+
+def drawn(build: dict) -> tuple[dict, dict]:
+    """``build_check``'s answer split into the build (what an entry's ``build`` shows) and the entry's footprint fields
+    (``footprint_fields``), so that an answer has one place for the footprint."""
+    shown = {k: v for k, v in build.items() if k not in ("footprint", "footprint_why")}
+    return shown, footprint_fields(build.get("footprint"), build.get("footprint_why"))
+
+
+def footprint_fields(box: dict | None, why: str | None) -> dict:
+    """An answer's footprint: ``{"footprint": box}``, and ``footprint_why`` beside a None that has a reason."""
+    return {"footprint": box, **({"footprint_why": why} if box is None and why else {})}
 
 
 def suggest(library: query.Library, stratum: str, targets: dict, objective: str | None = None, *, n: int = 5, pool_size: int = 8192,
             seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, verify_build: bool = True,
             min_spacing: float = 0.05) -> dict:
     ds = library.dataset(stratum)
-    goals = parse_targets(targets)
-    obj = parse_objective(objective)
+    stated, obj, _ = resolve(library, stratum, parse_targets(targets), parse_objective(objective))
     margin = min((r.srf_margin for r in library.manifest.strata[stratum].quantities.values()), default=1.25)
-    goals += implied_srf(goals, obj, margin, ds.columns)
-    names = sorted({t.quantity for t in goals} | ({obj[1]} if obj else set()))
-    unknown = [q for q in names if q not in ds.columns]
-    if unknown:
-        raise ValueError(f"{stratum} has no quantities {unknown}; columns {ds.columns}")
+    goals = stated + implied_srf(stated, obj, margin, ds.columns)
+    names = library.columns(stratum, sorted({t.quantity for t in goals} | ({obj[1]} if obj else set())))
     models = {q: library.model(stratum, q) for q in names}
     measured_x = ds.matrix()
     x = np.unique(np.round(np.vstack([measured_x, pool(library, stratum, pool_size, seed)]), 9), axis=0)
@@ -356,7 +391,7 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
     measured_ranked = [i for i in s["ranked"] if row_of[i] >= 0]
     predicted_ranked = [i for i in s["ranked"] if row_of[i] < 0]
     notes = library.notes + [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
-                             for t in goals if t not in parse_targets(targets)]
+                             for t in goals[len(stated):]]
 
     def entry(i: int, **extra) -> dict:
         params = dict(zip(ds.dims, (float(v) for v in x[i])))
@@ -364,15 +399,19 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
                 "predicted": {q: {k2: float(s["pred"][q][k2][i]) for k2 in ("value", "lo", "hi", "rel_sigma")} for q in names},
                 "nearest": [query._evidence(r, names[0], ds.dims) for r in query._nearest_rows(library, stratum, params, 3)]}
 
-    measured = [entry(i, measured={"part": ds.rows[row_of[i]].part, "obs_id": ds.rows[row_of[i]].obs_id})
-                for i in diversify(x, measured_ranked, ranges, ds.dims, keep=n, min_spacing=min_spacing)]
+    shown = diversify(x, measured_ranked, ranges, ds.dims, keep=n, min_spacing=min_spacing)
+    rows = [ds.rows[row_of[i]] for i in shown]
+    boxes = library.footprints(stratum) if rows else {}
+    measured = [entry(i, measured={"part": r.part, "obs_id": r.obs_id}, **footprint_fields(*boxes[(r.part, r.obs_id)]))
+                for i, r in zip(shown, rows)]
     candidates, rejected = [], 0
     for i in diversify(x, predicted_ranked, ranges, ds.dims, keep=max(4 * n, 8), min_spacing=min_spacing):
         build = build_check(library, stratum, dict(zip(ds.dims, (float(v) for v in x[i])))) if verify_build else {"built": None}
         if verify_build and not build["built"]:
             rejected += 1
             continue
-        candidates.append(entry(i, build=build))
+        build, box = drawn(build) if verify_build else (build, {})       # a footprint only for a geometry the generator drew
+        candidates.append(entry(i, build=build, **box))
         if len(candidates) == n:
             break
     if rejected:

@@ -79,14 +79,16 @@ lib_suggest = block("lib.suggest", "Designs meeting targets with margin: measure
 lib_region = block("lib.region", "The region meeting target windows: robust and mean sweep ranges, groups, trend")(_library.region)
 lib_densify = block("lib.densify", "Where to simulate next: n geometries that cut the models' uncertainty most, for lib_signoff")(
     _library.densify)
+lib_index = block("lib.index", "A stratum's rows by electrical values at one frequency; with a grid, the cells they fill")(_library.index)
+lib_pick = block("lib.pick", "The library rows nearest to target electrical values on a grid, with geometry and footprint")(_library.pick)
 validate_profile = block("em.validate_profile", "Check a process profile: schema, consistency, site .proc (names, thicknesses, GDS layers), one device per family")(
     _profile.validate_profile)
 score_model = _analyze.score_model
 store = RunStore
 
 __all__ = [
-    "REGISTRY", "Block", "best", "block", "describe", "digest", "doctor", "evaluate", "import_netlists", "lib_coverage", "lib_densify", "lib_load",
-    "lib_query", "lib_region", "lib_suggest", "load_spec", "optimize",
+    "REGISTRY", "Block", "best", "block", "describe", "digest", "doctor", "evaluate", "import_netlists", "lib_coverage", "lib_densify",
+    "lib_index", "lib_load", "lib_pick", "lib_query", "lib_region", "lib_suggest", "load_spec", "optimize",
     "points_fixed", "points_from", "points_grid", "points_one_at_a_time", "points_sobol", "report", "score_model",
     "spectre_pipeline", "store", "suggest", "validate_profile",
 ]
