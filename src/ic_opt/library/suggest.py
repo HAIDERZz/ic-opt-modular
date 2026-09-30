@@ -31,7 +31,9 @@ sized by bytes, not rows: ``predict_budget`` is a share of the machine's ``max_m
 ``limits``), ``rows_per_call`` the rows that fit in it for a given model.
 
 A target, the objective or a trend may name a declared curve at any frequency (``Library.columns``: an extension column,
-T18.1); ``resolve`` puts them in canonical form first, so the implied SRF follows the frequency asked.
+T18.1); ``resolve`` puts them in canonical form first, so the implied SRF follows the frequency asked. Each design carries
+its ``footprint`` (``ic_opt.em.pcell.footprint``): a measured one its row's, a candidate the one ``build_check`` drew
+(None when the build was not asked for).
 """
 
 from __future__ import annotations
@@ -324,7 +326,11 @@ def diversify(x: np.ndarray, ranked: list[int], ranges: dict[str, tuple[float, f
 
 
 def build_check(library: query.Library, stratum: str, params: dict) -> dict:
-    """Build the geometry with the stratum's own device definition through the Pcell stage (config, generator, product DRC, ports)."""
+    """Build the geometry with the stratum's own device definition through the Pcell stage (config, generator, product DRC,
+    ports), and measure its ``footprint`` from the GDS it drew (None, with ``footprint_why``, when the fixture cannot be told
+    from the device: ``ic_opt.em.pcell.footprint``)."""
+    from ic_opt.em.pcell import footprint as fp
+
     part = library.manifest.strata[stratum].parts[0].store
     spec = dataset._spec(library.root / part)
     point = Point({d: f"{v:g}" if not float(v).is_integer() else str(int(v)) for d, v in params.items()}, "suggest")
@@ -338,7 +344,25 @@ def build_check(library: query.Library, stratum: str, params: dict) -> dict:
         except StageFailure as exc:
             return {"built": False, "why": "; ".join(exc.issues)}
         g = next(iter(geometry.devices.values()))
-        return {"built": True, "ports": sorted(p.signal for p in g.ports), "gds_sha256": g.gds_sha256}
+        device = spec.device(g.device)
+        try:
+            box, why = fp.footprint(g.gds_path, profile=device.profile, generator=device.generator, plugin=device.plugin), None
+        except fp.FootprintError as exc:
+            box, why = None, str(exc)
+        return {"built": True, "ports": sorted(p.signal for p in g.ports), "gds_sha256": g.gds_sha256, "footprint": box,
+                "footprint_why": why}
+
+
+def drawn(build: dict) -> tuple[dict, dict]:
+    """``build_check``'s answer split into the build (what an entry's ``build`` shows) and the entry's footprint fields
+    (``footprint_fields``), so that an answer has one place for the footprint."""
+    shown = {k: v for k, v in build.items() if k not in ("footprint", "footprint_why")}
+    return shown, footprint_fields(build.get("footprint"), build.get("footprint_why"))
+
+
+def footprint_fields(box: dict | None, why: str | None) -> dict:
+    """An answer's footprint: ``{"footprint": box}``, and ``footprint_why`` beside a None that has a reason."""
+    return {"footprint": box, **({"footprint_why": why} if box is None and why else {})}
 
 
 def suggest(library: query.Library, stratum: str, targets: dict, objective: str | None = None, *, n: int = 5, pool_size: int = 8192,
@@ -375,15 +399,19 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
                 "predicted": {q: {k2: float(s["pred"][q][k2][i]) for k2 in ("value", "lo", "hi", "rel_sigma")} for q in names},
                 "nearest": [query._evidence(r, names[0], ds.dims) for r in query._nearest_rows(library, stratum, params, 3)]}
 
-    measured = [entry(i, measured={"part": ds.rows[row_of[i]].part, "obs_id": ds.rows[row_of[i]].obs_id})
-                for i in diversify(x, measured_ranked, ranges, ds.dims, keep=n, min_spacing=min_spacing)]
+    shown = diversify(x, measured_ranked, ranges, ds.dims, keep=n, min_spacing=min_spacing)
+    rows = [ds.rows[row_of[i]] for i in shown]
+    boxes = library.footprints(stratum) if rows else {}
+    measured = [entry(i, measured={"part": r.part, "obs_id": r.obs_id}, **footprint_fields(*boxes[(r.part, r.obs_id)]))
+                for i, r in zip(shown, rows)]
     candidates, rejected = [], 0
     for i in diversify(x, predicted_ranked, ranges, ds.dims, keep=max(4 * n, 8), min_spacing=min_spacing):
         build = build_check(library, stratum, dict(zip(ds.dims, (float(v) for v in x[i])))) if verify_build else {"built": None}
         if verify_build and not build["built"]:
             rejected += 1
             continue
-        candidates.append(entry(i, build=build))
+        build, box = drawn(build) if verify_build else (build, {})       # a footprint only for a geometry the generator drew
+        candidates.append(entry(i, build=build, **box))
         if len(candidates) == n:
             break
     if rejected:

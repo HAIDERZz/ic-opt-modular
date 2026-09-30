@@ -7,7 +7,9 @@ objective). Every candidate is built by the pcell (real generator, product DRC) 
 library; the leaders are written to ``reports/lib_design.json`` with each metric's calibrated interval.
 They are predictions: ``lib_signoff`` runs them through real EMX (after ``--plan`` and approval).
 A prediction whose sigma / mu exceeds its ceiling -- ``rel_sigma_max`` when given, else the quantity's in
-library.yaml, else 0.15 -- fails the point as ``failed:predict``.
+library.yaml, else 0.15 -- fails the point as ``failed:predict``. Each leader carries its ``footprint``, the box around
+the device its pcell drew (its GDS under the point's sims directory) without the ground fixture
+(``ic_opt.em.pcell.footprint``; null with ``footprint_why`` when it cannot be measured).
 
 The library computes here, on the machine running ic-opt, within its ``hosts.local`` entry of site.yaml:
 the models the search needs are fitted (or loaded) once before it starts, the uncached ones in parallel
@@ -45,8 +47,25 @@ def main(run: Run, *, library: str, stratum: str | None = None, budget: int = 20
         child = next(iter(o.children.values()))
         answer = json.loads((run.store.project_dir / child.sim_dir / "predictions.json").read_text(encoding="utf-8")) if child.sim_dir else {}
         rows.append({"obs_id": o.obs_id, "params": o.params, "metrics": o.metrics, "objective": o.objective, "feasible": o.feasible,
-                     "library": answer.get("quantities", {}), "measured_at": answer.get("measured")})
+                     "library": answer.get("quantities", {}), "measured_at": answer.get("measured"),
+                     **_footprint(run, o.obs_id, child.unit)})
     out = run.store.root / "reports" / "lib_design.json"
     out.write_text(json.dumps({"strata": strata, "library": str(library), "evaluated": len(found), "leaders": rows}, indent=1, default=float),
                    encoding="utf-8")
     run.note(f"lib_design: {len(found)} candidates scored, {sum(o.status == 'ok' for o in found)} in the library's domain; leaders -> {out}")
+
+
+def _footprint(run: Run, obs_id: str, unit: str) -> dict:
+    """The leader's footprint from the GDS its pcell drew (``sims/<obs>/em/<device>/<device>.gds``), and ``footprint_why``
+    when there is none."""
+    from ic_opt.em.pcell import footprint as fp
+    from ic_opt.library.suggest import footprint_fields
+
+    device = run.spec.device(unit)
+    gds = run.store.root / "sims" / obs_id / "em" / device.id / f"{device.id}.gds"
+    if not gds.is_file():
+        return footprint_fields(None, f"no GDS at {gds}")
+    try:
+        return footprint_fields(fp.footprint(gds, profile=device.profile, generator=device.generator, plugin=device.plugin), None)
+    except fp.FootprintError as exc:
+        return footprint_fields(None, str(exc))

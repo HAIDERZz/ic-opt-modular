@@ -58,6 +58,8 @@ declared one: a library point answers with the row's value, and elsewhere its mo
 under the column's name. A frequency outside every part's sweep, or where no row has a value (each row answers only
 inside its sweep and below its system SRF / srf_margin), is refused with the parts' sweeps. Nothing is measured or
 fitted for a column nobody asks for, and the dataset, its key and its cache files stay what they were.
+
+``Library.footprints`` reads each row's footprint once per stratum (``dataset.footprints``), only when an answer needs it.
 """
 
 from __future__ import annotations
@@ -133,7 +135,8 @@ class Library:
         self._datasets: dict[str, dataset.Dataset] = {}
         self._models: dict[tuple[str, str], Model] = {}
         self._anchors: dict[tuple[str, float], dict] = {}
-        self._rows_lock = threading.Lock()           # extension columns: one thread measures, the others wait
+        self._footprints: dict[str, dict] = {}
+        self._rows_lock = threading.Lock()           # extension columns and footprints: one thread measures, the others wait
 
     @property
     def notes(self) -> list[str]:
@@ -245,6 +248,17 @@ class Library:
             if canonical != quantity:
                 raise ValueError(f"{stratum}: the column {quantity!r} is named {canonical!r}")
         return ds
+
+    def footprints(self, stratum: str) -> dict[tuple[str, str], tuple[dict | None, str | None]]:
+        """Each row's footprint and, where it has none, why: ``(part, obs_id) -> (footprint or None, reason or None)``
+        (``dataset.footprints``: one pass over the stratum's GDS files, cached). Only an answer that shows a library row's
+        footprint asks for it."""
+        with self._rows_lock:
+            if stratum not in self._footprints:
+                ds = self.dataset(stratum)
+                self._footprints[stratum] = dataset.footprints(self.root, ds, self.manifest.strata[stratum], cache=self.cache)
+            data = self._footprints[stratum]
+        return {(part, obs): (box, why) for (part, obs), box, why in zip(data["rows"], data["footprints"], data["reasons"], strict=True)}
 
     def ranges(self, stratum: str) -> dict[str, tuple[float, float]]:
         """Scaling ranges: the achieved min/max of every dim (a dim with one value gets a unit span)."""
@@ -873,6 +887,23 @@ def any_frequency(library: Library, stratum: str) -> str:
         return f"no curve is declared, so only the declared columns answer; the parts' sweeps: {sweeps}"
     return (f"a declared curve ({', '.join(curves)}) answers at any frequency inside the parts' sweeps as <curve>@<GHz>, "
             f"not only at its anchors: {sweeps}")
+
+
+def footprint_at(library: Library, stratum: str, params: dict, *, build: bool = False) -> tuple[dict | None, str | None]:
+    """The footprint of the geometry ``params`` and, when it has none, why: a library point's row's (``Library.footprints``);
+    elsewhere None, unless ``build``, which draws the geometry with the stratum's generator (no EMX) and measures it."""
+    ds = library.dataset(stratum)
+    row = ds.find({d: float(params[d]) for d in ds.dims})
+    if row is not None:
+        return library.footprints(stratum)[(row.part, row.obs_id)]
+    if not build:
+        return None, "not a library row: footprint=true draws the geometry to measure it"
+    from ic_opt.library import suggest
+
+    drawn = suggest.build_check(library, stratum, {d: float(params[d]) for d in ds.dims})
+    if not drawn["built"]:
+        return None, f"the generator did not build this geometry: {drawn['why']}"
+    return drawn["footprint"], drawn["footprint_why"]
 
 
 def coverage(library: Library, stratum: str) -> dict:

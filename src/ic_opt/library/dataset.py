@@ -23,7 +23,8 @@ A declared curve answers at any frequency, not only at its anchors (T18.1): ``<c
 row's sNp -- one pass, the rule of a declared anchor (``_anchor_value``), so the column equals what a manifest declaring
 that anchor gives -- and caches it beside the dataset as ``anchors-<stratum>-<dataset key>-<f>.json``; ``Dataset.extend``
 puts the values into the rows. The dataset itself, its key and its file do not change: a library that never asks for an
-extension column never reads or writes such a file.
+extension column never reads or writes such a file. ``footprints`` measures, once per stratum, each row's footprint
+from the GDS kept beside its sNp (``ic_opt.em.pcell.footprint``), cached as ``footprint-<stratum>-<dataset key>.json``.
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ from ic_opt.spec import Device, Spec, Topology
 
 DATASET_VERSION = 3                                  # 2: anchored curves of a coupled pair stop below the system SRF; 3: so do peaks
 ANCHORS_VERSION = 1                                  # the layout of an anchors-* file (``anchors``); a file of another is computed again
+FOOTPRINT_VERSION = 1                                # the layout of a footprint-* file (``footprints``); likewise
 UNBANDED = ("Lp_lf", "Lp_res", "SRF_p", "Ls_lf", "Ls_res", "SRF_s", "k_lf")     # compared with the stored quantities.json
 _PORT = re.compile(r"^p(\d+)=([^:]+)(?::(.+))?$")
 
@@ -332,6 +334,61 @@ def anchors(root: str | Path, ds: Dataset, stratum: manifest.Stratum, ghz: float
                 and set(data.get("curves", {})) == set(names))
 
     return computed(cache, anchors_file(ds, ghz), compute, valid)
+
+
+def footprints_file(ds: Dataset) -> str:
+    return f"footprint-{ds.stratum}-{ds.key}.json"
+
+
+def footprints(root: str | Path, ds: Dataset, stratum: manifest.Stratum, *, cache: Cache | None) -> dict:
+    """Each row's footprint (``ic_opt.em.pcell.footprint``: the bounding box of the drawn device without its ground
+    fixture), from the GDS kept beside its sNp (``<device>.gds`` in the same directory): ``footprints`` one per row of
+    ``ds`` in its order, ``reasons`` why a row has None (no GDS there; a generator whose fixture cannot be told apart; a
+    GDS that cannot be read). One pass per stratum, cached as ``footprints_file``; not kept when nothing was read (nothing
+    is worth keeping) or a part's process profile could not be loaded here (another machine may). When no row keeps a GDS
+    at all the cache is not touched: no file, no lock file -- such a library's cache holds exactly what it held."""
+    from ic_opt.em.pcell import footprint as fp
+
+    root = Path(root)
+    ids = [[r.part, r.obs_id] for r in ds.rows]
+    devices = part_devices(root, stratum)
+    paths = [(root / r.snp).parent / f"{devices[r.part].id}.gds" for r in ds.rows]
+    if not any(p.is_file() for p in paths):
+        return {"version": FOOTPRINT_VERSION, "rows": ids, "footprints": [None] * len(ids), "reasons": ["no GDS beside its sNp"] * len(ids),
+                "read": 0, "retry": False}
+
+    def compute() -> dict:
+        layers: dict[str, tuple[int, int] | fp.FootprintError] = {}
+        for part, device in devices.items():
+            try:
+                layers[part] = fp.fixture_layer(device.profile, device.generator, device.plugin)
+            except fp.FootprintError as exc:
+                layers[part] = exc
+        out = {"version": FOOTPRINT_VERSION, "rows": ids, "footprints": [], "reasons": [], "read": 0,
+               "retry": any(isinstance(v, fp.ProfileUnavailable) for v in layers.values())}
+        for r, gds in zip(ds.rows, paths, strict=True):
+            layer = layers[r.part]
+            box, why = None, None
+            if not gds.is_file():
+                why = "no GDS beside its sNp"
+            elif isinstance(layer, fp.FootprintError):
+                why = str(layer)
+            else:
+                out["read"] += 1
+                try:
+                    box = fp.measure(gds, layer)
+                except fp.FootprintError as exc:
+                    why = str(exc)
+                except (OSError, RuntimeError) as exc:           # klayout reports a broken GDS as a RuntimeError
+                    why = f"its GDS cannot be read: {exc}"
+            out["footprints"].append(box)
+            out["reasons"].append(why)
+        return out
+
+    def valid(data: dict) -> bool:
+        return data.get("version") == FOOTPRINT_VERSION and data.get("rows") == ids
+
+    return computed(cache, footprints_file(ds), compute, valid, keep=lambda data: data["read"] > 0 and not data["retry"])
 
 
 def _spec(project: Path) -> Spec:

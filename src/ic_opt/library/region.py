@@ -116,7 +116,7 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
                                            n, min_spacing, verify_build)
         if rejected:
             notes.append(f"{rejected} leading candidates failed the real build and were skipped")
-        measured = _measured(ds, goals, names)
+        measured = _measured(ds, goals, names, library.footprints(stratum) if _any_measured(ds, goals) else {})
         missed = _unanswered(library, stratum, measured, models, k, rel_sigma_max, budget)
         if missed:
             notes.append(f"{len(missed)} of {len(measured)} measured designs meeting every target lie where a model has no confident "
@@ -387,10 +387,12 @@ def _candidates(library: query.Library, stratum: str, x: np.ndarray, pred: dict,
         params = dict(zip(ds.dims, (float(v) for v in x[i])))
         entry: dict = {"params": params}
         if verify_build:
-            entry["build"] = suggest.build_check(library, stratum, params)
-            if not entry["build"]["built"]:
+            build = suggest.build_check(library, stratum, params)
+            if not build["built"]:
                 rejected += 1
                 continue
+            entry["build"], box = suggest.drawn(build)
+            entry.update(box)                            # the footprint of the geometry the generator drew
         entry["predicted"] = {q: {key: float(pred[q][key][i]) for key in ("value", "lo", "hi", "rel_sigma")} for q in names}
         entry["nearest"] = [query._evidence(r, names[0], ds.dims) for r in query._nearest_rows(library, stratum, params, 3)]
         out.append(entry)
@@ -399,13 +401,23 @@ def _candidates(library: query.Library, stratum: str, x: np.ndarray, pred: dict,
     return out, rejected
 
 
-def _measured(ds: dataset.Dataset, goals: list[suggest.Target], names: list[str]) -> list[dict]:
-    """The dataset rows whose measured values meet every goal (``satisfy`` on the measurements); a row without a
-    value for some goal quantity is skipped."""
+def _hits(ds: dataset.Dataset, goals: list[suggest.Target]) -> np.ndarray:
+    """Per row, whether its measured values meet every goal (``satisfy`` on the measurements); a row without a value for
+    some goal quantity does not."""
     values = {t.quantity: ds.values(t.quantity) for t in goals}
-    hit = np.all([np.isfinite(v) for v in values.values()], axis=0) & suggest.satisfy({q: {"value": v} for q, v in values.items()}, goals, "mean")
+    return np.all([np.isfinite(v) for v in values.values()], axis=0) & suggest.satisfy({q: {"value": v} for q, v in values.items()}, goals, "mean")
+
+
+def _any_measured(ds: dataset.Dataset, goals: list[suggest.Target]) -> bool:
+    return bool(_hits(ds, goals).any())
+
+
+def _measured(ds: dataset.Dataset, goals: list[suggest.Target], names: list[str], footprints: dict) -> list[dict]:
+    """The dataset rows whose measured values meet every goal (``_hits``), each with its footprint (``footprints``:
+    ``Library.footprints``, asked for only when some row meets them)."""
     return [{"part": r.part, "obs_id": r.obs_id, "params": {d: float(r.coords[d]) for d in ds.dims},
-             "values": {q: r.values.get(q) for q in names}} for r, h in zip(ds.rows, hit) if h]
+             "values": {q: r.values.get(q) for q in names}, **suggest.footprint_fields(*footprints[(r.part, r.obs_id)])}
+            for r, h in zip(ds.rows, _hits(ds, goals)) if h]
 
 
 def _unanswered(library: query.Library, stratum: str, measured: list[dict], models: dict, k: float, rel_sigma_max: float | None,

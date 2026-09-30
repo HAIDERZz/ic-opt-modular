@@ -13,7 +13,8 @@ Without it they go to the library's own ``.cache``, or, when that cannot be writ
 the library's own ``.cache`` are read either way.
 
 A column name may be a declared curve at any frequency, ``<curve>@<GHz>`` (T18.1): ``lib.query`` (``quantities``),
-``lib.suggest`` and ``lib.region`` (targets, objective, trend) and ``lib.densify`` (``quantities``) take it."""
+``lib.suggest`` and ``lib.region`` (targets, objective, trend) and ``lib.densify`` (``quantities``) take it. A design's
+``footprint`` is the box around the drawn device without its ground fixture (``ic_opt.em.pcell.footprint``)."""
 
 from __future__ import annotations
 
@@ -83,16 +84,35 @@ def coverage(library: _query.Library | str | Path, stratum: str, cache_dir: str 
 
 
 def query(library: _query.Library | str | Path, stratum: str, params: dict, quantities: str | list[str] | None = None, k: float = 2.0,
-          rel_sigma_max: float | None = None, cache_dir: str | None = None) -> dict:
+          rel_sigma_max: float | None = None, footprint: bool = False, cache_dir: str | None = None) -> dict:
     """Measured values at an exact library point; elsewhere mu with calibrated k-sigma bounds, the domain verdict and nearest measured rows.
 
     ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns),
     where a declared curve may be asked at any frequency inside the parts' sweeps, ``<curve>@<GHz>`` (``Lp@33``). A
     prediction with sigma / mu above its ceiling -- ``rel_sigma_max`` when given, else the quantity's in library.yaml, else
-    0.15; each prediction reports the one it was held to -- is ``uncertain``. ``cache_dir`` holds the library's cache
-    files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).
+    0.15; each prediction reports the one it was held to -- is ``uncertain``. ``footprint`` is the box around the drawn
+    device without its ground fixture: a library point's row's; elsewhere null unless ``footprint=true``, which draws the
+    geometry with the stratum's generator (no EMX); ``footprint_why`` says why a footprint is null. ``cache_dir`` holds the
+    library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).
     """
-    return _query.query(_lib(library, cache_dir), stratum, params, _names(quantities), k=float(k), rel_sigma_max=_ceiling(rel_sigma_max))
+    from ic_opt.library import suggest as _suggest
+
+    lib = _lib(library, cache_dir)
+    answer = _query.query(lib, stratum, params, _names(quantities), k=float(k), rel_sigma_max=_ceiling(rel_sigma_max))
+    answer.update(_suggest.footprint_fields(*_query.footprint_at(lib, stratum, answer["params"], build=_flag(footprint))))
+    return _strict_json(answer)
+
+
+def _flag(value: bool | str | None) -> bool:
+    """A yes/no parameter: a bool, or its command-line spelling (``true`` / ``false``, ``1`` / ``0``)."""
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ("true", "1", "yes"):
+        return True
+    if text in ("false", "0", "no", "none", ""):
+        return False
+    raise ValueError(f"expected true or false, got {value!r}")
 
 
 def suggest(library: _query.Library | str | Path, stratum: str, targets: dict, objective: str | None = None, n: int = 5,

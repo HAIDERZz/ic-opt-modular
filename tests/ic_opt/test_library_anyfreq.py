@@ -105,15 +105,17 @@ def test_an_extension_column_equals_what_a_manifest_declaring_that_anchor_gives(
 
 
 def test_the_dataset_key_its_cache_files_and_the_declared_columns_stay_what_they_were(tmp_path):
-    """The key is main's; a library that never asks for an extension column writes exactly main's files; asking for one adds
-    its own files and leaves every earlier one byte for byte, and every declared value as it was."""
+    """The key is main's; a library that never asks for an extension column writes exactly main's files, a library point's
+    footprint included (no row has a GDS here, so there is nothing to keep); asking for one adds its own files and leaves
+    every earlier one byte for byte, and every declared value as it was."""
     root = build_library(tmp_path / "lib")
     assert dataset.build(root, "ind_demo").key == IND_KEY
     assert dataset.build(build_xfm_library(tmp_path / "xfm"), "xfm_demo").key == XFM_KEY
     lib = q.Library(root, limits=LOCAL)
     lib.model("ind_demo", "Lp_lf")
     q.query(lib, "ind_demo", params(155, 4.5, 2.5, 2), ["Lp_lf"])
-    library_blocks.query(lib, "ind_demo", params(150, 5, 3, 2))
+    measured = library_blocks.query(lib, "ind_demo", params(150, 5, 3, 2))
+    assert measured["footprint"] is None and measured["footprint_why"] == "no GDS beside its sNp"
     library_blocks.coverage(lib, "ind_demo")
     before = listing(root / ".cache")
     names = sorted(before)
@@ -166,8 +168,10 @@ def test_lib_suggest_takes_an_extension_target_and_implies_the_resonance_it_need
     for m in r["measured"]:
         value = m["predicted"]["Lp@15"]["value"]
         assert m["predicted"]["Lp@15"]["lo"] == value == m["predicted"]["Lp@15"]["hi"] and 0.95 * target <= value <= 1.05 * target
+        assert m["footprint"] is None and m["footprint_why"] == "no GDS beside its sNp"
     for c in r["candidates"]:
         assert 0.95 * target <= c["predicted"]["Lp@15"]["lo"] <= c["predicted"]["Lp@15"]["hi"] <= 1.05 * target
+        assert "footprint" not in c                                     # nothing drawn: verify_build is off
     from tests.ic_opt.library_fixtures import use_site
 
     use_site(monkeypatch, tmp_path / "site.yaml", local=LOCAL)
@@ -187,7 +191,7 @@ def test_lib_region_and_lib_densify_take_an_extension_column(library):
                       steps={"outer_diameter_um": 5, "width_um": 0.5, "spacing_um": 0.5}, trend=("Lp@15.0", "outer_diameter_um"))
     assert [t["quantity"] for t in r["targets"]] == ["Lp@15", "SRF_p"] and r["trend"]["quantity"] == "Lp@15"
     assert r["levels"]["mean"]["count"] > 0 and r["measured"]
-    assert all(low <= m["values"]["Lp@15"] <= high for m in r["measured"])
+    assert all(low <= m["values"]["Lp@15"] <= high and m["footprint"] is None for m in r["measured"])
     d = densify.densify(lib, "ind_demo", ["Lp@15.0"], n=1, pool_size=256, top=16, workers=1)
     assert d["quantities"] == ["Lp@15"] and len(d["candidates"]) == 1 and set(d["candidates"][0]["predicted"]) == {"Lp@15"}
 

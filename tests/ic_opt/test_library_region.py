@@ -216,9 +216,11 @@ def test_candidates_come_from_the_mean_set_when_no_interval_fits_the_window(lib)
 
 
 def test_verify_build_attaches_the_real_generators_verdict(lib):
+    """T18.1: a candidate the generator drew carries the footprint it measured on that drawing (without the fixture)."""
     r = run(lib, PLAIN, steps={OD_P: 10, OD_S: 10, W_P: 1, W_S: 1, CS: 4}, n=1, verify_build=True)
     (c,) = r["candidates"]
-    assert list(c) == ["params", "build", "predicted", "nearest"] and c["build"]["built"] and c["build"]["ports"] == ["N1", "N2", "P1", "P2"]
+    assert list(c) == ["params", "build", "footprint", "predicted", "nearest"] and c["build"]["built"] and c["build"]["ports"] == ["N1", "N2", "P1", "P2"]
+    assert set(c["footprint"]) == {"width_um", "height_um", "area_um2"} and c["footprint"]["width_um"] > c["params"][OD_P]
 
 
 def test_turns_go_by_level_and_a_level_keeps_the_dims_it_fixes(tmp_path_factory):
