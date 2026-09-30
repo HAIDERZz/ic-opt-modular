@@ -1,7 +1,8 @@
 """analyze.best / analyze.report / analyze.digest — the sections and figures that survived the report reviews, and the
 run digest's files.
 
-Sections: summary (feasible count, best point, binding constraints, worst corner) · best observed · top feasible ·
+Sections: summary (feasible count, best point, binding constraints, worst corner) · best observed (with, per library
+device, the row the point took: part and obs id, geometry, footprint -- T18.2B) · top feasible ·
 constraint margins · parameter importance (SHAP) · corners (policy, best point per corner as a table, failures and
 violations per corner) · where the best points are (the digest's suggested ranges: the span of the best feasible points
 one level wider, T17.1.5; it replaced OpenBox's space compressor, so the report needs no OpenBox). Values carry their
@@ -168,6 +169,14 @@ def _best_section(spec: Spec, obs: Observations) -> str:
              f"- objective ({spec.objective.direction if spec.objective else 'n/a'}): {_fmt(o.fom)}",
              "- parameters: " + ", ".join(f"{k}={v}" for k, v in o.params.items()),
              "- metrics: " + ", ".join(f"{k}={_quantity(v, _unit(spec, k))}" for k, v in o.metrics.items())]
+    for device in spec.library_devices:              # T18.2B: the library row the point took, as its device child recorded it
+        row = next((c.library_row for c in o.children.values() if c.unit == device.id and c.library_row), None)
+        if row is None:
+            lines.append(f"- device {device.id}: no library row recorded")
+            continue
+        lines.append(f"- device {device.id}: library row {row['part']}/{row['obs_id']} of {row['stratum']}, geometry "
+                     + ", ".join(f"{k}={v:g}" for k, v in row["geometry"].items())
+                     + f", footprint {digest_module.footprint_text(row.get('footprint'))}")
     if spec.corners:
         lines.append(f"- corner policy: objective={spec.corner_policy.objective}, constraints={spec.corner_policy.constraints}")
     return "\n".join(lines)

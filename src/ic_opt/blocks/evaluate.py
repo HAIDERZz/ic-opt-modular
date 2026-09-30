@@ -154,7 +154,17 @@ def _report_failed_metrics(obs, step: str) -> None:
 
 
 def default_pipeline(spec: Spec, deck: Deck | None, waveforms=()) -> list[Stage]:
-    """What the spec asks for: EM devices bound into testbenches, EM devices alone, or the plain Spectre chain."""
+    """What the spec asks for: EM devices bound into testbenches, EM devices alone, or the plain Spectre chain. Devices
+    taken from a library table (T18.2B) run the library pipelines instead of the EMX ones: ``pick`` in place of ``pcell``
+    and ``emx``, the rest as they are."""
+    if spec.library_devices:
+        from ic_opt.library.stage import library_circuit_pipeline, library_only_pipeline
+
+        if spec.testbenches:
+            if deck is None:
+                raise ValueError("evaluate needs a deck for the testbenches")
+            return library_circuit_pipeline(spec, deck, waveforms=list(waveforms))
+        return library_only_pipeline(spec)
     if spec.devices:
         from ic_opt.stages.em_chain import em_circuit_pipeline, em_only_pipeline
 
@@ -174,7 +184,8 @@ def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, p
     testbench stage's threads with the extra core a testbench job takes (``(4 + 1)``: ``engine.extraction_threads``,
     N-78); refuses (EnvelopeError) a pipeline whose job does not fit the host, so the preview fails where the run would.
     ``stop_at_first_failure`` as for :func:`evaluate` (None: :func:`stop_wanted`, as the run decides it); on, the count
-    per point is a ceiling."""
+    per point is a ceiling. A library pipeline (T18.2B) counts its testbench simulations only -- a library row's
+    measurement is none, the budget does not count it -- and says that no EMX runs."""
     workers = engine.workers_for(spec, pipeline, parallel_jobs, limits)
     corner_ids = spec.corner_ids if corners == "all" else list(corners)
     children = engine.children_of(spec, pipeline, corner_ids)
@@ -182,14 +193,18 @@ def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, p
     tb = sum(c.unit_kind == "testbench" for c in children)
     dev = sum(c.unit_kind == "device" for c in children)
     em = engine.point_runs(pipeline)
-    parts = [f"{em} EMX runs" if em else "", f"{tb} testbench sims" if tb else "", f"{dev} device measurements" if dev else ""]
+    library = any(s.name == "pick" for s in pipeline)          # T18.2B: the devices are library rows, measured, not simulated
+    simulated = len(engine.counted_children(pipeline, children)) if library else len(children)
+    measured = f"{dev} device measurements" + (" of library rows, no simulation" if library else "")
+    parts = [f"{em} EMX runs" if em else "", f"{tb} testbench sims" if tb else "", measured if dev else ""]
     heaviest = max(pipeline, key=lambda s: (s.resources.threads + engine.extraction_threads(s), s.resources.memory_gb))
     cap = spec.em.parallel_jobs if em and spec.em is not None else None
-    count = f"{len(children) + em} simulations per point"
+    count = f"{simulated + em} simulations per point"
     if stop:
         count = f"up to {count} (a point stops at the first simulation that fails it)"
     return (f"({' + '.join(p for p in parts if p)}) = {count} on {executor.host}, "
             f"{workers} workers × {per_job(heaviest.resources.threads, engine.extraction_threads(heaviest))} threads"
             + (f" / {heaviest.resources.memory_gb:g} GB" if heaviest.resources.memory_gb else "") + f" ({heaviest.name})"
             + (f", EMX at once ≤ {cap} (em.parallel_jobs)" if cap else "")
-            + (", EMX results cached per geometry: a repeated geometry costs no run" if em else ""))
+            + (", EMX results cached per geometry: a repeated geometry costs no run" if em else "")
+            + (", no EMX runs (the devices are library rows)" if library else ""))

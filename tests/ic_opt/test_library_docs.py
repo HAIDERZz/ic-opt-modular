@@ -20,8 +20,13 @@ def blocks_of(lang: str) -> list[str]:
     return re.findall(rf"```{lang}\n(.*?)```", DOC.read_text(encoding="utf-8"), flags=re.DOTALL)
 
 
+def manifest_example() -> str:
+    (example,) = [block for block in blocks_of("yaml") if block.startswith("# <library root>/library.yaml")]
+    return example
+
+
 def test_the_manifest_example_is_a_valid_library_yaml():
-    (example,) = blocks_of("yaml")
+    example = manifest_example()
     lib = manifest.Library.model_validate(yaml.safe_load(example))
     stratum = lib.strata["ind_sym_top"]
     assert stratum.columns() == ["Lp_lf", "Lp_res", "Qp_peak", "SRF_p", "Lp@10", "Lp@28", "Qp@10", "Qp@28"]
@@ -43,10 +48,25 @@ def test_every_command_names_a_real_block_or_recipe_with_parsable_arguments():
         assert name in blocks.REGISTRY, name
     for name in re.findall(r"ic-opt run (\S+)", text):
         assert name.endswith(".py") or name in BUILTIN_RECIPES, name
-    (example,) = blocks_of("yaml")
-    dims = manifest.Library.model_validate(yaml.safe_load(example)).strata["ind_sym_top"].dims
+    dims = manifest.Library.model_validate(yaml.safe_load(manifest_example())).strata["ind_sym_top"].dims
     params = json.loads(re.search(r"'params=(\{.*?\})'", text).group(1))
     assert sorted(params) == sorted(dims)
     targets = suggest.parse_targets(json.loads(re.search(r"'targets=(\{.*?\}\})'", text).group(1)))
     assert {t.quantity for t in targets} == {"Lp_lf", "SRF_p"}
     assert suggest.parse_objective(re.search(r"objective=(\S+)", text).group(1)) == ("max", "Qp_peak")
+
+
+def test_the_library_device_example_completes_a_valid_circuit_spec():
+    """T18.2B: section 8's block, its placeholders filled in, is the device and variables part of a valid circuit spec."""
+    from ic_opt.spec import Spec
+    from tests.ic_opt.fakes import minimal_spec
+
+    (block,) = [b for b in blocks_of("yaml") if b.startswith("# part of a circuit spec: a transformer taken from a library")]
+    part = yaml.safe_load(block.replace("<library root>", "/libraries/demo").replace("<stratum>", "xfm_top"))
+    d = minimal_spec()
+    d["devices"], d["variables"] = part["devices"], d["variables"] + part["variables"]
+    d["bindings"] = [{"testbench": "tb", "instance": "NPORT0", "device": "xfmr", "terminals": ["P1", "N1", "P2", "N2"]}]
+    spec = Spec.model_validate(d)
+    (device,) = spec.library_devices
+    assert device.library.frequency_hz == 28e9 and device.library.prefer == "max:Qmin" and device.library.srf_margin == 1.5
+    assert spec.circuit_variables == ["F", "W"] and "root" not in spec.problem()["devices"][0]["library"]

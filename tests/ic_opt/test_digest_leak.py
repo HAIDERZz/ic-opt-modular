@@ -114,3 +114,47 @@ def test_the_files_the_block_writes_carry_none_either(tmp_path):
     path = analyze.digest(spec, leaky_rows(spec), store)
     for text in (path.read_text(encoding="utf-8"), path.with_suffix(".json").read_text(encoding="utf-8")):
         assert [c for c in HIDDEN if c in text] == [] and ISSUE in text
+
+
+def test_a_library_device_s_rows_reach_the_digest_by_part_and_obs_id_never_by_path(tmp_path):
+    """T18.2B: the library's root and every sNp path -- the row's in the library, its copy beside the point -- stay out of
+    the digest; the rows are named by part and obs id. A point off the table (``failed:pick``) says which values, not
+    where the library is."""
+    import itertools
+
+    from ic_opt import space
+    from ic_opt.blocks.evaluate import evaluate
+    from ic_opt.blocks.netlist import import_netlists
+    from ic_opt.library import link
+    from ic_opt.space import Point
+    from ic_opt.spec import Spec
+    from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor
+    from tests.ic_opt.library_device_fixtures import NETLIST, library_spec_dict, xfm_library
+    from tests.ic_opt.test_blocks import maestro_export
+
+    link.clear()
+    try:
+        root = xfm_library(tmp_path / "LEAK_PATH_library")
+        export = maestro_export(tmp_path / "LEAK_PATH_exports", "tb", params="temperature=27 F=20")
+        (export / "netlist" / "input.scs").write_text(NETLIST, encoding="utf-8")
+        spec = Spec.model_validate(library_spec_dict(root, export=export))
+        store = RunStore(tmp_path / "proj")
+        executor = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 7.0 + int(p["F"]) / 100})
+        linked = link.resolve(spec)["xfmr"]
+        points = [Point(p, "user") for p in itertools.islice(space.valid_points(spec), 8)]
+        empty = next(c for c in itertools.product(range(16), range(16), range(6)) if c not in linked.table.cells)
+        off = {n: space.format_value(space.parse_scalar(v.lower)[0] + k * space.parse_scalar(v.step)[0], space.parse_scalar(v.lower)[1])
+               for n, k, v in zip(linked.names, empty, [next(v for v in spec.variables if v.name == n) for n in linked.names],
+                                  strict=True)}
+        points.append(Point({"F": "20", **off}, "user"))
+        obs = evaluate(spec, points, executor, store, deck=import_netlists(spec, executor, store), limits=FAKE_HOST)
+        assert obs[-1].status == "failed:pick" and all(o.status == "ok" for o in obs[:-1])
+        assert any(p.suffix == ".s4p" for p in store.root.rglob("*.s4p"))            # the copies are there, beside the points
+        d = dg.digest(spec, obs)
+        assert d["library"]["top"] and all(p["rows"]["xfmr"]["part"] == "xfm" for p in d["library"]["top"])
+        path = analyze.digest(spec, obs, store)
+        for text in (json.dumps(d, ensure_ascii=False, allow_nan=False), dg.markdown(d), path.read_text(encoding="utf-8"),
+                     path.with_suffix(".json").read_text(encoding="utf-8")):
+            assert "LEAK_PATH" not in text and ".s4p" not in text and ".icopt" not in text and str(tmp_path) not in text
+    finally:
+        link.clear()

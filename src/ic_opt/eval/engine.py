@@ -123,6 +123,15 @@ def child_simulates(pipeline: list[Stage]) -> bool:
     return any(getattr(s, "simulates", True) for s in pipeline if s.level == "child")
 
 
+def counted_children(pipeline: list[Stage], children: list[Child]) -> list[Child]:
+    """The children that are simulations, what the budget counts: those whose chain -- the pipeline's child stages of
+    their unit kind -- has a stage that simulates (a child stage declares ``simulates = False`` when it is not: a
+    prediction, a library row's measurement, T18.2B). Every child of a pipeline whose child stages all simulate, as
+    :func:`child_simulates` counted them before a pipeline mixed both."""
+    kinds = {getattr(s, "unit", "testbench") for s in pipeline if s.level == "child" and getattr(s, "simulates", True)}
+    return [c for c in children if c.unit_kind in kinds]
+
+
 def simulations(observation: Observation) -> int:
     """What an observation cost: as recorded, else (older records) its children plus every point-level stage that ran instead of hitting the cache."""
     if observation.simulations is not None:
@@ -189,8 +198,8 @@ def run(
         raise ValueError("pipeline produces no children for this spec (no testbenches for its testbench chain, no devices for its device chain)")
     children_wanted = {c.key for c in children}
     wanted = [c.key for c in children]
-    child_sims = child_simulates(pipeline)
-    sims_per_point = (len(children) if child_sims else 0) + point_runs(pipeline)         # worst case: every cacheable point stage misses
+    counted = {c.key for c in counted_children(pipeline, children)}                     # the simulations among them
+    sims_per_point = len(counted) + point_runs(pipeline)         # worst case: every cacheable point stage misses
     workers = workers_for(spec, pipeline, parallel_jobs, limits)
     spec_fp, pipe_fp = spec.fingerprint(), pipeline_fingerprint(pipeline, executor)     # after the envelope check: it asks the host
     same_problem = {spec_fp, spec._legacy_fingerprint()}                                # see "Identity" above
@@ -241,7 +250,7 @@ def run(
                 metrics=agg.metrics, fom=agg.fom, objective=agg.objective, feasible=agg.feasible,
                 constraint_penalty=agg.constraint_penalty, status=agg.status, issues=agg.issues,
                 spec_fingerprint=spec_fp, pipeline_fingerprint=pipe_fp, step=step, cache=cache,
-                simulations=(len(results) if child_sims else 0) + sum(1 for v in cache.values() if v == "miss"),
+                simulations=sum(1 for key in results if key in counted) + sum(1 for v in cache.values() if v == "miss"),
                 started_at=started_at, finished_at=utc_now(),
             )
             job.seconds = time.monotonic() - started

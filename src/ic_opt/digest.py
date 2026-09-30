@@ -89,6 +89,16 @@ scikit-learn's mutual information estimate, imported only when there are points 
 - *where points failed* (``failures.by_stage``): a point counts under the stage of its ``failed:<stage>`` status (its
   first failed child's, as ``sim.corner.aggregate`` sets it; a child's where the point's status names none), else under
   its status ``metric_failed`` or ``constraint_failed``; a point stopped early counts in ``stopped_early`` besides.
+
+Version 4 (T18.2B, ``docs/refactor/T18_2B_LIBRARY_DEVICE_SPEC.md``, section 5) keeps every entry of version 3 and adds
+``library``: ``None`` for a spec without library devices; else per library device its table (the stratum), the working
+frequency, the margin, the rule that ranks a combination's rows (``prefer``), the index columns its variables map, the
+combinations on the grid (``combinations`` of ``of``, holding ``rows`` rows) and how many of them the run visited
+(``visited``: distinct combinations among the points); and for each of the ``top`` best feasible points, the best first,
+the row each device took -- part, obs id, its geometry, its electrical values, its footprint -- as the device child
+recorded it (``ChildResult.library_row``). The table's size is the library's: read on the machine computing the digest
+(``ic_opt.library.link``, the process's resolution), else ``None`` with a note. Neither the library's root nor an sNp
+path reaches the digest.
 """
 
 from __future__ import annotations
@@ -109,7 +119,7 @@ from ic_opt.sim.corner import NOT_SIMULATED, metrics_per_corner, scored_corners,
 from ic_opt.space import split_origin
 from ic_opt.spec import Spec
 
-DIGEST_VERSION = 3
+DIGEST_VERSION = 4
 SCORED = ("ok", "constraint_failed")
 MIN_CORRELATED = 10                # scored points below which no rank correlation is given
 MIN_SIDE = 5                       # points on either side of a split
@@ -188,7 +198,7 @@ def _limit(constraint) -> float:
 
 def digest(spec: Spec, observations: Iterable[Observation], *, advice: Sequence[dict] = (), top: int = 5,
            step: str | None = None) -> dict[str, Any]:
-    """The digest of ``observations`` (only step ``step``'s when given) as a JSON-ready dict, ``"digest_version": 3``.
+    """The digest of ``observations`` (only step ``step``'s when given) as a JSON-ready dict, ``"digest_version": 4``.
     ``advice``: the rows of ``.icopt/advice.jsonl`` in file order (section 2); ``top``: how many of the best feasible
     points the spans and suggested ranges describe. The order of ``observations`` does not matter: they are taken in
     observation-number order, as the store and the strategies take them."""
@@ -214,6 +224,7 @@ def digest(spec: Spec, observations: Iterable[Observation], *, advice: Sequence[
         "advice": _advice(rows, sizes, advice, grid, feasible[0] if feasible else None),
         "advice_refused": _advice_refused(advice),
         "operating_points": _operating_points(rows, feasible),
+        "library": _library(spec, rows, feasible[:top], grid),
     }
 
 
@@ -570,7 +581,14 @@ def _strategy(spec: Spec, rows: list[Observation]) -> dict[str, Any]:
     out: dict[str, Any] = {"origins": dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))), "metric_gp": None,
                            "notes": {}}
     if "metric_gp" in counts:
-        out["metric_gp"], note = _metric_gp_region(spec, rows)
+        try:
+            out["metric_gp"], note = _metric_gp_region(spec, rows)
+        except (ValueError, OSError, KeyError):
+            if not spec.library_devices:
+                raise
+            # the region lies on the valid points, which a library device's table gives (T18.2B); its message may name
+            # the library's path, so it is not kept
+            out["metric_gp"], note = None, "the library could not be read where this digest was computed: no search region"
         if note:
             out["notes"]["metric_gp"] = note
     return out
@@ -760,6 +778,51 @@ def _table(table: dict[str, dict[str, float]] | None) -> dict[str, dict[str, flo
     return {inst: {q: _num(values[q]) for q in QUANTITIES if q in values} for inst, values in sorted(table.items())}
 
 
+LIBRARY_UNREAD = ("the library could not be read where this digest was computed: the size of each table on its grid is "
+                  "not given")
+
+
+def _library(spec: Spec, rows: list[Observation], best: list[Observation], grid: list[_Grid]) -> dict[str, Any] | None:
+    """``library`` (version 4, module docstring): ``None`` without library devices."""
+    devices = spec.library_devices
+    if not devices:
+        return None
+    notes: dict[str, str] = {}
+    try:
+        # the library's own modules load only for a spec that has one
+        from ic_opt.library import link
+
+        facts = link.summary(spec)
+    except (ValueError, OSError, KeyError):                 # its message may name the library's path: not kept
+        facts, notes["combinations"] = {}, LIBRARY_UNREAD
+    by_name = {g.name: g for g in grid}
+    tables = []
+    for d in devices:
+        names = [v.name for v in spec.variables if v.name in set(d.variables.values())]
+        visited = {tuple(by_name[n].index(o.params[n]) for n in names) for o in rows}
+        f = facts.get(d.id, {})
+        tables.append({"device": d.id, "table": d.library.stratum, "frequency_hz": d.library.frequency_hz,
+                       "srf_margin": f.get("srf_margin", d.library.srf_margin), "prefer": f.get("prefer", d.library.prefer),
+                       "variables": dict(d.variables), "combinations": f.get("combinations"), "rows": f.get("rows"),
+                       "of": f.get("of"), "visited": len(visited)})
+    top = [{"id": o.obs_id, "objective": _num(o.fom), "rows": {d.id: _library_row(o, d.id) for d in devices}} for o in best]
+    if not best:
+        notes["top"] = "no feasible point: no row to show"
+    return {"devices": tables, "top": top, "notes": notes}
+
+
+def _library_row(o: Observation, device: str) -> dict[str, Any] | None:
+    """The row a point's device child took (``ChildResult.library_row``) as the digest shows it: part, obs id, geometry,
+    electrical values (a non-finite one as None) and footprint; None when the child recorded none."""
+    child = next((c for c in o.children.values() if c.unit == device and getattr(c, "library_row", None)), None)
+    if child is None:
+        return None
+    row = child.library_row
+    return {"part": row.get("part"), "obs_id": row.get("obs_id"),
+            "geometry": {k: _num(v) for k, v in (row.get("geometry") or {}).items()},
+            "values": {k: _num(v) for k, v in (row.get("values") or {}).items()}, "footprint": row.get("footprint")}
+
+
 # -- small pieces -------------------------------------------------------------------------------------------------------
 
 class _Grid:
@@ -860,6 +923,7 @@ def markdown(d: dict[str, Any]) -> str:
              "## Strategy", _md_strategy(d["strategy"]),
              "## Advice", _md_advice(d["advice"], d["progress"]["best"], d["advice_refused"]),
              "## Operating points of the best point", _md_operating_points(d["operating_points"]),
+             *(["## Library devices", _md_library(d["library"])] if d.get("library") else []),
              "## What these numbers are not", NOT_SAID]
     return "\n\n".join(parts) + "\n"
 
@@ -1051,6 +1115,8 @@ def _share(side: dict[str, Any]) -> str:
 def _md_strategy(s: dict[str, Any]) -> str:
     lines = ["- points by origin: " + (", ".join(f"{k} {v}" for k, v in s["origins"].items()) or "none")]
     gp = s["metric_gp"]
+    if gp is None and "metric_gp" in s["notes"]:
+        lines.append(f"- metric_gp: {s['notes']['metric_gp']}")
     if gp is not None:
         r = gp["region"]
         if r is None:
@@ -1149,6 +1215,52 @@ def _md_operating_points(op: dict[str, Any]) -> str:
     if op["start"] is not None and any(t is not None for t in op["start"]["children"].values()):
         lines += ["", f"The start point's tables (`{op['start']['id']}`, the design as exported) are in `digest.json`."]
     return "\n".join(lines).strip() or "_the best point has no child results_"
+
+
+def _md_library(entry: dict[str, Any]) -> str:
+    """``library``: per device its table on the grid and what the run visited, then the rows the best points took --
+    geometry, the electrical values of the device's variables (and the column its rows are ranked by), footprint."""
+    lines = [("Each device is a table of a library: a point's values of its variables form a combination, and the point "
+              "takes that combination's row (the best by the rule when it holds several), with the row's real sNp. No EMX "
+              "runs."), "",
+             _row(["device", "table", "frequency", "rows ranked by", "combinations on the grid", "visited"]), _rule(6)]
+    for t in entry["devices"]:
+        held = f"{t['combinations']} of {t['of']} ({t['rows']} rows)" if t["combinations"] is not None else "—"
+        lines.append(_row([t["device"], t["table"], quantity(t["frequency_hz"], "Hz"), t["prefer"] or "—", held,
+                           str(t["visited"])]))
+    for note in entry["notes"].values():
+        lines += ["", f"_{note}_"]
+    if not entry["top"]:
+        return "\n".join(lines)
+    shown = {t["device"]: [*t["variables"], *([t["prefer"].split(":", 1)[1]] if t["prefer"] else [])] for t in entry["devices"]}
+    lines += ["", "The rows the best feasible points took, the best first:", "",
+              _row(["point", "objective", "device", "row (part/obs)", "geometry", "electrical values", "footprint"]), _rule(7)]
+    for point in entry["top"]:
+        for device, r in point["rows"].items():
+            if r is None:
+                lines.append(_row([f"`{point['id']}`", quantity(point["objective"], ""), device, "—", "—", "—", "—"]))
+                continue
+            values = ", ".join(f"{c}={quantity(r['values'].get(c), _column_unit(c))}"
+                               for c in dict.fromkeys(shown[device]) if c in r["values"])
+            lines.append(_row([f"`{point['id']}`", quantity(point["objective"], ""), device, f"{r['part']}/{r['obs_id']}",
+                               ", ".join(f"{k}={v:g}" for k, v in r["geometry"].items() if v is not None), values,
+                               footprint_text(r["footprint"])]))
+    return "\n".join(lines)
+
+
+def _column_unit(column: str) -> str:
+    """The unit an index column prints with (``ic_opt.library.query.unit``'s rule, without loading the library's models):
+    inductances in H, resonances in Hz, the area in µm², Q and k bare."""
+    if column == "area":
+        return "µm²"
+    return "Hz" if column.startswith("SRF") else "H" if column.startswith("L") else ""
+
+
+def footprint_text(footprint: dict | None) -> str:
+    """A footprint for reading: ``width × height µm (area µm²)``; ``—`` without one."""
+    if not footprint:
+        return "—"
+    return f"{footprint['width_um']:g} × {footprint['height_um']:g} µm ({footprint['area_um2']:g} µm²)"
 
 
 def _row(cells: Sequence[str]) -> str:

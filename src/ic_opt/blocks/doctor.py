@@ -67,7 +67,12 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
     The host is asked for the tools of the pipeline the spec runs, and no others: testbenches (the Spectre chain, alone
     or behind EM devices) need ``spectre`` and ``ocean`` and, with ``simulator.license_check``, the license probe;
     devices need the spec's EMX binary (``em.binary``). A pure EM spec (devices, no testbenches) asks nothing of
-    Spectre, so a host without it passes."""
+    Spectre, so a host without it passes.
+
+    Library devices (T18.2B) run no EMX: no generator, profile or EMX check, no EMX job in the envelope, and an ``em``
+    section beside them is unused (a note says so). Each gets ``library:<device>`` instead, the resolution of its table
+    on the machine running ic-opt (``ic_opt.library.link``): ``<stratum> at <f> GHz: <n> rows on the grid in <m> of
+    <total> combinations, prefer <rule>``, or the refusal's message."""
     report = DoctorReport()
     add = report.checks.append
 
@@ -89,8 +94,10 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
     add(_machine_check(executor, limits))
 
     for device in spec.devices:
-        add(_device_check(device))
-    if spec.devices and spec.em is not None:       # the EMX stages: the spec's binary, which may be a path or another name
+        add(_library_check(spec, device) if device.library is not None else _device_check(device))
+    if spec.library_devices and spec.em is not None:
+        add(Check("em", False, "not used: the devices are library rows, no EMX runs", level="note"))
+    elif spec.devices and spec.em is not None:     # the EMX stages: the spec's binary, which may be a path or another name
         binary = spec.em.binary
         emx = executor.run(f"which {shlex.quote(binary)}", cshrc=cshrc, timeout_s=120)
         add(Check("emx", emx.ok, emx.stdout.strip() if emx.ok else f"{binary} not on PATH"))
@@ -147,7 +154,7 @@ def _job(spec: Spec) -> tuple[int, int, float]:
     (``site.EXTRACTION_THREADS``, N-78: Spectre at one thread at up to two cores at times, the extraction up to two for
     a moment after each simulation); an EMX run nothing."""
     runs = [(spec.simulator.threads_per_run, EXTRACTION_THREADS, 0.0)] if spec.testbenches else []
-    if spec.devices and spec.em is not None:
+    if spec.devices and spec.em is not None and not spec.library_devices:      # library devices run no EMX (T18.2B)
         runs.append((spec.em.threads, 0, spec.em.memory_gb))
     threads, extraction, _ = max(runs, key=lambda run: run[0] + run[1], default=(1, 0, 0.0))
     return threads, extraction, max((m for *_, m in runs), default=0.0)
@@ -204,6 +211,16 @@ def _stack_check(spec: Spec, executor: Executor, cshrc: str | None) -> Check:
             continue
         problems += [f"{profile} {m}" for m in stack_mismatches(stack, proc)]
     return Check("em:stack", not problems, "; ".join(problems) if problems else f"{len(proc)} .proc conductors agree with every device profile")
+
+
+def _library_check(spec: Spec, device) -> Check:
+    """A library device's table resolves on the controller, where ``pick`` reads it (``link.sentence``), or why not."""
+    from ic_opt.library import link
+
+    try:
+        return Check(f"library:{device.id}", True, link.sentence(spec, device.id))
+    except (ValueError, OSError) as exc:
+        return Check(f"library:{device.id}", False, str(exc).splitlines()[0])
 
 
 def _device_check(device) -> Check:

@@ -95,7 +95,7 @@ def test_every_entry_on_a_run_of_known_structure():
     rows = observe(spec, abc_rows(), abc_metrics, op_of=lambda p: OP)
     d = dg.digest(spec, rows)
 
-    assert d["digest_version"] == 3 and d["top"] == 5
+    assert d["digest_version"] == 4 and d["top"] == 5 and d["library"] is None     # version 4: no library device here
     p = d["problem"]
     assert [(v["name"], v["levels"], v["scale"]) for v in p["variables"]] == [("A", 10, "linear"), ("B", 11, "linear"),
                                                                              ("C", 100, "log")]

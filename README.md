@@ -139,9 +139,12 @@ their meaning and continue as before.
 The default strategy is `auto`: `metric_gp` for a spec without EM devices, at
 any corners (since T17.9 it takes a run at several corners: each point's metrics
 reach its models at their worst over the corners simulated, and a point that
-needs 20 or more simulations stops at its first failing one by default), `openbox_gp_eic` for a spec with
-EM devices, and a line says which and why (`[optimize] strategy auto: metric_gp
-(no EM devices)`, under `--plan` too). A strategy keyword the chosen strategy does not take is refused
+needs 20 or more simulations stops at its first failing one by default), and
+for a spec whose devices come from a library table (since T18.2B: no EMX in the
+loop), `openbox_gp_eic` for a spec with EM devices that EMX simulates at every
+point, and a line says which and why (`[optimize] strategy auto: metric_gp (no EM
+devices)`, `... metric_gp (library devices: no EMX in the loop)`, under `--plan`
+too). A strategy keyword the chosen strategy does not take is refused
 before anything runs (`initial_trials` both take). A strategy named with
 `strategy=` runs as named. `coarse_to_fine` runs `metric_gp` in both steps when
 `auto` chooses it, else OpenBox then TuRBO; `lib_design` stays on `turbo`. The
@@ -167,9 +170,10 @@ that spans a decade), a separate model of where points fail to give a value, and
 no penalty number anywhere; numpy, scipy and scikit-learn only. Its design is
 `initial_trials` points (default twice the variables, at least 8, at most 20
 and at most half the budget), start points included, and origins end in `:init`, `:grid:<k>`, `:tr:<r>:<k>`,
-`:wide:<r>:<k>` or `:anchor:<r>:<k>`. It does not take EM devices or several
-corners at once yet: named with `strategy=metric_gp` for such a run, `opt.optimize`
-refuses it before anything runs; run one corner or the `signoff` recipe.
+`:wide:<r>:<k>` or `:anchor:<r>:<k>`. It does not take an EM device that EMX
+simulates in the loop yet: named with `strategy=metric_gp` for such a run, `opt.optimize`
+refuses it before anything runs, naming both ways out (`openbox_gp_eic`, or the
+device taken from a library table). A device from a library table it takes.
 
 Advice. ic-opt calls no language model; whoever reads what a run found (a
 person, or the user's own agent) can give the run advice as data, between runs:
@@ -304,7 +308,8 @@ Point ─pcell─▶ Geometry ─emx (per device, cached)─▶ ┬─ bind_npor
 
 `evaluate` picks the pipeline from the spec: `devices` + `testbenches` →
 EM circuit, `devices` only → EM characterization (`pcell → emx → measure`),
-neither → Spectre. The recipes do not change.
+neither → Spectre. Devices taken from a library table run `pick` in place of
+`pcell → emx` (the row's own sNp, no EMX). The recipes do not change.
 
 ### EM devices
 
@@ -351,6 +356,32 @@ it from its ports: two are one drive; four are two drives with the secondary rev
 because the built-in families wind it that way and so measure a positive `k`; `CT*` taps are grounded. A
 generator of your own whose secondary winds the other way measures `k < 0`: the point's `issues` say so,
 and the device needs `topology: {drives: [[P1, N1], [P2, N2]]}` (every port exactly once, taps under `grounded`).
+
+Beside the generator form, a device may come from a **library table** (a stratum of a device library, below): its
+variables are electrical values -- columns of the table's index at a working frequency (`Lp`, `Ls`, `k`, `Qmin`, ...)
+-- on ordinary grids, the combinations that exist are the ones a row of the table sits on, and a point binds that
+row's own sNp. Every observation is a real measurement, no EMX runs in the loop, and `strategy=auto` runs `metric_gp`:
+
+```yaml
+devices:
+  - id: xfmr_in
+    library:
+      root: /path/to/library              # placeholder: the directory holding library.yaml, on the machine running ic-opt
+      stratum: xfm_bs_top                 # placeholder: one table of your library
+      frequency_hz: 28e9                  # the working frequency the electrical values are taken at
+      prefer: max:Qmin                    # optional: which row of a combination a point takes (the default)
+    ports: [P1, N1, P2, N2]               # the table's port labels
+    variables: {Lp: xfmr_in.Lp, Ls: xfmr_in.Ls, k: xfmr_in.k}    # index column -> spec variable
+variables:
+  - {name: xfmr_in.Lp, kind: continuous_step, lower: 150p, upper: 600p, step: 10p}    # Spectre scale suffixes
+  - {name: xfmr_in.Ls, kind: continuous_step, lower: 150p, upper: 600p, step: 10p}
+  - {name: xfmr_in.k,  kind: continuous_step, lower: "0.3", upper: "0.9", step: "0.05"}
+```
+
+Its `generator`, `profile`, `fixed` fields and `plugin` are the table's, and a spec's devices all come from a library
+or none does; no `em` section is needed. `ic-opt doctor` prints `library:<device>` (the table's rows on the grid), the
+plan says `no EMX runs`, a point's device child records the row it took (`library_row`), and the digest and the report
+name it: [docs/em/library.md](docs/em/library.md), "Library devices in a circuit spec".
 
 Every family's fields, constraints and retired names: [docs/em/devices.md](docs/em/devices.md) (generated from the config models).
 
@@ -463,7 +494,9 @@ for the instances that report `gm`, with `region`, `ids`, `vgs`, `vds`, `vbs`,
 `vth`, `vdsat`, `gm`, `gds`, `gmoverid`, `cgs`, `cgd` where the simulator gives a
 number -- read after the metrics, it never fails a child by itself (a
 `saturation_margin` metric computed from it can); left out when there
-are none, and no strategy reads it), `steps.jsonl`, `decks/`, `sims/<obs>/<tb>/<corner>/`,
+are none, and no strategy reads it; a library device's child carries
+`library_row`, the row the point took: stratum, part, obs id, geometry,
+electrical values, footprint), `steps.jsonl`, `decks/`, `sims/<obs>/<tb>/<corner>/`,
 `reports/report.md` + `report.html` (best observed, top feasible, constraint
 margins, parameter importance, corners, where the best points are; four figures),
 `reports/digest.md` + `digest.json` (`ic-opt digest`: what is optimized, how far the
@@ -473,8 +506,10 @@ of the advice given -- per advice its period, from its adoption to the row that
 ended it; the points under it (`@<id>`) and the others proposed in its period,
 each counted as points, feasible, no value and best objective; its start points,
 and whether each was the run's best when evaluated; a line when the run's best
-point lies at a bound of the advice's range that is not the spec's -- every
-number computed from the observations).
+point lies at a bound of the advice's range that is not the spec's; for library
+devices, each table on its grid, how many of its combinations the run visited
+and the rows the best points took -- every number computed from the
+observations).
 
 ### Stores written by an earlier version
 

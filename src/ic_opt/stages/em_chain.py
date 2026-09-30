@@ -4,6 +4,10 @@
                                                \\--bind_nport--> Netlist --spectre... (unit = testbench)
 
 Working directory layout for a point: ``<sims/obs>/em/<device>/{<device>.gds, emx_ports.txt, geometry_manifest.json}``.
+
+A library device (T18.2B) takes the place of pcell and emx with one point stage, ``pick`` (``ic_opt.library.stage``):
+it fills ``Geometry.sparams`` with the row's own sNp, as emx does, and ``Geometry.picks`` with the row it took, so that
+``bind_nport`` and ``measure`` run unchanged; ``measure`` then records the row in its child (``ChildResult.library_row``).
 """
 
 from __future__ import annotations
@@ -31,7 +35,7 @@ from ic_opt.eval.stage import Resources, StageContext, StageFailure
 from ic_opt.observation import ChildResult
 from ic_opt.sim.ocean import WaveformExport
 from ic_opt.space import Point
-from ic_opt.spec import Device, Spec, VariableKind
+from ic_opt.spec import Device, Spec, Topology, VariableKind
 from ic_opt.stages.spectre_chain import Extract, Netlist, Ocean, Spectre, render_netlist
 
 if TYPE_CHECKING:
@@ -55,14 +59,18 @@ class DeviceSParams:
     path: Path                          # local sNp
     port_labels: list[str]              # semantic labels in sNp column order
     z0: float
+    topology: Topology | None = None    # how measure reads it when not the device's stated one: a library row's part's (T18.2B)
 
 
 @dataclass
 class Geometry:
-    """Point-level state of the EM chain: every device's geometry, then its S-parameters as the emx stages fill them in."""
+    """Point-level state of the EM chain: every device's geometry, then its S-parameters as the emx stages fill them in.
+    A library device (T18.2B) has no geometry of the point's own: ``pick`` fills its S-parameters from the row it took and
+    ``picks`` with that row (stratum, part, obs id, geometry, electrical values, footprint, the combination's values)."""
 
     devices: dict[str, DeviceGeometry] = field(default_factory=dict)
     sparams: dict[str, DeviceSParams] = field(default_factory=dict)
+    picks: dict[str, dict] = field(default_factory=dict)
 
     def to_json(self) -> dict:
         return {k: {**asdict(v), "gds_path": str(v.gds_path), "ports": [asdict(p) for p in v.ports]} for k, v in self.devices.items()}
@@ -283,12 +291,20 @@ def em_circuit_pipeline(spec: Spec, deck: Deck, *, waveforms: list[WaveformExpor
 class Measure:
     """Device child: the spec's quantity metrics for this device from its S-parameters (curves at a frequency, read as
     ``measure.Quantities.at`` reads them, or scalars). A metric it cannot produce fails the child (``failed:measure``); a
-    coupled pair measured with k_lf < 0 does not, but its issues -- and so the point's -- carry ``polarity_issue``."""
+    coupled pair measured with k_lf < 0 does not, but its issues -- and so the point's -- carry ``polarity_issue``.
+
+    A library device (T18.2B): the S-parameters are the row ``pick`` took, measured by the topology the library measures
+    that row with unless the device states its own (``DeviceSParams.topology``), and the child records the row
+    (``ChildResult.library_row``: stratum, part, obs id, geometry, electrical values, footprint; no path). Its pipelines
+    give ``simulates=False``: reading a row the library holds is not a simulation, and spends none of the budget."""
 
     name = "measure"
     level = "child"
     unit = "device"
     resources = Resources()
+
+    def __init__(self, *, simulates: bool = True) -> None:
+        self.simulates = simulates                    # False: a library row's measurement (engine.counted_children)
 
     def fingerprint(self, geometry: Geometry, ctx: StageContext) -> str | None:
         return None
@@ -298,10 +314,11 @@ class Measure:
         sp = geometry.sparams.get(ctx.unit)
         if sp is None:
             raise StageFailure(f"device {ctx.unit} has no S-parameters")
+        topology = sp.topology or device.topology
         try:
             ts = touchstone.read(sp.path)
-            topo = measure_kernel.Topology.from_labels(device.topology.drives, device.topology.grounded, sp.port_labels,
-                                                       low_freq_max_hz=device.topology.low_freq_max_hz)
+            topo = measure_kernel.Topology.from_labels(topology.drives, topology.grounded, sp.port_labels,
+                                                       low_freq_max_hz=topology.low_freq_max_hz)
             q = measure_kernel.quantities(ts.freqs, ts.s, topo, z0=ts.z0)
         except (touchstone.TouchstoneError, measure_kernel.MeasureError, KeyError) as exc:
             raise StageFailure(f"device {ctx.unit}: {exc}") from exc
@@ -317,23 +334,29 @@ class Measure:
             else:
                 metrics[metric.name] = float(value)
         (ctx.workdir / "quantities.json").write_text(json.dumps({k: v for k, v in q.scalars.items()}, indent=1), encoding="utf-8")
-        warning = polarity_issue(device, q.scalars.get("k_lf"))
+        warning = polarity_issue(device, q.scalars.get("k_lf"), topology)
+        picked = geometry.picks.get(ctx.unit)
         return ChildResult(unit=ctx.unit, corner=None, metrics=metrics, issues=issues + ([warning] if warning else []),
-                           status="ok" if not issues else "failed:measure")
+                           status="ok" if not issues else "failed:measure",
+                           library_row=None if picked is None else {key: picked[key] for key in LIBRARY_ROW})
 
 
-def polarity_issue(device: Device, k_lf: float | None) -> str | None:
+LIBRARY_ROW = ("stratum", "part", "obs_id", "geometry", "values", "footprint")    # what a child records of its library row
+
+
+def polarity_issue(device: Device, k_lf: float | None, topology: Topology | None = None) -> str | None:
     """The warning for a coupled pair measured with k_lf < 0 (``measure.reversed_coupling``; T16.6, audit row 25), else
     None. A drive pushes its current in at plus and out at minus; only the sign of k depends on that. Four ports without a
     stated topology reverse the secondary (``Device.default_topology``), the built-in families' winding sense, so a
     generator whose secondary winds the other way measures k < 0: the warning names the topology that measures it
-    positive, to state in the spec."""
-    if not measure_kernel.reversed_coupling(k_lf) or len(device.topology.drives) != 2:
+    positive, to state in the spec. ``topology``: the one it was measured with (default: the device's)."""
+    topology = topology or device.topology
+    if not measure_kernel.reversed_coupling(k_lf) or len(topology.drives) != 2:
         return None
-    primary, (plus, minus) = device.topology.drives
-    stated = _topology_yaml([primary, (minus, plus)], device.topology.grounded, device.topology.low_freq_max_hz)
+    primary, (plus, minus) = topology.drives
+    stated = _topology_yaml([primary, (minus, plus)], topology.grounded, topology.low_freq_max_hz)
     return (f"k_lf = {k_lf:.3g} < 0: the drives' polarity may be reversed against the windings (measured with drives "
-            f"{_pairs(device.topology.drives)}; without a stated topology, four ports reverse the secondary, as the built-in "
+            f"{_pairs(topology.drives)}; without a stated topology, four ports reverse the secondary, as the built-in "
             f"families wind it). If this device's secondary winds the other way, state its topology in the spec: {stated}")
 
 
