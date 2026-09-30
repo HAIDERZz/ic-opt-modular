@@ -311,7 +311,8 @@ def _verdict(o: Observation) -> dict:
 
 def _worst(spec: Spec, constraint: Constraint, o: Observation) -> tuple[float | None, str | None]:
     """The constraint's own worst value at ``o`` over the corners it is judged at, and that corner (:func:`main`,
-    "Rounds", 2), the first of equal ones; the point's own value, with no corner, where no corner holds it; (None, None)
+    "Rounds", 2), the first of equal ones -- no corner for a metric only a corner-less child holds (a device, measured
+    once and counted at every corner); the point's own value, with no corner, where no corner holds it; (None, None)
     when it has none."""
     per_corner = metrics_per_corner(spec, o)
     found = [(m[constraint.metric], cid) for cid in scored_corners(spec)
@@ -319,8 +320,9 @@ def _worst(spec: Spec, constraint: Constraint, o: Observation) -> tuple[float | 
     if not found:
         value = o.metrics.get(constraint.metric)
         return (value, None) if value is not None and math.isfinite(value) else (None, None)
-    pick = max if constraint.op in ("lt", "le") else min
-    return pick(found, key=lambda item: item[0])
+    value, corner = (max if constraint.op in ("lt", "le") else min)(found, key=lambda item: item[0])
+    cornered = any(constraint.metric in c.metrics for c in o.children.values() if c.corner is not None)
+    return value, corner if cornered else None
 
 
 def _tightened(spec: Spec, moves: list[_Move]) -> Spec:

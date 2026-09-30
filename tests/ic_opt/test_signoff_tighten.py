@@ -242,6 +242,39 @@ def test_the_moves_add_up_over_the_rounds(tmp_path, capsys):
     assert steps == {"search@tt", "signoff", "search@tt#2", "signoff#2", "search@tt#3", "signoff#3"}
 
 
+def window(p, tb, c):
+    """``worse_at_ss`` and V: 1 V at tt, 0 V at ss, 2.1 V at ff -- a spread of 2.1 V for a window 0.5 V to 1.5 V wide."""
+    return {**worse_at_ss(p, tb, c), "V": {"tt": 1.0, "ss": 0.0, "ff": 2.1}[c]}
+
+
+@pytest.mark.parametrize(("case", "outcome", "line"), [
+    ("nothing_to_recheck", "nothing_to_recheck",
+     "no point of step search@tt is feasible under the constraints it searched under: nothing to re-check"),
+    ("nothing_to_tighten", "nothing_to_tighten",
+     "nothing to tighten: the best re-checked point, obs_0005 (failed:spectre), misses no constraint that has a value there"),
+    ("limits_cross", "limits_cross",
+     "the tightened limits would cross (V ge 1 V and V le 0.9 V): no point can meet them"),
+])
+def test_the_rounds_end_early_when_a_round_cannot_go_on(tmp_path, capsys, monkeypatch, case, outcome, line):
+    """No point of the search passes (nothing to re-check); the re-check's point failed a simulation at ss and misses
+    nothing where it has values (nothing to tighten); both bounds of V missed by more than its window allows."""
+    calls = spy_on_optimize(monkeypatch)
+    if case == "nothing_to_recheck":
+        run = fake_run(gain_project(tmp_path), metric_fn=lambda p, tb, c: {"NF": 9.5, "G": float(p["F"])})
+    elif case == "nothing_to_tighten":
+        run = fake_run(gain_project(tmp_path), metric_fn=lambda p, tb, c: {"NF": 8.0, "G": float(p["F"])},
+                       fail_spectre=lambda tb, corner: corner == "ss")
+    else:
+        bounds = [{"metric": "V", "op": "ge", "value": "0.5 V"}, {"metric": "V", "op": "le", "value": "1.5 V"}]
+        run = fake_run(gain_project(tmp_path, extra_metrics=[("V", "V")], extra_constraints=bounds), metric_fn=window)
+    signoff.main(run, **RECIPE, rounds=3, full=True)
+    assert f"[run] signoff round 1: {line}\n" in capsys.readouterr().out
+    assert [c["step"] for c in calls] == ["search@tt"]                                   # no second search
+    record = rounds_file(run)
+    assert record["outcome"] == outcome and record["why"] == line and len(record["rounds"]) == 1
+    assert record["report_round"] == (None if case == "nothing_to_recheck" else 1)
+
+
 # -- 5. --plan ------------------------------------------------------------------------------------------------------------
 
 
@@ -383,6 +416,9 @@ def test_each_bound_takes_its_own_worst_corner():
     failed = point(spec, 1, at("22"), child("tb", "tt", status="failed:spectre"), child("tb", "ss", status="failed:spectre"),
                    child("tb", "ff", status="failed:spectre"))
     assert _worst(spec, nf, failed) == (None, None)
+    measured_once = point(spec, 2, at("24"), child("dev", None, V=0.3), *(child("tb", c, NF=8.0) for c in CORNERS))
+    assert _worst(spec, lower, measured_once) == (0.3, None)                             # a corner-less child's: no corner
+    assert _worst(spec, nf, measured_once) == (8.0, "tt")                               # the first of equal ones
 
 
 def test_the_best_rechecked_point_is_judged_before_one_that_gave_no_value():
