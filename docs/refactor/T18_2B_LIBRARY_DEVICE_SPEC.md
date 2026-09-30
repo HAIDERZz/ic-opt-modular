@@ -172,3 +172,45 @@ Targeted run: the new test files, `tests/ic_opt/test_em_*.py`, `test_library*.py
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Hand back: branch and commits; the verbatim test and ruff output (last 30 lines); what the specification left
   open and how it was read (a numbered list); what could not be done and why.
+
+## 9. Record (2026-10-01)
+
+Implemented by the coding subagent on `t18-2b-library-device` (`b7aa4c8`, `95aec40`, `0fb76b1`, `fbb7ee6`, `23be597`,
+`8187eb0`, `e3558dd`), merged `ca9898d`; targeted tests 524 passed and 10 skipped on the branch, 166 on the merged tree's
+core files, the neighbouring suites 218 + 57, ruff clean. `3aec5e3` (the coordinator): the resolution's refusals are a
+`LinkError`, which the command line reports as an error line (exit 2) in plan mode too -- seen on a real spec whose
+device named tap ports the table lacks. How the open points were read (the coder's list, kept here):
+
+- `touchstone.write` writes with `format_number` where the text reads back as the same number and `repr` otherwise
+  (a `%g` file moved Q by up to 4e-4 relative against the byte copy); `read(write(x)) == x` for RI; `Touchstone` keeps
+  the read file's frequency unit and format; `touchstone.permuted` reorders, and a permuted file carries one comment
+  naming the row.
+- The schedule did need a change: a library device's child runs first in both the spec order and the learned order
+  (EMX devices keep their place); a point stopped after only its device child no longer breaks `sim.corner` (its
+  per-corner helpers take the keys of the children the point was to run).
+- `Observation.corners()`: a unit whose only corner is `nominal`, beside units with real corners, adds no corner. The
+  one change outside library specs: an EMX circuit spec with device metrics at corners loses a spurious `nominal` in
+  the digest's corners and in `advise --corners` sizes; both were wrong before.
+- Budget: a library row's measurement is not a simulation -- `Measure(simulates=False)`, `engine.counted_children`;
+  every existing pipeline keeps its exact count; a `failed:pick` point counts its testbench children as a
+  `failed:pcell` point does.
+- `ChildResult.library_row` also carries the row's electrical values (the digest is computed from observations); no
+  path. `library.root` must be absolute (after `~`). `si_value` takes exactly `T G M k m u n p f a`. A device that
+  states no topology is measured with each row's part topology (plus the stratum's `low_freq_max_hz`), carried by
+  `DeviceSParams.topology`; a stated topology is used for every row. Ports are compared as sets; rows of one table
+  whose port labels disagree are refused.
+- `--plan`: the `library:<device>` sentence and the unused-`em` note come through the doctor; the point line ends
+  "no EMX runs (the devices are library rows)". Digest: `library = {devices: [...], top: [...], notes}`, the table's
+  size from `link.summary` on the machine computing the digest, None with fixed notes when the library cannot be read
+  there; the Markdown section appears only with library devices. `Pick`, `library_circuit_pipeline` and
+  `library_only_pipeline` live in `ic_opt/library/stage.py`; `link` loads the library's modules only for such specs.
+  The per-process resolution key uses the grids in SI units. `prefer`'s syntax is checked at load, its column at
+  resolution; a mixture of device kinds and two columns mapped to one variable are refused. `migrate-store` never
+  builds a pcell for a library spec.
+
+Checked by the coordinator, plan only (no simulation), on the user's private library and the user's mixer testbenches:
+a device from a transformer table at 28 GHz on grids of 10 pH, 10 pH and 0.05 resolves to 1123 rows in 993 of 107 653
+combinations; `auto` says `metric_gp (library devices: no EMX in the loop)`; the plan line counts 9 testbench
+simulations and one measurement of a library row per point, no EMX. The same spec with the mixer's tap ports is
+refused with the sentence above: the private tables carry no taps (question 4 of the decisions: L3 waits for a
+testbench, or uses the earlier transformer testbench whose devices have no taps).
