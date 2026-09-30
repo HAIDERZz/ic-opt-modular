@@ -82,17 +82,47 @@ def test_auto_takes_metric_gp_and_every_point_of_every_batch_is_a_valid_one(root
     assert len(obs) == 14 and len({o.key for o in obs}) == 14 and {o.status for o in obs} <= {"ok", "constraint_failed"}
     assert all(o.origin.startswith("suggest:metric_gp:") for o in obs)
     assert any(":init" in o.origin for o in obs) and any(":init" not in o.origin for o in obs)   # the design, then the model
-    linked = link.resolve(spec)["xfmr"]
     for o in obs:
         space.check(spec, o.params)                                              # a valid point: its combination is a row's
-        row = link.row_for(spec, "xfmr", o.params)
+        row = link.row_for(spec, "xfmr", o.params)                             # that combination's best row
         assert o.children["xfmr/nominal"].library_row["obs_id"] == row.obs_id and o.simulations == 1
-        assert o.metrics["k"] == row.values["k"] and linked.rows(
-            [space.grid_levels(next(v for v in spec.variables if v.name == n))[0].tolist().index(
-                float(space.parse_scalar(o.params[n])[0])) for n in linked.names])[0] == row
+        assert o.metrics["k"] == row.values["k"] and o.metrics["Lp"] == row.values["Lp"]    # measured from its sNp
     again = run_of(spec_at(root, tmp_path / "again"), tmp_path / "again")
     optimize.main(again, budget=14, batch=4, seed=3)
     assert [o.params for o in again.store.observations()] == [o.params for o in obs]      # the same seed, the same points
+
+
+def test_every_recipe_takes_a_library_spec_unchanged(root, tmp_path, capsys):
+    """signoff (a search at one corner, then its best points at every corner, stopping at the first failure), coarse_to_fine
+    and fix_run run a library spec as they run any other: every point a valid one, every device child a row."""
+    import itertools
+    import json
+
+    from ic_opt.recipes import coarse_to_fine, fix_run, signoff
+
+    corners = [{"id": "tt", "model_section": "tt"}, {"id": "ss", "model_section": "ss"}]
+    run = run_of(spec_at(root, tmp_path / "signoff", corners=corners), tmp_path / "signoff")
+    signoff.main(run, corner="tt", budget=6, batch=3, top=2, seed=1)
+    obs = run.store.observations()
+    search, checked = obs.by_step("search@tt"), obs.by_step("signoff")
+    assert len(search) == 6 and len(checked) == 2 and all(o.corners() == {"tt"} for o in search)   # the device: no corner
+    assert all(o.corners() == {"tt", "ss"} and o.status == "ok" and o.simulations == 2 for o in checked)
+    assert "[optimize] strategy auto: metric_gp (library devices: no EMX in the loop)" in capsys.readouterr().out
+    run = run_of(spec_at(root, tmp_path / "c2f"), tmp_path / "c2f")
+    coarse_to_fine.main(run, coarse_budget=4, fine_budget=3, batch=2, seed=1)
+    obs = run.store.observations()
+    assert len(obs.by_step("coarse")) == 4 and len(obs.by_step("fine")) == 3 and len({o.key for o in obs}) == 7
+    assert all(o.origin.startswith("suggest:metric_gp:") for o in obs)
+    spec = spec_at(root, tmp_path / "fix")
+    run = run_of(spec, tmp_path / "fix")
+    rows = list(itertools.islice(space.valid_points(spec), 2))
+    (run.project / "points.json").write_text(json.dumps(rows), encoding="utf-8")
+    fix_run.main(run, points="points.json")
+    obs = run.store.observations()
+    assert [o.params for o in obs] == rows and all(o.status == "ok" and o.children["xfmr/nominal"].library_row for o in obs)
+    for where in ("signoff", "c2f", "fix"):                   # one table, one grid: every point is one of its valid points
+        for o in RunStore(tmp_path / where / "proj").observations():
+            space.check(spec, o.params)
 
 
 def test_the_plan_names_each_table_and_says_that_no_emx_runs(root, tmp_path, capsys):
