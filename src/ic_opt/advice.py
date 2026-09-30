@@ -100,7 +100,9 @@ def check(spec: Spec, raw: Any) -> tuple[dict[str, Any], list[str]]:
     value a level of the spec's grid, in the spec's text form -- and a note per value that was moved onto the grid.
     Refuses (ValueError, saying what to change) an unknown field or variable, a variable both fixed and ranged or fixed
     and varied, a range or value outside the spec's range, a range that holds no level, a start row that does not name
-    every variable, an advice that names nothing, a missing author or reason.
+    every variable, an advice that names nothing, a missing author or reason; and, where some variables may take only a
+    table's combinations (T18.2A, ``space.tables``), a start row that is not one of them, naming the nearest
+    (``space.check``). Ranges and fixed levels of such variables are taken as they are.
 
     A value between levels goes to the nearest level in ``metric_gp``'s own unit coordinates, logarithmic where a range
     spans a decade (``suggesters/metric_gp/coords.py``): the level the strategy itself would snap it to. A range's bounds
@@ -171,6 +173,10 @@ def check(spec: Spec, raw: Any) -> tuple[dict[str, Any], list[str]]:
             raise ValueError(f"start row {number} does not name every variable: missing {', '.join(missing)}")
         checked_start.append({name: _level(coords, index[name], variables[name], row[name], f"start row {number}: {name}",
                                            notes) for name in variables})
+        try:                  # a valid point (T18.2A): where a table links variables, one of its combinations
+            space.check(spec, checked_start[-1])
+        except ValueError as exc:
+            raise ValueError(f"start row {number}: {exc}") from exc
     return {"author": raw["author"].strip(), "reason": raw["reason"].strip(), "start": checked_start,
             "ranges": checked_ranges, "fixed": checked_fixed, "vary": list(dict.fromkeys(str(v) for v in vary))}, notes
 
