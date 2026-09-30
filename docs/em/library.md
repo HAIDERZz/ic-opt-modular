@@ -507,6 +507,93 @@ predicted value, bounds, measurement, z score and whether it fell inside.
 under fresh ids. The next dataset build includes them, and the content key
 of every cache and every `predict` stage changes with it.
 
+## 8. Library devices in a circuit spec
+
+A device of a circuit spec may come from a library table instead of being
+drawn and simulated with EMX at every point: the table's rows are its
+candidates, and every point binds a row's own sNp into the testbenches.
+
+```yaml
+# part of a circuit spec: a transformer taken from a library table
+devices:
+  - id: xfmr
+    library:
+      root: <library root>        # the directory holding library.yaml, on the machine running ic-opt (absolute)
+      stratum: <stratum>          # one table
+      frequency_hz: 28e9          # the working frequency the electrical values are taken at
+      srf_margin: 1.5             # optional, >= 1: rows whose system SRF is at or below margin x frequency are out
+      prefer: max:Qmin            # optional: which row of a combination is taken (default max:Qmin, else max:Qp)
+    ports: [P1, N1, P2, N2]       # the table's port labels: the bindings and the topology use them
+    variables: {Lp: xfmr.Lp, Ls: xfmr.Ls, k: xfmr.k}     # index column -> spec variable
+variables:
+  - {name: xfmr.Lp, kind: continuous_step, lower: 150p, upper: 600p, step: 10p}
+  - {name: xfmr.Ls, kind: continuous_step, lower: 150p, upper: 600p, step: 10p}
+  - {name: xfmr.k,  kind: continuous_step, lower: "0.3", upper: "0.9", step: "0.05"}
+```
+
+The device's variables are electrical values: columns of the table's index at
+`frequency_hz` (section 5d: the curves `Lp`, `Qp`, and for a coupled pair
+`Ls`, `Qs`, `k`; the scalars; `Qmin`; `area`). They are ordinary grid
+variables, and their text may carry Spectre's scale suffixes (`T G M k m u n
+p f a`: `M` is mega, `m` milli; a unit such as `pH` is refused). Each row
+sits on the level nearest its own value, per variable, in the variable's
+search scale (logarithmic where the range spans a decade), and only the
+combinations a row sits on exist: every strategy proposes those and no
+others. Two rows on one combination: `prefer` decides which one a point
+takes. A finer step tells them apart -- with steps like the ones above most
+combinations hold one row, so the candidates are the rows one by one; a
+coarser grid is fewer candidates, each the best of its rows by `prefer`.
+
+The rest of the spec is a circuit spec's: testbenches, the circuit's own
+variables, `bindings` (a binding names each of the device's ports once, in
+the instance's order; the sNp is written in that order), device metrics
+(`{quantity: Lp, frequency_hz: 28e9}` and the like) beside the testbenches'.
+The device's `generator`, `profile`, `fixed` fields and `plugin` are the
+table's and are refused in the spec; its `topology`, when it states none,
+is the table's part's (with the stratum's `low_freq_max_hz`), so its metrics
+are measured as the library measures its rows. A spec's devices all come
+from a library or none does in this first version. An `em` section beside
+them is unused (`doctor` notes it). `library.root` says where the library
+sits, not which problem this is: a library moved or mounted elsewhere keeps
+the project's observations; the stratum, the frequency, the margin and
+`prefer` are part of the problem.
+
+A point runs `pick -> bind_nport -> spectre -> ocean -> extract`, and
+`measure` for the device: `pick` takes the row of the point's combination and
+copies its sNp next to the point (a byte copy, or its ports reordered to the
+bindings' order), and `measure` computes the spec's device metrics from that
+sNp. The device's child in `observations.jsonl` names the row it took
+(`library_row`: stratum, part, obs id, geometry, electrical values,
+footprint). No EMX runs; the budget counts the testbench simulations (a
+row's measurement is none); with the stop at the first failure on, the
+device's child runs first, so a point that fails one of its constraints (an
+SRF, a Q) runs no simulation. `strategy=auto` runs `metric_gp` ("library
+devices: no EMX in the loop"). The digest lists per device the table, the
+frequency, the rule, the combinations on the grid and how many the run
+visited, and for the best points the row each one took; the report's "Best
+observed" names the row, its geometry and its footprint.
+
+`ic-opt doctor` (and every recipe's `--plan`) prints `library:<device>` with
+`<stratum> at <f> GHz: <n> rows on the grid in <m> of <total> combinations,
+prefer <rule>`, and the plan's point line says `no EMX runs`. It fails with
+what to change: no `library.yaml` at the root, an unknown stratum (the ones
+there are listed), a variable's column that is no column of the index (they
+are listed), ports that are not the table's (both are said), no row on the
+grid (each column's range in the index beside its variable's range), or a
+frequency no row can give.
+
+`failed:pick`: the point's combination holds no row of the table -- a point
+handed in from elsewhere (a `fix_run` row, rows of another project) -- and
+the message names the values and the nearest combination the table holds.
+A table without centre taps cannot be bound to a tapped instance: the
+device's ports must be the table's.
+
+The library is read once per process: a run sees one table for its whole
+life. A library that grows is a new generation: the pipeline's fingerprint
+follows the index's content (with the grids and `prefer`), so a later run
+evaluates the grown table; a combination already evaluated keeps its
+observation and is not proposed again.
+
 ## Compute
 
 The library computes on the machine running ic-opt, within that machine's

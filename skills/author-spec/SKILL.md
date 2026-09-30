@@ -1,6 +1,6 @@
 ---
 name: author-spec
-description: Turn a user's design request (natural language, Maestro exports, device geometry, process) into a validated ic-opt `spec.yaml` -- decide the shape (circuit, EM device in a circuit, device only), read the facts off the exports, fill every section, then prove it with `ic-opt doctor` and `--plan`.
+description: Turn a user's design request (natural language, Maestro exports, device geometry, process) into a validated ic-opt `spec.yaml` -- decide the shape (circuit, EM device in a circuit, a library device in a circuit, device only), read the facts off the exports, fill every section, then prove it with `ic-opt doctor` and `--plan`.
 ---
 
 # /author-spec
@@ -19,6 +19,7 @@ own the mechanics and the evidence.
 | --- | --- | --- |
 | tune circuit parameters of a schematic (transistor sizes, biases, ...) | **circuit** | `testbenches`, `variables`, `metrics` (OCEAN), `constraints`, `objective`, `corners`?, `simulator`, `budget` |
 | the transformer / inductor in the circuit is a real EM device to size | **EM in a circuit** | the above + `devices`, `em`, `bindings`, device `metrics` |
+| the device should be one a device library already measured (its rows are the candidates) | **library device in a circuit** | the circuit's + `devices` with `library`, `bindings`, device `metrics` -- no `em` |
 | characterize or sweep a device by itself (a library part, a device study) | **device only** | `devices`, `em`, `variables`, device `metrics`, `simulator`, `budget` -- no `testbenches` |
 
 One spec is one circuit. Every circuit variable must be a top-level
@@ -76,6 +77,7 @@ below.
 | "maximize IIP3", "weigh NF and gain, the worst one counts most" | `objective`: `direction` + an expression over metric names with `+ - * / ** %`, `min`, `max`, `ln` (the bottleneck form: `-(a*min(z1..zn) + b*(w1*z1 + ... ))` with each `z` a clipped normalized margin) |
 | "at tt / ss / ff", "at 125 degrees" | `corners`: `model_section` per corner (the PDK's section names); the temperature through `options: { temp: "125" }` (the `simulatorOptions` statement); `variables` only for names on the `parameters` line the netlist uses; `corner_policy` says how corners score |
 | "the input transformer is a real EM device", "let EMX size the primary width" | `devices` (+ `em`, + a `bindings` entry per nport it feeds) and `variables` named `<device>.<field>` |
+| "take the transformer from our library", "Lp between 150 and 600 pH, k at least 0.5 at 28 GHz" | a library device: `devices[*].library` (root, stratum, `frequency_hz`), its `variables` mapping index columns (`Lp`, `Ls`, `k`) to spec variables of electrical values, a `bindings` entry per nport it feeds (`### devices`) |
 | "what are L, Q and k of the transformer at 60 GHz" | device `metrics`: `quantity` (`Lp / Qp / Ls / Qs / k` with `frequency_hz`, or the scalars `Lp_lf / Lp_res / Qp_peak / SRF_p / k_lf` and their `s` / system `SRF` forms) |
 | "M1 to M4 must stay in saturation", "50 mV of headroom" | a `saturation_margin` metric on a DC testbench + a constraint `ge 0.05 V` (`#### A DC-only testbench as the first gate`) |
 | "12 points", "no more than 300 simulations" | `budget.max_simulations` (every simulation the project's store holds counts, also the ones a later spec edit stops reusing); the point count is the recipe's `budget=` |
@@ -245,6 +247,36 @@ one device and no testbench -- beside testbenches they are circuit
 variables), `topology` only for a generator whose secondary winds the
 other way (`drives: [[P1, N1], [P2, N2]]`).
 
+**A device from a library table** (`library` instead of `generator` /
+`profile`): `library: {root, stratum, frequency_hz, srf_margin?, prefer?}`
+-- `root` the library directory (the one holding `library.yaml`) on the
+machine running ic-opt, an absolute path; `stratum` one table of it
+(`ic-opt call lib.coverage <root> stratum=<stratum>` shows what a table
+holds); `frequency_hz` the working frequency the electrical values are
+taken at; `srf_margin` (>= 1) to leave out rows that resonate at or below
+margin x frequency; `prefer` (`max:<column>` / `min:<column>`, default
+`max:Qmin`, else `max:Qp`) which row a combination of several gives a
+point. `ports`: the table's port labels (a table without centre taps
+cannot take a tapped instance). `variables`: index column -> spec variable,
+required (`{Lp: xfmr.Lp, Ls: xfmr.Ls, k: xfmr.k}`; the columns are the
+curves `Lp Qp Ls Qs k` at the frequency, the scalars, `Qmin`, `area`), each
+spec variable an ordinary `continuous_step` grid of electrical values whose
+text may carry Spectre's scale suffixes (`150p`, `0.3`; not `150pH`).
+`generator`, `profile`, `fixed` and `plugin` are the table's (refused),
+`topology` too unless stated, and a spec's devices all come from a library
+or none does; no `em` section is needed.
+
+Choose it over EMX in the loop when a library of the right family and
+metal already measured what the circuit needs at its working frequency
+(`ic-opt call lib.index <root> stratum=<stratum> frequency_ghz=<f>
+'grid={...}'` counts the rows on your grid): every point binds a row's real
+sNp, no EMX runs (a point costs its testbench simulations only), and
+`strategy=auto` runs `metric_gp`. Choose EMX in the loop when the geometry
+itself must move where no row is, when no table has the device's family,
+metals and fixture, or when the library does not reach the values the
+circuit needs: a library device's candidates are only its rows (a finer
+grid tells more of them apart; it creates none).
+
 ### `em`
 `process_file` (absolute path **on the simulation host**), `frequencies`
 (`{start_hz, stop_hz, step_hz}` or `num_steps`, or a list), `mode`
@@ -297,7 +329,8 @@ not in the fingerprint).
 ### `budget`
 `max_simulations`: the ceiling on simulations the project may hold. Size it
 as points × simulations per point (testbenches × corners, plus EMX runs and
-device measurements) with headroom for a re-run of a few points; a spec edit
+device measurements; a library device's measurement reads a row and is not
+counted) with headroom for a re-run of a few points; a spec edit
 keeps the earlier simulations counted. It is not part of the problem's
 identity, so raising it continues a run.
 
@@ -523,19 +556,61 @@ simulator: { threads_per_run: 1, parallel_jobs: 4, timeout_s: 600 }
 budget: { max_simulations: 400 }
 ```
 
+A transformer taken from a library table inside the same testbench as
+`em_circuit`: its electrical values are the variables, each point binds the
+row of its combination (the library's own sNp), no EMX runs and no `em`
+section is needed; a point costs its testbench simulations only:
+
+```yaml
+# complete: library_circuit
+project: lo_xfmr_lib
+description: LO transformer taken from the device library's measured rows, inside its S-parameter testbench
+testbenches:
+  - id: lo_tb
+    maestro_point_root: /home/user/simulation/LO_XFMR_TB/maestro/results/maestro/Interactive.12/1/XFMR_TB
+    virtuoso_library: LO_lib
+    cell: LO_XFMR_TB
+    test_name: XFMR_TB
+devices:
+  - id: xfmr
+    library: { root: /home/user/libraries/transformers, stratum: xfm_bs_top, frequency_hz: 60e9, prefer: max:Qmin }
+    ports: [P1, N1, P2, N2]
+    variables: { Lp: xfmr.Lp, Ls: xfmr.Ls, k: xfmr.k }
+bindings:
+  - { testbench: lo_tb, instance: NPORT0, device: xfmr, terminals: [P1, N1, P2, N2] }
+variables:
+  - { name: xfmr.Lp, kind: continuous_step, lower: 100p, upper: 400p, step: 10p }
+  - { name: xfmr.Ls, kind: continuous_step, lower: 100p, upper: 400p, step: 10p }
+  - { name: xfmr.k,  kind: continuous_step, lower: "0.4", upper: "0.9", step: "0.05" }
+metrics:
+  - { name: S21_100G, unit: dB,    testbench: lo_tb, expression: "value(db(spm('sp 2 1)) 1e+11)" }
+  - { name: Qp_60g,   unit: ratio, device: xfmr, quantity: Qp, frequency_hz: 60e9 }
+  - { name: k_60g,    unit: ratio, device: xfmr, quantity: k,  frequency_hz: 60e9 }
+constraints:
+  - { metric: k_60g, op: ge, value: 0.5 ratio }
+objective: { direction: maximize, expression: S21_100G }
+simulator: { preset: cx, threads_per_run: 4, parallel_jobs: 4, timeout_s: 3600 }
+budget: { max_simulations: 96 }
+```
+
 ## 6. Prove it, then hand it over
 
 1. `ic-opt doctor PROJECT [--ssh-profile HOST]`: every check `[ok]` (tools,
    license, `export:<tb>` per testbench, `device:<id>` per device, `emx`,
-   `em:process_file`, envelope, budget). `operating points:<tb>` says whether the
+   `em:process_file`, envelope, budget; for a device from a library table
+   `library:<id>` instead of `device:<id>` and the EMX checks --
+   `<stratum> at <f> GHz: <n> rows on the grid in <m> of <total> combinations,
+   prefer <rule>`, or what to change: the root, the stratum, a column, the
+   ports, a grid no row lies on). `operating points:<tb>` says whether the
    export asks for them, what ic-opt adds, or `off`; tell the user when ic-opt
    adds a DC analysis.
 2. `ic-opt run <recipe> PROJECT <params> --plan [--ssh-profile HOST]`: read every
    `[plan]` line -- `netlist.import <tb>` per testbench (a `FAIL` names the
    variable or corner to fix), the block sequence, `N simulations per point`,
    `jobs x threads` on which host, the `strategy auto: <name> (<why>)` line
-   when no strategy is named (`metric_gp` for a spec without EM devices at one
-   condition, else `openbox_gp_eic`), how many points the strategy's model
+   when no strategy is named (`metric_gp` for a spec without EM devices, and
+   for one whose devices come from library tables -- its point line then ends
+   `no EMX runs` -- else `openbox_gp_eic`), how many points the strategy's model
    proposes after its initial design (a warning means none: a larger budget, a
    smaller batch or a smaller `initial_trials`), and the `current design` line
    (the design as exported, evaluated first, or why there is none).

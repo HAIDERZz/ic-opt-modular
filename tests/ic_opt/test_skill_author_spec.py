@@ -23,7 +23,7 @@ def examples() -> dict[str, dict]:
     return out
 
 
-@pytest.mark.parametrize("shape", ["circuit", "em_circuit", "joint", "em_only"])
+@pytest.mark.parametrize("shape", ["circuit", "em_circuit", "joint", "em_only", "library_circuit"])
 def test_every_complete_example_is_a_valid_spec(shape):
     spec = Spec.model_validate(examples()[shape])
     if shape == "circuit":
@@ -39,6 +39,12 @@ def test_every_complete_example_is_a_valid_spec(shape):
         assert {m.name for m in spec.metrics_for_device("xfmr")} == {"k_lf", "SRF_p"}
     if shape == "em_only":
         assert not spec.testbenches and spec.device_fields(spec.devices[0]) == {v.name: v.name for v in spec.variables}
+    if shape == "library_circuit":           # T18.2B: a device taken from a library table, no EMX, no em section
+        (device,) = spec.library_devices
+        assert device.generator is None and spec.em is None and spec.circuit_variables == []
+        assert spec.device_fields(device) == {"Lp": "xfmr.Lp", "Ls": "xfmr.Ls", "k": "xfmr.k"}
+        assert device.library.frequency_hz == 60e9 and "root" not in spec.problem()["devices"][0]["library"]
+        assert {m.name for m in spec.metrics_for_device("xfmr")} == {"Qp_60g", "k_60g"}
 
 
 def test_every_spec_section_has_a_reference_heading():
