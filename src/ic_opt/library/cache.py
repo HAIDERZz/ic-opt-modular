@@ -8,15 +8,24 @@ written (a library shared read-only, a ``.cache`` that another user owns), new f
 ``Cache.note`` says so: every library answer carries it in its ``notes``. Wherever new files go, the files already in
 the library's own ``.cache`` are still read, so the reader of a shared library loads the models its owner fitted
 instead of fitting them again.
+
+``computed`` is the one way a JSON cache file is made once: read it where it exists and is valid, else compute it while
+holding the lock file next to it (``<name>.lock``, the discipline of the model cache) -- a process that waited loads
+what the holder wrote -- and write it whole (a sibling temporary file renamed over it).
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import tempfile
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+
+from ic_opt import _lock
 
 OWN = ".cache"                                        # the library's own cache directory, under its root
 FALLBACK = (".cache", "ic-opt")                       # under the user's home directory: ~/.cache/ic-opt/<key>/
@@ -77,3 +86,54 @@ def writable(directory: Path) -> bool:
 def same(a: str | os.PathLike[str], b: str | os.PathLike[str]) -> bool:
     """Whether two paths name the same directory (after ``~`` and symlinks)."""
     return Path(a).expanduser().resolve() == Path(b).expanduser().resolve()
+
+
+@contextmanager
+def held(store: Cache, name: str) -> Iterator[None]:
+    """Hold the lock file ``<name>.lock`` in the cache directory for the ``with`` block, waiting while another process
+    holds it; unguarded where the file system takes no locks (or no lock file can be made), as ``Library._hold``."""
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(_lock.waiting_lock(store.target(f"{name}.lock")))
+        except OSError:                                  # no locks here (or no lock file): unguarded
+            pass
+        yield
+
+
+def write_json(path: Path, data: object) -> None:
+    """Write to a sibling temporary file, then rename it over ``path``: a reader sees the old file or the whole new one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp", delete=False, encoding="utf-8") as f:
+        f.write(json.dumps(data))
+    os.replace(f.name, path)
+
+
+def read_json(path: Path | None) -> object | None:
+    """A cache file's JSON, or None: a missing, truncated or garbage file costs a recomputation, never an error."""
+    if path is None:
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def computed(store: Cache | None, name: str, compute: Callable[[], dict], valid: Callable[[dict], bool],
+             keep: Callable[[dict], bool] = lambda data: True) -> dict:
+    """The JSON cache file ``name``: read from the cache when it exists and ``valid`` accepts it; else computed -- holding
+    ``<name>.lock`` meanwhile, so that one process computes it and another that needs it at the same time waits and then
+    reads what the first wrote -- and written into the cache directory when ``keep`` says it is worth keeping. ``store``
+    None: computed every time, nothing read or written."""
+    if store is None:
+        return compute()
+    found = read_json(store.find(name))
+    if isinstance(found, dict) and valid(found):
+        return found
+    with held(store, name):
+        found = read_json(store.find(name))          # written by another process while this one waited
+        if isinstance(found, dict) and valid(found):
+            return found
+        data = compute()
+        if keep(data):
+            write_json(store.target(name), data)
+    return data

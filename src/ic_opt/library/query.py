@@ -48,6 +48,16 @@ sweep, the point's resonance is reported as above the sweep instead of extrapola
 The ceiling is per column: a call's explicit ``rel_sigma_max``, else the quantity's ``rel_sigma_max`` in
 library.yaml, else ``domain.DEFAULT_SIGMA_REL_MAX`` (``Library.rel_sigma_max``). Each ``Model`` carries its own,
 so ``suggest.predict_all`` -- the gate of lib.suggest, lib.region and lib.densify -- applies the same one.
+
+A declared curve answers at any frequency (T18.1). ``Library.columns`` is where every column name a caller gives comes
+in -- ``query``, ``suggest``, ``region``, ``densify``, ``models`` and the ``Predict`` stage all pass through it: a declared
+column is itself; ``<curve>@<f>`` of a declared curve at another frequency is an extension column, which it measures
+from every row's sNp once (``dataset.anchors``, cached beside the dataset; one process at a time, under a lock file)
+and puts into the rows of the dataset this library holds (``Dataset.extend``). From then on the column is like a
+declared one: a library point answers with the row's value, and elsewhere its model is fitted, calibrated and cached
+under the column's name. A frequency outside every part's sweep, or where no row has a value (each row answers only
+inside its sweep and below its system SRF / srf_margin), is refused with the parts' sweeps. Nothing is measured or
+fitted for a column nobody asks for, and the dataset, its key and its cache files stay what they were.
 """
 
 from __future__ import annotations
@@ -60,6 +70,8 @@ import os
 import pickle
 import sys
 import tempfile
+import threading
+from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -120,6 +132,8 @@ class Library:
         self._limits = limits
         self._datasets: dict[str, dataset.Dataset] = {}
         self._models: dict[tuple[str, str], Model] = {}
+        self._anchors: dict[tuple[str, float], dict] = {}
+        self._rows_lock = threading.Lock()           # extension columns: one thread measures, the others wait
 
     @property
     def notes(self) -> list[str]:
@@ -152,6 +166,86 @@ class Library:
             self._datasets[stratum] = dataset.build(self.root, stratum, library=self.manifest, cache_dir=self.cache)
         return self._datasets[stratum]
 
+    def columns(self, stratum: str, names: Iterable[str]) -> list[str]:
+        """``names`` as columns of the stratum, in order and in canonical form (``dataset.resolve``: ``Lp@28.0`` is
+        ``Lp@28``). A declared column is itself. ``<curve>@<f>`` of a declared curve at a frequency none of its anchors is
+        an extension column: measured from every row's sNp at the first request (``anchors``) and put into the rows of this
+        library's dataset, after which it is used like a declared one. Refused (ValueError): a name that is no quantity of
+        the stratum or a curve it does not declare (the message names its columns and its curves), a frequency outside
+        every part's sweep, and an extension column no row has a value for (the message names the parts' sweeps)."""
+        ds = self.dataset(stratum)
+        rule = self.manifest.strata[stratum]
+        out: list[str] = []
+        unknown: list[str] = []
+        undeclared: list[str] = []
+        for name in names:
+            try:
+                column, ghz = dataset.resolve(rule, str(name))
+            except dataset.UnknownColumn as exc:
+                unknown.append(exc.name)
+                if exc.kind == "curve":
+                    undeclared.append(exc.name.partition("@")[0])
+                continue
+            out.append(column)
+            if ghz is not None and not ds.has(column):
+                self._extend(stratum, ghz)
+        if unknown:
+            declared = dataset.curves(rule)
+            text = f"{stratum} has no quantities {unknown}; columns {ds.columns}"
+            if undeclared:
+                text += (f"; {', '.join(sorted(set(undeclared)))}: not a curve of {stratum}, whose curves are {declared or 'none'}")
+            if declared:
+                text += " (a declared curve answers at any frequency inside the parts' sweeps too, as <curve>@<GHz>)"
+            raise ValueError(text)
+        for column in out:
+            if column in ds.extensions and not any(r.values.get(column) is not None for r in ds.rows):
+                raise ValueError(f"{stratum}: no row has {column}: a row answers at {ds.extensions[column]:g} GHz only inside its "
+                                 f"sweep and while its system SRF lies above the curve's srf_margin "
+                                 f"({rule.quantities[column.partition('@')[0]].srf_margin:g}) x f; the parts' sweeps: "
+                                 f"{dataset.describe_sweeps(self.sweeps(stratum))}")
+        return out
+
+    def column(self, stratum: str, name: str) -> str:
+        """One name as a column of the stratum (``columns``)."""
+        return self.columns(stratum, [name])[0]
+
+    def sweeps(self, stratum: str) -> dict[str, tuple[float, float]]:
+        """Each part's frequency sweep, (first, last) in Hz, as its spec states it (``dataset.sweeps``)."""
+        return dataset.sweeps(self.root, self.manifest.strata[stratum])
+
+    def anchors(self, stratum: str, ghz: float) -> dict:
+        """Every declared curve at ``ghz`` GHz per row, with the facts behind them (``dataset.anchors``): read from the cache,
+        else measured from the rows' sNp files -- once, whatever other threads or processes ask meanwhile. A frequency
+        outside every part's sweep is refused before any file is read."""
+        key = (stratum, float(ghz))
+        with self._rows_lock:
+            if key not in self._anchors:
+                swept = self.sweeps(stratum)
+                f_hz = ghz * 1e9
+                if swept and not any(a * (1 - 1e-12) <= f_hz <= b * (1 + 1e-12) for a, b in swept.values()):
+                    raise ValueError(f"{stratum}: no part is swept at {ghz:g} GHz, so no row can give a curve there; the parts' "
+                                     f"sweeps: {dataset.describe_sweeps(swept)}")
+                self._anchors[key] = dataset.anchors(self.root, self.dataset(stratum), self.manifest.strata[stratum], float(ghz),
+                                                     cache=self.cache)
+            return self._anchors[key]
+
+    def _extend(self, stratum: str, ghz: float) -> None:
+        """Put every declared curve at ``ghz`` GHz into the dataset's rows (the columns not declared there)."""
+        facts = self.anchors(stratum, ghz)
+        with self._rows_lock:
+            self.dataset(stratum).extend(ghz, facts["curves"])
+
+    def _ensure(self, stratum: str, quantity: str) -> dataset.Dataset:
+        """The dataset with ``quantity`` among its rows' values: a declared column, or an extension column extended here
+        (in a spawned fit worker, from the cache file the parent wrote before it started it). ``quantity`` must be
+        canonical."""
+        ds = self.dataset(stratum)
+        if not ds.has(quantity):
+            canonical = self.column(stratum, quantity)          # refuses a name that is no column at all
+            if canonical != quantity:
+                raise ValueError(f"{stratum}: the column {quantity!r} is named {canonical!r}")
+        return ds
+
     def ranges(self, stratum: str) -> dict[str, tuple[float, float]]:
         """Scaling ranges: the achieved min/max of every dim (a dim with one value gets a unit span)."""
         x = self.dataset(stratum).matrix()
@@ -162,10 +256,13 @@ class Library:
         return out
 
     def model(self, stratum: str, quantity: str) -> Model:
-        """One quantity's model: in memory, else loaded from its cache files, else fitted within ``limits`` (``models``)."""
+        """One quantity's model: in memory, else loaded from its cache files, else fitted within ``limits`` (``models``). An
+        extension column (``columns``) has one like a declared column."""
         key = (stratum, quantity)
         if key not in self._models:
-            self.models(stratum, [quantity])
+            key = (stratum, self.column(stratum, quantity))
+            if key not in self._models:
+                self.models(stratum, [key[1]])
         return self._models[key]
 
     def models(self, stratum: str, quantities: list[str], *, workers: int | None = None, threads: int | None = None) -> dict[str, Model]:
@@ -189,7 +286,11 @@ class Library:
         other direct quantities, each once however many curves share it. Then the composed curves: with several workers, the
         five folds of each uncached calibration are jobs of their own (``_calibrate_fold_in_worker``: every fold refits every
         part) while this process holds the curve's lock, and once a curve is calibrated its own part is fitted on the shared
-        models (``_fit_in_worker``)."""
+        models (``_fit_in_worker``).
+
+        The names go through ``columns`` first: an extension column is measured (and cached) before any worker starts, so a
+        worker reads it from the cache file; the answer is keyed by the canonical names."""
+        quantities = self.columns(stratum, quantities)
         order = self._with_parts(stratum, list(dict.fromkeys(quantities)))
         missing = [q for q in order if not self._load(stratum, q)]
         direct = [q for q in missing if self._plan(stratum, q) is None]
@@ -346,7 +447,7 @@ class Library:
         """Every row of the stratum and, per row, the curve, its base scalar and the SRF (in the SRF model's unit): NaN
         where a row has no usable value."""
         plan = self._plan(stratum, quantity)
-        ds = self.dataset(stratum)
+        ds = self._ensure(stratum, quantity)
         srf = ds.values(plan["srf"]) / fit_unit(plan["srf"]) if plan["srf"] else None
         return ds.matrix(), ds.values(quantity), ds.values(plan["lf"]), srf
 
@@ -461,10 +562,8 @@ class Library:
 
     def _fit_inputs(self, stratum: str, quantity: str) -> tuple[dataset.Dataset, list[dataset.Row], np.ndarray, np.ndarray, dict]:
         """What a fit of ``quantity`` needs: the dataset, the usable rows, x, y (in the model's unit: ``fit_unit``) and the
-        StratumGP settings."""
-        ds = self.dataset(stratum)
-        if quantity not in ds.columns:
-            raise ValueError(f"{stratum} has no quantity {quantity!r}; columns {ds.columns}")
+        StratumGP settings. An extension column is put into the rows first (``_ensure``)."""
+        ds = self._ensure(stratum, quantity)
         rows = ds.usable(quantity)
         x, y = ds.matrix(rows), ds.values(quantity, rows)
         if fit_unit(quantity) != 1.0:
@@ -696,16 +795,14 @@ def query(library: Library, stratum: str, params: dict, quantities: list[str] | 
           rel_sigma_max: float | None = None) -> dict:
     """Measured values at an exact library point, else per-quantity predictions with calibrated k-sigma bounds and domain verdicts;
     ``notes`` carries the library's (``Library.notes``). ``rel_sigma_max`` is the confidence ceiling for every quantity; None:
-    each quantity's own (``Library.rel_sigma_max``), which a prediction reports with its ``rel_sigma``."""
+    each quantity's own (``Library.rel_sigma_max``), which a prediction reports with its ``rel_sigma``. ``quantities`` may
+    name extension columns (``Library.columns``: a declared curve at any frequency); the answer names them canonically."""
     ds = library.dataset(stratum)
     missing = [d for d in ds.dims if d not in params]
     if missing:
         raise ValueError(f"params need every dim of {stratum}: missing {missing}")
     coords = {d: float(params[d]) for d in ds.dims}
-    wanted = quantities or ds.columns
-    unknown = [q for q in wanted if q not in ds.columns]
-    if unknown:
-        raise ValueError(f"{stratum} has no quantities {unknown}; columns {ds.columns}")
+    wanted = library.columns(stratum, quantities) if quantities else ds.columns
     row = ds.find(coords)
     out: dict = {"stratum": stratum, "params": coords, "measured": None, "quantities": {}, "notes": library.notes}
     if row is not None:
@@ -768,10 +865,21 @@ def _evidence(row: dataset.Row, q: str, dims: list[str], distance: float | None 
     return out
 
 
+def any_frequency(library: Library, stratum: str) -> str:
+    """One line: which declared curves answer at any frequency inside the parts' sweeps, and what those sweeps are."""
+    curves = dataset.curves(library.manifest.strata[stratum])
+    sweeps = dataset.describe_sweeps(library.sweeps(stratum))
+    if not curves:
+        return f"no curve is declared, so only the declared columns answer; the parts' sweeps: {sweeps}"
+    return (f"a declared curve ({', '.join(curves)}) answers at any frequency inside the parts' sweeps as <curve>@<GHz>, "
+            f"not only at its anchors: {sweeps}")
+
+
 def coverage(library: Library, stratum: str) -> dict:
     """What the stratum covers: rows per part and turns level, each part's device (generator, profile, the metals its windings
     sit on), the achieved range of every dim, usable rows and value range per quantity; ``note`` is the stratum's own line
-    from library.yaml and ``notes`` the library's."""
+    from library.yaml and ``notes`` the library's. The quantities are the declared columns; ``any_frequency`` says in one
+    line that a declared curve answers at any frequency inside the parts' sweeps too, and what those sweeps are."""
     ds = library.dataset(stratum)
     x = ds.matrix()
     out = {"stratum": stratum, "rows": len(ds.rows), "parts": {}, "generations": ds.generations, "excluded": ds.excluded,
@@ -788,6 +896,7 @@ def coverage(library: Library, stratum: str) -> dict:
         v = ds.values(q, ds.usable(q))
         out["quantities"][q] = {"rows": len(v), "min": float(v.min()) if len(v) else None, "max": float(v.max()) if len(v) else None,
                                 "unit": unit(q)}
+    out["any_frequency"] = any_frequency(library, stratum)
     out["cached"] = library.cached(stratum)
     out["notes"] = library.notes
     return out

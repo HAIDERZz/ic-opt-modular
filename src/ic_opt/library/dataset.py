@@ -17,6 +17,13 @@ leaves out, the parts' devices, the quantity definitions and the measure code --
 thousands of sNp files. The key ignores how the rows are stamped: restamping their fingerprints
 (``ic-opt migrate-store``) keeps it, and with it the calibration and model caches built on it. It ignores a
 quantity's confidence ceiling (``rel_sigma_max``) too: that decides what an answer trusts, not what a row holds.
+
+A declared curve answers at any frequency, not only at its anchors (T18.1): ``<curve>@<f>`` at another frequency is an
+*extension column* (``resolve`` names it). ``anchors`` measures every declared curve at that frequency again from each
+row's sNp -- one pass, the rule of a declared anchor (``_anchor_value``), so the column equals what a manifest declaring
+that anchor gives -- and caches it beside the dataset as ``anchors-<stratum>-<dataset key>-<f>.json``; ``Dataset.extend``
+puts the values into the rows. The dataset itself, its key and its file do not change: a library that never asks for an
+extension column never reads or writes such a file.
 """
 
 from __future__ import annotations
@@ -35,17 +42,27 @@ import numpy as np
 
 from ic_opt.em import measure, touchstone
 from ic_opt.library import manifest
-from ic_opt.library.cache import Cache, locate
+from ic_opt.library.cache import Cache, computed, locate
 from ic_opt.observation import Observation
-from ic_opt.spec import Device, Spec
+from ic_opt.spec import Device, Spec, Topology
 
 DATASET_VERSION = 3                                  # 2: anchored curves of a coupled pair stop below the system SRF; 3: so do peaks
+ANCHORS_VERSION = 1                                  # the layout of an anchors-* file (``anchors``); a file of another is computed again
 UNBANDED = ("Lp_lf", "Lp_res", "SRF_p", "Ls_lf", "Ls_res", "SRF_s", "k_lf")     # compared with the stored quantities.json
 _PORT = re.compile(r"^p(\d+)=([^:]+)(?::(.+))?$")
 
 
 class DatasetError(ValueError):
     """The library cannot yield this stratum's dataset as declared (fail-closed)."""
+
+
+class UnknownColumn(ValueError):
+    """A name that is no column of the stratum: ``kind`` is ``quantity`` (no such quantity at all) or ``curve`` (a curve
+    the stratum does not declare, at some frequency)."""
+
+    def __init__(self, name: str, kind: str):
+        super().__init__(f"no quantity {name!r}")
+        self.name, self.kind = name, kind
 
 
 @dataclass
@@ -73,6 +90,26 @@ class Dataset:
     excluded: dict[str, int] = field(default_factory=dict)
     cache: str = "off"                                # hit | miss | off
     key: str = ""                                     # content key of the observations + definitions + measure code
+    extensions: dict[str, float] = field(default_factory=dict)   # extension column -> its frequency in GHz, once extended
+
+    def has(self, column: str) -> bool:
+        """Whether ``column`` is one of the rows' values: a declared column, or an extension column already extended."""
+        return column in self.columns or column in self.extensions
+
+    def extend(self, ghz: float, curves: dict[str, list[float | None]]) -> list[str]:
+        """Put each curve's values at ``ghz`` GHz (``anchors``: one per row, in the rows' order) into the rows as the column
+        ``<curve>@<ghz>``; a column the stratum declares (a curve anchored there) or one extended before is left as it is.
+        Returns the columns added."""
+        added = []
+        for curve, values in curves.items():
+            column = f"{curve}@{ghz:g}"
+            if self.has(column):
+                continue
+            for row, value in zip(self.rows, values, strict=True):
+                row.values[column] = value
+            self.extensions[column] = ghz
+            added.append(column)
+        return added
 
     def matrix(self, rows: list[Row] | None = None) -> np.ndarray:
         return np.array([[r.coords[d] for d in self.dims] for r in (self.rows if rows is None else rows)], dtype=float)
@@ -202,6 +239,101 @@ def devices(root: str | Path, stratum: manifest.Stratum) -> dict[str, dict]:
     return out
 
 
+def part_devices(root: str | Path, stratum: manifest.Stratum) -> dict[str, Device]:
+    """Each part's device as its spec defines it (a library store holds one): the sNp's labels and the GDS's name come
+    from it."""
+    return {p.store: _spec(Path(root) / p.store).devices[0] for p in stratum.parts}
+
+
+def curves(stratum: manifest.Stratum) -> list[str]:
+    """The curves the stratum declares (``manifest.CURVES`` order): the ones that answer at any frequency."""
+    return [c for c in manifest.CURVES if c in stratum.quantities]
+
+
+def resolve(stratum: manifest.Stratum, column: str) -> tuple[str, float | None]:
+    """``column`` as a column of ``stratum``: ``(the column's name, None)`` for a declared column, ``(the column's
+    name, its frequency in GHz)`` for an extension column -- ``<curve>@<f>`` of a declared curve at a frequency that is
+    none of its anchors. The name is canonical: ``<f>`` written ``%g`` (``Lp@28.0`` is ``Lp@28``, a declared anchor).
+    UnknownColumn for a name that is no quantity of the stratum (``kind`` "quantity") or a curve it does not declare
+    (``kind`` "curve"); ValueError for an ``<f>`` that is no positive number of GHz, or has more than six significant
+    digits (the column's name would round it)."""
+    if column in stratum.columns():
+        return column, None
+    base, at, text = column.partition("@")
+    if not at or base not in manifest.CURVES:
+        raise UnknownColumn(column, "quantity")
+    try:
+        ghz = float(text)
+    except ValueError:
+        ghz = float("nan")
+    if not (np.isfinite(ghz) and ghz > 0):
+        raise ValueError(f"{column}: the part after @ is a frequency in GHz, a positive number (as in {base}@28)")
+    canonical = f"{base}@{ghz:g}"
+    if float(f"{ghz:g}") != ghz:
+        raise ValueError(f"{column}: write the frequency with at most six significant digits -- it names the column, and "
+                         f"{canonical} would be {float(f'{ghz:g}'):g} GHz")
+    if base not in stratum.quantities:
+        raise UnknownColumn(column, "curve")
+    return canonical, (None if canonical in stratum.columns() else ghz)
+
+
+def sweeps(root: str | Path, stratum: manifest.Stratum) -> dict[str, tuple[float, float]]:
+    """Each part's frequency sweep, ``(first, last)`` in Hz, as its spec states it (``em.frequencies``: a sweep's start and
+    stop, a list's lowest and highest): one EMX setting per part. A part whose spec has no ``em`` section is left out."""
+    out = {}
+    for part in stratum.parts:
+        em = _spec(Path(root) / part.store).em
+        if em is None:
+            continue
+        f = em.frequencies
+        out[part.store] = (float(min(f)), float(max(f))) if isinstance(f, list) else (float(f.start_hz), float(f.stop_hz))
+    return out
+
+
+def describe_sweeps(swept: dict[str, tuple[float, float]]) -> str:
+    """``part a-b GHz`` per part, for messages."""
+    return ", ".join(f"{part} {a / 1e9:g}-{b / 1e9:g} GHz" for part, (a, b) in swept.items()) or "no part states its sweep"
+
+
+def anchors_file(ds: Dataset, ghz: float) -> str:
+    return f"anchors-{ds.stratum}-{ds.key}-{ghz:g}.json"
+
+
+def anchors(root: str | Path, ds: Dataset, stratum: manifest.Stratum, ghz: float, *, cache: Cache | None) -> dict:
+    """Every curve the stratum declares at ``ghz`` GHz, one value per row of ``ds`` in its order, by a declared anchor's rule
+    (``_anchor_value``), and the facts that rule used per row: the system SRF (``srf_hz``, None without a resonance in the
+    sweep) and the sweep's first and last frequency (``start_hz``, ``stop_hz``). One pass over the rows' sNp files,
+    measured as the dataset measured them (``_measure``), cached as ``anchors_file`` (``cache.computed``: one process
+    computes it at a time, the lock discipline of the model cache). A row whose sNp can no longer be read is refused:
+    the dataset was built from it."""
+    root = Path(root)
+    names = curves(stratum)
+    ids = [[r.part, r.obs_id] for r in ds.rows]
+
+    def compute() -> dict:
+        devices = part_devices(root, stratum)
+        out = {"version": ANCHORS_VERSION, "frequency_ghz": ghz, "rows": ids, "curves": {c: [] for c in names},
+               "srf_hz": [], "start_hz": [], "stop_hz": []}
+        for r in ds.rows:
+            try:
+                m = _measure((root / r.snp).parent, devices[r.part], stratum)
+            except (measure.MeasureError, touchstone.TouchstoneError, OSError) as exc:
+                raise DatasetError(f"{ds.stratum}: {r.part}/{r.obs_id}: its sNp {r.snp} cannot be measured again "
+                                   f"({type(exc).__name__}: {exc}); the dataset was built from it") from exc
+            for c in names:
+                out["curves"][c].append(_anchor_value(m.q, c, stratum.quantities[c], ghz * 1e9, m.start, m.stop))
+            out["srf_hz"].append(m.q.scalars.get("SRF"))
+            out["start_hz"].append(m.start)
+            out["stop_hz"].append(m.stop)
+        return out
+
+    def valid(data: dict) -> bool:
+        return (data.get("version") == ANCHORS_VERSION and data.get("frequency_ghz") == ghz and data.get("rows") == ids
+                and set(data.get("curves", {})) == set(names))
+
+    return computed(cache, anchors_file(ds, ghz), compute, valid)
+
+
 def _spec(project: Path) -> Spec:
     for path in (project / "spec.yaml", project / ".icopt" / "spec.json"):
         if path.is_file():
@@ -215,7 +347,7 @@ def _most_common(values) -> str | None:
     return counts.most_common(1)[0][0] if counts else None
 
 
-def _snp_columns(work: Path, device) -> list[str]:
+def snp_columns(work: Path, device) -> list[str]:
     """sNp column order: the ``-p pNN=SIGNAL:REF`` arguments EMX ran with (EMX sorts ports by name), else the device's ports."""
     cmd = work / "emx.cmd"
     if cmd.is_file():
@@ -226,9 +358,23 @@ def _snp_columns(work: Path, device) -> list[str]:
     return list(device.ports)
 
 
-def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: manifest.Stratum) -> Row:
-    work = project / ".icopt" / "sims" / o.obs_id / "em" / device.id
-    columns = _snp_columns(work, device)
+@dataclass
+class _Measured:
+    """A row's sNp measured again under the stratum's definition: what ``_row`` and ``anchors`` read from it."""
+
+    snp: Path
+    columns: list[str]                                # the sNp's column labels, in the file's order (``snp_columns``)
+    ts: touchstone.Touchstone
+    topology: Topology                                # the device's measurement topology, as its spec states or implies it
+    ran_with: float | str | None                      # the run's own low-frequency limit (quantities.json's definition)
+    limit: float | str | None                         # the one the stratum measures with (the manifest's wins)
+    q: measure.Quantities
+    start: float                                      # the sweep's first and last frequency, Hz
+    stop: float
+
+
+def _measure(work: Path, device, stratum: manifest.Stratum) -> _Measured:
+    columns = snp_columns(work, device)
     snp = work / f"{device.id}.s{len(columns)}p"
     ts = touchstone.read(snp)
     topo_spec = device.topology or device.default_topology()
@@ -236,21 +382,33 @@ def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: 
     limit = ran_with if stratum.low_freq_max_hz is None else stratum.low_freq_max_hz      # the manifest's wins
     topo = measure.Topology.from_labels(topo_spec.drives, topo_spec.grounded, columns, low_freq_max_hz=limit)
     q = measure.quantities(ts.freqs, ts.s, topo, z0=ts.z0)
-    start, stop = float(ts.freqs[0]), float(ts.freqs[-1])
+    return _Measured(snp, columns, ts, topo_spec, ran_with, limit, q, float(ts.freqs[0]), float(ts.freqs[-1]))
+
+
+def _anchor_value(q: measure.Quantities, curve: str, rule: manifest.Quantity, f_hz: float, start: float, stop: float) -> float | None:
+    """A curve's column at ``f_hz`` for one row -- a declared anchor's and an extension column's alike: None when the
+    frequency lies outside the row's sweep or the row's system SRF is at or below the curve's ``srf_margin`` x f; else
+    the curve there (``Quantities.at``) when finite, else None."""
+    srf = _drive_srf(q, curve)
+    outside = f_hz < start or f_hz > stop                                 # this row's sweep cannot give it
+    if outside or (srf is not None and srf <= rule.srf_margin * f_hz):
+        return None
+    v = q.at(curve, f_hz)
+    return v if np.isfinite(v) else None
+
+
+def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: manifest.Stratum) -> Row:
+    work = project / ".icopt" / "sims" / o.obs_id / "em" / device.id
+    m = _measure(work, device, stratum)
+    snp, columns, ts, topo_spec, ran_with, limit, q = m.snp, m.columns, m.ts, m.topology, m.ran_with, m.limit, m.q
+    start, stop = m.start, m.stop
     values: dict[str, float | None] = {}
     for name, rule in stratum.quantities.items():
         if name in manifest.CURVES:
             if name not in q.curves:
-                raise DatasetError(f"{part}: curve {name} needs two drives; this device has {len(topo.drives)}")
-            srf = _drive_srf(q, name)
+                raise DatasetError(f"{part}: curve {name} needs two drives; this device has {len(topo_spec.drives)}")
             for f in rule.anchors_ghz:
-                f_hz = f * 1e9
-                outside = f_hz < start or f_hz > stop                        # this row's sweep cannot give it
-                if outside or (srf is not None and srf <= rule.srf_margin * f_hz):
-                    values[f"{name}@{f:g}"] = None
-                else:
-                    v = q.at(name, f_hz)
-                    values[f"{name}@{f:g}"] = v if np.isfinite(v) else None
+                values[f"{name}@{f:g}"] = _anchor_value(q, name, rule, f * 1e9, start, stop)
         elif name in manifest.PEAKS and rule.band_ghz is not None:
             band = rule.band_ghz * 1e9
             if stop < band * (1 - 1e-9):
@@ -258,7 +416,7 @@ def _row(root: Path, project: Path, part: str, device, o: Observation, stratum: 
             values[name] = _peak(q.freqs, q.curves[name.split("_")[0]], band, q.scalars.get("SRF"))
         else:
             if name not in q.scalars:
-                raise DatasetError(f"{part}: {name} needs two drives; this device has {len(topo.drives)}")
+                raise DatasetError(f"{part}: {name} needs two drives; this device has {len(topo_spec.drives)}")
             values[name] = q.scalars[name]
     stored_path = project / ".icopt" / "sims" / o.obs_id / device.id / "nominal" / "quantities.json"
     stored_match = None

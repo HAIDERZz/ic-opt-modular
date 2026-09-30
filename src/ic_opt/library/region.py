@@ -75,11 +75,14 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     ds = library.dataset(stratum)
     stated = suggest.parse_targets(targets)
     obj = suggest.parse_objective(objective)
-    margin = min((r.srf_margin for r in library.manifest.strata[stratum].quantities.values()), default=1.25)
-    goals = stated + suggest.implied_srf(stated, obj, margin, ds.columns)
     by, trend = list(group_by or []), tuple(trend) if trend else None
     if trend is not None and len(trend) != 2:
         raise ValueError(f"trend is (quantity, dim), got {trend}")
+    if stated:                                           # canonical names; a declared curve at any frequency is measured now
+        stated, obj, extra = suggest.resolve(library, stratum, stated, obj, *([trend[0]] if trend else []))
+        trend = (extra[0], trend[1]) if trend else None
+    margin = min((r.srf_margin for r in library.manifest.strata[stratum].quantities.values()), default=1.25)
+    goals = stated + suggest.implied_srf(stated, obj, margin, ds.columns)
     names = sorted({t.quantity for t in goals} | ({obj[1]} if obj else set()) | ({trend[0]} if trend else set()))
     _check(ds, stated, names, by + ([trend[1]] if trend else []), levels_per_dim, max_points, relax)
     explicit = _explicit_steps(library, stratum, steps)
@@ -139,7 +142,7 @@ def _check(ds: dataset.Dataset, stated: list[suggest.Target], names: list[str], 
            max_points: int, relax: float) -> None:
     if not stated:
         raise ValueError("a region needs at least one target")
-    unknown = [q for q in names if q not in ds.columns]
+    unknown = [q for q in names if not ds.has(q)]
     if unknown:
         raise ValueError(f"{ds.stratum} has no quantities {unknown}; columns {ds.columns}")
     stray = [d for d in dims if d not in ds.dims]

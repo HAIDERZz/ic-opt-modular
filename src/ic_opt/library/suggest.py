@@ -29,10 +29,14 @@ the interval inside every window; mean: the predicted value) and ``rank``.
 A GP call's memory grows with (rows predicted) x (training rows), so a large batch is predicted in chunks
 sized by bytes, not rows: ``predict_budget`` is a share of the machine's ``max_memory_gb`` (the library's
 ``limits``), ``rows_per_call`` the rows that fit in it for a given model.
+
+A target, the objective or a trend may name a declared curve at any frequency (``Library.columns``: an extension column,
+T18.1); ``resolve`` puts them in canonical form first, so the implied SRF follows the frequency asked.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import tempfile
 from dataclasses import dataclass
@@ -104,6 +108,17 @@ def parse_objective(text: str | None) -> tuple[str, str] | None:
     if sense not in ("max", "min") or not quantity:
         raise ValueError(f"objective {text!r}: expected max:<quantity> or min:<quantity>")
     return sense, quantity
+
+
+def resolve(library: query.Library, stratum: str, targets: list[Target], objective: tuple[str, str] | None,
+            *extra: str) -> tuple[list[Target], tuple[str, str] | None, list[str]]:
+    """The targets, the objective and ``extra`` names (a trend's quantity) as columns of the stratum (``Library.columns``:
+    canonical names, extension columns measured), refused together when one is no column."""
+    names = [t.quantity for t in targets] + ([objective[1]] if objective else []) + list(extra)
+    columns = library.columns(stratum, names)
+    goals = [dataclasses.replace(t, quantity=c) for t, c in zip(targets, columns)]
+    obj = (objective[0], columns[len(targets)]) if objective else None
+    return goals, obj, columns[len(targets) + (1 if objective else 0):]
 
 
 def implied_srf(targets: list[Target], objective: tuple[str, str] | None, margin: float, columns: list[str] | tuple[str, ...] = ()) -> list[Target]:
@@ -330,14 +345,10 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
             seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, verify_build: bool = True,
             min_spacing: float = 0.05) -> dict:
     ds = library.dataset(stratum)
-    goals = parse_targets(targets)
-    obj = parse_objective(objective)
+    stated, obj, _ = resolve(library, stratum, parse_targets(targets), parse_objective(objective))
     margin = min((r.srf_margin for r in library.manifest.strata[stratum].quantities.values()), default=1.25)
-    goals += implied_srf(goals, obj, margin, ds.columns)
-    names = sorted({t.quantity for t in goals} | ({obj[1]} if obj else set()))
-    unknown = [q for q in names if q not in ds.columns]
-    if unknown:
-        raise ValueError(f"{stratum} has no quantities {unknown}; columns {ds.columns}")
+    goals = stated + implied_srf(stated, obj, margin, ds.columns)
+    names = library.columns(stratum, sorted({t.quantity for t in goals} | ({obj[1]} if obj else set())))
     models = {q: library.model(stratum, q) for q in names}
     measured_x = ds.matrix()
     x = np.unique(np.round(np.vstack([measured_x, pool(library, stratum, pool_size, seed)]), 9), axis=0)
@@ -356,7 +367,7 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
     measured_ranked = [i for i in s["ranked"] if row_of[i] >= 0]
     predicted_ranked = [i for i in s["ranked"] if row_of[i] < 0]
     notes = library.notes + [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
-                             for t in goals if t not in parse_targets(targets)]
+                             for t in goals[len(stated):]]
 
     def entry(i: int, **extra) -> dict:
         params = dict(zip(ds.dims, (float(v) for v in x[i])))

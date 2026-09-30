@@ -10,7 +10,10 @@ it from its own ``run.site.host("local")``. ``rel_sigma_max`` is the confidence 
 Every block takes ``cache_dir``: the directory for the library's cache files (datasets, calibrations, models).
 Without it they go to the library's own ``.cache``, or, when that cannot be written, to
 ``~/.cache/ic-opt/<key>/`` (``ic_opt.library.cache``), and the answer's ``notes`` say so; the files already in
-the library's own ``.cache`` are read either way."""
+the library's own ``.cache`` are read either way.
+
+A column name may be a declared curve at any frequency, ``<curve>@<GHz>`` (T18.1): ``lib.query`` (``quantities``),
+``lib.suggest`` and ``lib.region`` (targets, objective, trend) and ``lib.densify`` (``quantities``) take it."""
 
 from __future__ import annotations
 
@@ -83,7 +86,8 @@ def query(library: _query.Library | str | Path, stratum: str, params: dict, quan
           rel_sigma_max: float | None = None, cache_dir: str | None = None) -> dict:
     """Measured values at an exact library point; elsewhere mu with calibrated k-sigma bounds, the domain verdict and nearest measured rows.
 
-    ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns). A
+    ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns),
+    where a declared curve may be asked at any frequency inside the parts' sweeps, ``<curve>@<GHz>`` (``Lp@33``). A
     prediction with sigma / mu above its ceiling -- ``rel_sigma_max`` when given, else the quantity's in library.yaml, else
     0.15; each prediction reports the one it was held to -- is ``uncertain``. ``cache_dir`` holds the library's cache
     files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).

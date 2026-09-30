@@ -6,7 +6,9 @@ device metric from the library -- the measured value at an exact library point, 
 where the EM pipeline would run EMX and the measure kernel. A metric the library cannot vouch for (out of
 domain, too uncertain, resonance above the sweep, no such column) fails the child as ``failed:predict``
 with the reason, so optimizers treat it like any failed simulation. Every answer, bounds included, is
-written to the child's ``predictions.json``.
+written to the child's ``predictions.json``. A metric at a frequency (``{quantity: Lp, frequency_hz: 33e9}``) reads the
+column ``Lp@33``: a declared anchor, or else the extension column of a declared curve (``Library.columns``: measured from
+the rows' sNp, then modelled like a declared column).
 
 The stage's identity names each device's stratum and dataset content key, so surrogate observations get
 their own pipeline fingerprint: they never pass for EMX measurements, and a library that grows is a new
@@ -87,7 +89,7 @@ class Predict:
             if self._ready is None:
                 wanted: dict[str, dict[str, None]] = {}
                 for device, stratum in self.strata.items():
-                    columns = _columns(spec, device, self.library.dataset(stratum))[0].values()
+                    columns = _columns(spec, device, self.library, stratum)[0].values()
                     wanted.setdefault(stratum, {}).update(dict.fromkeys(columns))
                 for stratum, columns in wanted.items():
                     if columns:
@@ -109,7 +111,7 @@ class Predict:
         missing = [d for d in ds.dims if d not in config]
         if missing:
             raise StageFailure(f"device {ctx.unit}: the generator config lacks the library dims {missing}")
-        wanted, issues = _columns(ctx.spec, ctx.unit, ds)
+        wanted, issues = _columns(ctx.spec, ctx.unit, self.library, stratum)
         if wanted:
             self.prefit(ctx.spec)                        # a no-op once done: the models are in memory before any query
         answer = query.query(self.library, stratum, {d: config[d] for d in ds.dims}, sorted(set(wanted.values())) or None,
@@ -125,15 +127,17 @@ class Predict:
         return ChildResult(unit=ctx.unit, corner=None, metrics=metrics, issues=issues, status="ok" if not issues else "failed:predict")
 
 
-def _columns(spec: Spec, device: str, ds: dataset.Dataset) -> tuple[dict[str, str], list[str]]:
-    """The device's metrics as stratum columns (``Lp`` at 28 GHz reads ``Lp@28``), and an issue per metric the stratum lacks."""
+def _columns(spec: Spec, device: str, library: query.Library, stratum: str) -> tuple[dict[str, str], list[str]]:
+    """The device's metrics as stratum columns (``Lp`` at 28 GHz reads ``Lp@28``; a declared curve at a frequency that is
+    none of its anchors reads an extension column, ``Library.columns``), and an issue per metric the stratum cannot give
+    (with the library's reason)."""
     wanted, issues = {}, []
     for metric in spec.metrics_for_device(device):
         column = metric.quantity if metric.frequency_hz is None else f"{metric.quantity}@{metric.frequency_hz / 1e9:g}"
-        if column in ds.columns:
-            wanted[metric.name] = column
-        else:
-            issues.append(f"metric {metric.name}: stratum {ds.stratum} has no {column} (columns {ds.columns})")
+        try:
+            wanted[metric.name] = library.column(stratum, column)
+        except ValueError as exc:
+            issues.append(f"metric {metric.name}: stratum {stratum} has no {column} ({exc})")
     return wanted, issues
 
 

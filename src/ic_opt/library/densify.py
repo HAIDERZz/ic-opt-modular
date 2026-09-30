@@ -216,10 +216,7 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
     as in ``lib.region``."""
     marks = [time.perf_counter()]
     ds = library.dataset(stratum)
-    names = list(dict.fromkeys(quantities or ds.columns))
-    unknown = [q for q in names if q not in ds.columns]
-    if unknown:
-        raise ValueError(f"{stratum} has no quantities {unknown}; columns {ds.columns}")
+    names = list(dict.fromkeys(library.columns(stratum, quantities) if quantities else ds.columns))   # a curve at any frequency too
     for label, value in (("n", n), ("pool_size", pool_size), ("top", top)):
         if isinstance(value, bool) or not isinstance(value, numbers.Integral) or value < 1:
             raise ValueError(f"{label} must be a positive integer, got {value!r}")
