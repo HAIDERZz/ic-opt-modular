@@ -18,7 +18,10 @@ first factor is the child's share of failures with one failure and one pass coun
 reached is neither trusted nor ignored; dividing by the time puts the cheap child that often fails first. Children run
 in descending score, ties in the spec's order (:meth:`Schedule.spec_order`); until 10 observations hold any of the
 children the order is the spec's. EM device children keep their place after the testbench children (scheduling them is
-step 3 of the plan). The order is stored nowhere: the next batch computes it again, as the strategies rebuild theirs.
+step 3 of the plan) -- except a library device's (T18.2B), which runs first, in the spec's order as in the learned one:
+it reads a row the library holds, in milliseconds, and its constraints (an SRF, a Q) are known at once, so a point that
+fails one runs no simulation. The order is stored nowhere: the next batch computes it again, as the strategies rebuild
+theirs.
 
 What shows a failure (:meth:`Schedule.stop_after`): a child that did not run to its end (``failed:<stage>``) or lost a
 metric (``metric_failed``); else, at a corner in the constraint scope -- every corner under ``corner_policy.constraints:
@@ -29,8 +32,9 @@ by a failed simulation; its constraints do not count there, and it still runs fo
 What the specification leaves open, and how it is read:
 
 - the spec's order: the testbench children in the spec's testbench order, each testbench's corners in the spec's corner
-  order with the nominal corner first, then the device children in their present order. Whatever order the children ran
-  in, the observation keeps them in the engine's own order, so a point that is not stopped is recorded as before.
+  order with the nominal corner first, then the device children in their present order (a library device's first,
+  T18.2B). Whatever order the children ran in, the observation keeps them in the engine's own order, so a point that is
+  not stopped is recorded as before.
 - the nominal corner: ``nominal`` when the run's corners hold it, else the first of them in spec order, as
   ``sim.corner.aggregate`` names it, so that the stop and the verdict agree. A corner-less child (an EM device, or a
   testbench of a spec without corners) counts at every corner, so it is always in the scope.
@@ -111,27 +115,31 @@ class Schedule:
         return schedule
 
     def spec_order(self, children: Sequence[Child]) -> list[Child]:
-        """``children`` in the spec's order: testbenches in spec order, each one's corners in spec order with the nominal
-        corner first, then the EM devices as given."""
+        """``children`` in the spec's order: the library devices as given (T18.2B), testbenches in spec order, each one's
+        corners in spec order with the nominal corner first, then the other EM devices as given."""
         testbenches = {tb: i for i, tb in enumerate(self.spec.testbench_ids)}
         corners = {c.id: i for i, c in enumerate(self.spec.corners)}
+        library = {d.id for d in self.spec.library_devices}
 
         def place(child: Child) -> tuple[int, int, int]:
             if child.unit_kind == "device":
-                return (1, 0, 0)
+                return (-1 if child.unit in library else 1, 0, 0)
             corner = -1 if child.corner == self.nominal else corners.get(child.corner, len(corners))
             return (0, testbenches.get(child.unit, len(testbenches)), corner)
 
         return sorted(children, key=place)
 
     def order(self, children: Sequence[Child]) -> list[Child]:
-        """The order a point's ``children`` run in: descending score, ties in the spec's order, the EM devices last; the
-        spec's order while the history is short."""
+        """The order a point's ``children`` run in: the library devices first (T18.2B), then the testbenches in descending
+        score, ties in the spec's order, the other EM devices last; the spec's order while the history is short."""
         ordered = self.spec_order(children)
         if self.histories is None:
             return ordered
+        library = {d.id for d in self.spec.library_devices}
+        first = [c for c in ordered if c.unit_kind == "device" and c.unit in library]
         testbenches = [c for c in ordered if c.unit_kind != "device"]
-        return sorted(testbenches, key=lambda c: -self.history_of(c).score) + [c for c in ordered if c.unit_kind == "device"]
+        last = [c for c in ordered if c.unit_kind == "device" and c.unit not in library]
+        return first + sorted(testbenches, key=lambda c: -self.history_of(c).score) + last
 
     def history_of(self, child: Child) -> ChildHistory:
         """The child's record in the history; a child :meth:`from_history` was not given counts as one never reached."""

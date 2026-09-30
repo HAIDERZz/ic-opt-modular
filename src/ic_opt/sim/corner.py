@@ -67,7 +67,7 @@ def aggregate(spec: Spec, children: dict[str, ChildResult], wanted: list[str] | 
     docstring); a ``ValueError`` when nothing in it fails the point -- the engine stops a point only at a child that does."""
     not_run = [key for key in wanted or () if key not in children]
     if not_run:
-        return _incomplete(spec, children, len(not_run), len(wanted))
+        return _incomplete(spec, children, list(wanted))
     failed = [c for c in children.values() if c.status not in ("ok", "metric_failed")]
     warnings = [f"{c.unit}/{c.corner or 'nominal'}: {issue}" for c in children.values() if c.status == "ok" for issue in c.issues]
     if failed:
@@ -109,12 +109,16 @@ def aggregate(spec: Spec, children: dict[str, ChildResult], wanted: list[str] | 
     )
 
 
-def _per_corner(spec: Spec, children: dict[str, ChildResult]) -> tuple[dict[str, dict[str, float]], list[str], str]:
+def _per_corner(spec: Spec, children: dict[str, ChildResult],
+                wanted: list[str] = ()) -> tuple[dict[str, dict[str, float]], list[str], str]:
     """Each corner's metrics (its testbench children's and every corner-less child's: EM devices), the corners present in
-    spec order, and the nominal corner among them."""
+    spec order, and the nominal corner among them. ``wanted``: the keys of every child the point was to run; when only
+    corner-less children ran -- a library device's measurement runs first and may stop the point (T18.2B) -- they count at
+    the spec's corners those keys name."""
     cornered = [c for c in children.values() if c.corner is not None]
     shared = {k: v for c in children.values() if c.corner is None for k, v in c.metrics.items()}   # corner-less children (EM devices)
-    present = {c.corner for c in cornered} or {"nominal"}                   # a run may cover a subset of the corners
+    present = {c.corner for c in cornered} or {key.split("/", 1)[1] for key in wanted} & {c.id for c in spec.corners}
+    present = present or {"nominal"}                                        # a run may cover a subset of the corners
     corner_ids = [cid for cid in ([c.id for c in spec.corners] or ["nominal"]) if cid in present]
     nominal = "nominal" if "nominal" in corner_ids else corner_ids[0]
     per_corner: dict[str, dict[str, float]] = {cid: dict(shared) for cid in corner_ids}
@@ -123,18 +127,19 @@ def _per_corner(spec: Spec, children: dict[str, ChildResult]) -> tuple[dict[str,
     return per_corner, corner_ids, nominal
 
 
-def _incomplete(spec: Spec, children: dict[str, ChildResult], not_run: int, wanted: int) -> Aggregate:
+def _incomplete(spec: Spec, children: dict[str, ChildResult], wanted: list[str]) -> Aggregate:
     """The verdict of a point whose children after the stopper (:func:`_stopper`) never ran, the three cases of the module
-    docstring in order."""
+    docstring in order. ``wanted``: the keys of every child it was to run."""
     warnings = [f"{_key(c)}: {issue}" for c in children.values() if c.status == "ok" for issue in c.issues]
-    stopped = NOT_SIMULATED.format(not_run=not_run, wanted=wanted, child=_stopper(spec, children))
+    not_run = sum(1 for key in wanted if key not in children)
+    stopped = NOT_SIMULATED.format(not_run=not_run, wanted=len(wanted), child=_stopper(spec, children, wanted))
 
     failed = [c for c in children.values() if c.status not in ("ok", "metric_failed")]
     if failed:
         own = [f"{_key(c)}: {issue}" for c in failed for issue in c.issues]
         return Aggregate(status=failed[0].status, issues=[*own, stopped, *warnings])
 
-    per_corner, corner_ids, nominal = _per_corner(spec, children)
+    per_corner, corner_ids, nominal = _per_corner(spec, children, wanted)
     complete = {cid: objective_contract.evaluate(spec, metrics).objective for cid, metrics in per_corner.items()
                 if all(math.isfinite(metrics.get(m.name, math.nan)) for m in spec.metrics)}
     lost = [c for c in children.values() if c.status == "metric_failed"]
@@ -145,7 +150,7 @@ def _incomplete(spec: Spec, children: dict[str, ChildResult], not_run: int, want
 
     evaluations, selected = _violated(spec, per_corner, corner_ids, nominal)
     if selected is None:
-        raise ValueError(f"{len(children)} of {wanted} children ran and none of them fails the point; the engine stops a "
+        raise ValueError(f"{len(children)} of {len(wanted)} children ran and none of them fails the point; the engine stops a "
                          "point only at a child that shows it cannot be feasible")
     ev = evaluations[selected]
     own = [f"{cid}: {issue}" for cid, e in evaluations.items() for issue in e.issues]
@@ -160,10 +165,10 @@ def stopper(spec: Spec, o: Observation) -> str | None:
     """Where the schedule stopped the point ``o`` (T17.8): the child ``<unit>/<corner>`` after which the others were not
     run, the one its "not simulated" issues line names (:func:`_stopper`, the one rule for both). None for a point that
     ran every child it was to run, and for one whose children show nothing that fails it under ``spec``."""
-    return _stopper(spec, o.children) if o.not_run else None
+    return _stopper(spec, o.children, [*o.children, *o.not_run]) if o.not_run else None
 
 
-def _stopper(spec: Spec, children: dict[str, ChildResult]) -> str | None:
+def _stopper(spec: Spec, children: dict[str, ChildResult], wanted: list[str] = ()) -> str | None:
     """The child of an incomplete set that shows why the point cannot be feasible, by the three cases of
     :func:`_incomplete` in order: the first that did not run to its end; else the first that lost a metric; else the first
     whose own metrics violate a constraint at the corner of the verdict (a corner-less child counts at every corner) --
@@ -172,7 +177,7 @@ def _stopper(spec: Spec, children: dict[str, ChildResult]) -> str | None:
              or [c for c in children.values() if c.status == "metric_failed"])
     if shown:
         return _key(shown[0])
-    _, selected = _violated(spec, *_per_corner(spec, children))
+    _, selected = _violated(spec, *_per_corner(spec, children, wanted))
     if selected is None:
         return None
     child = next((c for c in children.values() if c.corner in (None, selected)

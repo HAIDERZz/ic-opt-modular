@@ -11,8 +11,9 @@ real run of 0.4.0 the best of the first 30 random points scored 0.553 while the 
 (2026-09-28): the design the user already has was never evaluated.
 
 The default strategy is ``auto`` (T17.2): resolved once per call to ``metric_gp`` for a spec without EM devices, at any
-corners since T17.9, and to ``openbox_gp_eic`` otherwise (``suggesters.resolve_auto``). Nothing downstream sees
-``auto``: an observation's origin names the strategy that proposed it.
+corners since T17.9, and for one whose devices come from library tables since T18.2B (no EMX in the loop), and to
+``openbox_gp_eic`` otherwise (``suggesters.resolve_auto``). Nothing downstream sees ``auto``: an observation's origin names
+the strategy that proposed it.
 
 Advice (T17.1.5, ``ic_opt.advice``): ``advise`` records an advice in ``<project>/.icopt/advice.jsonl``; ``optimize`` reads
 that file before every batch and hands its rows to ``suggest``, which applies the advice in effect at the batch's history
@@ -79,7 +80,8 @@ def suggest(
     the T17.1.5 specification) puts its start rows not yet evaluated after ``start``'s, origin ``advice:<id>``, for every
     strategy; ``metric_gp`` also narrows where its models' points look (they carry ``@<id>``); the others take no more.
     ``failure_penalty`` is accepted and ignored since T17.0b: no penalty number reaches a model (``suggesters.base``).
-    ``strategy="auto"`` is resolved from the spec: ``metric_gp`` unless it has EM devices. ``metric_gp`` refuses a
+    ``strategy="auto"`` is resolved from the spec: ``metric_gp`` unless it has EM devices simulated in the loop (devices
+    from library tables it takes, T18.2B). ``metric_gp`` refuses a
     history whose points were evaluated at different sets of corners (a store holding the signoff recipe's search and
     its re-check, handed over whole): hand it one set. Nothing is printed (``ic-opt call opt.suggest`` prints the points
     as JSON); the origins name the strategy.
@@ -186,8 +188,8 @@ def optimize(
 
     ``strategy="auto"`` (the default) is resolved here, once, before anything runs (``--plan`` too), and one line says to
     what and why; a strategy keyword the resolved strategy does not take is refused there. A named strategy is taken as
-    named: ``metric_gp`` on a spec with EM devices is refused. ``metric_gp`` is handed the rows evaluated at this run's
-    corners, of the store and of ``initial`` alike (``_at_corners``)."""
+    named: ``metric_gp`` on a spec with EM devices simulated in the loop is refused. ``metric_gp`` is handed the rows
+    evaluated at this run's corners, of the store and of ``initial`` alike (``_at_corners``)."""
     from ic_opt.blocks.evaluate import default_pipeline, plan_shape
     from ic_opt.recipe import PLAN_MODE
 
@@ -198,7 +200,8 @@ def optimize(
         strategy, reason = suggesters.resolve_auto(spec, n_corners, adopted)
         suggesters.check_auto_keywords(strategy, reason, strategy_kwargs)
         print(f"{'[plan]' if plan else '[optimize]'} strategy auto: {strategy} ({reason})")
-    elif strategy == "metric_gp":        # no EM devices (any corners since T17.9): refused before anything runs, --plan too
+    elif strategy == "metric_gp":        # no EMX device (any corners since T17.9, library devices since T18.2B): refused
+                                         # before anything runs, --plan too
         from ic_opt.suggesters.metric_gp import stage_one_refusal
 
         reason = stage_one_refusal(spec, n_corners)

@@ -13,8 +13,10 @@ from ic_opt.suggesters.turbo import TurboSuggester
 
 AUTO = "auto"
 # What ``auto`` resolves to (T17.2, D11 decided by the user 2026-09-28): metric_gp where it applies -- a spec without EM
-# devices, at any corners since T17.9 -- else the strategy that was the default before it.
+# devices simulated in the loop, at any corners since T17.9, with devices from library tables since T18.2B -- else the
+# strategy that was the default before it.
 _AUTO_CHOICES = {"metric_gp": MetricGpSuggester, "openbox_gp_eic": OpenBoxSuggester}
+LIBRARY_REASON = "library devices: no EMX in the loop"
 
 
 def make(strategy: str, *, failure_penalty: float | None = None, **kwargs) -> Suggester:
@@ -38,12 +40,13 @@ def make(strategy: str, *, failure_penalty: float | None = None, **kwargs) -> Su
 
 def resolve_auto(spec: Spec, corners: int, history: Iterable[Observation] = ()) -> tuple[str, str]:
     """What ``strategy=auto`` runs, and why in words: ``metric_gp`` for a spec without EM devices, whatever the corners
-    (T17.9: it takes a run at several), else ``openbox_gp_eic``. ``corners`` (how many the run evaluates) and ``history``
-    (the rows no corner filter reaches) are passed by the callers and no longer decide anything: a history whose points
-    were evaluated at different sets of corners is ``metric_gp``'s to refuse, and ``opt.optimize`` hands it none."""
+    (T17.9: it takes a run at several), and for one whose devices come from library tables (T18.2B: no EMX in the loop),
+    else ``openbox_gp_eic``. ``corners`` (how many the run evaluates) and ``history`` (the rows no corner filter reaches)
+    are passed by the callers and no longer decide anything: a history whose points were evaluated at different sets of
+    corners is ``metric_gp``'s to refuse, and ``opt.optimize`` hands it none."""
     if stage_one_refusal(spec, corners) == DEVICES_REFUSAL:
         return "openbox_gp_eic", "metric_gp does not take EM devices yet"
-    return "metric_gp", "no EM devices"
+    return "metric_gp", LIBRARY_REASON if spec.library_devices else "no EM devices"
 
 
 def auto_keywords(strategy: str) -> list[str]:
@@ -65,5 +68,6 @@ def check_auto_keywords(strategy: str, reason: str, kwargs: dict) -> None:
                 + (f"; {name!r} is {others[0]}'s: name that strategy (strategy={others[0]}) to pass it" if others else ""))
 
 
-__all__ = ["AUTO", "MetricGpSuggester", "OpenBoxSuggester", "Proposal", "RandomSuggester", "Suggester", "TurboSuggester",
-           "auto_keywords", "check_auto_keywords", "make", "minimization_objective", "penalized_objective", "resolve_auto"]
+__all__ = ["AUTO", "LIBRARY_REASON", "MetricGpSuggester", "OpenBoxSuggester", "Proposal", "RandomSuggester", "Suggester",
+           "TurboSuggester", "auto_keywords", "check_auto_keywords", "make", "minimization_objective", "penalized_objective",
+           "resolve_auto"]

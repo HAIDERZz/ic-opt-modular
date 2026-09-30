@@ -10,10 +10,11 @@ everything is rebuilt from the history, the search region by replaying the batch
 
 Stage 1 of T17 (``T17_OPTIMIZER_PLAN_CN.md``, D13) took one condition and no EM devices. Since T17.9 it takes a run at
 several corners, each point's metrics given to the models at their worst over the corners it was simulated at
-(``sim.corner.worst_metrics``, read by ``compose.true_arrays``); nothing else in it knows of corners. EM devices it does
-not take yet: ``opt.optimize`` refuses them before anything is simulated (:func:`stage_one_refusal`), and the suggester
-refuses them when called directly, as it refuses a history whose points were evaluated at different sets of corners
-(:func:`_refuse`).
+(``sim.corner.worst_metrics``, read by ``compose.true_arrays``); nothing else in it knows of corners. Since T18.2B it takes
+devices from a library table (``Device.library``): their variables are grid variables whose combinations a table lists
+(below), and no EMX runs in the loop. An EM device simulated in the loop it does not take yet: ``opt.optimize`` refuses it
+before anything is simulated (:func:`stage_one_refusal`), and the suggester refuses it when called directly, as it refuses
+a history whose points were evaluated at different sets of corners (:func:`_refuse`).
 
 Allowed combinations (T18.2A specification, section 3). Where some variables may take only a table's combinations
 (``space.tables``), its search space is the valid points: ``Coords`` knows the tables, the initial design and every
@@ -43,7 +44,8 @@ from ic_opt.suggesters.metric_gp.compose import (
 from ic_opt.suggesters.metric_gp.coords import Coords, keys
 from ic_opt.suggesters.metric_gp.models import MetricModel, ValueModel, fit_metric, fit_value_model
 
-DEVICES_REFUSAL = "strategy metric_gp does not take EM devices yet; use openbox_gp_eic"
+DEVICES_REFUSAL = ("strategy metric_gp does not take EM devices simulated in the loop (EMX) yet: name openbox_gp_eic, or "
+                   "take each device from a library table (devices[*].library: its rows are the candidates, no EMX runs)")
 SETS_REFUSAL = ("strategy metric_gp models points evaluated at one set of corners, and this history holds several ({sets}): "
                 "opt.optimize hands it the points of its run's corners; opt.suggest called directly must be handed one set")
 ANCHOR_SAMPLE = 2000               # Sobol points a new region's anchor is chosen among
@@ -63,9 +65,15 @@ def initial_design_size(spec: Spec, initial_trials: int | None = None, budget: i
 
 
 def stage_one_refusal(spec: Spec, corners: int | None = None) -> str | None:
-    """Why a run on ``spec`` is outside what ``metric_gp`` takes, or None: EM devices. Any number of ``corners`` since
-    T17.9 (the argument stays for its callers)."""
-    return DEVICES_REFUSAL if spec.devices else None
+    """Why a run on ``spec`` is outside what ``metric_gp`` takes, or None: an EM device simulated in the loop (a device
+    from a library table is taken since T18.2B). Any number of ``corners`` since T17.9 (the argument stays for its
+    callers)."""
+    return DEVICES_REFUSAL if simulated_devices(spec) else None
+
+
+def simulated_devices(spec: Spec) -> list[str]:
+    """The devices of ``spec`` that EMX simulates in the loop: every device that does not come from a library table."""
+    return [d.id for d in spec.devices if d.library is None]
 
 
 class MetricGpSuggester:
@@ -269,9 +277,10 @@ def _advised_candidates(advised: candidates.Advised, head: list[np.ndarray], loc
 
 
 def _refuse(spec: Spec, history: Observations) -> None:
-    """EM devices; a history whose points were evaluated at different sets of corners (the signoff recipe's store holds
-    its one-corner search and its all-corner re-check), whose worst values would mix one corner's with several's."""
-    if spec.devices:
+    """EM devices simulated in the loop (library devices are taken); a history whose points were evaluated at different
+    sets of corners (the signoff recipe's store holds its one-corner search and its all-corner re-check), whose worst
+    values would mix one corner's with several's."""
+    if simulated_devices(spec):
         raise ValueError(DEVICES_REFUSAL)
     sets: dict[tuple[str, ...], int] = {}
     for o in history:
@@ -286,4 +295,5 @@ def _rng(seed: int, k: int, stream: int, index: int = 0) -> np.random.Generator:
     return np.random.default_rng([seed % 2**63, k, stream, index])
 
 
-__all__ = ["DEVICES_REFUSAL", "SETS_REFUSAL", "MetricGpSuggester", "initial_design_size", "stage_one_refusal"]
+__all__ = ["DEVICES_REFUSAL", "SETS_REFUSAL", "MetricGpSuggester", "initial_design_size", "simulated_devices",
+           "stage_one_refusal"]
