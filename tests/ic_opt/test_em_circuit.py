@@ -75,7 +75,7 @@ def test_em_circuit_pipeline_binds_the_snp_and_runs_spectre(tmp_path):
     assert steps[-1]["simulations"] == 5                                              # 2 points × 2 testbench sims + 1 EMX run (the hit is free)
     from ic_opt.blocks.evaluate import plan_shape
     assert plan_shape(spec, pipeline, "all", ex, 4, FAKE_HOST).startswith(
-        "(1 EMX runs + 2 testbench sims) = up to 3 simulations per point (a point stops at the first simulation that fails it)")
+        "(1 EMX runs + 2 testbench sims) = 3 simulations per point")
     assert plan_shape(spec, pipeline, "all", ex, 4, FAKE_HOST).endswith("EMX results cached per geometry: a repeated geometry costs no run")
     netlist = (store.root / "sims" / "obs_0001" / "tb" / "tt" / "netlist" / "input.scs").read_text()
     assert 'file="models/ind.s2p" interp=bbspice' in netlist and "parameters temperature=27 F=20" in netlist

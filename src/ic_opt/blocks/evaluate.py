@@ -66,21 +66,29 @@ def evaluate(
     return obs
 
 
+STOP_FROM_SIMULATIONS = 20   # a point that runs this many simulations or more stops at its first failing one by default
+
+
 def stop_wanted(spec: Spec, children: Sequence[engine.Child], override: bool | None = None) -> bool:
     """Whether the points of a batch stop at their first failing simulation (``ic_opt.eval.schedule``): ``override`` (a
     recipe's ``stop_at_first_failure=``) when given, else the spec's ``simulator.stop_at_first_failure`` when set, else on
-    when ``children`` -- what one point runs at the run's corners, ``engine.children_of`` -- hold more than one corner
-    (an EM device has none) and off at one.
+    when ``children`` -- what one point runs at the run's corners, ``engine.children_of`` -- hold at least
+    :data:`STOP_FROM_SIMULATIONS` testbench simulations (testbenches × corners; an EM device does not count) and off
+    below that.
 
-    Why the default follows the corners (T17.9; the research benchmark, the same proposer throughout): at 31 corners the
-    stop against every point at every corner gave the better final objective in 17 of 18 paired runs and found a
-    feasible design in 18 of 18 runs, against 12 of 18; at one corner with two testbenches it gave the worse one in 12
-    of 18 (6 better): a point stopped there keeps half of its metrics, and the models miss the other half."""
+    Why the default follows the simulations a point needs (T17.9 revision 2, N-92; the research benchmark, the same
+    proposer throughout, the stop against every point at every corner, final objective in paired runs): at 62
+    simulations per point (31 corners) the stop was better in 27 of 30 and found a feasible design in 30 of 30 runs
+    against 22; at 18 per point the two were even (11 to 7, the first feasible design later in 13 of 18); at 6 per
+    point the stop was worse in 15 of 18 (p = 0.008), at 2 per point in 12 of 18: a point stopped early loses the
+    metrics of the simulations it did not run, and when a point needs few simulations that loss outweighs what the
+    stop saves. Between 20 and 61 nothing was measured; 20 is where the loss had disappeared. The spec's switch
+    forces either way."""
     if override is not None:
         return override
     if spec.simulator.stop_at_first_failure is not None:
         return spec.simulator.stop_at_first_failure
-    return len({c.corner for c in children if c.unit_kind != "device"}) > 1
+    return sum(1 for c in children if c.unit_kind != "device") >= STOP_FROM_SIMULATIONS
 
 
 def _schedule(spec: Spec, pipeline: list[Stage], corners, store: RunStore, initial: Sequence[Observation]) -> Schedule:

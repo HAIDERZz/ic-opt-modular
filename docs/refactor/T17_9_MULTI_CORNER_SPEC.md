@@ -189,3 +189,24 @@ whole-suite run 1081 passed, 651 skipped (environment-gated files). How the open
 - Acceptance 8.2 by the coordinator: the 112G mixer's three-corner spec under `--plan` on the merged code prints
   `strategy auto: metric_gp (no EM devices)` and `up to 9 simulations per point (a point stops at the first simulation
   that fails it)`; batch 丁 started 2026-09-30 00:23 (`ic-opt-accept/t17_9_corners/`).
+
+## 11. Revision 2 (2026-09-30): the default follows the simulations a point needs, not the corners
+
+Decided by the user on 2026-09-30 ("同意") on the N-92 measurement (`T17_OPTIMIZER_PLAN_CN.md` section 7): the stop
+against every point at every corner, same proposer, paired runs on the final objective -- at 62 simulations per point
+better in 27 of 30; at 18 even (11 to 7, the first feasible design later in 13 of 18); at 6 worse in 15 of 18
+(p = 0.008); at 2 worse in 12 of 18. The harm of a stopped point (the metrics of the simulations it did not run are
+lost to the models) had disappeared by 18 simulations per point; the gain was clear at 62; nothing between 20 and 61
+was measured.
+
+- `blocks.evaluate.stop_wanted`: unset, the stop is on when a point runs at least `STOP_FROM_SIMULATIONS = 20`
+  testbench simulations (testbenches × corners; EM devices do not count) and off below that. The spec's switch and a
+  recipe's override decide as before.
+- The `signoff` recipe's re-check keeps stopping at the first failing corner whatever the count (unless `full`, or
+  the spec says `false`): it verifies and teaches no model, so the stop's only effect there is the saving
+  (`recipes.signoff._recheck_stop`).
+- Tests: `test_multi_corner.py` -- the two-by-two spec (4 per point) is off by default, on by the spec's switch or the
+  override; a ten-corner spec (20 per point) is on, its nine-corner run (18) off; the plan line follows. The tests
+  that exercise the stop's mechanics pass the override explicitly.
+- Documents: the README's `auto` sentence, `skills/ic-opt/SKILL.md` step 4, `skills/author-spec/SKILL.md` (the DC
+  testbench section and the `simulator` field list).

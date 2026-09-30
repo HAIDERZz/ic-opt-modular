@@ -227,7 +227,7 @@ def line_of(store: RunStore, obs_id: str) -> dict:
 
 def test_the_engine_stops_a_point_at_its_first_failing_child(tmp_path, capsys):
     spec = two_by_two()
-    store, stage, obs = run_batch(tmp_path / "on", spec)
+    store, stage, obs = run_batch(tmp_path / "on", spec, stop_at_first_failure=True)   # 4 simulations per point: on by the override (T17.9 revision 2)
     by_f = {o.params["F"]: o for o in obs}
 
     first = by_f["20"]
@@ -285,7 +285,7 @@ def test_the_engine_runs_the_learned_order_and_records_the_engine_s_order(tmp_pa
                          child("g", "ss", G=0.5), status="constraint_failed"))
     stage = Prepared()
     ok, stopped = evaluate(spec, [Point({"F": f, "W": "0.6u"}, "user") for f in ("22", "28")], LocalExecutor(store.root / "sims"),
-                           store, pipeline=[stage], limits=FAKE_HOST)
+                           store, pipeline=[stage], limits=FAKE_HOST, stop_at_first_failure=True)
     assert [c for c in stage.ran if c[0] == "22"] == [("22", "g", "ss"), ("22", "tb", "tt"), ("22", "tb", "ss"), ("22", "g", "tt")]
     assert list(ok.children) == ["tb/tt", "tb/ss", "g/tt", "g/ss"] and ok.status == "ok" and ok.not_run == []
     # F=28 fails G > 1 at g/ss, which now runs first: the others are not run, and not_run keeps the engine's order
@@ -295,16 +295,18 @@ def test_the_engine_runs_the_learned_order_and_records_the_engine_s_order(tmp_pa
 
 def test_the_plan_says_a_point_may_stop(tmp_path):
     spec, executor = two_by_two(), LocalExecutor(tmp_path)
-    assert plan_shape(spec, [Prepared()], "all", executor, None, FAKE_HOST) == (
+    assert plan_shape(spec, [Prepared()], "all", executor, None, FAKE_HOST, stop_at_first_failure=True) == (
         "(4 testbench sims) = up to 4 simulations per point (a point stops at the first simulation that fails it) on local, "
         "2 workers × (1 + 1) threads (prepared)")
+    assert plan_shape(spec, [Prepared()], "all", executor, None, FAKE_HOST) == (          # 4 per point: off by default (T17.9 revision 2)
+        "(4 testbench sims) = 4 simulations per point on local, 2 workers × (1 + 1) threads (prepared)")
     assert plan_shape(spec, [Prepared()], "all", executor, None, FAKE_HOST, stop_at_first_failure=False) == (
         "(4 testbench sims) = 4 simulations per point on local, 2 workers × (1 + 1) threads (prepared)")
 
 
 def test_optimize_hands_the_schedule_the_rows_it_adopted(tmp_path, monkeypatch):
     """Section 3: the rows ``opt.optimize`` adopted from ``initial=`` count in the history the order is learned from."""
-    spec = two_by_two()
+    spec = two_by_two(simulator={**minimal_spec()["simulator"], "stop_at_first_failure": True})   # 4 per point: on by the spec
     seen: list[list[Observation]] = []
     learn = Schedule.from_history
     monkeypatch.setattr(Schedule, "from_history", classmethod(lambda cls, spec, rows, children, scope:
@@ -401,7 +403,7 @@ def test_the_digest_and_the_report_read_stopped_points(tmp_path):
     """Section 14, item 1: they read ``not_run``, never the "not simulated" line. Without that line the numbers are the
     same, and a point that carries the line but ran every child is not counted as stopped."""
     spec = two_by_two()
-    store, _, obs = run_batch(tmp_path, spec)
+    store, _, obs = run_batch(tmp_path, spec, stop_at_first_failure=True)
     plain = [o.model_copy(update={"issues": [t for t in o.issues if not t.startswith("not simulated")]}) for o in obs]
     posing = [plain[0], plain[1].model_copy(update={"issues": ["not simulated: 1 of 4 children (stopped after tb/tt)"]}),
               *plain[2:]]

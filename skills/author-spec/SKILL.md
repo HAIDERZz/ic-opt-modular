@@ -207,8 +207,8 @@ constraints:
   - { metric: SAT_MARGIN, op: ge, value: 0.05 V }
 ```
 
-With the schedule on -- by default when the run has several corners, or with
-`simulator.stop_at_first_failure: true` -- a point that fails this constraint
+With the schedule on -- by default when a point needs 20 or more simulations
+(testbenches × corners), or with `simulator.stop_at_first_failure: true` -- a point that fails this constraint
 runs nothing else, and once the project holds 10 points the schedule runs first
 the simulation that fails often and costs little, which a DC testbench is. A
 transistor the table lacks makes the point `metric_failed` (`metric SAT_MARGIN
@@ -284,10 +284,10 @@ child; ic-opt adds the `info what=oppoint where=rawfile` statement -- and a DC
 analysis when the export has none -- to the rendered netlist; `false` only when
 the user does not want the netlist touched; not in the fingerprint),
 `stop_at_first_failure` (unset by default: a point stops at its first simulation
-that shows it cannot be feasible when the run evaluates it at several corners, and
-runs every simulation at one; `true` stops it at one corner too, `false` runs
-every simulation of every point, for a characterization run; not in the
-fingerprint).
+that shows it cannot be feasible when it needs 20 or more simulations, testbenches
+× corners, and runs every simulation below that; `true` stops it whatever the
+count, `false` runs every simulation of every point, for a characterization run;
+not in the fingerprint).
 
 ### `budget`
 `max_simulations`: the ceiling on simulations the project may hold. Size it

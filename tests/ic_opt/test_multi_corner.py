@@ -35,14 +35,16 @@ def switched(value: bool | None):
 
 
 # (the spec's switch, the run's corners, the recipe's override, the points stopped): at both corners F=20, 24 and 26 stop
-# (test_schedule's ``prepared``), at tt only F=20 (F=24 fails at its last child there, F=26 fails at ss)
-CASES = [(None, "all", None, 3), (None, ["tt"], None, 0), (True, ["tt"], None, 1), (False, "all", None, 0),
-         (None, "all", False, 0), (None, ["tt"], True, 1), (False, "all", True, 3), (True, ["tt"], False, 0)]
+# (test_schedule's ``prepared``), at tt only F=20 (F=24 fails at its last child there, F=26 fails at ss). Two testbenches
+# at two corners are 4 simulations per point: below STOP_FROM_SIMULATIONS, so the default is off at both corners too
+# (T17.9 revision 2); the spec's switch and the recipe's override decide as before.
+CASES = [(None, "all", None, 0), (None, ["tt"], None, 0), (True, ["tt"], None, 1), (True, "all", None, 3), (False, "all", None, 0),
+         (None, "all", True, 3), (None, ["tt"], True, 1), (False, "all", True, 3), (True, ["tt"], False, 0)]
 
 
 @pytest.mark.parametrize(("value", "corners", "override", "stopped"), CASES)
-def test_the_stop_is_on_at_several_corners_and_off_at_one_unless_the_spec_or_the_recipe_says(tmp_path, value, corners,
-                                                                                            override, stopped):
+def test_the_stop_is_off_below_twenty_simulations_per_point_unless_the_spec_or_the_recipe_says(tmp_path, value, corners,
+                                                                                             override, stopped):
     spec = switched(value)
     kwargs = {} if override is None else {"stop_at_first_failure": override}
     _, stage, obs = run_batch(tmp_path, spec, corners=corners, **kwargs)
@@ -53,6 +55,29 @@ def test_the_stop_is_on_at_several_corners_and_off_at_one_unless_the_spec_or_the
     assert line.startswith(f"({children} testbench sims) = up to {children} simulations per point (a point stops at the "
                            "first simulation that fails it) on local" if stopped else
                            f"({children} testbench sims) = {children} simulations per point on local")
+
+
+def ten_corners() -> Spec:
+    """``two_by_two`` at ten corners (tt, ss and eight more that ``prepared`` answers with passing values): 20 simulations
+    per point, the smallest number at which the stop is on by default."""
+    return two_by_two(corners=[{"id": "tt"}, {"id": "ss"}] + [{"id": f"c{i}"} for i in range(3, 11)])
+
+
+def test_the_stop_is_on_from_twenty_simulations_per_point(tmp_path):
+    spec = ten_corners()
+    _, stage, obs = run_batch(tmp_path, spec, corners="all")
+    # F=20 stops at tb/tt (the first child), F=26 at tb/ss (the second), F=24 at g/tt and F=28 at g/ss (the g children
+    # come after the ten tb children); F=22 runs its 20 simulations and is feasible
+    assert sum(1 for o in obs if o.not_run) == 4
+    assert len(stage.ran) == 5 * 20 - sum(len(o.not_run) for o in obs)
+    line = plan_shape(spec, [Prepared()], "all", LocalExecutor(tmp_path), None, FAKE_HOST, None)
+    assert line.startswith("(20 testbench sims) = up to 20 simulations per point (a point stops at the first simulation that fails it)")
+    # nine corners are 18 simulations per point: off again
+    nine = [c.id for c in spec.corners][:9]
+    _, stage, obs = run_batch(tmp_path / "nine", spec, corners=nine)
+    assert sum(1 for o in obs if o.not_run) == 0 and len(stage.ran) == 5 * 18
+    assert plan_shape(spec, [Prepared()], nine, LocalExecutor(tmp_path), None, FAKE_HOST, None).startswith(
+        "(18 testbench sims) = 18 simulations per point on local")
 
 
 # -- 2. the dump ---------------------------------------------------------------------------------------------------------------
@@ -142,7 +167,7 @@ def test_metric_gp_takes_a_history_at_two_corners_with_stopped_points(tmp_path, 
     points = [Point({"F": f, "W": w}, "user") for f, w in zip(("20", "22", "24", "26", "28", "30") * 2,
                                                                 ("0.6u",) * 3 + ("0.8u",) * 3 + ("1u",) * 3 + ("1.2u",) * 3,
                                                                 strict=True)]
-    rows = Observations(evaluate(spec, points, LocalExecutor(store.root / "sims"), store, pipeline=[Prepared(graded)],
+    rows = Observations(evaluate(spec, points, LocalExecutor(store.root / "sims"), store, pipeline=[Prepared(graded)], stop_at_first_failure=True,
                                  limits=FAKE_HOST))
     assert any(o.not_run for o in rows) and any(o.feasible for o in rows) and all(o.corners() == {"tt", "ss"} for o in rows)
     viewed = [worst_metrics(spec, o) for o in rows]
@@ -175,7 +200,7 @@ def test_auto_is_metric_gp_at_any_corners_and_optimize_runs_it_there(tmp_path, c
             PLAN_MODE.reset(token)
         out = capsys.readouterr().out
         assert ("[plan] opt.optimize step='optimize' strategy=metric_gp: 0/8 points done, up to 8 more in batches of 4 × "
-                "(4 testbench sims) = up to 4 simulations per point (a point stops at the first simulation that fails it)"
+                "(4 testbench sims) = 4 simulations per point"      # 4 per point: the stop is off by default (T17.9 revision 2)
                 ) in out
         assert ("[plan] strategy auto: metric_gp (no EM devices)" in out) is (strategy == "auto")
     store = RunStore(tmp_path / "run")
@@ -190,7 +215,7 @@ def test_auto_is_metric_gp_at_any_corners_and_optimize_runs_it_there(tmp_path, c
 
 def test_the_digest_says_after_which_child_points_stopped(tmp_path):
     spec = two_by_two()
-    _, _, obs = run_batch(tmp_path / "on", spec)            # F=20 stops after tb/tt, F=24 after g/tt, F=26 after tb/ss
+    _, _, obs = run_batch(tmp_path / "on", spec, stop_at_first_failure=True)   # F=20 stops after tb/tt, F=24 after g/tt, F=26 after tb/ss
     stopped = [o for o in obs if o.not_run]
     assert [stopper(spec, o) for o in stopped] == ["tb/tt", "g/tt", "tb/ss"]
     assert all(f"(stopped after {stopper(spec, o)})" in o.issues[-1] for o in stopped)   # the child its line names

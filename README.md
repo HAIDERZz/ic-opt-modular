@@ -138,8 +138,8 @@ their meaning and continue as before.
 
 The default strategy is `auto`: `metric_gp` for a spec without EM devices, at
 any corners (since T17.9 it takes a run at several corners: each point's metrics
-reach its models at their worst over the corners simulated, and a point stops at
-its first failing simulation by default there), `openbox_gp_eic` for a spec with
+reach its models at their worst over the corners simulated, and a point that
+needs 20 or more simulations stops at its first failing one by default), `openbox_gp_eic` for a spec with
 EM devices, and a line says which and why (`[optimize] strategy auto: metric_gp
 (no EM devices)`, under `--plan` too). A strategy keyword the chosen strategy does not take is refused
 before anything runs (`initial_trials` both take). A strategy named with

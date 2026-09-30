@@ -15,9 +15,11 @@ def main(run: Run, *, corner: str = "tt", budget: int = 60, batch: int = 10, top
     """``current`` / ``start`` as for ``optimize``, for the search step at ``corner``. ``strategy``: ``auto`` searches
     with ``metric_gp`` (one corner) unless the spec has EM devices (then ``openbox_gp_eic``). Unless
     ``simulator.stop_at_first_failure`` says otherwise, a point of the search, at one corner, runs every simulation, and a
-    re-checked point stops at its first failing corner (T17.9; T17.8: on the multi-corner benchmark 550 to 1340 of 3100
-    simulations per run went to points already known to fail); ``full=True`` simulates every corner of every re-checked
-    point, for a complete per-corner table."""
+    re-checked point stops at its first failing corner whatever the number of corners (:func:`_recheck_stop`; T17.8: on
+    the multi-corner benchmark 550 to 1340 of 3100 simulations per run went to points already known to fail. The
+    re-check verifies, it teaches no model, so the stop's only effect is the saving -- the default of
+    ``blocks.evaluate.stop_wanted``, made for a search, does not apply here); ``full=True`` simulates every corner of
+    every re-checked point, for a complete per-corner table."""
     rows = json.loads(Path(run.project, start).read_text(encoding="utf-8")) if start else []
     b.doctor(run.spec, run.executor, cshrc=run.cshrc, store=run.store, limits=run.limits).require_pass()
     deck = b.import_netlists(run.spec, run.executor, run.store)
@@ -27,6 +29,13 @@ def main(run: Run, *, corner: str = "tt", budget: int = 60, batch: int = 10, top
     winners = b.points_from(b.best(run.spec, search, top))
     signoff = b.evaluate(run.spec, winners, run.executor, run.store, deck=deck, corners="all", step="signoff",
                          cshrc=run.cshrc, parallel_jobs=run.jobs, limits=run.limits,
-                         stop_at_first_failure=False if full else None)
+                         stop_at_first_failure=_recheck_stop(run.spec, full))
     if signoff:
         run.note(f"report: {b.report(run.spec, signoff, run.store, title=f'{run.spec.project} — sign-off across all corners')}")
+
+
+def _recheck_stop(spec, full: bool) -> bool:
+    """The re-check's stop: off under ``full``, else the spec's switch when set, else on."""
+    if full:
+        return False
+    return True if spec.simulator.stop_at_first_failure is None else spec.simulator.stop_at_first_failure
