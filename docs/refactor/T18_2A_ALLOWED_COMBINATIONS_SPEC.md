@@ -120,3 +120,35 @@ and every test file that covers `opt.suggest`, `points.*` and the advice (find t
 - Hand back: branch and commits; the verbatim test and ruff output (last 30 lines); where the one distance function
   lives and who calls it; what the specification left open and how it was read (a numbered list); what could not be
   done and why.
+
+## 7. Record (2026-10-01)
+
+Implemented by the coding subagent on `t18-2a-allowed-combinations` (`4f05b63`, `7959e9a`, `308e6c8`, `655e2f3`), merged
+`fd0406b`; targeted tests 356 passed and 1 skipped on the branch (the skip is the baseline's), 134 on the merged tree's
+core files, ruff clean. How the open points were read (the coder's list, kept here):
+
+- The one distance is `space.nearest(points, combinations)`; the unit coordinates come from `space.unit_coordinates`
+  on `space.grid_levels(variable)`, which `Coords` now uses too, so both compute the same numbers. Callers:
+  `space.snap` (from the raw values), `space.check` (the nearest combination in the message), `space.project` (a grid
+  point to the nearest valid point: `points.grid(per_dim)`, `points.one_at_a_time`), `Coords.project` (`design_raw`,
+  `candidates.local`, `candidates.wide`, `Advised.inside`, the region's centre).
+- `space.tables` checks the tables on every call (cheap; T18.2B caches them per process); it also refuses a name
+  repeated inside one table and a combination of the wrong length. `Table` stores its combinations distinct and
+  sorted whatever it is given, and keeps them as a read-only integer array (`rows`).
+- Advice: `Advised.inside` brings a row inside the bands, projects it, and drops it when the projection leaves the
+  advice; `contains` stays the box test. The projection of the region's centre also covers the grid-middle centre
+  used before anything is scored.
+- A test showed short batches: with 3 of 120 valid points left `random`, `sobol` and `turbo` returned 1 of the 3.
+  Fixed in `opt.suggest` as the specification asks: after the random filler, a spec with tables lists the valid
+  points not yet taken and draws from them in a seeded order (origin `fill`). Without tables nothing is added.
+- `points.grid(per_dim)` projects each combination of the chosen levels and keeps the first occurrence;
+  `one_at_a_time` drops a move that lands on the centre or on an earlier move. `whole_grid` and `space.valid_points`
+  list one block per free variable and per table in the order of each block's first variable, the last block
+  fastest; without tables that is the order it was.
+- Through `space.check`: a warm-start observation on a combination outside the table is not adopted; an invalid start
+  row is refused.
+- New names in `space`: `grid_levels`, `unit_coordinates`, `nearest`, `project`, `valid_points`, `placements` /
+  `Placement`. `_model_batch` decides whole grid or region on the valid count.
+- Nothing changes without tables: besides the existing suites, the batches of `metric_gp`, `random`, `sobol`,
+  `openbox_gp_eic`, `turbo`, the point blocks and the full grid on the tree before the branch are pinned by digest
+  in `tests/ic_opt/test_space_tables.py`.
