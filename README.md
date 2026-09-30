@@ -367,10 +367,19 @@ beforehand; the first fit of a quantity's model prints its progress on stderr
 ```bash
 ic-opt call lib.query LIBRARY stratum=ind_sym_top 'params={"outer_diameter_um": 150, "width_um": 5, "spacing_um": 3, "turns": 2}'
 ic-opt call lib.suggest LIBRARY stratum=ind_sym_top 'targets={"Lp_lf": {"target": 1.2e-9, "tol": 0.03}}' objective=max:Qp_peak
+ic-opt call lib.index LIBRARY stratum=ind_sym_top frequency_ghz=F 'grid={"Lp": [LOWER, UPPER, STEP]}'    # rows by electrical value
+ic-opt call lib.pick LIBRARY stratum=ind_sym_top frequency_ghz=F 'targets={"Lp": VALUE}' 'grid={"Lp": [LOWER, UPPER, STEP]}'
 ic-opt run lib_design PROJECT library=LIBRARY          # optimize on predictions (no EMX)
 ic-opt run lib_signoff PROJECT library=LIBRARY candidates=REPORT --plan
 ic-opt call em.validate_profile PROFILE_DIR proc=SITE.proc generate=true    # bring up a new process profile
 ```
+
+A declared curve answers at any frequency inside the parts' sweeps, not only
+at the anchors `library.yaml` names (`quantities=Lp@F`), and answers carry the
+device's footprint: the box around what the generator draws, without the
+ground fixture EMX needs. `lib.index` lists a stratum's rows by their measured
+electrical values at one frequency, and `lib.pick` returns the rows nearest to
+target values on a grid, with their geometry, footprint and sNp.
 
 Building, querying and growing a library: [docs/em/library.md](docs/em/library.md); writing a
 process profile: [skills/author-process-rule/SKILL.md](skills/author-process-rule/SKILL.md).
