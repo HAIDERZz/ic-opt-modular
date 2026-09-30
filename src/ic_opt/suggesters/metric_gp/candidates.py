@@ -3,6 +3,11 @@ specification, section 7).
 
 Candidates are rows of level indices (``coords.py``), never an evaluated point or one already chosen for this batch, and
 never more than :data:`MAX_CANDIDATES` in one call: the selection keeps one square covariance matrix of that size.
+
+Every candidate is a valid point (T18.2A specification, section 3): where some variables may take only a table's
+combinations (``space.tables``), :func:`whole_grid` enumerates the valid points themselves and :func:`local` and
+:func:`wide` project what they generate (``Coords.project``) before :func:`fresh` removes repeats and evaluated points.
+Their random numbers are drawn as without tables, so a spec without tables gets the candidates it got before.
 """
 
 from __future__ import annotations
@@ -29,9 +34,10 @@ def fresh(idx: np.ndarray, excluded: set[bytes]) -> np.ndarray:
 
 
 def whole_grid(coords: Coords, excluded: set[bytes]) -> np.ndarray:
-    """Every grid point not in ``excluded`` (a grid of at most :data:`MAX_CANDIDATES` points)."""
-    grid = np.indices(coords.counts).reshape(len(coords.counts), -1).T
-    return fresh(grid, excluded)
+    """Every valid point not in ``excluded`` -- every grid point without tables -- for a space of at most
+    :data:`MAX_CANDIDATES` valid points (``Coords.size``). They are enumerated directly (``Coords.valid_points``), never
+    as the full product of the variables' levels, which may be millions when the valid points are a few hundred."""
+    return fresh(coords.valid_points(), excluded)
 
 
 def local(coords: Coords, centre: np.ndarray, length: float, weights: np.ndarray, excluded: set[bytes],
@@ -55,7 +61,10 @@ def local(coords: Coords, centre: np.ndarray, length: float, weights: np.ndarray
       otherwise unchanged, come first.
 
     On a coarse variable a change is a large move: it is offered, not imposed on every candidate. And a region smaller
-    than the grid searches at the grid's resolution, a variable or two at a time."""
+    than the grid searches at the grid's resolution, a variable or two at a time.
+
+    With tables every candidate so generated is then projected onto the nearest valid point (``Coords.project``): a
+    candidate may leave the box that way, and many collapse onto one, which :func:`fresh` keeps once."""
     centre_unit = coords.unit(centre[None, :])[0]
     active = np.flatnonzero(coords.active)
     halves = length * np.asarray(weights, dtype=float) / 2
@@ -73,7 +82,7 @@ def local(coords: Coords, centre: np.ndarray, length: float, weights: np.ndarray
         column += 1
     if np.prod([float(len(a)) for a in allowed]) <= LOCAL:
         mesh = np.meshgrid(*allowed, indexing="ij")
-        return fresh(np.stack([m.ravel() for m in mesh], axis=1), excluded)
+        return fresh(coords.project(np.stack([m.ravel() for m in mesh], axis=1)), excluded)
 
     unit = np.repeat(centre_unit[None, :], LOCAL, axis=0)
     most = min(1.0, PERTURB_VARIABLES / len(active))
@@ -95,12 +104,15 @@ def local(coords: Coords, centre: np.ndarray, length: float, weights: np.ndarray
         out[rows, i] = np.where((moved < 0) | (moved >= coords.counts[i]), 2 * out[rows, i] - moved, moved)   # off the end: the other way
         steps += [centre + move * (np.arange(len(centre)) == i) for move in (-1, 1) if 0 <= centre[i] + move < coords.counts[i]]
     out[:, ~coords.active] = centre[~coords.active]
-    return fresh(np.vstack([np.array(steps, dtype=np.int64).reshape(-1, len(centre)), out]), excluded)[:LOCAL]
+    generated = np.vstack([np.array(steps, dtype=np.int64).reshape(-1, len(centre)), out])
+    return fresh(coords.project(generated), excluded)[:LOCAL]
 
 
 def wide(coords: Coords, excluded: set[bytes], rng: np.random.Generator, n: int = WIDE) -> np.ndarray:
-    """A scrambled Sobol sample of ``n`` points in unit coordinates, snapped to the grid, minus ``excluded``."""
-    return fresh(coords.snap(unit_design("sobol", n, len(coords.counts), int(rng.integers(2**63)))), excluded)
+    """A scrambled Sobol sample of ``n`` points in unit coordinates, snapped to the grid and projected onto the valid
+    points (``Coords.project``), minus ``excluded``."""
+    sample = coords.snap(unit_design("sobol", n, len(coords.counts), int(rng.integers(2**63))))
+    return fresh(coords.project(sample), excluded)
 
 
 class Advised:
@@ -110,10 +122,15 @@ class Advised:
     Candidates are brought inside it rather than drawn inside it: they are generated as they are without advice, so the
     random streams stay what they were, then every variable is moved to the nearest level of its band -- the band's end,
     in level indices and therefore in unit coordinates too, logarithmic or not -- and, when ``vary`` is given, every other
-    variable to the level of ``centre``. The advice's check (``ic_opt.advice.check``) has put every bound on a level."""
+    variable to the level of ``centre``. The advice's check (``ic_opt.advice.check``) has put every bound on a level.
+
+    With tables (T18.2A specification, section 3) a row so moved is then projected onto the nearest valid point
+    (``Coords.project``), and a row the projection takes out of the advice is not brought inside: :meth:`contains` decides
+    on the projected row. Without tables every row stays where the bands put it."""
 
     def __init__(self, coords: Coords, row: dict) -> None:
         self.id = row["id"]
+        self.coords = coords
         self.low = np.zeros(len(coords.counts), dtype=np.int64)
         self.high = coords.counts - 1
         self.held = np.zeros(len(coords.counts), dtype=bool)
@@ -127,11 +144,18 @@ class Advised:
             self.held = np.array([name not in row["vary"] for name in coords.names])
 
     def inside(self, idx: np.ndarray, centre: np.ndarray) -> np.ndarray:
-        """``idx`` (rows of level indices) brought inside the advice; ``centre``: the level indices the held variables take."""
+        """``idx`` (rows of level indices) brought inside the advice and projected onto the valid points, less the rows the
+        projection takes out of it; ``centre``: the level indices the held variables take."""
+        out = self.coords.project(self._bands(idx, centre))
+        return out[self.contains(out, centre)]
+
+    def contains(self, idx: np.ndarray, centre: np.ndarray) -> np.ndarray:
+        """Which rows of ``idx`` lie inside the advice already: every variable within its band, the held ones at the
+        centre's level."""
+        return (self._bands(idx, centre) == idx).all(axis=1)
+
+    def _bands(self, idx: np.ndarray, centre: np.ndarray) -> np.ndarray:
+        """``idx`` with every variable moved to the nearest level of its band and the held ones to the centre's level."""
         out = np.array(idx, dtype=np.int64).reshape(-1, len(self.low))
         out[:, self.held] = centre[self.held]
         return np.clip(out, self.low, self.high)
-
-    def contains(self, idx: np.ndarray, centre: np.ndarray) -> np.ndarray:
-        """Which rows of ``idx`` lie inside the advice already."""
-        return (self.inside(idx, centre) == idx).all(axis=1)

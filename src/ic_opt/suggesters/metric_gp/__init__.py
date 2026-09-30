@@ -14,6 +14,12 @@ several corners, each point's metrics given to the models at their worst over th
 not take yet: ``opt.optimize`` refuses them before anything is simulated (:func:`stage_one_refusal`), and the suggester
 refuses them when called directly, as it refuses a history whose points were evaluated at different sets of corners
 (:func:`_refuse`).
+
+Allowed combinations (T18.2A specification, section 3). Where some variables may take only a table's combinations
+(``space.tables``), its search space is the valid points: ``Coords`` knows the tables, the initial design and every
+candidate set hold valid points only, the whole-grid case is decided on their number, and a region's centre the table no
+longer holds is projected before candidates are drawn around it. Models, the region's replay, the choice of a slot and
+tags are what they are without tables.
 """
 
 from __future__ import annotations
@@ -123,7 +129,7 @@ class MetricGpSuggester:
         active = coords.active
         current = advice_rules.in_effect(advice, k)
         advised = candidates.Advised(coords, current) if advice_rules.narrows(current) else None
-        if space.grid_size(spec) <= candidates.MAX_CANDIDATES:
+        if coords.size <= candidates.MAX_CANDIDATES:           # the valid points (space.grid_size), not the full product
             idx = candidates.whole_grid(coords, excluded)
             slots = min(n, len(idx))
             # Without advice every slot chooses among every grid point. With one the free slots still do (D7b), the others
@@ -152,6 +158,7 @@ class MetricGpSuggester:
             position = region.centre(composer, rows, state, scales, true_arrays(spec, rows))
             centre = (coords.indices([rows[position].params])[0] if position is not None
                       else coords.snap(np.full((1, len(coords.counts)), 0.5))[0])
+            centre = coords.project(centre)[0]      # an evaluated point a table no longer holds: the nearest valid one
             index, length = state.index, state.length
         before = set(excluded) if advised is not None else excluded
         local = candidates.local(coords, centre, length, region.weights(models, coords), excluded, _rng(seed, k, _LOCAL))
