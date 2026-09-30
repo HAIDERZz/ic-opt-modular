@@ -1,7 +1,7 @@
 # T18.2B — a device of a circuit spec comes from the library: its rows are the candidates, no EMX in the loop
 
-Status: specification (2026-10-01), for the coding subagent; starts after `T18.1` (`T18_1_LIBRARY_INDEX_SPEC.md`) and
-`T18.2A` (`T18_2A_ALLOWED_COMBINATIONS_SPEC.md`) are merged. Where this text names a function of those two tasks, the
+Status: specification (2026-10-01), for the coding subagent. `T18.1` (`T18_1_LIBRARY_INDEX_SPEC.md`, merged `954dfa4`) and
+`T18.2A` (`T18_2A_ALLOWED_COMBINATIONS_SPEC.md`, merged `fd0406b`) are in `main`; their records (each file's section 7) say what exists. Where this text names a function of those two tasks, the
 merged code is the authority: read it and use what is there. Decision behind it: the user's answers of 2026-10-01 to
 `T18_LIBRARY_DIRECTIONS_CN.md` section 7 (question 1: rows are the candidates).
 
@@ -70,6 +70,9 @@ def clear() -> None: ...                                   # forget what this pr
 - Refusals, each a `ValueError` a user can act on: no `library.yaml` at the root; an unknown stratum (list them); a
   variable's coordinate that is no column of the index (list them); the device's `ports` not the table's (say
   both); no row on the grid (say each coordinate's range in the index beside the variable's range).
+- The levels are computed once, by `index.table` on the variables' grids in SI units; everything else finds a row
+  by its combination, so no second rounding exists. (`index.level` and `Coords.snap` agree on the same numbers; a
+  grid text with a scale suffix can differ from its SI value only at an exact tie.)
 - A process resolves a device once and keeps the answer: a run sees one table for its whole life (say so in the
   docstring). The key of what is kept: the resolved root, the stratum, the frequency, the margin, `prefer`, the
   variables' grids.

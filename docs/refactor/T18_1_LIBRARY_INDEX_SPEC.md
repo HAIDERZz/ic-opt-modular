@@ -169,3 +169,37 @@ def pick(table: Table, targets: dict[str, float]) -> Pick: ...
 - Hand back: branch and commits; the verbatim test and ruff output (last 30 lines); how the extension columns are
   wired; how the fixture is told from the device in the footprint; what the specification left open and how it was
   read (a numbered list); what could not be done and why.
+
+## 7. Record (2026-10-01)
+
+Implemented by the coding subagent on `t18-1-library-index` (`4c8981c`, `2c4a183`, `64425ff`, `b9808ff`, `e19d21e`),
+merged `954dfa4`; targeted tests 197 passed and 6 skipped (the baseline's 166 and the same 6 skips), ruff clean. How it
+is wired and how the open points were read (the coder's list, kept here):
+
+- Every column name goes through `Library.columns` / `Library.column`; `dataset.resolve` gives a name its canonical
+  form (`%g`) and says declared or extension, or refuses it. An extension is measured by `dataset.anchors` -- one pass
+  over the rows' sNp files with the same `_measure` / `_anchor_value` that `_row` uses for declared anchors, every
+  declared curve at that frequency plus each row's system SRF and sweep ends -- and cached as
+  `anchors-<stratum>-<dataset key>-<f>.json` through `cache.computed` (a lock file, a re-check after the wait, an atomic
+  write). `Dataset.extend` puts the values into the rows held in memory; the dataset file, its key and the declared
+  columns do not change (a test pins the keys taken at `main` and compares the cache files byte for byte). A spawned
+  fit worker loads the column from the file the parent wrote.
+- The footprint: every built-in family draws the ring, the stubs and a shield's strips only on the profile's fixture
+  conductor and refuses that conductor as a product metal, so the footprint is the box around every shape that is not
+  a label on any other layer. A generator of another plugin, and a profile this machine cannot load, give no
+  footprint, with the reason in `footprint_why` beside the null.
+- A frequency of more than six significant digits is refused; one outside every part's sweep (read from the part
+  specs) is refused before any sNp is read. The footprint cache writes nothing when no row has a GDS. Candidates that
+  were not drawn carry no footprint key; `lib.query`'s block output is strict JSON now.
+- The index: its margin is the largest `srf_margin` of the declared curves unless a larger one is given;
+  `Index.dropped` counts the rows left out per reason; columns are the curves, the scalars, `Qmin`, `area`.
+  `Table` also has `left_out`, `axes`, `values(cell)` and `size()`; a coordinate takes at most 100 000 levels; `pick`
+  measures from the targets' continuous unit coordinates and counts `distance` in levels.
+- `lib.index out=` needs `grid=`; `lib.pick` refuses a missing `targets` or `grid`.
+
+Checked by the coordinator on the user's private library, read only, with the cache files kept outside it (one process):
+an inductor table of 516 rows gives 174 rows at a frequency between two declared anchors (the others resonate within
+the margin), the first build taking 1.5 s and a repeated one 0.01 s; a transformer table of 1726 rows gives 1547, in
+7.1 s and 0.03 s; every row has a footprint; at a declared anchor the index's values equal the dataset's columns
+exactly; on steps of 10 pH, 10 pH and 0.05 the transformer rows occupy 1370 of 233 478 combinations, one row in most
+of them, so with such steps a device's candidates are its rows one by one.
