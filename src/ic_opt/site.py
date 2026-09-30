@@ -44,17 +44,21 @@ class EnvelopeError(ValueError):
     """A job needs more threads or memory than its host's entry allows: refused before anything starts."""
 
 
-# N-78 (measured 2026-09-29): a run of ``parallel_jobs: 10, threads_per_run: 1`` occupied about 12 cores -- Spectre at one
-# thread takes 1.0 to 1.35 cores, and the OCEAN process that extracts the metrics runs beside it. Every envelope counts a
-# testbench job as ``threads_per_run + EXTRACTION_THREADS`` (env.doctor, run.jobs, the engine's workers, the plan lines);
-# an EMX job as ``em.threads``, as before.
+# N-78: a testbench job takes about one core more than its Spectre threads. Seen 2026-09-29 (ten one-thread jobs occupied
+# about 12 cores) and measured 2026-09-30 on the run's whole process tree (docs/refactor/T17_12_THREADS_SPEC.md, section
+# 7): within a job Spectre and the OCEAN extraction run one after the other; Spectre at ``+mt=1`` runs at about two cores
+# for part of the short analyses and the extraction takes up to two cores for about a second after each simulation, so
+# ten one-thread jobs peak at twenty for a second or two per batch (p95 19.5). At four threads Spectre mostly stayed at
+# one core, so the count is conservative there. Every envelope counts a testbench job as ``threads_per_run +
+# EXTRACTION_THREADS`` (env.doctor, run.jobs, the engine's workers, the plan lines); an EMX job as ``em.threads``.
 EXTRACTION_THREADS = 1
-EXTRACTION_NOTE = (f"each testbench job is counted as threads_per_run + {EXTRACTION_THREADS} threads: the metric "
-                   "extraction runs beside the simulator")
+EXTRACTION_NOTE = (f"each testbench job is counted as threads_per_run + {EXTRACTION_THREADS} threads: Spectre at one "
+                   "thread runs at up to two cores at times, and the metric extraction takes up to two cores for a "
+                   "moment after each simulation")
 
 
 def per_job(threads: int, extraction: int = 0) -> str:
-    """A job's threads as the envelope lines print them: ``(4 + 1)`` with the extraction beside the simulator, else ``4``."""
+    """A job's threads as the envelope lines print them: ``(4 + 1)`` with a testbench job's extra core (N-78), else ``4``."""
     return f"({threads} + {extraction})" if extraction else str(threads)
 
 

@@ -158,7 +158,8 @@ def test_the_doctor_envelope_counts_threads_per_run_plus_one_and_names_it_when_i
     refused = _envelope_check(spec, HostLimits(max_threads=16, max_memory_gb=64), "local")    # 10 x 1 fitted before
     assert not refused.ok and refused.detail == (
         "10 jobs × (1 + 1) threads / 0 GB per job → 20 threads / 0 GB of 16 / 64 (max_threads / max_memory_gb of local); "
-        "each testbench job is counted as threads_per_run + 1 threads: the metric extraction runs beside the simulator")
+        "each testbench job is counted as threads_per_run + 1 threads: Spectre at one thread runs at up to two cores at "
+        "times, and the metric extraction takes up to two cores for a moment after each simulation")
 
 
 def test_the_workers_fit_threads_per_run_plus_one_and_a_job_that_no_longer_fits_is_refused(tmp_path):

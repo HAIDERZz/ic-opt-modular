@@ -143,8 +143,9 @@ def _operating_points_check(spec: Spec, tb_id: str, path: str, executor: Executo
 
 def _job(spec: Spec) -> tuple[int, int, float]:
     """One concurrent job of the spec's pipeline, sized as the engine sizes it: its heaviest Spectre / EMX run, as (the
-    run's threads, the threads beside it, memory). Beside a Spectre run the process that extracts its metrics runs
-    (``site.EXTRACTION_THREADS``, N-78); beside an EMX run nothing."""
+    run's threads, the threads beside it, memory). A Spectre run takes one core more than its threads
+    (``site.EXTRACTION_THREADS``, N-78: Spectre at one thread at up to two cores at times, the extraction up to two for
+    a moment after each simulation); an EMX run nothing."""
     runs = [(spec.simulator.threads_per_run, EXTRACTION_THREADS, 0.0)] if spec.testbenches else []
     if spec.devices and spec.em is not None:
         runs.append((spec.em.threads, 0, spec.em.memory_gb))
@@ -153,8 +154,8 @@ def _job(spec: Spec) -> tuple[int, int, float]:
 
 
 def _envelope_check(spec: Spec, limits: HostLimits, host: str) -> Check:
-    """What the spec asks for at once -- parallel_jobs of its heaviest job, a testbench job with the metric extraction
-    beside its simulator -- against the host's entry; beyond it fails, naming the extraction when it is counted."""
+    """What the spec asks for at once -- parallel_jobs of its heaviest job, a testbench job with its extra core --
+    against the host's entry; beyond it fails, naming the extra core when it is counted."""
     jobs = spec.simulator.parallel_jobs
     threads, extraction, memory = _job(spec)
     total = jobs * (threads + extraction)
@@ -220,7 +221,7 @@ def _device_check(device) -> Check:
 
 def plan_line(spec: Spec, executor: Executor, limits: HostLimits) -> str:
     """One line for --plan: where and how hard this spec will hit the machine, against that host's entry -- its jobs,
-    each at its heaviest run (:func:`_job`: a testbench job with the metric extraction beside the simulator), and their
+    each at its heaviest run (:func:`_job`: a testbench job with its extra core), and their
     peak. The strategy's threads (``simulator.strategy_threads``) are not in the peak: the strategy runs between batches,
     when no simulation of its run does; the line names them apart."""
     sim = spec.simulator

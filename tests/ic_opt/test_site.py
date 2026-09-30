@@ -290,8 +290,9 @@ def test_doctor_envelope_counts_threads_and_memory_of_the_heaviest_job(tmp_path)
                    if c.name == "envelope")
     assert not spectre.ok and spectre.detail == ("5 jobs × (4 + 1) threads / 0 GB per job → 25 threads / 0 GB of 16 / 8 "
                                                  "(max_threads / max_memory_gb of local); each testbench job is counted "
-                                                 "as threads_per_run + 1 threads: the metric extraction runs beside the "
-                                                 "simulator")
+                                                 "as threads_per_run + 1 threads: Spectre at one thread runs at up to two "
+                                                 "cores at times, and the metric extraction takes up to two cores for a "
+                                                 "moment after each simulation")
     d = minimal_spec(testbenches=[], metrics=[], constraints=[], objective=None)
     d["devices"] = [{"id": "ind", "generator": "clean_port_ind_sym", "profile": "demo_6m", "ports": ["P1", "N1"]}]
     d["em"] = {"process_file": "/site/demo.proc", "frequencies": [1e10], "threads": 4, "memory_gb": 64, "timeout_s": 600}

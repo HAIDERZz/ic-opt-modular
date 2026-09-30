@@ -424,9 +424,10 @@ in that `sh`. `--cshrc` and `IC_OPT_CADENCE_CSHRC` follow the same rule.
 spec's EMX binary (`em.binary`) when it has devices; a pure EM spec needs no
 Spectre on the host. It prints the envelope (`jobs × threads / GB per job → total of
 max_threads / max_memory_gb`) and fails a spec that asks for more. A testbench job
-counts `threads_per_run + 1` threads, printed `(4 + 1)`: the OCEAN process that
-extracts its metrics runs beside Spectre (ten jobs of one thread occupied about 12
-cores); an EMX job counts `em.threads`. The strategy's own threads
+counts `threads_per_run + 1` threads, printed `(4 + 1)`: measured, a one-thread
+Spectre runs at up to two cores at times and the OCEAN extraction takes up to two
+for a moment after each simulation, so ten jobs of one thread peak at twenty for a
+second or two per batch; an EMX job counts `em.threads`. The strategy's own threads
 (`simulator.strategy_threads`) are not added: it runs between batches. It also
 compares the entry with what the host reports (`nproc`, `MemTotal`) and warns,
 never blocks, when the entry is larger. `run.jobs` and the engine trim

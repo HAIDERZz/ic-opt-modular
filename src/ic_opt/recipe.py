@@ -42,7 +42,8 @@ class Run:
     @property
     def jobs(self) -> int:
         """Concurrent simulations: the spec's parallel_jobs, capped by the executor host's threads -- a testbench job
-        counted as threads_per_run + 1, the metric extraction beside the simulator (``site.EXTRACTION_THREADS``, N-78).
+        counted as threads_per_run + 1, the extra core a testbench job takes (``site.EXTRACTION_THREADS``, N-78: Spectre at one
+        thread runs at up to two cores at times, the extraction up to two for a moment after each simulation).
 
         A Spectre job bigger than the whole host is refused, not run one at a time (audit row 2)."""
         sim = self.spec.simulator

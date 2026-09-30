@@ -8,8 +8,8 @@ child-level chains — the testbench chain for every testbench × corner, the
 device chain for every device — (5) aggregates the children under the corner
 policy, (6) appends one Observation, (7) applies the retention policy to raw
 simulation directories. Points run in parallel, capped by the executor host's
-site.yaml entry for the heaviest stage, a testbench one counted with the metric
-extraction beside its simulator (N-78); a stage or job bigger than the whole
+site.yaml entry for the heaviest stage, a testbench one counted with one core
+more than its Spectre threads (N-78); a stage or job bigger than the whole
 entry is refused before anything starts. A point's children run serially, like the
 legacy flow. A stage that fails -- a ``StageFailure``, or a command past its
 deadline (``CommandTimeout``) -- fails its child, or every child of the point
@@ -131,8 +131,9 @@ def simulations(observation: Observation) -> int:
 
 
 def extraction_threads(stage: Stage) -> int:
-    """Threads a job running ``stage`` takes beside the stage's own: ``site.EXTRACTION_THREADS`` for a testbench child that
-    simulates -- the process that extracts its metrics (OCEAN) runs beside the simulator (N-78) -- and none for any other
+    """Threads a job running ``stage`` takes beyond the stage's own: ``site.EXTRACTION_THREADS`` for a testbench child that
+    simulates -- measured (N-78): a one-thread Spectre runs at up to two cores at times and the OCEAN extraction takes
+    up to two for a moment after each simulation; within a job they run one after the other -- and none for any other
     stage (an EMX run counts ``em.threads``, as before)."""
     testbench = stage.level == "child" and getattr(stage, "unit", "testbench") == "testbench"
     return EXTRACTION_THREADS if testbench and getattr(stage, "simulates", True) else 0
@@ -145,7 +146,7 @@ def workers_for(spec: Spec, pipeline: list[Stage], parallel_jobs: int | None, li
 
     A stage that alone needs more threads or memory than the host's entry is refused here -- also under
     ``--plan`` -- instead of running one at a time past the limit the user wrote down (audit row 2); so is a testbench
-    job whose simulator fits the entry alone but not with the extraction beside it."""
+    job whose simulator fits the entry alone but not with its extra core."""
     for stage in pipeline:
         need = stage.resources
         if need.threads > limits.max_threads or need.memory_gb > limits.max_memory_gb:
@@ -156,7 +157,7 @@ def workers_for(spec: Spec, pipeline: list[Stage], parallel_jobs: int | None, li
     wanted = max(1, parallel_jobs or spec.simulator.parallel_jobs)
     threads = max([s.resources.threads + extraction_threads(s) for s in pipeline] + [1])
     memory = max([s.resources.memory_gb for s in pipeline] + [0.0])
-    if threads > limits.max_threads:          # every stage fits alone: a testbench one does not with the extraction beside it
+    if threads > limits.max_threads:          # every stage fits alone: a testbench one does not with its extra core
         raise EnvelopeError(
             f"a testbench job needs {threads - EXTRACTION_THREADS} + {EXTRACTION_THREADS} threads but the executor host "
             f"allows max_threads {limits.max_threads} (site.yaml): {EXTRACTION_NOTE}; lower threads_per_run in spec.yaml "

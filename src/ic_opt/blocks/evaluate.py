@@ -171,7 +171,7 @@ def default_pipeline(spec: Spec, deck: Deck | None, waveforms=()) -> list[Stage]
 def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, parallel_jobs: int | None, limits: HostLimits,
                stop_at_first_failure: bool | None = None) -> str:
     """'<children per point> ... on <host>, N workers (<heaviest stage> threads/memory)' for the --plan lines, a
-    testbench stage's threads with the metric extraction beside the simulator (``(4 + 1)``: ``engine.extraction_threads``,
+    testbench stage's threads with the extra core a testbench job takes (``(4 + 1)``: ``engine.extraction_threads``,
     N-78); refuses (EnvelopeError) a pipeline whose job does not fit the host, so the preview fails where the run would.
     ``stop_at_first_failure`` as for :func:`evaluate` (None: :func:`stop_wanted`, as the run decides it); on, the count
     per point is a ceiling."""

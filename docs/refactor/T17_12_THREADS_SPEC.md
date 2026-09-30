@@ -92,3 +92,26 @@ ruff clean. How the open points were read (the coder's list, kept here):
   `strategy_threads` other than 1 has no 0.2.0 fingerprint (as every field added after 0.2.0).
 - Not done: a measurement of real core use after the change (no simulator run); `Spec.problem()`'s docstring does
   not name the new field.
+
+## 7. Re-measurement (2026-09-30, the user approved it: "均批准进行")
+
+The 112G mixer at tt (three testbenches: cg_nf, iip3, p1db), `metric_gp`, 100 points in batches of 10, the 0.6.0 code,
+the run's whole process tree sampled every second (`ic-opt-accept/n78_threads/`: `tree_load.py`, `load.csv` per run,
+`analysis.json`, `load_profile.png`, `RESULT_CN.md`):
+
+| setting | 0.5.0 count | 0.6.0 count | tree cores while simulating: median / p95 / max | time above the 0.6.0 count | per Spectre process: median / p95 | wall time |
+| --- | --- | --- | --- | --- | --- | --- |
+| 10 jobs × 1 thread | 10 | 20 | 9.98 / 19.5 / 31.7 | 22 s of 894 (2.5 %), 2 s at most in a row, the 31.7 in the first second | 1.00 / 1.99 | 15.3 min |
+| 5 jobs × 4 threads | 20 | 25 | 4.99 / 8.2 / 18.9 | none | 1.00 / 1.56 | 30.0 min |
+
+What it says: the number is right at one thread (the p95 of the tree is the 0.6.0 count) and conservative at four; the
+reason given in section 2 was wrong. Within a job Spectre and the OCEAN extraction run one after the other (in the 665
+samples with all ten Spectre processes running, the extraction's cores were zero every time). The extra core comes from
+Spectre itself, which at `+mt=1` runs at about two cores for part of the short analyses (per-process p95 1.99), and from
+the extraction, which takes up to two cores for about a second after each simulation; when the jobs are in step these
+add up to the count, and to 1.6 times it in the first second of a run. At four threads Spectre still ran at one core most
+of the time (these analyses do not multithread), so the five-by-four run took twice the wall time of the ten-by-one for the
+same CPU seconds (9244 against 9290). Decision (the coordinator's, within the approval): the count stays
+`threads_per_run + 1`; the wording in `site.py`, the doctor, the engine, the README and `author-spec` now gives the measured
+reason, and `author-spec` says that more than one thread per job did not speed these testbenches up. Whether the count
+should become `max(2, threads_per_run)` is the user's call (it would only let more multi-threaded jobs through).

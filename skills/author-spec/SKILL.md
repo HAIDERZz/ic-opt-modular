@@ -272,8 +272,13 @@ device still appears exactly once.
 ### `simulator`
 `preset` (`ax` default; `cx`, `mx`, `lx`, `vx`), `threads_per_run`,
 `parallel_jobs`, `timeout_s` (required, the user's; `parallel_jobs x
-(threads_per_run + 1)` must fit the host's site.yaml entry: the `+ 1` is the
-OCEAN process that extracts the metrics beside Spectre), `strategy_threads`
+(threads_per_run + 1)` must fit the host's site.yaml entry: the `+ 1` is what a
+job takes beyond its threads -- measured, a one-thread Spectre runs at up to two
+cores at times and the OCEAN extraction up to two for a moment after each
+simulation. More than one thread per job did not speed up PSS / PNOISE mixer
+testbenches: five jobs of four threads took twice the wall time of ten jobs of
+one thread for the same CPU seconds, so prefer more jobs of one thread unless an
+analysis is known to multithread), `strategy_threads`
 (default 1: the threads the strategy's own computation may use while it
 proposes a batch, on the machine running ic-opt; more only when the user gives
 a number, within that machine's `hosts.local` entry; not in the fingerprint),
