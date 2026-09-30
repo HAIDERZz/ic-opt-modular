@@ -93,6 +93,7 @@ ic-opt run optimize PROJECT --plan                 # preview: checks, blocks, si
 ic-opt run optimize PROJECT budget=60 batch=10 strategy=turbo
 ic-opt run fix_run  PROJECT points=points.json waveforms=waveforms.json
 ic-opt run signoff  PROJECT corner=tt top=5        # search one corner, re-check the winners across all
+ic-opt run signoff  PROJECT corner=tt rounds=3     # ... tighten what the re-check missed and search again, 3 searches at most
 ic-opt run my_recipe.py PROJECT --ssh-profile lab  # simulate on a remote host over OpenSSH
 ic-opt blocks | ic-opt describe sim.evaluate       # what a recipe can compose
 ic-opt call points.sobol PROJECT n=12 seed=3       # one block by name
@@ -113,6 +114,24 @@ stops at `budget`. `budget.max_simulations` counts every simulation the
 project's store holds, including the observations an edited spec no longer
 reuses: a spec edit that leaves earlier runs behind needs a larger budget, or a
 new project.
+
+`signoff` searches at one corner (`corner=tt`), then re-checks its `top` points
+at every corner, a point stopping at its first failing corner (`full=true`:
+every corner). With `rounds=N` (default 1) a re-check that finds no point
+feasible at every corner goes on: each constraint its best point misses is
+tightened by `tighten` (default 1.0) times the miss -- an upper limit down, a
+lower limit up, from the limit that round searched under -- and the search at
+`corner` runs again (step `search@tt#2`, `budget` more points, handed the
+earlier searches' points) on a copy of the spec with those limits, its best
+points re-checked under the constraints as written (`signoff#2`), until a point
+is feasible at every corner or N searches are made. One line per tightened
+constraint gives the limit, the miss and the next limit, and
+`.icopt/reports/signoff_rounds.json` holds every round. The spec file is never
+rewritten: a tightened spec is another problem, whose search points carry its
+own fingerprint, so `ic-opt digest` shows the problem as written (the first
+search and every re-check) and the later searches are found by their step
+names. With `rounds` above 1 a limit written with an SI prefix (`50m V`, which
+reads as 50 V) is refused before anything runs.
 
 `opt.optimize` evaluates the design as it stands first: the values the
 exported netlists give the circuit variables (`current=false` leaves it out;
@@ -281,8 +300,8 @@ schedule, when on, runs it first once it fails often (`skills/author-spec/SKILL.
 
 A recipe is `main(run, **params)`; `run` carries the spec, the run store, the
 executor and the executor host's limits (`run.limits`, its site.yaml entry). The
-built-ins (`optimize`, `fix_run`, `coarse_to_fine`, `signoff`) are 10–20 lines each
-and are the examples:
+built-ins (`optimize`, `fix_run`, `coarse_to_fine`, `signoff`) are short compositions
+of blocks and are the examples:
 
 ```python
 from ic_opt import blocks as b
