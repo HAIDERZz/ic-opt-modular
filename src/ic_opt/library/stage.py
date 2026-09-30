@@ -23,18 +23,29 @@ The engine runs points in parallel threads; the models they share are fitted onc
 queried: ``Predict.prefit`` (``lib_design`` calls it before the evaluation starts) hands every column the
 stage will ask for to ``Library.models``, which fits the uncached ones in parallel processes within the
 library's limits. A thread never fits a model by itself.
+
+A library device of a circuit spec (T18.2B, ``Device.library``) is another use of the library: its rows are the
+candidates. ``Pick`` (point level) takes the row of a point's combination (``ic_opt.library.link``) and hands its own sNp
+to the stages that follow EMX in the EM pipelines -- ``bind_nport``, Spectre, OCEAN, ``extract`` and ``measure`` -- so
+every observation is a real measurement and no EMX runs: ``library_circuit_pipeline`` and ``library_only_pipeline``.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import threading
+from pathlib import Path
 
+from ic_opt.em import touchstone
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
-from ic_opt.library import dataset, domain, query
+from ic_opt.library import dataset, domain, link, query
 from ic_opt.observation import ChildResult
+from ic_opt.sim.ocean import WaveformExport
+from ic_opt.space import Point
 from ic_opt.spec import Spec
-from ic_opt.stages.em_chain import Geometry, Pcell
+from ic_opt.stages.em_chain import BindNport, DeviceSParams, Geometry, Measure, Pcell, snp_order
+from ic_opt.stages.spectre_chain import Extract, Ocean, Spectre
 
 
 def _fixed(library: query.Library, stratum: str) -> tuple[str, dict]:
@@ -146,3 +157,100 @@ def surrogate_pipeline(spec: Spec, library: query.Library, strata: dict[str, str
     goes to ``Predict`` (``k``, ``rel_sigma_max``: every column's ceiling, None for each quantity's own)."""
     strata = strata or {d.id: match_stratum(library, d) for d in spec.devices}
     return [Pcell(spec), Predict(library, strata, **predict)]
+
+
+# -- library devices of a circuit spec (T18.2B) ---------------------------------------------------------------------------
+
+PICKS = "pick.json"                                  # <workdir>/em/pick.json: the rows a point took
+
+
+class Pick:
+    """Point stage: every library device's row for the point -- the best row (``prefer``) of the combination the point's
+    values of the device's variables form (``link.row_for``) -- and that row's sNp as the device's S-parameters, as the
+    EMX stage fills them in, so that ``bind_nport``, Spectre, OCEAN, ``extract`` and ``measure`` run unchanged. No EMX runs
+    (``runs = 0``); it is never cached (the rows' files are the library's), and its ``identity`` -- the index's content
+    key, the grids and ``prefer`` per device (``link.identity``) -- is part of the pipeline fingerprint: a library that
+    grew is a new generation, and a combination already evaluated keeps its observation.
+
+    The sNp goes to ``<workdir>/em/<device>/<device>.s<N>p`` with its ports in the order the bindings take them
+    (``snp_order``): a byte copy of the row's file when that is the file's own order, else the S matrices permuted (rows
+    and columns) and written by ``touchstone.write`` in the file's unit, format and reference impedance. ``Geometry.picks``
+    and ``<workdir>/em/pick.json`` say per device which row was taken: stratum, part, obs id, the row's geometry, its
+    electrical values, its footprint and the combination's values as text -- no path. A point whose combination the table
+    does not hold (one handed in from elsewhere, or a library that changed) fails as ``failed:pick``, the message naming
+    the device, the values and the nearest combination."""
+
+    name = "pick"
+    level = "point"
+    resources = Resources()
+    runs = 0                                         # no EMX run: the row was simulated when the library was built
+
+    def __init__(self, spec: Spec) -> None:
+        self.spec = spec
+
+    @property
+    def identity(self) -> str:
+        return link.identity(self.spec)
+
+    def fingerprint(self, point: Point, ctx: StageContext) -> str | None:
+        return None
+
+    def run(self, point: Point, ctx: StageContext) -> Geometry:
+        geometry = Geometry()
+        resolved = link.resolve(ctx.spec)
+        for device in ctx.spec.devices:
+            linked = resolved[device.id]
+            row = link.row_for(ctx.spec, device.id, point.params)
+            if row is None:
+                raise StageFailure(link.missing(ctx.spec, device.id, point.params))
+            order = snp_order(ctx.spec, device)
+            outdir = ctx.workdir / "em" / device.id
+            outdir.mkdir(parents=True, exist_ok=True)
+            target = outdir / f"{device.id}.s{len(order)}p"
+            ts = _bound(linked.root / row.snp, list(row.ports), order, target, row)
+            topology = None if device.topology is not None else linked.topologies[row.part]
+            geometry.sparams[device.id] = DeviceSParams(device.id, target, order, ts.z0, topology)
+            geometry.picks[device.id] = {"stratum": row.stratum, "part": row.part, "obs_id": row.obs_id,
+                                         "geometry": dict(row.params), "values": _finite(row.values),
+                                         "footprint": row.footprint,
+                                         "combination": {name: point.params[name] for name in linked.names}}
+        (ctx.workdir / "em").mkdir(parents=True, exist_ok=True)
+        (ctx.workdir / "em" / PICKS).write_text(json.dumps(geometry.picks, indent=1, allow_nan=False), encoding="utf-8")
+        return geometry
+
+
+def _finite(values: dict[str, float | None]) -> dict[str, float | None]:
+    """A row's electrical values with a non-finite one as None: they go to strict JSON (pick.json, the digest)."""
+    return {k: v if v is None or math.isfinite(v) else None for k, v in values.items()}
+
+
+def _bound(source: Path, ports: list[str], order: list[str], target: Path, row) -> touchstone.Touchstone:
+    """The row's sNp at ``target`` with its ports in ``order``: a byte copy in the file's own order, else permuted and
+    written; the Touchstone read. Its failure names the row, never a path (the digest keeps issue texts)."""
+    try:
+        ts = touchstone.read(source)
+        if order == ports:
+            target.write_bytes(source.read_bytes())
+        else:
+            said = (f"ic-opt: library row {row.stratum} {row.part}/{row.obs_id}, ports reordered from {' '.join(ports)} "
+                    f"to {' '.join(order)}")
+            touchstone.write(target, touchstone.permuted(ts, [ports.index(p) for p in order]), comments=[said])
+    except (OSError, touchstone.TouchstoneError) as exc:
+        raise StageFailure(f"the sNp of row {row.part}/{row.obs_id} of {row.stratum} cannot be read or copied "
+                           f"({type(exc).__name__})") from exc
+    return ts
+
+
+def library_circuit_pipeline(spec: Spec, deck, *, waveforms: list[WaveformExport] = ()) -> list:
+    """pick -> bind_nport -> spectre -> ocean -> extract, and measure for every library device (a library pipeline always
+    has the device child, metrics or not: it records the row taken). No EMX; a row's measurement is no simulation."""
+    sim = spec.simulator
+    return [Pick(spec), BindNport(deck),
+            Spectre(preset=sim.preset, threads=sim.threads_per_run, timeout_s=sim.timeout_s,
+                    license_queue_timeout_s=sim.license_queue_timeout_s),
+            Ocean(timeout_s=sim.timeout_s, waveforms=list(waveforms)), Extract(), Measure(simulates=False)]
+
+
+def library_only_pipeline(spec: Spec) -> list:
+    """pick -> measure: a spec of library devices and no testbench (the rows' own metrics)."""
+    return [Pick(spec), Measure(simulates=False)]

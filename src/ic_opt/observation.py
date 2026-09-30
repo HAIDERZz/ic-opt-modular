@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from pydantic import AliasChoices, BaseModel, Field, model_serializer
 
@@ -24,13 +25,19 @@ class ChildResult(BaseModel):
     # transistors only (instances that report gm). None: not extracted -- older stores, EM devices, operating points
     # switched off, results without any. Shown to whoever reads the run; no strategy reads it.
     operating_points: dict[str, dict[str, float]] | None = None
+    # T18.2B: a library device's child names the row its point took -- stratum, part, obs_id, geometry (the row's dims),
+    # values (its electrical values at the working frequency: the index's columns) and footprint; no path.
+    library_row: dict[str, Any] | None = None
 
     @model_serializer(mode="wrap")
     def _dump(self, handler):
-        """Left out while None: a child without operating points is written as before T17.5, byte for byte."""
+        """Left out while None: a child without operating points is written as before T17.5, and one without a library
+        row as before T18.2B, byte for byte."""
         data = handler(self)
         if self.operating_points is None:
             data.pop("operating_points", None)
+        if self.library_row is None:
+            data.pop("library_row", None)
         return data
 
 
@@ -76,8 +83,18 @@ class Observation(BaseModel):
 
     def corners(self) -> set[str]:
         """The corners the point was evaluated at: those of its children and of the children it did not run -- a point
-        stopped at its first corner was still evaluated at all of them; ``nominal`` for a corner-less child."""
-        return {c.corner or "nominal" for c in self.children.values()} | {key.split("/", 1)[1] for key in self.not_run}
+        stopped at its first corner was still evaluated at all of them; ``nominal`` for a corner-less child. A unit whose
+        only corner is ``nominal`` while another unit's are others is such a child -- an EM device, measured once and
+        counted at every corner -- and adds no corner of its own (T18.2B: a library pipeline always has one; before, a
+        device measured beside cornered testbenches read as a corner ``nominal`` of the point)."""
+        by_unit: dict[str, set[str]] = {}
+        for child in self.children.values():
+            by_unit.setdefault(child.unit, set()).add(child.corner or "nominal")
+        for key in self.not_run:
+            unit, corner = key.split("/", 1)
+            by_unit.setdefault(unit, set()).add(corner)
+        cornered = [corners for corners in by_unit.values() if corners != {"nominal"}]
+        return set().union(*(cornered or by_unit.values()))
 
     def infeasibility_key(self, violation: float) -> tuple[int, float]:
         """Where the point ranks among infeasible points, smallest first (T17.8): the one that got furthest -- fewest

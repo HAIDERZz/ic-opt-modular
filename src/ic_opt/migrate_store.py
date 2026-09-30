@@ -239,8 +239,9 @@ def _spec(project: Path) -> tuple[Spec, Path]:
 
 
 def _em_pipelines(spec: Spec) -> dict[str, list[Stage]]:
-    """The pipelines this spec implies whose identity T15.2 changed: em_only, and em_circuit when it has testbenches."""
-    if spec.em is None or not spec.devices:
+    """The pipelines this spec implies whose identity T15.2 changed: em_only, and em_circuit when it has testbenches. None
+    for library devices (T18.2B): their pipelines came after T15.2 and run no EMX."""
+    if spec.em is None or not spec.devices or spec.library_devices:
         return {}
     pipelines = {"em_only": em_only_pipeline(spec)}
     if spec.testbenches:
