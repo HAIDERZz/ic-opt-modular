@@ -344,17 +344,69 @@ class Topology(Model):
         return data
 
 
+DEFAULT_PLUGIN = "builtin:clean_port"
+_PREFER_RE = re.compile(r"^(max|min):[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class LibrarySource(Model):
+    """Where a library device comes from (T18.2B, ``docs/refactor/T18_2B_LIBRARY_DEVICE_SPEC.md``): one table (``stratum``)
+    of the library at ``root``, its rows seen by their electrical values at ``frequency_hz`` (``ic_opt.library.index``).
+
+    ``root`` says where the library sits on the machine running ic-opt, not which problem this is: it is left out of
+    ``Spec.problem()`` (as ``em.binary`` is), so a library moved or mounted elsewhere keeps the problem's identity; the
+    stratum, the frequency, the margin and ``prefer`` are part of it. ``srf_margin`` (>= 1) also leaves out the rows whose
+    system SRF is at or below margin x frequency (the index's own margin, the manifest's, holds anyway); ``prefer``
+    (``max:<column>`` / ``min:<column>``, an index column) says which row of a combination holding several is taken, the
+    index's default (``max:Qmin``, else ``max:Qp``) when unset."""
+
+    root: str = Field(min_length=1)                   # the directory holding library.yaml, on the machine running ic-opt
+    stratum: str = Field(min_length=1)                # one table
+    frequency_hz: float = Field(gt=0, allow_inf_nan=False)    # the working frequency the electrical values are taken at
+    srf_margin: float | None = Field(default=None, ge=1.0, allow_inf_nan=False)
+    prefer: str | None = None                         # max:<column> / min:<column>; None: the index's default
+
+    @field_validator("root")
+    @classmethod
+    def _root(cls, value: str) -> str:
+        if not Path(value).expanduser().is_absolute():
+            raise ValueError(f"library root {value!r} must be an absolute path: the directory holding library.yaml, on the "
+                             "machine running ic-opt")
+        return value
+
+    @field_validator("prefer")
+    @classmethod
+    def _prefer(cls, value: str | None) -> str | None:
+        if value is not None and not _PREFER_RE.match(value):
+            raise ValueError(f"library prefer {value!r}: expected max:<column> or min:<column>, an index column (max:Qmin)")
+        return value
+
+
 class Device(Model):
-    """One pcell generator instance: what the EM stages build, extract and bind."""
+    """One EM device: a pcell generator instance the EM stages build, simulate with EMX and bind -- ``generator`` and
+    ``profile`` -- or, with ``library`` (T18.2B), a device taken from a library table: its ``variables`` map index columns
+    (``Lp``, ``Ls``, ``k``, ...) to spec variables of electrical values, the combinations that exist are the ones a row sits
+    on (``ic_opt.library.link``), and evaluating a point binds that row's own sNp. A library device's generator, profile,
+    fixed fields and plugin are the table's; its ``topology``, when it states none, too (the table's part's, measured as
+    the library measures it)."""
 
     id: str
-    generator: str = Field(min_length=1)                      # generator id inside the plugin, e.g. clean_port_xfm_bs
-    plugin: str = "builtin:clean_port"                        # builtin:<name> or an absolute path to a plugin .py
-    profile: str = Field(min_length=1)                        # process rule profile id (resolved via IC_OPT_PROFILE_DIRS)
+    generator: str | None = Field(default=None, min_length=1)    # generator id inside the plugin, e.g. clean_port_xfm_bs
+    plugin: str = DEFAULT_PLUGIN                              # builtin:<name> or an absolute path to a plugin .py
+    profile: str | None = Field(default=None, min_length=1)      # process rule profile id (resolved via IC_OPT_PROFILE_DIRS)
     ports: list[str] = Field(min_length=1)                    # semantic port labels in the generator's fixed order
     fixed: dict[str, object] = Field(default_factory=dict)    # generator fields that are not optimized (passed through)
-    variables: dict[str, str] = Field(default_factory=dict)   # generator field -> spec variable name (default "<id>.<field>")
-    topology: Topology | None = None                          # default derived from the port set
+    variables: dict[str, str] = Field(default_factory=dict)   # generator field (library: index column) -> spec variable
+    topology: Topology | None = None                          # default derived from the port set (library: the table's)
+    library: LibrarySource | None = None                      # T18.2B: the device comes from a library table's rows
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        """An unset library stays out of the dump, so every spec written before it existed keeps its dump and both
+        fingerprints."""
+        data = handler(self)
+        if self.library is None:
+            data.pop("library", None)
+        return data
 
     @field_validator("id")
     @classmethod
@@ -368,6 +420,26 @@ class Device(Model):
             _name(port, "device port")
         _unique(value, "device ports")
         return value
+
+    @model_validator(mode="after")
+    def _source(self) -> Device:
+        """Drawn and simulated (generator and profile) or taken from a library table (library), never both."""
+        if self.library is None:
+            missing = [name for name in ("generator", "profile") if getattr(self, name) is None]
+            if missing:
+                raise ValueError(f"device {self.id}: {' and '.join(missing)} missing -- give generator and profile (a device "
+                                 "the pcell draws and EMX simulates) or library (a device taken from a library table's rows)")
+            return self
+        stated = [name for name in ("generator", "profile") if getattr(self, name) is not None]
+        stated += ["fixed"] if self.fixed else []
+        stated += ["plugin"] if self.plugin != DEFAULT_PLUGIN else []
+        if stated:
+            raise ValueError(f"device {self.id} comes from library table {self.library.stratum}: its generator, profile, "
+                             f"fixed fields and plugin are the table's -- leave out {', '.join(stated)}")
+        if not self.variables:
+            raise ValueError(f"device {self.id} comes from library table {self.library.stratum}: give its variables, index "
+                             f"column -> spec variable (e.g. variables: {{Lp: {self.id}.Lp, k: {self.id}.k}})")
+        return self
 
     def default_topology(self) -> Topology:
         """The topology of a device that states none, from its ports other than the ``CT*`` taps (which are grounded): two
@@ -492,7 +564,7 @@ class Spec(Model):
     project: str
     description: str = ""
     testbenches: list[Testbench] = Field(default_factory=list)   # circuit testbenches (Maestro exports)
-    devices: list[Device] = Field(default_factory=list)          # EM devices (pcell generators)
+    devices: list[Device] = Field(default_factory=list)          # EM devices (pcell generators, or library tables: T18.2B)
     em: EmSettings | None = None
     bindings: list[Binding] = Field(default_factory=list)        # device sNp -> testbench nport instances
     corners: list[Corner] = Field(default_factory=list)
@@ -536,11 +608,14 @@ class Spec(Model):
                 metric.testbench = self.testbenches[0].id
             elif metric.testbench not in tb_ids:
                 raise ValueError(f"metric {metric.name} references unknown testbench {metric.testbench}")
+        _library_devices(self)
         for device in self.devices:
             for field, variable in device.variables.items():
                 if variable not in variable_names:
                     raise ValueError(f"device {device.id} maps {field} to unknown variable {variable}")
             if device.topology is None:
+                if device.library is not None:         # the table's (ic_opt.library.link): nothing to default or check here
+                    continue
                 device.topology = device.default_topology()
             labels = set(device.ports)
             used = [p for pair in device.topology.drives for p in pair] + list(device.topology.grounded)
@@ -578,11 +653,16 @@ class Spec(Model):
     def device(self, device_id: str) -> Device:
         return next(d for d in self.devices if d.id == device_id)
 
+    @property
+    def library_devices(self) -> list[Device]:
+        """The devices taken from a library table (T18.2B): every device of the spec, or none (a mixture is refused)."""
+        return [d for d in self.devices if d.library is not None]
+
     def device_fields(self, device: Device) -> dict[str, str]:
         """Generator field -> spec variable name. Explicit mapping, else ``<id>.<field>`` names, else -- in a spec of one
         device and no testbench, its names without a prefix -- every variable is a generator field. With testbenches the
         unprefixed names are the circuit's: taking them all for the device left the netlists without their parameters
-        (N-51, 2026-09-28)."""
+        (N-51, 2026-09-28). A library device (T18.2B) always maps explicitly: index column -> spec variable."""
         if device.variables:
             return dict(device.variables)
         prefix = f"{device.id}."
@@ -617,8 +697,9 @@ class Spec(Model):
     def problem(self) -> dict:
         """The problem this spec states: ``model_dump(mode="json")`` without how it is run -- the simulator's parallel jobs,
         threads per run, timeout, license check, license queue timeout, retention, operating points and stop at the first
-        failure, EMX threads, memory cap, timeout and verbosity, and the budget. Unset (None) fields are left out too, so
-        an optional field added to the schema later leaves every existing problem's identity alone."""
+        failure, EMX threads, memory cap, timeout and verbosity, the budget, and where a library device's library sits
+        (``library.root``: the library's content is the pipeline's identity, ``Pick``'s). Unset (None) fields are left out
+        too, so an optional field added to the schema later leaves every existing problem's identity alone."""
         return self.model_dump(mode="json", exclude=_NOT_PROBLEM, exclude_none=True)
 
     def fingerprint(self) -> str:
@@ -638,6 +719,36 @@ def _unique(values: list[str], label: str) -> None:
         raise ValueError(f"{label} must be unique")
 
 
+def _library_devices(spec: Spec) -> None:
+    """T18.2B: a spec's devices all come from a library table or none does (a mixture is refused in this first version),
+    and a library device's variables are its own -- one spec variable per index column, none shared -- and hold electrical
+    values, whose text may carry a Spectre scale suffix (``space.si_value``: ``T G M k m u n p f a``, nothing else)."""
+    from ic_opt import space
+
+    library = [d.id for d in spec.devices if d.library is not None]
+    if not library:
+        return
+    drawn = [d.id for d in spec.devices if d.library is None]
+    if drawn:
+        raise ValueError(f"a spec's devices all come from a library table or none does: {', '.join(library)} from a library, "
+                         f"{', '.join(drawn)} drawn and simulated with EMX -- take every device from a library, or none")
+    variables = {v.name: v for v in spec.variables}
+    taken: dict[str, str] = {}
+    for device in spec.devices:
+        for column, name in device.variables.items():
+            if name in taken:
+                raise ValueError(f"device {device.id} maps {column} to {name}, which {taken[name]} maps already: each index "
+                                 "column takes a spec variable of its own")
+            taken[name] = f"device {device.id} ({column})"
+            if name not in variables:
+                continue                                  # the unknown variable is named by the check that follows
+            for label in ("lower", "upper", "step"):
+                try:
+                    space.si_value(getattr(variables[name], label))
+                except ValueError as exc:
+                    raise ValueError(f"device {device.id}: variable {name} {label}: {exc}") from exc
+
+
 # -- identity -------------------------------------------------------------------------
 
 # How a problem is run, not which problem it is: left out of Spec.problem() and so of Spec.fingerprint().
@@ -647,6 +758,7 @@ _NOT_PROBLEM = {
                   "stop_at_first_failure",     # which children of a point run, not what any of them gives: a stopped point is never reused
                   "strategy_threads"},         # how fast a batch is proposed, on the machine running ic-opt
     "em": {"threads", "memory_gb", "parallel_jobs", "timeout_s", "verbose", "binary"},      # the binary: a path on the host, not physics
+    "devices": {"__all__": {"library": {"root"}}},     # T18.2B: where the library sits, not which problem (its content: the pipeline's)
     "budget": True,
 }
 

@@ -2,7 +2,9 @@
 
 Parameter values stay strings with Spectre-safe SI suffixes (``"0.6u"``) —
 the exact text that lands in the netlist. Numeric work happens on the
-``Decimal`` value plus the unit suffix, never on floats of the text.
+``Decimal`` value plus the unit suffix, never on floats of the text. Where a
+value is needed in SI units (a library device's electrical variables, T18.2B),
+:func:`si_value` reads the suffix as Spectre's scale factor.
 
 Allowed combinations (T18.2A specification, ``docs/refactor/T18_2A_ALLOWED_COMBINATIONS_SPEC.md``). Some variables may
 take only the combinations of their levels that a :class:`Table` lists -- a library device's variables, the combinations
@@ -11,7 +13,8 @@ variables' levels are, table by table, one of its table's combinations: :func:`s
 points only, :func:`check` accepts only them, :func:`grid_size` counts them, :func:`valid_points` enumerates them. The
 nearest combination is the one at the smallest Euclidean distance in unit coordinates (:func:`unit_coordinates`, those of
 ``metric_gp``'s ``Coords``), and :func:`nearest` alone measures it. With no table every grid point is valid and nothing
-here behaves differently.
+here behaves differently. The tables come from ``ic_opt.library.link`` (T18.2B), which resolves each library device once
+per process: a run sees one table for its whole life.
 """
 
 from __future__ import annotations
@@ -50,6 +53,21 @@ def parse_scalar(raw: str) -> tuple[Decimal, str]:
         return Decimal(match.group("value")), match.group("unit") or ""
     except InvalidOperation as exc:  # pragma: no cover - regex already guards this
         raise ValueError(f"{raw!r} is not a number") from exc
+
+
+# Spectre's scale suffixes (T18.2B): the one a library device's electrical variables may carry ("150p", "0.9"). M is mega and
+# m milli, as Spectre reads them; any other suffix -- a unit ("pH"), SPICE's "meg" -- is refused.
+SCALE = {"T": 12, "G": 9, "M": 6, "k": 3, "m": -3, "u": -6, "n": -9, "p": -12, "f": -15, "a": -18}
+
+
+def si_value(text: str) -> float:
+    """A value's text read as Spectre reads a number, in SI units: ``"150p"`` -> 1.5e-10, ``"28G"`` -> 2.8e10, ``"0.3"`` ->
+    0.3. The suffix is one of :data:`SCALE` (``T G M k m u n p f a``; ``M`` is mega, ``m`` milli) or none; anything else
+    is refused (ValueError). The number is scaled exactly (decimal) before it becomes a float."""
+    number, suffix = parse_scalar(str(text).strip())
+    if suffix and suffix not in SCALE:
+        raise ValueError(f"{text!r}: {suffix!r} is not a Spectre scale suffix ({' '.join(SCALE)}; M is mega, m milli)")
+    return float(number.scaleb(SCALE.get(suffix, 0)))
 
 
 def variable_issue(variable: Variable) -> str | None:
@@ -314,9 +332,9 @@ class Table:
 
 def tables(spec: Spec) -> list[Table]:
     """The tables of allowed combinations of ``spec``'s variables (:class:`Table`): what ``ic_opt.library.link.tables``
-    gives -- none until T18.2B, which reads them from the spec's library devices -- checked against the spec here, where
-    they are first used: every name a variable of the spec and in one table only, every level index within its
-    variable's levels, no table empty. A violation is a ValueError that names the table."""
+    gives -- one per library device (T18.2B), none for a spec without -- checked against the spec here, where they are
+    first used: every name a variable of the spec and in one table only, every level index within its variable's levels,
+    no table empty. A violation is a ValueError that names the table."""
     # the library builds on the space: imported where first needed, not when the space is
     from ic_opt.library import link
 
