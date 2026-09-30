@@ -87,3 +87,65 @@ Targeted run: the new file, `tests/ic_opt/test_cli_recipes.py`, `test_multi_corn
 - One commit per coherent piece; trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Hand back: branch and commits; the verbatim test and ruff output (last 30 lines); what the specification left open
   and how it was read (a numbered list); what could not be done and why.
+
+## 6. Record (2026-10-01, coordinator)
+
+Implemented on branch `t18-4-tighten` (commits `5f4766d`, `5070064`, `056211a`, `8c634b1`), merged into `main` with
+`c121b56`. Targeted run on the merged tree: `tests/ic_opt/test_signoff_tighten.py` (24 tests), `test_cli_recipes.py`,
+`test_multi_corner.py`, `test_schedule.py`, `test_library_device_run.py` -- 105 passed; `ruff check src tests` clean.
+No simulator was run by the coder; the coordinator ran `ic-opt run signoff <the L3 project> rounds=3 --plan` on the real
+library-device project (two transformers from a table, a spec without corners): the three rounds' search and re-check
+lines print and nothing is written. The rounds have not yet run on a real corner spread: no library-device platform with
+corners exists yet (the L3 testbench has none), so a real demonstration waits for one.
+
+How the open points of the specification were read (the coder's list, accepted as written unless noted):
+
+1. **Where later rounds tighten from.** The miss is measured against the limit as written (what the re-check judges);
+   the move is taken from the limit the round's search ran under, so the moves add up. Otherwise a round that missed by
+   less than the one before would search under a looser limit than its predecessor. From round 2 on the printed line
+   also names the limit that round searched under. Accepted: this is the only reading under which the rounds cannot
+   loosen.
+2. **"Left alone."** Only the best re-checked point's misses tighten; every other constraint keeps the limit it has
+   (an earlier tightening is not undone).
+3. **The best point when none is feasible.** The smallest `constraint_penalty` among `constraint_failed` points; a
+   failed-simulation or lost-metric point carries a penalty of 0 that measured nothing and ranks after them; a point
+   stopped early is compared on the corners it ran. Accepted. (`Observation.infeasibility_key`, which prefers points
+   that ran more corners, was the alternative; the penalty is what the specification named.)
+4. **A metric bounded on both sides.** Each limit takes its own worst value over the corners it is judged at (as the
+   digest's `constraint_value`); `worst_metrics` gives one value for such a metric and would hide the other limit's
+   miss. For a one-sided metric the two agree (tested).
+5. **A limit the recipe cannot write back.** Refused before anything runs, `--plan` included, all such constraints in
+   one `ValueError`, only when `rounds` is above 1: a value that is not a number followed by a unit, and a unit that is
+   an SI prefix alone or on an SI unit (`50m V`, `28 GHz`, `0.6u`) unless it is the metric's own unit -- the verdict
+   reads a constraint's value without any prefix, so such a value already means something other than it looks. The
+   number is written back exactly, in the constraint's notation (`28e9 Hz` -> `28.5e9 Hz`, `9 dB` -> `8.662188 dB`);
+   the decimal places of the original are not kept.
+6. **Early ends** besides "feasible" and "rounds used": the round's search found no feasible point (nothing to
+   re-check); the best point misses nothing that has a value (nothing to tighten; the next round would search the same
+   problem); the limits of a two-sided metric would cross.
+7. **The report** covers the last re-check made; from round 2 on its title carries "(round k)".
+8. **`signoff_rounds.json`** is written whole after every round when `rounds` is above 1 (even when round 1 is already
+   feasible), never with `rounds=1` or under `--plan`: `outcome` (`feasible`, `rounds_used`, `nothing_to_recheck`,
+   `nothing_to_tighten`, `limits_cross`) with a `why` sentence and `report_round`; per round the search step, the
+   fingerprint and constraints it ran under, its point count, the re-check step, the best point's verdict, the misses
+   (limit as written, limit searched under, worst value, corner, miss, move, next limit) and the constraints with no
+   value.
+9. **The "no value" line** is printed only when another round could follow; a re-check stopped early also leaves
+   metrics without a value, and the line says so.
+10. **What later rounds are given:** neither the `start` rows nor the exported design; `initial=` holds the search rows
+    of the earlier rounds only (never re-check rows, so every row is at one corner); seed, batch and strategy as round 1.
+11. **`--plan`** prints one line per round, then each later round's search and re-check under the constraints as
+    written; plan mode has no earlier rows, so a later round's `metric_gp initial design ... proposes K of M` understates
+    what the model will propose.
+12. **Parameters** are checked before anything runs, `rounds=1` too: `rounds` a whole number of at least 1, `tighten`
+    a finite number above 0.
+13. **Extra printed lines** with `rounds` above 1: a header per round (from round 2 with the tightened spec's
+    fingerprint) and a closing line giving the reason the rounds ended.
+14. **README**: the built-ins are no longer "10-20 lines each"; the text now says "short compositions of blocks".
+15. **Tests beyond the five listed:** the early ends; how limits are written back and which are refused; the best-point
+    ranking, per-limit worst values and crossing limits; a spec with library devices; and a permanent statement-for-
+    statement comparison of `rounds=1` with the recipe body as it was before T18.4 (`recipe_before_rounds` in the test
+    file), on a twin project.
+
+Not done: a run against a real corner spread (see above); the whole test suite (by the working rules, the targeted set
+only).
