@@ -28,6 +28,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import Path
 
+import numpy as np
 from threadpoolctl import threadpool_limits
 
 from ic_opt import advice as advice_rules
@@ -71,6 +72,9 @@ def suggest(
     space-filling design, and each strategy offsets it by the history size where it needs fresh randomness. Points carry
     their provenance: ``suggest:<strategy>[:<tag>]``, per point where the strategy tags each (OpenBox ``init`` / ``acq``;
     ``fill`` for a random point that replaces one the model kept landing on evaluated points with).
+    Where some variables may take only a table's combinations (T18.2A, ``space.tables``) every point is a valid one:
+    ``space.snap`` projects each raw vector, and a batch still short after the random points is completed from the
+    valid points not yet taken, listed (``space.valid_points``) and drawn in a seeded order, also ``fill``.
     ``advice``: every row of an advice file (``ic_opt.advice``). The advice in effect at this history size (section 2 of
     the T17.1.5 specification) puts its start rows not yet evaluated after ``start``'s, origin ``advice:<id>``, for every
     strategy; ``metric_gp`` also narrows where its models' points look (they carry ``@<id>``); the others take no more.
@@ -130,6 +134,14 @@ def suggest(
             if point.key not in taken and len(points) < n:
                 taken.add(point.key)
                 points.append(point)
+    if len(points) < n and space.tables(spec):
+        # T18.2A: snapped onto a table, a random vector reaches a combination only as often as the stretch of the space
+        # nearest to it, and the last free valid points may be ones no draw reaches: they are listed and drawn from.
+        free = [params for params in space.valid_points(spec) if space.point_key(params) not in taken]
+        for j in np.random.default_rng(seed + len(taken)).permutation(len(free))[: n - len(points)]:
+            point = Point(free[j], fill)
+            taken.add(point.key)
+            points.append(point)
     return points
 
 
