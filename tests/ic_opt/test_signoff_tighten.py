@@ -91,8 +91,7 @@ def worst_nf(o) -> float:
 
 def test_one_round_is_the_recipe_as_it_was(tmp_path, capsys):
     """The expectations of ``test_cli_recipes.test_signoff_recipe_searches_one_corner_then_checks_all``, with rounds=1
-    named: nothing of the rounds is printed or written (the byte-for-byte comparison with the recipe before T18.4 is in
-    the record of the change)."""
+    named: nothing of the rounds is printed or written."""
     run = fake_run(project(tmp_path, corners=CORNERS))
     signoff.main(run, corner="tt", budget=4, batch=2, top=2, strategy="random", seed=2, rounds=1)
     obs = run.store.observations()
@@ -104,6 +103,48 @@ def test_one_round_is_the_recipe_as_it_was(tmp_path, capsys):
     assert "signoff round" not in capsys.readouterr().out
     assert not (run.store.reports_dir() / ROUNDS_FILE).exists()
     assert (run.store.reports_dir() / "report.md").read_text(encoding="utf-8").startswith("# demo — sign-off across all corners\n")
+
+
+def recipe_before_rounds(run, *, corner="tt", budget=60, batch=10, top=5, strategy="auto", seed=0, current=True, start=None,
+                         full=False):
+    """``recipes/signoff.main`` as it was before T18.4 (506d4bc), statement for statement: the reference of rounds=1."""
+    rows = json.loads(Path(run.project, start).read_text(encoding="utf-8")) if start else []
+    blocks.doctor(run.spec, run.executor, cshrc=run.cshrc, store=run.store, limits=run.limits).require_pass()
+    deck = blocks.import_netlists(run.spec, run.executor, run.store)
+    search = blocks.optimize(run.spec, run.executor, run.store, deck=deck, strategy=strategy, budget=budget, batch=batch,
+                             seed=seed, corners=[corner], step=f"search@{corner}", current=current, start=rows,
+                             cshrc=run.cshrc, parallel_jobs=run.jobs, limits=run.limits)
+    winners = blocks.points_from(blocks.best(run.spec, search, top))
+    check = blocks.evaluate(run.spec, winners, run.executor, run.store, deck=deck, corners="all", step="signoff",
+                            cshrc=run.cshrc, parallel_jobs=run.jobs, limits=run.limits,
+                            stop_at_first_failure=signoff._recheck_stop(run.spec, full))
+    if check:
+        run.note(f"report: {blocks.report(run.spec, check, run.store, title=f'{run.spec.project} — sign-off across all corners')}")
+
+
+@pytest.mark.parametrize("named", [False, True], ids=["default", "rounds=1"])
+def test_one_round_prints_and_stores_what_the_recipe_did_before_rounds(tmp_path, capsys, named):
+    """rounds=1, by default and named, against the recipe before T18.4 on a twin project (re-checks that stop at ss):
+    the same lines printed and the same observations, steps and report, the project's path aside (the spec names its
+    export, so the fingerprint follows the path) -- and the observations in obs_id order, as the store reads them (two
+    workers append them in the order they finish)."""
+    def outcome(where: Path, recipe, **extra) -> tuple:
+        run = fake_run(project(where, corners=CORNERS), metric_fn=worse_at_ss)
+        recipe(run, corner="tt", budget=4, batch=2, top=2, strategy="random", seed=2, **extra)
+        printed = capsys.readouterr().out.replace(str(where), "<PROJECT>")
+        rows = [o.model_dump(mode="json", exclude={"started_at", "finished_at"}) for o in run.store.observations()]
+        for row in rows:
+            row["spec_fingerprint"] = row["spec_fingerprint"].replace(run.spec.fingerprint(), "<SPEC>")
+            for c in row["children"].values():
+                c.pop("seconds")
+        steps = [{k: v for k, v in json.loads(line).items() if k not in ("at", "seconds", "wall_seconds")}
+                 for line in (run.store.root / "steps.jsonl").read_text(encoding="utf-8").splitlines()]
+        reports = sorted(p.name for p in run.store.reports_dir().iterdir())
+        return printed, rows, steps, reports, (run.store.reports_dir() / "report.md").read_text(encoding="utf-8")
+
+    before = outcome(tmp_path / "before", recipe_before_rounds)
+    now = outcome(tmp_path / "now", signoff.main, **({"rounds": 1} if named else {}))
+    assert now == before and "[run] report: <PROJECT>/proj/.icopt/reports/report.md" in before[0]
 
 
 # -- 2. a miss at another corner tightens the next search by that much ----------------------------------------------------
