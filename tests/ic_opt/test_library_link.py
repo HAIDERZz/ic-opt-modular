@@ -133,7 +133,7 @@ def test_each_refusal_says_what_to_change(root, tmp_path):
                                          r"Ls, Qs, k, Lp_lf, .*, Qmin, area"):
         link.resolve(library_spec(root, device=renamed))
     tapped = library_device(root) | {"ports": ["P1", "N1", "P2", "N2", "CTP"]}
-    with pytest.raises(ValueError, match=r"device xfmr: its ports \['P1', 'N1', 'P2', 'N2', 'CTP'\] are not the table's "
+    with pytest.raises(link.LinkError, match=r"device xfmr: its ports \['P1', 'N1', 'P2', 'N2', 'CTP'\] are not the table's "
                                          r"\['P1', 'N1', 'P2', 'N2'\] \(xfm_demo\)"):
         link.resolve(library_spec(root, device=tapped, terminals=("P1", "N1", "P2", "N2", "CTP")))
     far = {"xfmr.Lp": ("1n", "2n", "0.1n"), "xfmr.Ls": ("1n", "2n", "0.1n"), "xfmr.k": ("0.85", "0.95", "0.05")}

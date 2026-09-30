@@ -30,6 +30,7 @@ from ic_opt import recipe as recipe_module
 from ic_opt.blocks.doctor import plan_line
 from ic_opt.library import manifest as library_manifest
 from ic_opt.library import query as library_query
+from ic_opt.library.link import LinkError
 from ic_opt.site import EnvelopeError, SiteError
 from ic_opt.spec import load_spec
 from ic_opt.store import RunStore
@@ -104,7 +105,7 @@ def run(
     token = recipe_module.PLAN_MODE.set(plan)
     try:
         main(ctx, **kwargs)
-    except (SiteError, EnvelopeError) as exc:           # a job too big for its host is refused before it starts, --plan too
+    except (SiteError, EnvelopeError, LinkError) as exc:   # a job too big for its host, or a library device that cannot be resolved: refused before anything starts, --plan too
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     finally:

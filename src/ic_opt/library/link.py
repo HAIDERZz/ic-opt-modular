@@ -94,6 +94,12 @@ class Linked:
         return text
 
 
+class LinkError(ValueError):
+    """A library device cannot be resolved as the spec states it (the root, the stratum, a column, the ports, the grid): what
+    to change is in the message. The command line reports it as an error line, in plan mode too."""
+
+
+
 def tables(spec: Spec) -> list[space.Table]:
     """The tables of allowed combinations of ``spec``'s variables: one per library device (its variables, in the spec's
     order; the combinations a row of its table sits on, each row at its own electrical values taken onto the variables'
@@ -199,12 +205,12 @@ def _library(device: Device, root: Path) -> Library:
 
     if root not in _LIBRARIES:
         if not (root / manifest.MANIFEST).is_file():
-            raise ValueError(f"device {device.id}: no {manifest.MANIFEST} at {root} (library root: the directory holding "
+            raise LinkError(f"device {device.id}: no {manifest.MANIFEST} at {root} (library root: the directory holding "
                              f"{manifest.MANIFEST}, on the machine running ic-opt)")
         try:
             _LIBRARIES[root] = query.Library(root, calibrate=False)      # nothing is fitted: no calibration, no limits
         except ValueError as exc:
-            raise ValueError(f"device {device.id}: {root / manifest.MANIFEST}: {exc}") from exc
+            raise LinkError(f"device {device.id}: {root / manifest.MANIFEST}: {exc}") from exc
     return _LIBRARIES[root]
 
 
@@ -215,21 +221,21 @@ def _core(device: Device, root: Path, grid: dict[str, tuple[float, float, float]
     source = device.library
     library = _library(device, root)
     if source.stratum not in library.manifest.strata:
-        raise ValueError(f"device {device.id}: the library at {root} has no stratum {source.stratum!r}; its strata: "
+        raise LinkError(f"device {device.id}: the library at {root} has no stratum {source.stratum!r}; its strata: "
                          f"{', '.join(library.strata())}")
     try:
         built = index.build(library, source.stratum, source.frequency_hz, srf_margin=source.srf_margin)
     except ValueError as exc:
-        raise ValueError(f"device {device.id}: {exc}") from exc
+        raise LinkError(f"device {device.id}: {exc}") from exc
     unknown = [column for column in grid if column not in built.columns]
     if unknown:
-        raise ValueError(f"device {device.id}: {', '.join(unknown)} {'is' if len(unknown) == 1 else 'are'} no column of the "
+        raise LinkError(f"device {device.id}: {', '.join(unknown)} {'is' if len(unknown) == 1 else 'are'} no column of the "
                          f"index of {source.stratum} at {source.frequency_hz / 1e9:g} GHz; its columns: "
                          f"{', '.join(built.columns)}")
     try:
         return built, index.table(built, grid, source.prefer)
     except ValueError as exc:
-        raise ValueError(f"device {device.id}: {exc}") from exc
+        raise LinkError(f"device {device.id}: {exc}") from exc
 
 
 def _device(spec: Spec, device: Device, root: Path, grids: list[tuple[str, Variable]], built: Index,
@@ -238,15 +244,15 @@ def _device(spec: Spec, device: Device, root: Path, grids: list[tuple[str, Varia
     turned into the space's table."""
     for axis, (_column, variable) in zip(table.axes, grids, strict=True):
         if len(axis.raw) != space.grid_count(variable):
-            raise ValueError(f"device {device.id}: {variable.name} has {space.grid_count(variable)} levels as written and "
+            raise LinkError(f"device {device.id}: {variable.name} has {space.grid_count(variable)} levels as written and "
                              f"{len(axis.raw)} in SI units; give a lower, upper and step that divide exactly")
     sets = {frozenset(row.ports): row.ports for row in built.rows}
     first = list(built.rows[0].ports)
     if len(sets) > 1:
-        raise ValueError(f"device {device.id}: the rows of {built.stratum} disagree on their ports "
+        raise LinkError(f"device {device.id}: the rows of {built.stratum} disagree on their ports "
                          f"({'; '.join(', '.join(p) for p in sets.values())})")
     if set(device.ports) != set(first):
-        raise ValueError(f"device {device.id}: its ports {list(device.ports)} are not the table's {first} ({built.stratum}): "
+        raise LinkError(f"device {device.id}: its ports {list(device.ports)} are not the table's {first} ({built.stratum}): "
                          "a library device's ports are its table's port labels")
     if not table.cells:
         ranges = []
@@ -254,7 +260,7 @@ def _device(spec: Spec, device: Device, root: Path, grids: list[tuple[str, Varia
             values = [row.values[column] for row in built.rows if row.values.get(column) is not None]
             held = f"{min(values):.4g} to {max(values):.4g}" if values else "no value"
             ranges.append(f"{column}: the index holds {held}, {variable.name} spans {variable.lower} to {variable.upper}")
-        raise ValueError(f"device {device.id}: no row of {built.stratum} at {built.frequency_hz / 1e9:g} GHz lies on the grid "
+        raise LinkError(f"device {device.id}: no row of {built.stratum} at {built.frequency_hz / 1e9:g} GHz lies on the grid "
                          f"of its variables ({table.left_out}) -- " + "; ".join(ranges))
     names = tuple(variable.name for _, variable in grids)
     linked_table = space.Table(names, tuple(table.levels()), LABEL.format(device=device.id))
