@@ -149,3 +149,13 @@ How the open points of the specification were read (the coder's list, accepted a
 
 Not done: a run against a real corner spread (see above); the whole test suite (by the working rules, the targeted set
 only).
+
+**Real corner spread (2026-10-01, later the same day).** The rounds ran on the user's mixer platform (three testbenches
+x three corners, the tapped transformer taken from a library table, no EMX): round 1's best re-checked point missed
+`NF_3G lt 10 dB` by 0.31 dB at the hot corner, round 2 searched under 9.689 dB and its best missed by 0.037 dB, round 3
+searched under 9.652 dB and its best missed by 0.128 dB; the rounds ended as `rounds_used`. The re-check stopped at the
+first failing corner, so the metrics of the testbenches it did not run had no value at the best point and were reported
+as "cannot be tightened", as specified. A lesson for the user documentation: the move is the miss, so when a corner lies
+systematically far from the search corner (here about 2 dB of noise figure between 27 and 125 degrees) `tighten` above 1
+or more rounds are needed; `tighten=1.0` closes a gap that is small to begin with. Record: `T18_LIBRARY_DIRECTIONS_CN.md`
+section 13.
