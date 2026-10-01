@@ -1,5 +1,6 @@
-"""Touchstone v1 sNp files: header validation, numeric reading (kernel moved from em-opt ``device_db/measure.py``) and
-writing (T18.2B: a library row's sNp with its ports reordered for the bindings, ``write``)."""
+"""Touchstone sNp files: header validation, numeric reading (kernel moved from em-opt ``device_db/measure.py``; version
+1, and since N-48 version 2 -- its keywords, ``Lower`` / ``Upper`` triangles, the two-port data order, ``[Reference]``)
+and writing (T18.2B: a library row's sNp with its ports reordered for the bindings, ``write``, always version 1)."""
 
 from __future__ import annotations
 
@@ -60,7 +61,7 @@ def header_issues(path: Path, *, expected_ports: int, z0: float) -> list[str]:
     header: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         header.append(line)
-        if not line.startswith("!"):
+        if not line.startswith(("!", "[")):      # a version 2 file puts ``[Version] 2.0`` before the option line
             break
     if "EMX was run" not in "\n".join(header):
         issues.append("touchstone header does not include EMX command line")
@@ -70,14 +71,27 @@ def header_issues(path: Path, *, expected_ports: int, z0: float) -> list[str]:
     return issues
 
 
+_KEYWORD = re.compile(r"^\[([^\]]+)\]\s*(.*)$")
+_SKIPPED = {"version", "number of frequencies", "number of noise frequencies", "network data", "end"}
+
+
 def read(path: Path | str) -> Touchstone:
-    """Read a Touchstone v1 sNp file (RI / MA / DB, wrapped lines, the 2-port S11 S21 S12 S22 column order)."""
+    """Read a Touchstone sNp file: version 1 (RI / MA / DB, wrapped lines, the 2-port S11 S21 S12 S22 column order) or
+    version 2 (N-48: ``[Version] 2.0``; ``[Number of Ports]`` must agree with the suffix; ``[Matrix Format]`` ``Full``,
+    ``Lower`` or ``Upper`` -- a triangle is the symmetric matrix; a 2-port needs ``[Two-Port Data Order]``, ``21_12`` being
+    version 1's order and ``12_21`` row-major; ``[Reference]`` replaces the option line's R when every port has the same
+    value, per-port values that differ are refused; an ``[Information]`` block and ``[Noise Data]`` are passed over;
+    ``[Mixed-Mode Order]`` and a keyword this reader does not know are refused). Always the full matrix, row-major."""
     path = Path(path)
     n = n_ports_from_suffix(path)
     fmt, mult, unit, z0 = "RI", 1.0, "Hz", 50.0
+    version, matrix_format, two_port_order, reference = 1, "full", None, None
     tokens: list[float] = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.split("!", 1)[0].strip()
+    lines = path.read_text(encoding="utf-8").splitlines()
+    at = 0
+    while at < len(lines):
+        line = lines[at].split("!", 1)[0].strip()
+        at += 1
         if not line:
             continue
         if line.startswith("#"):
@@ -93,13 +107,66 @@ def read(path: Path | str) -> Touchstone:
                 if not math.isfinite(z0) or z0 <= 0:
                     raise TouchstoneError(f"{path}: reference impedance R must be finite and positive")
             continue
+        keyword = _KEYWORD.match(line)
+        if keyword:
+            name, value = keyword.group(1).strip().lower(), keyword.group(2).strip()
+            version = 2
+            if name == "number of ports":
+                if value != str(n):
+                    raise TouchstoneError(f"{path}: [Number of Ports] {value} but the suffix names {n} ports")
+            elif name == "matrix format":
+                matrix_format = value.lower()
+                if matrix_format not in ("full", "lower", "upper"):
+                    raise TouchstoneError(f"{path}: [Matrix Format] {value!r} is not Full, Lower or Upper")
+            elif name == "two-port data order":
+                two_port_order = value
+                if value not in ("12_21", "21_12"):
+                    raise TouchstoneError(f"{path}: [Two-Port Data Order] {value!r} is not 12_21 or 21_12")
+            elif name == "reference":
+                reference = value.split()
+                while at < len(lines):         # its values may go on until the next keyword, which the loop then reads
+                    line = lines[at].split("!", 1)[0].strip()
+                    if line.startswith("["):
+                        break
+                    reference.extend(line.split())
+                    at += 1
+            elif name == "begin information":
+                while at < len(lines) and lines[at].split("!", 1)[0].strip().lower() != "[end information]":
+                    at += 1
+                if at == len(lines):
+                    raise TouchstoneError(f"{path}: [Begin Information] without [End Information]")
+                at += 1
+            elif name == "noise data":
+                break                          # noise parameters are not read
+            elif name == "end":
+                break
+            elif name in _SKIPPED:
+                continue
+            else:
+                raise TouchstoneError(f"{path}: keyword [{keyword.group(1).strip()}] is not supported by this reader")
+            continue
         try:
             tokens.extend(float(t) for t in line.split())
         except ValueError as exc:
             raise TouchstoneError(f"{path}: unreadable data line {line[:40]!r}") from exc
-    per_freq = 1 + 2 * n * n
+    if reference is not None:
+        try:
+            values = [float(r) for r in reference]
+        except ValueError as exc:
+            raise TouchstoneError(f"{path}: unreadable [Reference] values {reference}") from exc
+        if len(values) != n:
+            raise TouchstoneError(f"{path}: [Reference] lists {len(values)} impedances for {n} ports")
+        if any(not math.isfinite(v) or v <= 0 for v in values):
+            raise TouchstoneError(f"{path}: every [Reference] impedance must be finite and positive")
+        if len(set(values)) != 1:
+            raise TouchstoneError(f"{path}: [Reference] impedances differ per port ({reference}); one common reference is supported")
+        z0 = values[0]
+    if version == 2 and n == 2 and two_port_order is None:
+        raise TouchstoneError(f"{path}: a version 2 two-port file needs [Two-Port Data Order]")
+    triangle = matrix_format in ("lower", "upper")
+    per_freq = 1 + (n * (n + 1) if triangle else 2 * n * n)
     if not tokens or len(tokens) % per_freq != 0:
-        raise TouchstoneError(f"{path}: token count {len(tokens)} not a multiple of {per_freq} ({n}-port)")
+        raise TouchstoneError(f"{path}: token count {len(tokens)} not a multiple of {per_freq} ({n}-port, {matrix_format})")
     block = np.asarray(tokens, dtype=float).reshape(-1, per_freq)
     freqs = block[:, 0] * mult
     a, b = block[:, 1::2], block[:, 2::2]
@@ -108,9 +175,15 @@ def read(path: Path | str) -> Touchstone:
     else:
         magnitude = 10.0 ** (a / 20.0) if fmt == "DB" else a
         values = magnitude * np.exp(1j * np.deg2rad(b))
-    s = values.reshape(-1, n, n)
-    if n == 2:                       # touchstone 2-port order: S11 S21 S12 S22 -> transpose to row-major
-        s = s.transpose(0, 2, 1)
+    if triangle:
+        s = np.zeros((len(freqs), n, n), dtype=complex)
+        rows, cols = (np.tril_indices(n) if matrix_format == "lower" else np.triu_indices(n))
+        s[:, rows, cols] = values                                   # row after row, each with its j <= i (or j >= i)
+        s[:, cols, rows] = values                                   # the symmetric half
+    else:
+        s = values.reshape(-1, n, n)
+        if n == 2 and (version == 1 or two_port_order == "21_12"):   # S11 S21 S12 S22 -> transpose to row-major
+            s = s.transpose(0, 2, 1)
     if not np.isfinite(freqs).all() or not np.isfinite(s).all():
         raise TouchstoneError(f"{path}: non-finite values")
     return Touchstone(freqs, s, z0, unit, fmt)

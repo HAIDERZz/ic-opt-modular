@@ -367,7 +367,11 @@ metrics:
 A binding lists the device's ports in the order of the instance's terminals; a `null` entry stands for a terminal the
 device does not have, and `bind_nport` rewrites the instance to the kept terminals (their order stays the sNp column
 order). That binds a six-port tapped transformer into a ten-terminal export whose p3 = p4 are the primary tap,
-p7 = p8 the secondary tap and p9 = p10 ground, as in the example above.
+p7 = p8 the secondary tap and p9 = p10 ground, as in the example above. An sNp file ic-opt reads -- a library
+row's, or one you measured yourself and hand to `points.from` or a comparison -- may be Touchstone version 1 or
+version 2 (`[Version] 2.0` with its keywords, `[Matrix Format] Full`, `Lower` or `Upper`, a `[Two-Port Data Order]`,
+one common `[Reference]`; EMX 2024 writes version 2 with the lower triangle when run on its own); files ic-opt
+writes are version 1 with the full matrix.
 
 A device's `topology` states how its S-parameters are measured: `drives`, one `[plus, minus]` port pair
 per differential drive (the primary, then the secondary), and `grounded` ports. A device without one gets
