@@ -163,7 +163,7 @@ T17 的第 2 步（评估调度与多 corner）、摘要第 3 版、饱和裕量
 | N-6 | pcell 注释里 em-opt 时代的指针（`geometry/…`、`.scratch/…`）清理 | T15.7 问题 5 | 小，已做（a7b9cdd） |
 | N-7 | `lib.region` 输出回显 `k`（页面按默认 2σ 措辞） | T14.3 问题 2 | 小，已做（a9c16dd） |
 | N-8 | 报告脚本 `docs/refactor/reports/**` 的 11 条 ruff 提示（不在 `ruff check src tests` 范围） | T15.7 | 小，已做（9c8795a） |
-| N-9 | Windows / macOS 控制端真机验证（锁、spawn、scp 盘符路径；msvcrt 分支只有打桩测试） | T15.4 | 需机器 |
+| N-9 | Windows / macOS 控制端真机验证（锁、spawn、scp 盘符路径；msvcrt 分支只有打桩测试） | T15.4 | **已做**：Windows 见 N-15 / N-23 / N-27 / N-35 / N-42 / N-51；macOS 见 N-95（2026-10-02） |
 | N-10 | stage 里抛出的 `CommandTimeout` 不会变成该点的 `failed:<stage>`，一个任务超时会中止整个 `sim.evaluate` | T16.4 发现 | 小，已做（0beb0f8） |
 | N-11 | Ctrl-C 之后 engine 的线程池仍把排队中的点跑完 | T16.4 发现 | 小，已做（9a009af） |
 | N-12 | `ic-opt migrate` 未为 0.1 工程写回 `license_queue_timeout_s: 900`（0.1 总是传 `+lqtimeout 900`）：按 T15 的做法显式写出旧行为 | T16.4 发现 | 小，已做（176162e） |
@@ -236,6 +236,7 @@ T17 的第 2 步（评估调度与多 corner）、摘要第 3 版、饱和裕量
 - 变压器两表回流后（B-2）40 GHz / 60 GHz 区域答案会随数据变化，`region_acceptance_40g*.json` 是回流前的验收记录，不是门。
 | N-93 | **带抽头变压器：抽头过孔柱在中间金属上的焊盘与另一绕组的引线只隔 1 µm**：`clean_port_xfm_bs` 的抽头是 W×W 过孔柱（M10→M8 要经过 M9 的 W×W 焊盘）加 M8 引线；另一绕组的引线对内沿在 ±opening。开口 6 µm、主线宽 10 µm 时 M9 焊盘（±5）与副圈 M9 引线（±6）只隔 1.0 µm，小于工艺对宽金属平行走线要求的间距；DRC 门拦住（`failed:pcell`，无 EMX 浪费）。图 `ic-opt-accept/t18_ct_table/figures/obs_0003_zoom.png` | 2026-10-01 建带抽头表的先导批（4 点 1 失败；全网格 390 点 75 点同样不过，都是主线宽 10 + 同心） | 候选：生成器在抽头存在时按规则检查 `opening ≥ W_tap/2 + 宽金属间距`，像 `_check_opening` 那样带原因拒绝（或把另一绕组的引线对按规则推开）；建表时改用开口 7 µm 绕过（367 点全过 DRC） |
 | N-94 | **库器件的 `SRF_p` / `SRF_s` / `SRF` 在扫频内不谐振时为空，作为 spec 指标就让该点 `failed:measure`**——而这样的行恰恰是谐振最高的；索引已把空值当作可用（高于余量） | 2026-10-01 混频器平台运行 a，40 点里 5 点 | 候选：库器件的 SRF 类指标在为空时取扫频上限（并在 issues 里说明），或 author-spec 写明用 `srf_margin` 代替 SRF 约束；本轮用余量 1.5 代替 |
+| N-95 | **macOS 控制端验收**（自主模式；Mac 在实验室，仿真在服务器，无 EMX）：一次 pip 装 0.7.0 + OpenBox/TuRBO/klayout/torch/shap/lightgbm；A 112G 混频器 `optimize` 20 点；B MixerCS 3 平台 × 3 corner、变压器来自库的表（最小库副本只经 scp 到 Mac）、`signoff rounds=3` | 用户 2026-10-02 要求；包 NAS `reports/macos_n95/`，服务器 `ic-opt-accept/n95/`（参考运行、最小库副本、交付 zip） | **已通过**（2026-10-02，macOS 27.2 arm64，Python 3.11，28 分钟）：安装 PASS；A 20/20 点与服务器参考参数相同、指标逐位相同；B 指纹相同、45/45 点参数相同、电路指标逐位相同、库器件指标差 ≤1e-14，第一轮复核三 corner 可行 −0.639927 同参考。**查出并修了一个产品缺陷**（`72e0149`）：macOS 的 tar 是 bsdtar，把 `._` 开头的成员当 AppleDouble 元数据——Maestro 导出里真有 `.__MARKER_FILE__`、`.__master.optionFile`、`.__master.termorder`，下载树时静默少两个文件、第三个报错退出；修法：macOS 也走 Windows 已有的 `tarfile` 路径（`ssh.py` 的 `_tarfile_locally`；符号链接按 tar 原样写出，Windows 仍拒绝）；加测试。三个环境项（known_hosts 只有备用地址、公钥已在、OpenSSH 10.5 的 scp 走 SFTP 尾斜杠多套一层）记在报告里 |
 
 ## 4. 已收官（本文件不再跟踪）
 
