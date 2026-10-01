@@ -9,11 +9,14 @@ Files are uploaded to a temporary name and ``mv``-ed into place so a partial
 transfer never masquerades as a complete file. Directories move as tar streams.
 
 The controller may be Linux, macOS or Windows 10+: it needs the OpenSSH client
-(``ssh``, ``scp``) and, on Linux and macOS, ``tar``, which packs and unpacks the
-directory streams locally. On Windows Python's ``tarfile`` does that, opening
-every local file through its extended-length path (``localpath.literal``): each
-Maestro export carries ``amap/__dspf_information__.``, whose trailing dot
-ordinary Win32 paths strip. Everything past ``ssh`` runs on the Linux host under
+(``ssh``, ``scp``) and, on Linux, ``tar``, which packs and unpacks the directory
+streams locally. On Windows and macOS Python's ``tarfile`` does that
+(``_tarfile_locally``): on Windows it opens every local file through its
+extended-length path (``localpath.literal``), since each Maestro export carries
+``amap/__dspf_information__.``, whose trailing dot ordinary Win32 paths strip; on
+macOS the local tar is bsdtar, which reads a member named ``._x`` as AppleDouble
+metadata of ``x``, and the same exports carry ``.__MARKER_FILE__``,
+``.__master.optionFile`` and ``.__master.termorder`` (N-95). Everything past ``ssh`` runs on the Linux host under
 its ``/bin/sh`` or ``csh``; remote paths are POSIX strings (``PurePosixPath``),
 never a local ``Path``, and remote output is decoded as UTF-8 whatever the
 controller's locale.
@@ -38,6 +41,7 @@ import posixpath
 import shlex
 import shutil
 import subprocess
+import sys
 import tarfile
 import threading
 import time
@@ -60,6 +64,17 @@ from ic_opt.localpath import literal
 Execute = Callable[..., subprocess.CompletedProcess]
 TERM_GRACE_S = 3                  # seconds a timed-out remote group has between SIGTERM and SIGKILL
 _WINDOWS = os.name == "nt"        # tree streams go through tarfile and literal paths there, not the local tar
+_MACOS = sys.platform == "darwin"  # tree streams go through tarfile there too: bsdtar's AppleDouble reading of "._" names
+
+
+def _tarfile_locally() -> bool:
+    """Whether this controller packs and unpacks tree streams with ``tarfile`` (:func:`_pack`, :func:`_unpack`) instead of
+    its own ``tar``: on Windows, for the literal paths; on macOS, because its tar is bsdtar, which takes any member whose
+    name starts with ``._`` for AppleDouble metadata of the name without it -- the Maestro exports carry
+    ``.__MARKER_FILE__``, ``.__master.optionFile`` and ``.__master.termorder``, and bsdtar lists 91 of the 93 members GNU
+    tar wrote, extracts 90, and stops on the second with "Failed to restore metadata: File exists" (the N-95 macOS
+    acceptance, 2026-10-02). ``tarfile`` keeps every member and holds no name special."""
+    return _WINDOWS or _MACOS
 
 
 def _default_execute(argv: list[str], *, input: str | bytes | None = None, timeout: float | None = None,
@@ -243,7 +258,7 @@ class SshExecutor:
             temporary.unlink(missing_ok=True)
 
     def _put_tree(self, local: Path, remote: str) -> None:
-        if _WINDOWS:
+        if _tarfile_locally():
             stream = _pack(local)
         else:
             stream = subprocess.run(["tar", "-C", str(local), "-cf", "-", "."], check=True, capture_output=True).stdout
@@ -264,14 +279,14 @@ class SshExecutor:
         if result.returncode == 255:
             raise TransportError(f"SSH transport failed while downloading tree {remote}: {result.stderr.strip()}")
         self._checked(result, f"download tree {remote}")
-        if _WINDOWS:
+        if _tarfile_locally():
             _unpack(done.stdout, local)
         else:
             subprocess.run(["tar", "-C", str(local), "-xf", "-"], input=done.stdout, check=True)
 
 
 def _pack(local: Path) -> bytes:
-    """The Windows side of ``_put_tree``: what ``tar -C local -cf - .`` writes, by ``tarfile``, reading every file
+    """The ``tarfile`` side of ``_put_tree`` (Windows and macOS): what ``tar -C local -cf - .`` writes, by ``tarfile``, reading every file
     through its literal path (``localpath``). Members are named as that command names them (``./``, ``./input.scs``,
     ``./amap/__dspf_information__.``), which the host's ``tar -xf -`` unpacks under the remote directory."""
     stream = io.BytesIO()
@@ -281,19 +296,22 @@ def _pack(local: Path) -> bytes:
 
 
 def _unpack(stream: bytes, local: Path) -> None:
-    """The Windows side of ``_get_tree``: ``tar -C local -xf -`` by ``tarfile``, creating every member through its
-    literal path (``localpath``), so a name that ends in a dot or a space keeps it. Directories and files come through
-    with their modification times -- a hard link, which ``tar -h`` writes for a file it reaches twice, as a copy of that
-    file -- but not their permissions: Windows could keep only a read-only flag, and that would stop the tree's later
-    ``rmtree``. A member of any other kind, or one whose name would leave ``local`` as a Windows path, is an
-    ``ExecutorError``."""
+    """The ``tarfile`` side of ``_get_tree`` (Windows and macOS): ``tar -C local -xf -`` by ``tarfile``, creating every
+    member through its literal path (``localpath``), so a name that ends in a dot or a space keeps it, and one that
+    starts with ``._`` is an ordinary file (bsdtar would take it for AppleDouble metadata). Directories and files come
+    through with their modification times -- a hard link, which ``tar -h`` writes for a file it reaches twice, as a copy
+    of that file -- but not their permissions: Windows could keep only a read-only flag, and that would stop the tree's
+    later ``rmtree``. A symbolic link is written as ``tar -xf -`` writes it, link name and all, except on Windows, which
+    cannot create one without a privilege: there it is refused, as is a member of any other kind, or one whose name
+    would leave ``local`` (an absolute name, a climb above it; on Windows also a drive or a backslash inside a name) --
+    an ``ExecutorError``."""
     root = literal(local)
     with tarfile.open(fileobj=io.BytesIO(stream)) as archive:
         for member in archive:
             parts = posixpath.normpath(member.name).split("/")
             if parts == ["."]:
                 continue                                                  # the tree itself, "./"
-            if parts[0] in ("", "..") or any("\\" in part or ":" in part for part in parts):     # /x, ../x, a\x, C:x
+            if parts[0] in ("", "..") or (_WINDOWS and any("\\" in part or ":" in part for part in parts)):   # /x, ../x, a\x, C:x
                 raise ExecutorError(f"refusing tar member {member.name!r}: it would not land inside {local}")
             target = os.path.join(root, *parts)
             if member.isdir():
@@ -303,5 +321,9 @@ def _unpack(stream: bytes, local: Path) -> None:
                 with archive.extractfile(member) as source, open(target, "wb") as sink:
                     shutil.copyfileobj(source, sink)
                 os.utime(target, (member.mtime, member.mtime))
+            elif member.issym() and not _WINDOWS:
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                os.symlink(member.linkname, target)
             else:
-                raise ExecutorError(f"refusing tar member {member.name!r}: neither a file nor a directory")
+                what = "a symbolic link, which Windows cannot create" if member.issym() else "neither a file nor a directory"
+                raise ExecutorError(f"refusing tar member {member.name!r}: {what}")

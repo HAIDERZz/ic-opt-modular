@@ -47,12 +47,16 @@ The simulation host is Linux: Spectre, OCEAN and EMX run there under `csh` /
 `sh`, reached through the executor. The controller (the machine that runs
 `ic-opt` and holds the project) can be Linux, macOS or Windows 10+. With
 `--ssh-profile` it needs the OpenSSH client (`ssh`, `scp`; on Windows the
-built-in "OpenSSH Client" feature) and `tar` (built into Windows 10+ and macOS).
-On Windows ic-opt packs and unpacks the directory streams with Python's
-`tarfile` instead, and handles the trees it fetches or uploads through
-extended-length paths (`\\?\`), because Maestro exports carry names that Win32
-path normalization would change (`amap/__dspf_information__.` ends in a dot), as
-the 2026-09-26 Windows acceptance found. On Windows the `turbo` extra installs
+built-in "OpenSSH Client" feature) and, on Linux, `tar`. On Windows and macOS
+ic-opt packs and unpacks the directory streams with Python's `tarfile` instead:
+on Windows it handles the trees it fetches or uploads through extended-length
+paths (`\\?\`), because Maestro exports carry names that Win32 path
+normalization would change (`amap/__dspf_information__.` ends in a dot), as the
+2026-09-26 Windows acceptance found; on macOS the system tar is bsdtar, which
+reads a member named `._x` as AppleDouble metadata of `x`, and the same exports
+carry `.__MARKER_FILE__`, `.__master.optionFile` and `.__master.termorder` --
+bsdtar dropped two of them silently and failed on the third, as the 2026-10-02
+macOS acceptance found. On Windows the `turbo` extra installs
 torch < 2.9: scikit-learn < 1.4 (OpenBox's pin) loads its own older
 `msvcp140.dll` at import, and torch 2.9+ cannot initialise on it (`WinError 1114`
 from `c10.dll`), as the 2026-09-27 Windows acceptance found. ic-opt writes UTF-8

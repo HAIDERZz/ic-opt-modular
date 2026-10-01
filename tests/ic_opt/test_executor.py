@@ -222,13 +222,16 @@ def tree(root: Path) -> dict[str, bytes | None]:
 
 
 @pytest.mark.skipif(os.name == "nt" or shutil.which("tar") is None, reason="this machine plays the Linux host: /bin/sh, tar")
-@pytest.mark.parametrize("windows", [False, True], ids=["local-tar", "windows-tarfile"])
-def test_tree_transfers_carry_names_windows_would_change_byte_for_byte(tmp_path, monkeypatch, windows):
-    """A Windows controller packs and unpacks directory streams with ``tarfile`` through ``localpath.literal`` paths, never
-    its own tar; any other controller runs its tar exactly as before. This machine plays the host (its /bin/sh and tar
-    run the remote side) and each branch sends a tree with ``amap/__dspf_information__.``, a name ending in a space and a
-    hard link (a file tar reaches twice) there and back, byte for byte, then fetches it again over what came back. Here
-    those names are ordinary: that Windows keeps them is for the Windows acceptance re-run to show."""
+@pytest.mark.parametrize("controller", ["linux", "windows", "macos"], ids=["local-tar", "windows-tarfile", "macos-tarfile"])
+def test_tree_transfers_carry_names_windows_would_change_byte_for_byte(tmp_path, monkeypatch, controller):
+    """A Windows or macOS controller packs and unpacks directory streams with ``tarfile`` (``_tarfile_locally``), never its
+    own tar -- Windows for ``localpath.literal`` paths, macOS because bsdtar reads a ``._x`` member as AppleDouble
+    metadata (N-95); a Linux controller runs its tar exactly as before. This machine plays the host (its /bin/sh and tar
+    run the remote side) and each branch sends a tree with ``amap/__dspf_information__.``, a name ending in a space, the
+    three ``._``-named files of a Maestro export and a hard link (a file tar reaches twice) there and back, byte for
+    byte, then fetches it again over what came back. Here those names are ordinary: that Windows and macOS keep them is
+    for their acceptance runs to show (N-23, N-95)."""
+    windows = controller == "windows"
     real_run = subprocess.run
     local_runs: list[list[str]] = []
 
@@ -242,9 +245,11 @@ def test_tree_transfers_carry_names_windows_would_change_byte_for_byte(tmp_path,
                         errors=errors, check=False)
 
     monkeypatch.setattr(ssh_module, "_WINDOWS", windows)
+    monkeypatch.setattr(ssh_module, "_MACOS", controller == "macos")
     monkeypatch.setattr(ssh_module.subprocess, "run", controller_run)
     sent, back, remote = tmp_path / "netlist", tmp_path / "back", tmp_path / "host" / "obs_0001" / "netlist"
-    for name, data in EXPORT.items():
+    apple_double = {".__MARKER_FILE__": b"", ".__master.optionFile": b"option text\n", ".__master.termorder": b"P1 N1\n"}
+    for name, data in {**EXPORT, **apple_double}.items():
         (sent / name).parent.mkdir(parents=True, exist_ok=True)
         (sent / name).write_bytes(data)
     (sent / "empty").mkdir()
@@ -258,8 +263,45 @@ def test_tree_transfers_carry_names_windows_would_change_byte_for_byte(tmp_path,
     (remote / "amap" / "__dspf_information__.").write_bytes(b"rewritten on the host")
     ex.get(str(remote), back)                                            # into the tree already there, as metrics/ comes back
     assert tree(back) == tree(remote)
-    assert local_runs == ([] if windows else [["tar", "-C", str(sent), "-cf", "-", "."], ["tar", "-C", str(back), "-xf", "-"],
-                                              ["tar", "-C", str(back), "-xf", "-"]])
+    assert {n for n in apple_double} <= {p.name for p in back.iterdir()}
+    assert local_runs == ([["tar", "-C", str(sent), "-cf", "-", "."], ["tar", "-C", str(back), "-xf", "-"],
+                           ["tar", "-C", str(back), "-xf", "-"]] if controller == "linux" else [])
+
+
+def test_on_macos_a_fetched_tree_keeps_symbolic_links_and_posix_names(tmp_path, monkeypatch):
+    """The ``tarfile`` side on macOS writes a symbolic link as the local tar did (link name and all) -- the Maestro
+    trees carry one -- and a name with a colon or a backslash is an ordinary POSIX name there, not a Windows drive or
+    separator; an absolute name and a climb above the directory are still refused (N-95)."""
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w") as archive:
+        info = tarfile.TarInfo("./exprOutputs.log")
+        info.type, info.linkname = tarfile.SYMTYPE, "../../../exprOutputs.log.11.16.1"
+        archive.addfile(info)
+        for name in ("./C:odd", "./amap\\odd", "./._apple"):
+            info = tarfile.TarInfo(name)
+            info.size = 4
+            archive.addfile(info, io.BytesIO(b"text"))
+
+    def host(argv, **kwargs):
+        if "tar -C" in argv[-1]:
+            return subprocess.CompletedProcess(argv, 0, stdout=stream.getvalue(), stderr=b"")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(ssh_module, "_WINDOWS", False)
+    monkeypatch.setattr(ssh_module, "_MACOS", True)
+    SshExecutor("lab", "/tmp/icopt", execute=host).get("/r/obs/netlist", tmp_path / "netlist")
+    link = tmp_path / "netlist" / "exprOutputs.log"
+    assert link.is_symlink() and os.readlink(link) == "../../../exprOutputs.log.11.16.1"
+    assert {p.name for p in (tmp_path / "netlist").iterdir()} == {"exprOutputs.log", "C:odd", "amap\\odd", "._apple"}
+    for member in ("../outside", "/tmp/outside"):
+        evil = io.BytesIO()
+        with tarfile.open(fileobj=evil, mode="w") as archive:
+            info = tarfile.TarInfo(member)
+            info.size = 4
+            archive.addfile(info, io.BytesIO(b"evil"))
+        with pytest.raises(ExecutorError, match="refusing tar member"):
+            ssh_module._unpack(evil.getvalue(), tmp_path / "other")
+    assert not (tmp_path / "outside").exists()
 
 
 @pytest.mark.parametrize("member", ["../outside", "/tmp/outside", "C:outside", "amap\\..\\..\\outside", "link"])
@@ -283,7 +325,8 @@ def test_on_windows_a_fetched_tree_refuses_members_that_would_leave_it(tmp_path,
         return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
     monkeypatch.setattr(ssh_module, "_WINDOWS", True)
-    with pytest.raises(ExecutorError, match="refusing tar member"):
+    monkeypatch.setattr(ssh_module, "_MACOS", False)
+    with pytest.raises(ExecutorError, match="refusing tar member" + (".*Windows cannot create" if member == "link" else "")):
         SshExecutor("lab", "/tmp/icopt", execute=host).get("/r/obs/metrics", tmp_path / "metrics")
     assert list((tmp_path / "metrics").iterdir()) == [] and not (tmp_path / "outside").exists()
 
