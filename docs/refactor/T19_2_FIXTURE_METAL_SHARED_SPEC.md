@@ -201,3 +201,15 @@ is kept up front (`footprint.require_builtin`, public now) so that nothing is re
 `ProfileUnavailable` sets `retry` per row, and `FOOTPRINT_VERSION` is 2 so that every cached `footprint-*` file is
 computed again. Test: `test_library_rows_with_the_fixture_off_the_bottom_metal_keep_the_devices_own_footprint`
 (`tests/ic_opt/test_library_footprint.py`; `run_part` / `part_spec` of `tests/ic_opt/test_library.py` take a `fixture`).
+
+### 8.2 Dry run on the real ms tables (reviewer, 2026-10-03, generator only, no EMX)
+
+Every point of the two planned ms tables drawn with `metal: auto, metal_rule: shared`: the family whose windings sit on
+the top two metals gets the thick metal below them for all 1 400 points, nothing refused. The other family gets the
+secondary's crossunder metal for 1 036 points and the contact check refuses 364: every one of them has the primary
+nested inside a larger multi-turn secondary (secondary OD at least 40 µm larger, centred), so the primary's 20 µm leads
+end on or inside the secondary's crossover region, right where its crossunders lie on the shared metal, and the stub
+would touch (or overlap) a crossunder. The check is right; the rows are a geometry question, not a fixture one: such a
+row needs its ports placed clear of the other winding's crossover (a port placement rule), or the `free` rule and a
+thinner metal for its table. Note also that the check is binary: a stub that misses a crossunder by a fraction of a
+micron passes, so a table built under `shared` should exclude that region by rule rather than lean on the check.
