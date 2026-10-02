@@ -49,7 +49,10 @@ from ic_opt.spec import Device, Spec, Topology
 
 DATASET_VERSION = 3                                  # 2: anchored curves of a coupled pair stop below the system SRF; 3: so do peaks
 ANCHORS_VERSION = 1                                  # the layout of an anchors-* file (``anchors``); a file of another is computed again
-FOOTPRINT_VERSION = 1                                # the layout of a footprint-* file (``footprints``); likewise
+FOOTPRINT_VERSION = 2                                # the layout of a footprint-* file (``footprints``); likewise. 2: each row through
+                                                     # ``footprint.footprint`` (its recorded device box, else its recorded fixture metal);
+                                                     # 1 measured every row against the bottom metal's layer -- the ring's outer box for
+                                                     # a fixture drawn on another metal (T19.1)
 UNBANDED = ("Lp_lf", "Lp_res", "SRF_p", "Ls_lf", "Ls_res", "SRF_s", "k_lf")     # compared with the stored quantities.json
 _PORT = re.compile(r"^p(\d+)=([^:]+)(?::(.+))?$")
 
@@ -341,12 +344,14 @@ def footprints_file(ds: Dataset) -> str:
 
 
 def footprints(root: str | Path, ds: Dataset, stratum: manifest.Stratum, *, cache: Cache | None) -> dict:
-    """Each row's footprint (``ic_opt.em.pcell.footprint``: the bounding box of the drawn device without its ground
-    fixture), from the GDS kept beside its sNp (``<device>.gds`` in the same directory): ``footprints`` one per row of
-    ``ds`` in its order, ``reasons`` why a row has None (no GDS there; a generator whose fixture cannot be told apart; a
-    GDS that cannot be read). One pass per stratum, cached as ``footprints_file``; not kept when nothing was read (nothing
-    is worth keeping) or a part's process profile could not be loaded here (another machine may). When no row keeps a GDS
-    at all the cache is not touched: no file, no lock file -- such a library's cache holds exactly what it held."""
+    """Each row's footprint (``ic_opt.em.pcell.footprint.footprint``: the bounding box of the drawn device without its
+    ground fixture -- the device box its manifest records, else the GDS measured without the fixture's layer, the
+    recorded fixture metal's or the bottom metal's), from the GDS kept beside its sNp (``<device>.gds`` in the same
+    directory): ``footprints`` one per row of ``ds`` in its order, ``reasons`` why a row has None (no GDS there; a
+    generator whose fixture cannot be told apart; a GDS that cannot be read). One pass per stratum, cached as
+    ``footprints_file``; not kept when nothing was read (nothing is worth keeping) or a row's process profile could not
+    be loaded here (another machine may). When no row keeps a GDS at all the cache is not touched: no file, no lock file
+    -- such a library's cache holds exactly what it held."""
     from ic_opt.em.pcell import footprint as fp
 
     root = Path(root)
@@ -358,25 +363,26 @@ def footprints(root: str | Path, ds: Dataset, stratum: manifest.Stratum, *, cach
                 "read": 0, "retry": False}
 
     def compute() -> dict:
-        layers: dict[str, tuple[int, int] | fp.FootprintError] = {}
+        refused: dict[str, str] = {}                    # part -> why its generator's fixture cannot be told apart
         for part, device in devices.items():
             try:
-                layers[part] = fp.fixture_layer(device.profile, device.generator, device.plugin)
+                fp.require_builtin(device.generator, device.plugin)
             except fp.FootprintError as exc:
-                layers[part] = exc
-        out = {"version": FOOTPRINT_VERSION, "rows": ids, "footprints": [], "reasons": [], "read": 0,
-               "retry": any(isinstance(v, fp.ProfileUnavailable) for v in layers.values())}
+                refused[part] = str(exc)
+        out = {"version": FOOTPRINT_VERSION, "rows": ids, "footprints": [], "reasons": [], "read": 0, "retry": False}
         for r, gds in zip(ds.rows, paths, strict=True):
-            layer = layers[r.part]
+            device = devices[r.part]
             box, why = None, None
             if not gds.is_file():
                 why = "no GDS beside its sNp"
-            elif isinstance(layer, fp.FootprintError):
-                why = str(layer)
+            elif r.part in refused:
+                why = refused[r.part]
             else:
                 out["read"] += 1
                 try:
-                    box = fp.measure(gds, layer)
+                    box = fp.footprint(gds, profile=device.profile, generator=device.generator, plugin=device.plugin)
+                except fp.ProfileUnavailable as exc:            # only a row without a recorded box needs the profile
+                    why, out["retry"] = str(exc), True
                 except fp.FootprintError as exc:
                     why = str(exc)
                 except (OSError, RuntimeError) as exc:           # klayout reports a broken GDS as a RuntimeError

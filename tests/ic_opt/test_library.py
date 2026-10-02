@@ -24,11 +24,11 @@ DIMS = ["outer_diameter_um", "width_um", "spacing_um", "turns"]
 QUANTITIES = {"Lp_lf": {}, "Lp_res": {}, "Qp_peak": {"band_ghz": 30}, "SRF_p": {}, "Lp": {"anchors_ghz": [5, 20]}, "Qp": {"anchors_ghz": [5, 20]}}
 
 
-def part_spec(project: str, stop_ghz: float, *, topology: dict | None = None, **em) -> Spec:
+def part_spec(project: str, stop_ghz: float, *, topology: dict | None = None, fixture: dict | None = None, **em) -> Spec:
     d = minimal_spec()
     d["project"], d["testbenches"] = project, []
     d["devices"] = [{"id": "ind", "generator": "clean_port_ind_sym", "profile": "demo_6m", "ports": ["P1", "N1"],
-                     "fixed": {"opening_um": 8.0, "lead_length_um": 20.0, "metal": "6", "ground_fixture": FIXTURE},
+                     "fixed": {"opening_um": 8.0, "lead_length_um": 20.0, "metal": "6", "ground_fixture": fixture or FIXTURE},
                      "variables": {k: k for k in DIMS}, "topology": topology}]
     d["variables"] = [{"name": "outer_diameter_um", "kind": "continuous_step", "lower": "80", "upper": "160", "step": "1"},
                       {"name": "width_um", "kind": "continuous_step", "lower": "3", "upper": "8", "step": "0.1"},
@@ -43,8 +43,9 @@ def part_spec(project: str, stop_ghz: float, *, topology: dict | None = None, **
     return Spec.model_validate(d)
 
 
-def run_part(root: Path, name: str, stop_ghz: float, points: list[dict], *, fail_emx=None, topology: dict | None = None, **em) -> RunStore:
-    spec = part_spec(name, stop_ghz, topology=topology, **em)
+def run_part(root: Path, name: str, stop_ghz: float, points: list[dict], *, fail_emx=None, topology: dict | None = None,
+             fixture: dict | None = None, **em) -> RunStore:
+    spec = part_spec(name, stop_ghz, topology=topology, fixture=fixture, **em)
     (root / name).mkdir(parents=True, exist_ok=True)
     (root / name / "spec.yaml").write_text(yaml.safe_dump(spec.model_dump(mode="json")), encoding="utf-8")
     store = RunStore(root / name)

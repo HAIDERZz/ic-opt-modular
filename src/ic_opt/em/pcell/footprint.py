@@ -88,7 +88,8 @@ def box_footprint(box: tuple[float, float, float, float]) -> dict:
     return {"width_um": round(width, DIGITS), "height_um": round(height, DIGITS), "area_um2": round(width * height, DIGITS)}
 
 
-def _require_builtin(generator: str, plugin: str) -> None:
+def require_builtin(generator: str, plugin: str) -> None:
+    """FootprintError unless ``generator`` is a built-in family: only those draw a fixture the footprint can tell apart."""
     from ic_opt.em.pcell.generator_plugin import PLUGIN_GENERATORS
 
     if plugin != BUILTIN or generator not in PLUGIN_GENERATORS:
@@ -102,7 +103,7 @@ def fixture_layer(profile: str, generator: str, plugin: str = BUILTIN, *, metal:
     drawing layer of ``metal`` -- the conductor the build recorded (``recorded_fixture_metal``) -- else of the fixture
     conductor of ``profile``, the bottom metal. FootprintError for any other generator; ProfileUnavailable when the
     profile cannot be loaded here."""
-    _require_builtin(generator, plugin)
+    require_builtin(generator, plugin)
     try:
         from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
 
@@ -144,7 +145,7 @@ def footprint(gds: str | Path, *, profile: str, generator: str, plugin: str = BU
     ``measure`` without the fixture's layer (``fixture_layer``: the conductor the manifest records, else the fixture
     conductor). FootprintError for another plugin's generator, record or not; ProfileUnavailable when the footprint has
     to be measured and the profile cannot be loaded here."""
-    _require_builtin(generator, plugin)
+    require_builtin(generator, plugin)
     box = recorded_device_bbox(gds)
     if box is not None:
         return box_footprint(box)

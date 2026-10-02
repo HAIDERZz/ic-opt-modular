@@ -156,6 +156,32 @@ def test_library_rows_carry_the_footprint_of_their_own_gds_and_none_without(mixe
     assert q.Library(mixed, limits=LOCAL).footprints("ind_demo") == known
 
 
+def test_library_rows_with_the_fixture_off_the_bottom_metal_keep_the_devices_own_footprint(tmp_path):
+    """T19.2 (found while testing it): the dataset measured every row against the bottom metal's layer, so a row whose
+    fixture was drawn on another metal (T19.1 ``metal: auto``) got the ring's outer box. Now each row goes through
+    ``footprint()``: the same geometry built with the fixture on the bottom metal and on the auto metal has the same
+    footprint, the device's own, smaller than the ring by the margin and the ring width on each side."""
+    root = build_library(tmp_path / "lib")
+    points = [{"outer_diameter_um": od, "width_um": 4.5, "spacing_um": 2, "turns": 2} for od in (105, 135)]
+    run_part(root, "gds", 60, points)
+    run_part(root, "gds_auto", 60, points, fixture={**FIXTURE, "metal": "auto"})
+    doc = yaml.safe_load((root / "library.yaml").read_text(encoding="utf-8"))
+    doc["strata"]["ind_demo"]["parts"] += [{"store": "gds"}, {"store": "gds_auto"}]
+    (root / "library.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
+    lib = q.Library(root, limits=LOCAL)
+    ds = lib.dataset("ind_demo")
+    known = lib.footprints("ind_demo")
+    by_part = {part: {r.coords["outer_diameter_um"]: known[(r.part, r.obs_id)] for r in ds.rows if r.part == part} for part in ("gds", "gds_auto")}
+    assert set(by_part["gds"]) == set(by_part["gds_auto"]) == {105.0, 135.0}
+    for od in (105.0, 135.0):
+        box, why = by_part["gds_auto"][od]
+        assert why is None and box == by_part["gds"][od][0]
+        assert fp.recorded_fixture_metal(next(root.glob("gds_auto/.icopt/sims/*/em/ind/ind.gds"))) != "M1"
+        assert box["width_um"] < od + 2 * (FIXTURE["inner_margin_um"] + FIXTURE["ring_width_um"])
+    cached = json.loads((root / ".cache" / dataset.footprints_file(ds)).read_text(encoding="utf-8"))
+    assert cached["version"] == dataset.FOOTPRINT_VERSION == 2
+
+
 def test_lib_query_gives_a_rows_footprint_and_draws_one_only_when_asked(mixed, tmp_path):
     lib = q.Library(mixed, limits=LOCAL)
     row = next(r for r in lib.dataset("ind_demo").rows if r.part == "gds")

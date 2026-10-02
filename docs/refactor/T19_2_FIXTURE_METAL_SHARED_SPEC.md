@@ -189,3 +189,15 @@ Not foreseen here, left open:
 3. Not run on the private profile (demo_6m only, as asked). By the rule, an ms whose primary and secondary sit on the top
    two metals takes the metal of the secondary's crossunder, one below the secondary, under `auto` + `shared` (no
    taps); whether the contact check refuses some of its points is for the first build to show.
+
+### 8.1 The library's footprints (found by the coder, fixed by the reviewer, 2026-10-03)
+
+`library/dataset.footprints` measured every row against the bottom metal's layer (`fixture_layer(profile, generator,
+plugin)` without the recorded metal), so a row whose fixture was drawn on another metal (T19.1 `auto`, every row of the
+second-generation library that keeps its GDS) got the ring's outer box: on the real tables the areas were 4 to 5 times
+the device's. Fixed in the commit after the record: each row now goes through `footprint.footprint()` (the recorded
+device box, else the recorded fixture metal, else the bottom metal), the per-part refusal of another plugin's generator
+is kept up front (`footprint.require_builtin`, public now) so that nothing is read and nothing is cached for such a part,
+`ProfileUnavailable` sets `retry` per row, and `FOOTPRINT_VERSION` is 2 so that every cached `footprint-*` file is
+computed again. Test: `test_library_rows_with_the_fixture_off_the_bottom_metal_keep_the_devices_own_footprint`
+(`tests/ic_opt/test_library_footprint.py`; `run_part` / `part_spec` of `tests/ic_opt/test_library.py` take a `fixture`).
