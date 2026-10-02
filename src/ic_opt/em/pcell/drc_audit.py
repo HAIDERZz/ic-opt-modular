@@ -591,17 +591,29 @@ def _canonical_names(metals) -> list[str]:
     return out
 
 
-def fixture_exemptions(profile: ProcessRuleProfile | str) -> frozenset[tuple[str, str]]:
+def fixture_exemptions(profile: ProcessRuleProfile | str,
+                       conductor: str | None = None) -> frozenset[tuple[str, str]]:
     """The ``ignore_findings`` every product-scope verdict on ``profile``
-    (a profile or its id) passes: ``max_width`` on the ground-fixture
-    conductor, ``profile.fixture_conductor`` -- the bottom of the metal
-    stack, whatever the profile calls it (T15.6). The fixture ring is drawn
-    as wide as its config says, wider than that metal's max_width by
-    design; every other rule on that metal, and every rule on the other
-    metals, still counts."""
+    (a profile or its id) passes: ``max_width`` on the conductor the ground
+    fixture was drawn on -- ``conductor``, the build's
+    (``GeometryGenerationResult.fixture_metal``, the manifest's
+    ``geometry.fixture_metal``; T19.1), else ``profile.fixture_conductor``,
+    the bottom of the metal stack, whatever the profile calls it (T15.6).
+    The fixture ring is drawn as wide as its config says, wider than that
+    metal's max_width by design; every other rule on that metal, and every
+    rule on the other metals, still counts. A ``conductor`` that is no metal
+    of the profile fails closed (``ValueError``)."""
     if isinstance(profile, str):
         profile = get_process_rule_profile(profile)
-    return frozenset({("max_width", profile.fixture_conductor)})
+    if conductor is None:
+        return frozenset({("max_width", profile.fixture_conductor)})
+    stack = tuple(profile.metal_stack)
+    try:
+        name = _stack.name_in(stack, _stack.position_in(stack, conductor))
+    except ValueError as exc:
+        raise ValueError(f"the ground fixture's metal {conductor!r} is not a metal of profile "
+                         f"{profile.process_id}: {exc}") from None
+    return frozenset({("max_width", name)})
 
 
 def product_scope_record(

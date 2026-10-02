@@ -14,6 +14,9 @@ class GeometryGenerationResult:
     top_cell: str
     manifest_path: Path
     emx_ports_path: Path
+    # The conductor the ground fixture was drawn on (T19.1; the manifest's ``geometry.fixture_metal``): the DRC gate
+    # exempts max_width there. None: the profile's fixture conductor, the bottom metal (no fixture, or not reported).
+    fixture_metal: str | None = None
 
 
 class PassiveDeviceGenerator(ABC):
@@ -23,8 +26,9 @@ class PassiveDeviceGenerator(ABC):
     The pcell stage validates the device's config with ``config_model`` (it passes ``process_profile`` and
     ``port_order`` along with the device's fields), calls ``generate`` and then runs the product-scope DRC gate: the GDS
     is audited against the profile ``config.process_profile`` names, every conductor ``expected_conductors(config)``
-    lists must be drawn, and no rule may be broken except ``max_width`` on the profile's fixture conductor (the ground
-    ring, ``drc_audit.fixture_exemptions``). A config field ``drc_check: false`` skips the gate.
+    lists must be drawn, and no rule may be broken except ``max_width`` on the conductor of the ground ring
+    (``drc_audit.fixture_exemptions``): the result's ``fixture_metal``, else the profile's fixture conductor. A config
+    field ``drc_check: false`` skips the gate.
     """
 
     generator_id: str

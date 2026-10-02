@@ -77,7 +77,7 @@ def render() -> str:
         "Every length is in micrometres and every field name ends in `_um`; counts (`turns`, `secondary_turns`, `ring_count`) have no suffix. "
         "Metals are named as the process profile names its conductors (`\"M6\"`, or whatever a profile calls a metal, such as `\"RDL\"`); "
         "`\"6\"` stands for `\"M6\"`. The bottom metal, the profile's fixture conductor "
-        "(`M1` unless `layer_catalog.ground_fixture_conductor` names another), is reserved for the ground fixture. "
+        "(`M1` unless `layer_catalog.ground_fixture_conductor` names another), carries the ground fixture unless `ground_fixture.metal` moves it (below). "
         "Common to every family: `process_profile`, `port_order` (exactly the family's fixed port set), `ground_fixture` and `drc_check`.",
         "",
         "## Ground fixture (`ground_fixture`)",
@@ -89,12 +89,24 @@ def render() -> str:
 
     for name, field in CleanPortGroundFixtureConfig.model_fields.items():
         head.append(f"| `{name}` | {_type_name(field.annotation)} | {_constraints(field)} | {_default(field)} |")
-    head += ["", "## Patterned ground shield (`pgs`, ind_sym / xfm_bs / xfm_ms)", "", "| field | type | constraints | default |", "| --- | --- | --- | --- |"]
+    head += ["", FIXTURE_METAL_NOTE, "", "## Patterned ground shield (`pgs`, ind_sym / xfm_bs / xfm_ms)", "", "| field | type | constraints | default |", "| --- | --- | --- | --- |"]
     for name, field in CleanPortPgsConfig.model_fields.items():
         head.append(f"| `{name}` | {_type_name(field.annotation)} | {_constraints(field)} | {_default(field)} |")
     sections = [family_section(gid, gen.config_model) for gid, gen in PLUGIN_GENERATORS.items()]
     return "\n".join(head) + "\n\n" + "\n".join(sections) + "\n" + TOPOLOGY_SECTION + "\n" + PLUGIN_SECTION
 
+
+FIXTURE_METAL_NOTE = (
+    "`metal` is the conductor the ring, the stubs and their `G<nn>` pins go on. Absent or null: the fixture conductor, the bottom "
+    "metal -- the geometry every existing configuration and library row has. `auto`: the highest metal of the profile's stack on "
+    "which the device draws nothing (no winding, bridge, crossunder, tap stack, lead or port); refused in reference mode, which has "
+    "no stack. A metal name or position: that metal, refused when the device draws anything on it -- EMX refuses a port whose "
+    "reference stub lies on the port lead's own metal (`ports ... are not allowed to be on the same edge`), and the footprint tells "
+    "the fixture from the device by its layer. Why it matters: a thin bottom metal's resistance enters every measurement through "
+    "the stubs and the ring; on one 1P10M stack a 50 µm transformer measured Qp 14.6 with the fixture on M1, M3 or M6 and 20.2 on "
+    "M9, the same as with no fixture at all, while keeping the local reference. A library table is comparable row for row only "
+    "with tables built with the same fixture metal; `pgs` keeps the bottom metal (its strips tie to that ring)."
+)
 
 TOPOLOGY_SECTION = """\
 ## Measurement topology (`topology`)
