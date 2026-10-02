@@ -15,7 +15,7 @@ import re
 import sys
 import threading
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import (
     BaseModel,
@@ -173,6 +173,8 @@ def _clean_port():
 
 #: ``ground_fixture.metal: auto`` (``fixture.AUTO``; spelled here too so that validating a config needs no klayout).
 FIXTURE_AUTO = "auto"
+#: ``ground_fixture.metal_rule``'s default (``fixture.FREE``), which the serializer drops like an absent field.
+FIXTURE_RULE_DEFAULT = "free"
 
 
 def _is_fixture_auto(value) -> bool:
@@ -197,6 +199,9 @@ class CleanPortGroundFixtureConfig(BaseModel):
     # device draws nothing on; a metal ("AP", "9", "M9"): that one, refused when the device draws anything on it
     # (``fixture.fixture_metal``).
     metal: str | None = Field(default=None, min_length=1)
+    # T19.2: what that metal may carry of the device. None (absent) or "free": nothing (T19.1's rule); "shared": the
+    # device's internal shapes (crossunders, bridges) but no port lead -- EMX's own constraint. Only with ``metal``.
+    metal_rule: Literal["free", "shared"] | None = None
 
     @field_validator("stub_width_by_port_um")
     @classmethod
@@ -216,12 +221,30 @@ class CleanPortGroundFixtureConfig(BaseModel):
     def _auto_spelled_once(cls, value: str | None) -> str | None:
         return FIXTURE_AUTO if _is_fixture_auto(value) else value
 
+    @field_validator("metal_rule", mode="before")
+    @classmethod
+    def _rule_spelled_once(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _rule_needs_a_metal(self):
+        """``metal_rule`` says how the fixture's metal is chosen; without ``metal`` the fixture stays on the fixture
+        conductor and nothing is chosen, so a rule there -- either spelling -- is refused rather than ignored."""
+        if self.metal_rule is not None and self.metal is None:
+            raise ValueError(f"ground_fixture.metal_rule {self.metal_rule!r} needs ground_fixture.metal ('auto' or a metal): "
+                             "the rule says how the fixture's metal is chosen, and without metal the fixture stays on the "
+                             "bottom metal; name a metal, or leave metal_rule out")
+        return self
+
     @model_serializer(mode="wrap")
     def _serialize_fixture(self, handler):
         data = handler(self)
-        # An absent metal keeps the historical config identity (the bottom metal's fixture).
+        # An absent metal keeps the historical config identity (the bottom metal's fixture); so does an absent or
+        # spelled-out default rule (T19.1's config, unchanged).
         if data.get("metal") is None:
             data.pop("metal", None)
+        if data.get("metal_rule") in (None, FIXTURE_RULE_DEFAULT):
+            data.pop("metal_rule", None)
         return data
 
 
@@ -876,8 +899,9 @@ def _auto_stub_widths(config) -> dict[str, float]:
 
 def _build_fixture(p, fixture: CleanPortGroundFixtureConfig,
                    auto_widths: dict[str, float] | None = None):
-    """The pcell's ``GroundFixtureConfig`` for a config's ``ground_fixture``. Its ``metal`` passes through as written:
-    the family's ``add_ground_fixture`` resolves it against the drawn cell (``fixture.fixture_metal``)."""
+    """The pcell's ``GroundFixtureConfig`` for a config's ``ground_fixture``. Its ``metal`` and ``metal_rule`` pass
+    through as written (an absent rule is ``free``): the family's ``add_ground_fixture`` resolves them against the drawn
+    cell (``fixture.fixture_metal``)."""
     stub_width = fixture.stub_width_um
     by_port = fixture.stub_width_by_port_um
     if stub_width is None:
@@ -900,6 +924,7 @@ def _build_fixture(p, fixture: CleanPortGroundFixtureConfig,
         stub_chamfer_um=fixture.stub_chamfer_um,
         stub_width_by_port_um=by_port,
         metal=fixture.metal,
+        metal_rule=fixture.metal_rule or FIXTURE_RULE_DEFAULT,
     )
 
 
@@ -1087,6 +1112,10 @@ def _write_geometry_outputs_in_stack(
     gds_path = outdir / gds_name
     pgs = getattr(config, "pgs", None)
     fixture_metal = cell.fixture_metal              # the conductor add_ground_fixture drew the ring on (T19.1)
+    # the box of everything the device drew, which add_ground_fixture took before it drew the ring (T19.2): the
+    # footprint's record, written for every build whatever the fixture's metal and rule (the shield, drawn below on the
+    # fixture conductor, belongs to the fixture and is not in it)
+    device_bbox = None if cell.device_bbox_um is None else tuple(round(v, 3) for v in cell.device_bbox_um)
     if pgs is not None and fixture_metal is not None and fixture_metal != _stack.name(1):
         raise ValueError(f"pgs ties its strips to the ground ring on {_stack.name(1)}, the fixture conductor, but the "
                          f"ring was drawn on {fixture_metal}: a shielded device keeps the default fixture metal")
@@ -1119,6 +1148,8 @@ def _write_geometry_outputs_in_stack(
         # next to the fixture's dimensions: the conductor it was drawn on and that conductor's GDS layer, for the DRC
         # gate, the footprint (``footprint.recorded_fixture_metal``) and the reader (T19.1)
         geometry.update(fixture_metal=fixture_metal, fixture_layer=list(adapter.layer(fixture_metal).drawing))
+    if device_bbox is not None:
+        geometry["device_bbox_um"] = list(device_bbox)          # [x0, y0, x1, y1], um (``footprint.recorded_device_bbox``)
     manifest_path.write_text(json.dumps({
         "schema_version": "1.1",
         "generator_id": generator_id,
@@ -1142,7 +1173,7 @@ def _write_geometry_outputs_in_stack(
     return GeometryGenerationResult(
         generator_id=generator_id, gds_path=gds_path,
         top_cell=resolved_top_cell, manifest_path=manifest_path,
-        emx_ports_path=emx_ports_path, fixture_metal=fixture_metal)
+        emx_ports_path=emx_ports_path, fixture_metal=fixture_metal, device_bbox_um=device_bbox)
 
 
 def translate_config(generator_id: str, config: dict) -> dict:

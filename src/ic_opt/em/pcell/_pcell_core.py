@@ -451,6 +451,9 @@ class Cell:
     _regions: dict = field(default_factory=dict, repr=False, compare=False)     # ``region`` memo, dropped on every mutation
     # The conductor the ground fixture was drawn on, set by ``fixture.add_ground_fixture`` (T19.1); None: no fixture.
     fixture_metal: str | None = None
+    # The box (x0, y0, x1, y1, um) around every shape the device drew, taken by ``fixture.add_ground_fixture`` before it
+    # draws the fixture (T19.2): the footprint's record. None: no fixture.
+    device_bbox_um: tuple[float, float, float, float] | None = None
 
     def add_shape(self, shape: Shape) -> None:
         """Append an already-snapped shape (the seam heal and the PGS build produce those)."""

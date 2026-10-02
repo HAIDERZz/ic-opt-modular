@@ -6,9 +6,15 @@ port against its own local stub instead of an infinite ground plane.
 The fixture's metal (T19.1) is the profile's fixture conductor, the bottom
 metal, unless ``GroundFixtureConfig.metal`` names another: ``"auto"``, the
 highest metal of the stack on which the device draws nothing, or a metal of
-the caller's choice that carries nothing of the device. ``fixture_metal`` is
-the one place that resolves and checks it; ``add_ground_fixture`` -- every
-family, and any plugin generator that calls it -- draws through it.
+the caller's choice that carries nothing of the device. ``metal_rule``
+(T19.2) relaxes "nothing of the device" to "no port lead" when it says
+``"shared"``: the metal may then carry the device's internal shapes
+(crossunders, bridges), which is all EMX's own constraint asks. ``fixture_metal``
+is the one place that resolves and checks it; ``add_ground_fixture`` -- every
+family, and any plugin generator that calls it -- draws through it, and
+records the box of the device it drew around (``Cell.device_bbox_um``: the
+footprint's record, since under ``shared`` the fixture's layer no longer tells
+the two apart).
 """
 
 from __future__ import annotations
@@ -27,12 +33,16 @@ from ic_opt.em.pcell._pcell_core import (
     _metal,
     _metal_index,
     _metal_name,
+    _nm,
     metal_drawing_pin,
     metal_layer,
     metal_pin_layer,
 )
 
 AUTO = "auto"
+FREE = "free"            # metal_rule: the fixture's metal holds nothing of the device (T19.1's rule, the default)
+SHARED = "shared"        # metal_rule: it may hold the device's internal shapes, never a port lead (T19.2)
+METAL_RULES = (FREE, SHARED)
 
 
 @dataclass(frozen=True)
@@ -52,7 +62,13 @@ class GroundFixtureConfig:
     every existing configuration and library row has); ``"auto"``, the
     highest metal of the profile's stack on which the device draws nothing;
     or a metal spelling ``_metal_index`` takes (``"AP"``, ``"9"``, ``"M9"``)
-    or a stack position. ``fixture_metal`` resolves it."""
+    or a stack position. ``fixture_metal`` resolves it.
+
+    ``metal_rule`` (T19.2) says what that metal may carry of the device:
+    ``"free"`` (the default) nothing; ``"shared"`` its internal shapes
+    (crossunders, bridges) but no port lead. It applies to a ``metal`` that
+    is set: with ``metal`` None the fixture stays on the fixture conductor,
+    and ``"shared"`` is refused there (nothing is chosen)."""
 
     inner_margin_um: float
     ring_width_um: float
@@ -61,11 +77,21 @@ class GroundFixtureConfig:
     stub_chamfer_um: float
     stub_width_by_port_um: dict[str, float] | None = None
     metal: str | int | None = None
+    metal_rule: str = FREE
 
 
 def is_auto(metal) -> bool:
     """Whether a fixture metal value asks for ``"auto"`` (any case, surrounding blanks ignored)."""
     return isinstance(metal, str) and metal.strip().lower() == AUTO
+
+
+def metal_rule_of(config: GroundFixtureConfig) -> str:
+    """``config.metal_rule`` as one of ``METAL_RULES`` (any case, surrounding blanks ignored). Anything else is a
+    ``PortError``: a plugin generator builds the dataclass itself, past the config model's validation."""
+    rule = config.metal_rule.strip().lower() if isinstance(config.metal_rule, str) else config.metal_rule
+    if rule not in METAL_RULES:
+        raise PortError(f"ground fixture: metal_rule {config.metal_rule!r} is none of {list(METAL_RULES)}")
+    return rule
 
 
 def _profile_stack(process: ProcessRuleContext | None):
@@ -83,12 +109,16 @@ def _metal_layers(position: int, process: ProcessRuleContext | None) -> tuple[tu
     return tuple(spec.drawing), None if spec.pin is None else tuple(spec.pin)
 
 
-def _device_on(cell: Cell, position: int, process: ProcessRuleContext | None, shape_layers: set, label_layers: set) -> str | None:
-    """What of the device is on the metal at ``position``, or None when nothing is: the ports whose lead it carries
-    (named: that is what EMX refuses), else a shape on its drawing layer or a label on its pin layer (the layer named)."""
+def _device_on(cell: Cell, position: int, process: ProcessRuleContext | None, shape_layers: set, label_layers: set,
+               rule: str = FREE) -> str | None:
+    """What of the device on the metal at ``position`` ``rule`` refuses, or None when there is none: the ports whose
+    lead it carries (named: that is what EMX refuses, under either rule); under ``free`` also a shape on its drawing
+    layer or a label on its pin layer (the layer named) -- ``shared`` lets the metal carry the device's internal shapes."""
     leads = [p["name"] for p in cell.emx_ports if _metal_index(p["metal"]) == position]
     if leads:
         return f"the lead of port {', '.join(leads)}"
+    if rule == SHARED:
+        return None
     drawing, pin = _metal_layers(position, process)
     if drawing in shape_layers:
         return f"device shapes on layer {drawing[0]}/{drawing[1]}"
@@ -98,52 +128,63 @@ def _device_on(cell: Cell, position: int, process: ProcessRuleContext | None, sh
 
 
 def fixture_metal(cell: Cell, config: GroundFixtureConfig, process: ProcessRuleContext | None = None) -> int:
-    """The stack position ``cell``'s ground fixture is drawn on (T19.1), from ``config.metal``, against the cell's drawn
-    layers -- call it before the fixture is drawn:
+    """The stack position ``cell``'s ground fixture is drawn on (T19.1), from ``config.metal`` under
+    ``config.metal_rule`` (T19.2), against the cell's drawn layers -- call it before the fixture is drawn:
 
-    * None: the fixture conductor, the bottom of the stack (position 1) -- today's fixture, unchanged and unchecked;
-    * ``"auto"``: the highest metal of the profile's stack on which the device draws nothing (no winding, bridge,
-      crossunder, tap stack, lead or port: no shape on its drawing layer, no label on its pin layer, no port on it)
-      and which has a pin layer for the G pins. Refused in reference mode (no profile: no stack to choose from), and
-      when every metal carries something of the device;
+    * None: the fixture conductor, the bottom of the stack (position 1) -- today's fixture, unchanged and unchecked
+      (``metal_rule`` ``"shared"`` is refused here: it says how a metal is chosen, and None chooses none);
+    * ``"auto"``: under ``free``, the highest metal of the profile's stack on which the device draws nothing (no
+      winding, bridge, crossunder, tap stack, lead or port: no shape on its drawing layer, no label on its pin layer,
+      no port on it); under ``shared``, the highest metal that carries no port lead (no port of ``cell.emx_ports`` has
+      it as its lead metal), whatever internal shapes it carries. Either way the metal must have a pin layer for the G
+      pins. Refused in reference mode (no profile: no stack to choose from), and when no metal qualifies;
     * a spelling (``"AP"``, ``"9"``, ``"M9"``) or a position: that metal, refused when it carries a port lead (named:
-      EMX refuses a port whose reference stub lies on the port lead's own metal) or any other device shape (its layer
-      named: the fixture's layer must hold nothing of the device, which is how the footprint tells the two apart).
+      EMX refuses a port whose reference stub lies on the port lead's own metal) under either rule, and under ``free``
+      also when it carries any other device shape or label (its layer named).
 
     Every refusal is a ``PortError``."""
+    rule = metal_rule_of(config)
     metal = config.metal
     if metal is None:
+        if rule == SHARED:
+            raise PortError("ground fixture: metal_rule 'shared' says how the fixture's metal is chosen, and metal None "
+                            "chooses none (the fixture conductor, the bottom metal): name a metal or 'auto', or leave the "
+                            "rule at 'free'")
         return 1
     with _profile_stack(process):
-        shape_layers = {layer for layer, _pts in cell.flat_shapes()}
-        label_layers = {layer for _tag, layer, _text, _pt in cell.flat_labels()}
+        shape_layers = {layer for layer, _pts in cell.flat_shapes()} if rule == FREE else set()
+        label_layers = {layer for _tag, layer, _text, _pt in cell.flat_labels()} if rule == FREE else set()
         if is_auto(metal):
             if process is None:
                 raise PortError("ground fixture: metal 'auto' picks the highest free metal of the process profile's stack, "
                                 "and reference mode (no profile) has no stack to choose from: name a metal, or build "
                                 "with a profile")
             for position in range(_stack.size(), 0, -1):
-                if _device_on(cell, position, process, shape_layers, label_layers) is None \
+                if _device_on(cell, position, process, shape_layers, label_layers, rule) is None \
                         and _metal_layers(position, process)[1] is not None:
                     return position
-            raise PortError(f"ground fixture: metal 'auto' found no metal of the stack {list(_stack.active())} that the "
-                            "device draws nothing on and that has a pin layer for the G pins")
+            what = "that the device draws nothing on" if rule == FREE else "that carries no port lead"
+            raise PortError(f"ground fixture: metal 'auto' under metal_rule {rule!r} found no metal of the stack "
+                            f"{list(_stack.active())} {what} and that has a pin layer for the G pins")
         try:
             position = _metal_index(metal)
-            on = _device_on(cell, position, process, shape_layers, label_layers)
+            on = _device_on(cell, position, process, shape_layers, label_layers, rule)
         except (PortError, ValueError) as exc:
             raise PortError(f"ground fixture: metal {metal!r}: {exc}") from None
         if on is None:
             return position
-        why = ("EMX refuses a port whose reference stub lies on the port lead's own metal" if on.startswith("the lead")
-               else "the fixture's metal must hold nothing of the device, which is how the footprint tells the two apart")
-        raise PortError(f"ground fixture: metal {metal!r} ({_metal_name(position)}) carries {on}: {why}; name a metal "
-                        "the device draws nothing on, or 'auto'")
-
-
+        if on.startswith("the lead"):
+            why = (f"EMX refuses a port whose reference stub lies on the port lead's own metal, and no metal_rule allows it "
+                   f"(the rule in force: {rule!r}); name a metal that carries no port lead, or 'auto'")
+        else:
+            why = ("under metal_rule 'free' the metal must hold nothing of the device; 'shared' allows internal shapes; "
+                   "name a metal the device draws nothing on, 'auto', or set metal_rule 'shared'")
+        raise PortError(f"ground fixture: metal {metal!r} ({_metal_name(position)}) carries {on}: {why}")
 
 
 def _drawing_bbox_um(cell: Cell) -> tuple[float, float, float, float]:
+    """The box (x0, y0, x1, y1, um) around every point of every shape of ``cell`` on every layer, leads included. Taken
+    by ``add_ground_fixture`` before it draws, it is the device's box: the footprint's record (T19.2)."""
     xs, ys = [], []
     for _layer, pts in cell.flat_shapes():
         for x, y in pts:
@@ -216,14 +257,41 @@ def _body_bbox_um(
             max(xs) * DBU_UM, max(ys) * DBU_UM)
 
 
+def _refuse_contact(cell: Cell, layer: tuple[int, int], shapes: list, conductor: str) -> None:
+    """Under ``metal_rule: shared`` the fixture's metal may carry the device's internal shapes, but no fixture shape may
+    touch one: the ring and the stubs would short the device to its own reference, and no DRC rule sees that (touching
+    shapes on one layer merge into one polygon). The ring keeps ``inner_margin_um`` from the body, but a stub starts at
+    its port, and a device shape on the shared metal can reach past the port (xfm_il with 2 um leads: a secondary lead's
+    under-pass on the metal below the winding ends in a 5 um via pad, 3 um beyond the port). ``PortError``, before
+    anything is drawn, naming where; touching edges and corners count."""
+    device = cell.region(layer)                     # the device's own shapes on that metal (nothing of the fixture yet)
+    if device.is_empty():
+        return
+    fixture = kdb.Region()
+    for points in shapes:
+        fixture.insert(kdb.Polygon([kdb.Point(_nm(x), _nm(y)) for x, y in points]))
+    touched = device.interacting(fixture)
+    if touched.is_empty():
+        return
+    box = touched.bbox()
+    raise PortError(f"ground fixture: under metal_rule 'shared' the ring and stubs on {conductor} would touch "
+                    f"{touched.count()} device shape(s) on that metal, within ({box.left * DBU_UM:g}, "
+                    f"{box.bottom * DBU_UM:g}) - ({box.right * DBU_UM:g}, {box.top * DBU_UM:g}) um: a short between the "
+                    "device and its reference; name another metal, or use metal_rule 'free'")
+
+
 def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
                        process: ProcessRuleContext | None = None) -> None:
     """Draw a ground ring + one chamfered stub per port + a ``G{index:02d}``
     local-ref pin label on the fixture metal's pin layer at each port's
     ``(x, y)``, then set that port's ``reference`` to its G-pin name. The
     metal is ``fixture_metal``'s (T19.1): the fixture conductor, the bottom
-    metal, unless ``fixture.metal`` names another; ``cell.fixture_metal``
-    records the conductor. Stub width per port comes from
+    metal, unless ``fixture.metal`` names another (under ``fixture.metal_rule``,
+    T19.2); ``cell.fixture_metal`` records the conductor and
+    ``cell.device_bbox_um`` the box around everything the device drew, taken
+    before the fixture is drawn (``_drawing_bbox_um``: the footprint's
+    record, which under ``shared`` the fixture's layer can no longer give).
+    Stub width per port comes from
     ``fixture.stub_width_by_port_um`` (keyed by port name) with fallback to the
     global ``stub_width_um``. Each port's stub continues its lead outward --
     the side is the port's own orientation (M1.3), so left/right ports get
@@ -231,8 +299,9 @@ def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
     the ring remains outside the body envelope. Fails closed with
     ``PortError``, before anything is drawn, when the cell has no
     ``emx_ports``, the fixture metal has no pin layer or is refused
-    (``fixture_metal``), or the per-port map names a port that does not exist
-    on the cell."""
+    (``fixture_metal``), the per-port map names a port that does not exist
+    on the cell, or -- under ``metal_rule: shared`` -- a fixture shape would
+    touch a device shape on the shared metal (``_refuse_contact``)."""
     if not cell.emx_ports:
         raise PortError("ground fixture: cell has no emx_ports")
     if fixture.stub_width_by_port_um:
@@ -289,36 +358,46 @@ def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
     outer_xmax = inner_xmax + fixture.ring_width_um
     outer_ymin = inner_ymin - fixture.ring_width_um
     outer_ymax = inner_ymax + fixture.ring_width_um
-    cell.add_rect(m1_draw, outer_xmin, outer_ymin, inner_xmin, outer_ymax)
-    cell.add_rect(m1_draw, inner_xmax, outer_ymin, outer_xmax, outer_ymax)
-    cell.add_rect(m1_draw, inner_xmin, inner_ymax, inner_xmax, outer_ymax)
-    cell.add_rect(m1_draw, inner_xmin, outer_ymin, inner_xmax, inner_ymin)
+    # Every fixture shape is laid out first and drawn only once it is accepted, in this order (the ring's four sides,
+    # then one stub per port), so the cell -- and the GDS -- is what drawing them one by one gave.
+    shapes = [[(x1, y1), (x2, y1), (x2, y2), (x1, y2)] for x1, y1, x2, y2 in (
+        (outer_xmin, outer_ymin, inner_xmin, outer_ymax),
+        (inner_xmax, outer_ymin, outer_xmax, outer_ymax),
+        (inner_xmin, inner_ymax, inner_xmax, outer_ymax),
+        (inner_xmin, outer_ymin, inner_xmax, inner_ymin))]
+    pins = []
     by_port = fixture.stub_width_by_port_um or {}
     ch = fixture.stub_chamfer_um
     for index, (p, side) in enumerate(distances_by_port, start=1):
         x, y = xy_um(p)
         half = by_port.get(p["name"], fixture.stub_width_um) / 2.0
-        ref_name = f"G{index:02d}"
         if side == "left":
             root = inner_xmin
-            cell.add_polygon(m1_draw, [
+            shapes.append([
                 (root, y - half - ch), (x, y - half),
                 (x, y + half), (root, y + half + ch)])
         elif side == "right":
             root = inner_xmax
-            cell.add_polygon(m1_draw, [
+            shapes.append([
                 (x, y - half), (root, y - half - ch),
                 (root, y + half + ch), (x, y + half)])
         elif side == "bottom":
             root = inner_ymin
-            cell.add_polygon(m1_draw, [
+            shapes.append([
                 (x - half - ch, root), (x - half, y),
                 (x + half, y), (x + half + ch, root)])
         else:
             root = inner_ymax
-            cell.add_polygon(m1_draw, [
+            shapes.append([
                 (x - half, y), (x - half - ch, root),
                 (x + half + ch, root), (x + half, y)])
+        pins.append((p, f"G{index:02d}", x, y))
+    if metal_rule_of(fixture) == SHARED:
+        _refuse_contact(cell, m1_draw, shapes, conductor)
+    for points in shapes:
+        cell.add_polygon(m1_draw, points)
+    for p, ref_name, x, y in pins:
         cell.add_label(m1_pin, ref_name, x, y)
         p["reference"] = ref_name
     cell.fixture_metal = conductor
+    cell.device_bbox_um = (xmin, ymin, xmax, ymax)          # taken above, before the first fixture shape

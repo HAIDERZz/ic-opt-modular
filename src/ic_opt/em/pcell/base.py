@@ -17,6 +17,9 @@ class GeometryGenerationResult:
     # The conductor the ground fixture was drawn on (T19.1; the manifest's ``geometry.fixture_metal``): the DRC gate
     # exempts max_width there. None: the profile's fixture conductor, the bottom metal (no fixture, or not reported).
     fixture_metal: str | None = None
+    # The box (x0, y0, x1, y1, um, rounded to 0.001) around everything the device drew, taken before the ground fixture
+    # was added (T19.2; the manifest's ``geometry.device_bbox_um``): the footprint. None: not reported.
+    device_bbox_um: tuple[float, float, float, float] | None = None
 
 
 class PassiveDeviceGenerator(ABC):

@@ -602,7 +602,15 @@ def fixture_exemptions(profile: ProcessRuleProfile | str,
     The fixture ring is drawn as wide as its config says, wider than that
     metal's max_width by design; every other rule on that metal, and every
     rule on the other metals, still counts. A ``conductor`` that is no metal
-    of the profile fails closed (``ValueError``)."""
+    of the profile fails closed (``ValueError``).
+
+    Under ``ground_fixture.metal_rule: shared`` (T19.2) that metal may also
+    carry the device's own internal shapes, and the exemption, which is by
+    layer, covers their ``max_width`` too -- nothing else of theirs. The
+    built-in families' internal shapes (crossunders, bridges) are as wide as
+    a winding, far below any metal's max_width, so nothing is hidden in
+    practice; a plugin family with wide internal shapes should not use
+    ``shared``."""
     if isinstance(profile, str):
         profile = get_process_rule_profile(profile)
     if conductor is None:
