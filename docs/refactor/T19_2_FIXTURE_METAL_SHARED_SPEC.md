@@ -108,3 +108,84 @@ you prefer. Do not touch `GEOMETRY_VERSION`, the golden GDS files, or any file u
 private process (table names, metal thicknesses, rule values, paths) goes into code, tests or docs: demo_6m only. Commit
 trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Do not merge; report the commit ids, the test counts
 and anything you changed that this specification did not ask for.
+
+## 8. Record
+
+Status: done on branch `t19-2-fixture-metal-shared` (2026-10-03), not merged. Feature, tests and the regenerated
+`docs/em/devices.md`: commit `8f2f5fa`; this record and the backlog row: the commit after it.
+
+What was done (sections 1-6):
+
+1. `ground_fixture.metal_rule` (`CleanPortGroundFixtureConfig`): `free` / `shared`, absent = `free`, read in any case
+   like `auto`. Given without `metal` (absent or `null`), either spelling, it is refused at validation, the message naming
+   `ground_fixture.metal_rule` and `ground_fixture.metal`; with `pgs` that refusal comes first, and `metal: auto` with
+   `pgs` is refused by T19.1's validator as before. The serializer drops an absent rule and `free`. The pcell dataclass
+   has `GroundFixtureConfig.metal_rule: str = "free"`; `fixture.metal_rule_of` checks it, so a plugin generator that
+   builds the dataclass itself gets a `PortError` for an unknown rule or for `shared` with `metal` None.
+2. `fixture_metal` honours the rule: under `shared`, `auto` is the highest metal that carries no port lead and has a pin
+   layer; a named metal is refused only for a port lead. The refusals name the rule in force ("... no metal_rule allows
+   it (the rule in force: 'shared')"; "under metal_rule 'free' the metal must hold nothing of the device; 'shared' allows
+   internal shapes").
+3. The record: `add_ground_fixture` keeps `_drawing_bbox_um(cell)`, taken before the first fixture shape, as
+   `Cell.device_bbox_um`; `_write_geometry_outputs_in_stack` writes it as `geometry.device_bbox_um` (rounded to
+   0.001 µm) for every build and returns it as `GeometryGenerationResult.device_bbox_um`. `footprint.footprint()` reads
+   it (`recorded_device_bbox`, `box_footprint`: width, height and area from whole nanometres, the way `measure` computes
+   them from the GDS's database units) without opening the GDS, and measures by layer as before when there is no record
+   or it is not four ordered numbers. Another plugin's generator is still refused, record or not (an existing test pins
+   it); `ProfileUnavailable` is now raised only when the footprint has to be measured.
+4. The DRC gate: `fixture_exemptions` unchanged; its docstring and `docs/em/devices.md` say that under `shared` the
+   by-layer `max_width` exemption also covers the device's internal shapes on that metal, why nothing is hidden for the
+   built-in families, and that a plugin family with wide internal shapes should not use `shared`.
+5. Documents: `FIXTURE_METAL_NOTE` gains the `metal_rule` paragraph; its first paragraph now says T19.1's refusal is the
+   default rule and that a footprint measured by layer needs the fixture's layer to itself (it said the footprint tells
+   the two apart by layer, which a recorded build no longer does); `docs/em/devices.md` regenerated; the `footprint.py`
+   module docstring describes the record and the fallback.
+
+Deviations and additions (the commit message says the same):
+
+- **A contact check under `shared` (not in this specification).** Section 1 reasons about the ring, which keeps
+  `inner_margin_um` from the body; a stub starts at its port. On demo_6m, golden `xfm_il_nt3` with 2 µm leads: each
+  secondary lead runs under the primary on M5 and ends in a 5 µm via pad that reaches 3 µm past the port. `auto` +
+  `shared` takes M5 (no port lead there), the stubs overlap the two pads (30 µm²), the G labels land on a winding's net
+  (`connectivity.nets`), and the product DRC verdict is `pass`: touching shapes on one layer merge, no rule sees a short.
+  `add_ground_fixture` now lays the fixture's shapes out first and, under `shared`, refuses with a `PortError` -- before
+  anything is drawn, naming the metal and the place -- when any of them touches a device shape on that metal (overlap,
+  edge or corner). `auto` is not changed to skip such a metal: one table keeps one fixture metal. No other case probed
+  touches: every golden case under `auto` + `shared`, ms with the secondary up to 300 µm and primary leads down to
+  5 µm, ind_sym NT 3 with 0.5 µm leads, balun and il variants.
+- `add_ground_fixture` draws the same shapes in the same order from the laid-out list: default and `auto` builds are
+  byte-identical (below).
+- T19.1's byte-for-byte test (section 5, point 6) is unchanged and passes: it compares the GDS bytes, the port file,
+  `fixture_metal` and the config block, never the whole manifest, so there was no key to remove and no expectation to
+  update. The new key is covered by the new tests and by the comparison below.
+
+Tests: `tests/ic_opt/pcell/test_fixture_metal_shared.py`, 49 tests. Section 5 points 1-5:
+`test_auto_shared_puts_the_same_fixture_on_the_crossunders_metal` (the shared build is the free build with the fixture
+moved from M3 to M4, layer for layer and label for label); `test_shared_refuses_only_a_metal_that_carries_a_port_lead`
+(ms, bs); `test_a_rule_without_a_metal_is_refused_at_validation` and `test_the_rule_spelled_out_is_the_rule_left_out`;
+`test_the_recorded_box_is_the_by_layer_footprint` (all 13 golden cases, every family, × `metal` absent / `auto`) and
+`test_the_footprint_reads_the_record_and_falls_back_without_it`; `test_the_drc_gate_on_a_shared_build`. Beyond them:
+`test_no_shared_fixture_touches_the_device` (13 golden cases), `test_a_stub_that_would_touch_a_device_shape_on_the_shared_metal_is_refused`,
+`test_the_rule_in_the_pcell_dataclass`.
+
+Runs (`PYTHONPATH=<worktree>/src`, demo_6m): `tests/ic_opt/pcell` 403 passed, 635 skipped (354 / 635 before);
+`tests/ic_opt/test_library_footprint.py`, `test_em_pcell.py`, `test_em_circuit.py` 24 passed; `ruff check src tests`
+clean. A scratch comparison, not committed: 42 builds (13 golden cases and the 3 T19.1 families with `metal` absent and
+`auto`, and the 10 ind_sym / bs / ms cases with `pgs`) with the sources of `cb8df30` and with the branch -- GDS bytes and
+`emx_ports.txt` identical, manifests identical once `device_bbox_um` is removed, and the recorded footprint equal to the
+by-layer one to the last digit on all 42.
+
+Not foreseen here, left open:
+
+1. The library's footprints do not go through `footprint.footprint()`: `ic_opt.library.dataset.footprints` calls
+   `fixture_layer(profile, generator, plugin)` once per part, without the manifest's `fixture_metal`, and `measure()`
+   per row. For a row that keeps its GDS beside its sNp and whose fixture is off the bottom metal -- T19.1's
+   `metal: auto` or a named metal, so the generation-2 tables if they keep their GDS, and any `shared` row -- the
+   library's footprint is the ring's outer box (demo_6m ind_sym: 177 × 170 µm against 120 × 100 µm).
+   This dates from T19.1. A fix: per row, the record when the manifest beside the GDS has one, else the by-layer
+   measurement with `recorded_fixture_metal`; bump `FOOTPRINT_VERSION` so cached files are measured again.
+2. xfm_il with a lead shorter than its via pad (2 µm against W = 5 µm): the pad reaches past the port point, so the
+   port is not on the conductor's outer edge. This predates T19.2 and shows only through the contact check.
+3. Not run on the private profile (demo_6m only, as asked). By the rule, an ms whose primary and secondary sit on the top
+   two metals takes the metal of the secondary's crossunder, one below the secondary, under `auto` + `shared` (no
+   taps); whether the contact check refuses some of its points is for the first build to show.
