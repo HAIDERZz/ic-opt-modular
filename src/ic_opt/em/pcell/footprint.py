@@ -19,6 +19,7 @@ product.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import yaml
@@ -35,10 +36,26 @@ class ProfileUnavailable(FootprintError):
     """The process profile that names the fixture conductor's layer cannot be loaded on this machine."""
 
 
-def fixture_layer(profile: str, generator: str, plugin: str = BUILTIN) -> tuple[int, int]:
-    """The (layer, datatype) that holds a device's ground fixture and nothing of the device: the fixture conductor's
-    drawing layer of ``profile``, for a built-in family. FootprintError for any other generator; ProfileUnavailable when
-    the profile cannot be loaded here."""
+def recorded_fixture_metal(gds: str | Path) -> str | None:
+    """The conductor the ground fixture was drawn on, as the manifest beside ``gds`` records it (``geometry.fixture_metal``,
+    T19.1); None when there is no manifest or it says nothing (a row of an older generation: the profile's fixture
+    conductor, the bottom metal)."""
+    manifest = Path(gds).with_name("geometry_manifest.json")
+    if not manifest.is_file():
+        return None
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    metal = (data.get("geometry") or {}).get("fixture_metal") if isinstance(data, dict) else None
+    return metal if isinstance(metal, str) and metal else None
+
+
+def fixture_layer(profile: str, generator: str, plugin: str = BUILTIN, *, metal: str | None = None) -> tuple[int, int]:
+    """The (layer, datatype) that holds a device's ground fixture and nothing of the device, for a built-in family: the
+    drawing layer of ``metal`` -- the conductor the build recorded (``recorded_fixture_metal``) -- else of the fixture
+    conductor of ``profile``, the bottom metal. FootprintError for any other generator; ProfileUnavailable when the
+    profile cannot be loaded here."""
     from ic_opt.em.pcell.generator_plugin import PLUGIN_GENERATORS
 
     if plugin != BUILTIN or generator not in PLUGIN_GENERATORS:
@@ -49,7 +66,7 @@ def fixture_layer(profile: str, generator: str, plugin: str = BUILTIN) -> tuple[
         from ic_opt.em.pcell.rule_adapter import get_geometry_rule_adapter
 
         adapter = get_geometry_rule_adapter(profile)
-        return tuple(adapter.layer(adapter.profile.fixture_conductor).drawing)
+        return tuple(adapter.layer(metal or adapter.profile.fixture_conductor).drawing)
     except (ValueError, OSError, yaml.YAMLError) as exc:          # an unknown profile, an unreadable or invalid rule.yaml
         raise ProfileUnavailable(f"process profile {profile!r} cannot be loaded here: {exc}") from exc
 
@@ -81,6 +98,7 @@ def measure(gds: str | Path, fixture: tuple[int, int]) -> dict:
 
 
 def footprint(gds: str | Path, *, profile: str, generator: str, plugin: str = BUILTIN) -> dict:
-    """The footprint of a GDS that ``generator`` (of ``plugin``) drew on ``profile``: ``measure`` without the fixture
-    conductor's layer (``fixture_layer``). FootprintError (ProfileUnavailable) when it cannot be told apart."""
-    return measure(gds, fixture_layer(profile, generator, plugin))
+    """The footprint of a GDS that ``generator`` (of ``plugin``) drew on ``profile``: ``measure`` without the fixture's
+    layer (``fixture_layer``: the conductor the manifest beside the GDS records, else the fixture conductor).
+    FootprintError (ProfileUnavailable) when it cannot be told apart."""
+    return measure(gds, fixture_layer(profile, generator, plugin, metal=recorded_fixture_metal(gds)))
