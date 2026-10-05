@@ -124,10 +124,13 @@ def test_auto_is_refused_in_reference_mode():
 
 def test_the_drc_gate_exempts_max_width_on_the_fixture_metal_only(tmp_path):
     """With the ring on M4 the gate exempts max_width there and passes; with the exemption left on M1 (an older caller) the
-    same build fails on the ring's width; and every other rule on M4 still counts: two shapes closer than its min space, far
-    from the ring, fail the gate with the exemption in place."""
+    same build fails on the ring's width. ``auto`` chooses M4 under ``metal_rule: free`` (the build says so): the device
+    draws nothing there, so a spacing finding on M4 is between two shapes of the fixture and is exempt too (T19.5) -- two
+    shapes closer than M4's min space pass the gate with the build's exemptions, and fail it with max_width's alone (the
+    exemptions of a ``shared`` metal or of the default fixture); every other rule on M4 still counts: a strip narrower
+    than M4's min width fails the gate with the build's exemptions in place."""
     gen, model, result = generate("clean_port_xfm_bs", tmp_path, {**FIXTURE, "metal": "auto"})
-    assert result.fixture_metal == "M4"
+    assert (result.fixture_metal, result.fixture_metal_rule) == ("M4", "free")
     with use_stack(PROFILE):
         report = audit_gds(result.gds_path, PROFILE)
         expected = expected_conductors(gen, model)
@@ -135,20 +138,34 @@ def test_the_drc_gate_exempts_max_width_on_the_fixture_metal_only(tmp_path):
         stale = product_scope_record(report, expected, ignore_findings=fixture_exemptions(PROFILE))
         assert stale["outcome"] != "pass" and any(v["kind"] == "max_width" and v["layer"] == "M4" for v in stale["violations"])
     assert fixture_exemptions(PROFILE, "4") == fixture_exemptions(PROFILE, "M4") == frozenset({("max_width", "M4")})
+    assert fixture_exemptions(PROFILE, "M4", "shared") == frozenset({("max_width", "M4")})
+    assert fixture_exemptions(PROFILE, "4", "free") == frozenset({("max_width", "M4"), ("min_space", "M4"), ("wide_parallel_spacing", "M4")})
     with pytest.raises(ValueError, match="not a metal of profile"):
         fixture_exemptions(PROFILE, "M9")
-    layout = kdb.Layout()
-    layout.read(str(result.gds_path))
-    top = layout.top_cell()
+    with pytest.raises(ValueError, match="metal_rule 'loose' is none of"):
+        fixture_exemptions(PROFILE, "M4", "loose")
+    build = fixture_exemptions(PROFILE, result.fixture_metal, result.fixture_metal_rule)
     adapter = get_geometry_rule_adapter(PROFILE)
-    li = layout.layer(*adapter.layer("M4").drawing)
-    top.shapes(li).insert(kdb.Box(-300_000, 400_000, -200_000, 405_000))       # two 5 um strips 0.05 um apart (M4 min space 0.1 um)
-    top.shapes(li).insert(kdb.Box(-300_000, 405_050, -200_000, 410_050))
-    close = tmp_path / "close.gds"
-    layout.write(str(close))
+
+    def with_m4(name: str, *boxes) -> Path:
+        layout = kdb.Layout()
+        layout.read(str(result.gds_path))
+        li = layout.layer(*adapter.layer("M4").drawing)
+        for box in boxes:
+            layout.top_cell().shapes(li).insert(box)
+        path = tmp_path / name
+        layout.write(str(path))
+        return path
+
+    close = with_m4("close.gds", kdb.Box(-300_000, 400_000, -200_000, 405_000),     # two 5 um strips 0.05 um apart (M4 min space 0.1 um)
+                    kdb.Box(-300_000, 405_050, -200_000, 410_050))
+    narrow = with_m4("narrow.gds", kdb.Box(-300_000, 400_000, -200_000, 400_050))   # a strip 0.05 um wide (M4 min width 0.1 um)
     with use_stack(PROFILE):
+        assert product_scope_record(audit_gds(close, PROFILE), expected, ignore_findings=build)["outcome"] == "pass"
         record = product_scope_record(audit_gds(close, PROFILE), expected, ignore_findings=fixture_exemptions(PROFILE, result.fixture_metal))
-    assert record["outcome"] != "pass" and any(v["layer"] == "M4" and v["kind"] != "max_width" for v in record["violations"])
+        assert record["outcome"] != "pass" and any(v["layer"] == "M4" and v["kind"] == "min_space" for v in record["violations"])
+        record = product_scope_record(audit_gds(narrow, PROFILE), expected, ignore_findings=build)
+    assert record["outcome"] != "pass" and record["violations"] == [{"kind": "min_width", "layer": "M4", "count": 1}]
 
 
 def test_pgs_keeps_the_bottom_ring(tmp_path):

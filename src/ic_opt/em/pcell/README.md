@@ -128,7 +128,10 @@ GroundFixtureConfig(inner_margin_um, ring_width_um,
   side. Unknown port names fail closed with `PortError`.
 - `add_ground_fixture(cell, fixture, process=None)` operates generically on
   any `Cell` with `emx_ports`; it fails closed with `PortError` when the
-  cell has no ports or M1 has no pin layer.
+  cell has no ports or M1 has no pin layer, and (T19.5) when two stubs
+  would touch or overlap -- a tap port's stub between the other winding's
+  two stubs at a small opening: one edge would hold two G pins, which EMX
+  refuses (the message names the two ports and the gap).
 - With `CT_ME` the fixture is applied after the CT port is placed, so the
   tap port receives its own G-stub like every signal port.
 - Every side obeys two independent bounds: the port tip plus

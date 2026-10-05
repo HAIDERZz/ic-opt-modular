@@ -115,38 +115,62 @@ class Pcell:
     def run(self, point: Point, ctx: StageContext) -> Geometry:
         geometry = Geometry()
         for device in ctx.spec.devices:
-            generator = self.generators[device.id]
-            config = device_config(ctx.spec, device, point)
-            try:
-                model = generator.config_model.model_validate(config)
-            except ValidationError as exc:
-                raise StageFailure(f"device {device.id}: invalid generator config", *[e["msg"] for e in exc.errors()][:3]) from exc
-            outdir = ctx.workdir / "em" / device.id
-            outdir.mkdir(parents=True, exist_ok=True)
-            try:
-                result = generator.generate(model, outdir=outdir, gds_name=f"{device.id}.gds")
-                _audit(device, generator, model, result.gds_path, fixture_metal=result.fixture_metal)
-            except (ValueError, OSError, RuntimeError) as exc:
-                raise StageFailure(f"device {device.id}: {type(exc).__name__}: {exc}") from exc
-            ports = read_emx_ports(result.emx_ports_path)
-            labels = {p.signal for p in ports}
-            missing = [label for label in device.ports if label not in labels]
-            if missing:
-                raise StageFailure(f"device {device.id}: generator drew no port for {missing} (has {sorted(labels)})")
-            geometry.devices[device.id] = DeviceGeometry(
-                device=device.id, gds_path=result.gds_path, top_cell=result.top_cell, ports=ports,
-                snp_order=snp_order(ctx.spec, device), config=model.model_dump(mode="json"),
-                gds_sha256=hashlib.sha256(result.gds_path.read_bytes()).hexdigest(),
-            )
+            geometry.devices[device.id] = build_device(ctx.spec, device, point, ctx.workdir / "em" / device.id,
+                                                       self.generators[device.id])
         (ctx.workdir / "em" / "geometry.json").write_text(json.dumps(geometry.to_json(), indent=1), encoding="utf-8")
         return geometry
 
 
-def _audit(device: Device, generator, model, gds_path: Path, *, fixture_metal: str | None = None) -> None:
+class DrcRefused(StageFailure):
+    """The product-scope DRC gate refused a build (``_audit``); ``record`` is its verdict (``drc_audit.product_scope_record``:
+    ``outcome`` ``missing_layer`` with ``missing``, or ``fail`` with ``violations``). To the engine it is a ``StageFailure``
+    like any other (``failed:pcell``, the same issues); a dry build that tells the gate's refusals from the generator's
+    (``lib_tap``'s preflight) catches it first."""
+
+    def __init__(self, record: dict, *issues: str) -> None:
+        super().__init__(*issues)
+        self.record = record
+
+
+def build_device(spec: Spec, device: Device, point: Point, outdir: Path, generator=None) -> DeviceGeometry:
+    """One device of ``point`` drawn into ``outdir`` (``<device>.gds``, ``emx_ports.txt``, ``geometry_manifest.json``) and
+    passed through the product-scope DRC gate (``_audit``): what the pcell stage does for each device, and what a dry
+    build without EMX runs (``lib_tap``'s preflight). ``generator``: the device's, when the caller has it already.
+    ``StageFailure`` with the generator's message when the config is invalid or the generator refuses it, ``DrcRefused``
+    when the gate refuses the GDS, ``StageFailure`` when a port of the device is not drawn."""
+    generator = generator or get_generator(device.generator, plugin_module=device.plugin)
+    config = device_config(spec, device, point)
+    try:
+        model = generator.config_model.model_validate(config)
+    except ValidationError as exc:
+        raise StageFailure(f"device {device.id}: invalid generator config", *[e["msg"] for e in exc.errors()][:3]) from exc
+    outdir.mkdir(parents=True, exist_ok=True)
+    try:
+        result = generator.generate(model, outdir=outdir, gds_name=f"{device.id}.gds")
+        _audit(device, generator, model, result.gds_path, fixture_metal=result.fixture_metal,
+               fixture_metal_rule=result.fixture_metal_rule)
+    except (ValueError, OSError, RuntimeError) as exc:
+        raise StageFailure(f"device {device.id}: {type(exc).__name__}: {exc}") from exc
+    ports = read_emx_ports(result.emx_ports_path)
+    labels = {p.signal for p in ports}
+    missing = [label for label in device.ports if label not in labels]
+    if missing:
+        raise StageFailure(f"device {device.id}: generator drew no port for {missing} (has {sorted(labels)})")
+    return DeviceGeometry(
+        device=device.id, gds_path=result.gds_path, top_cell=result.top_cell, ports=ports,
+        snp_order=snp_order(spec, device), config=model.model_dump(mode="json"),
+        gds_sha256=hashlib.sha256(result.gds_path.read_bytes()).hexdigest(),
+    )
+
+
+def _audit(device: Device, generator, model, gds_path: Path, *, fixture_metal: str | None = None,
+           fixture_metal_rule: str | None = None) -> None:
     """em-opt's product-scope DRC gate: every conductor the generator declares for the config must be drawn
     (``PassiveDeviceGenerator.expected_conductors``: the built-in families and plugin generators alike), no rule
     violation except max_width on the conductor the ground fixture was drawn on (``fixture_metal``, the build's; the
-    profile's fixture conductor when the build reports none -- ``drc_audit.fixture_exemptions``, T19.1)."""
+    profile's fixture conductor when the build reports none -- ``drc_audit.fixture_exemptions``, T19.1) and, when that
+    metal was chosen under ``metal_rule: free`` (``fixture_metal_rule``, the build's), the spacing findings there,
+    between the fixture's own shapes (T19.5). A refusal is a ``DrcRefused`` carrying the gate's record."""
     if getattr(model, "drc_check", True) is False:
         return
     from ic_opt.em.pcell.drc_audit import (
@@ -160,12 +184,13 @@ def _audit(device: Device, generator, model, gds_path: Path, *, fixture_metal: s
     if profile is None:
         raise ValueError(f"generator {device.generator!r}: its config has no process_profile field, the profile the DRC gate audits against")
     expected = expected_conductors(generator, model)
-    record = product_scope_record(audit_gds(gds_path, profile), expected, ignore_findings=fixture_exemptions(profile, fixture_metal))
+    record = product_scope_record(audit_gds(gds_path, profile), expected,
+                                  ignore_findings=fixture_exemptions(profile, fixture_metal, fixture_metal_rule))
     if record["outcome"] == "missing_layer":
-        raise StageFailure(f"device {device.id}: DRC audit found missing product layers {record['missing']}")
+        raise DrcRefused(record, f"device {device.id}: DRC audit found missing product layers {record['missing']}")
     if record["outcome"] != "pass":
-        raise StageFailure(f"device {device.id}: DRC audit found {len(record['violations'])} violation(s)",
-                           *[f"[{v['kind']}] {v['layer']} x{v['count']}" for v in record["violations"]])
+        raise DrcRefused(record, f"device {device.id}: DRC audit found {len(record['violations'])} violation(s)",
+                         *[f"[{v['kind']}] {v['layer']} x{v['count']}" for v in record["violations"]])
 
 
 class Emx:

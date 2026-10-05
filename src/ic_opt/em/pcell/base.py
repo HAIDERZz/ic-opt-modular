@@ -20,6 +20,11 @@ class GeometryGenerationResult:
     # The box (x0, y0, x1, y1, um, rounded to 0.001) around everything the device drew, taken before the ground fixture
     # was added (T19.2; the manifest's ``geometry.device_bbox_um``): the footprint. None: not reported.
     device_bbox_um: tuple[float, float, float, float] | None = None
+    # The rule the fixture's metal was chosen under (T19.2's ``ground_fixture.metal_rule``), for the DRC gate (T19.5):
+    # "free" -- the metal holds the ring and the stubs and nothing else, so the gate exempts spacing among them there;
+    # "shared" -- the device's internal shapes too. None: no metal was chosen (the fixture conductor, the bottom metal),
+    # a patterned ground shield is drawn on it, or not reported -- the gate exempts max_width alone.
+    fixture_metal_rule: str | None = None
 
 
 class PassiveDeviceGenerator(ABC):
@@ -30,8 +35,9 @@ class PassiveDeviceGenerator(ABC):
     ``port_order`` along with the device's fields), calls ``generate`` and then runs the product-scope DRC gate: the GDS
     is audited against the profile ``config.process_profile`` names, every conductor ``expected_conductors(config)``
     lists must be drawn, and no rule may be broken except ``max_width`` on the conductor of the ground ring
-    (``drc_audit.fixture_exemptions``): the result's ``fixture_metal``, else the profile's fixture conductor. A config
-    field ``drc_check: false`` skips the gate.
+    (``drc_audit.fixture_exemptions``): the result's ``fixture_metal``, else the profile's fixture conductor -- and, when
+    the result's ``fixture_metal_rule`` is ``"free"`` (the ring and the stubs alone on that metal), the spacing rules
+    there too. A config field ``drc_check: false`` skips the gate.
     """
 
     generator_id: str

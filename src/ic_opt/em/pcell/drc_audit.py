@@ -592,8 +592,14 @@ def _canonical_names(metals) -> list[str]:
     return out
 
 
+#: The spacing findings ``fixture_exemptions`` exempts on a fixture metal chosen under ``metal_rule: free`` (T19.5): there
+#: every shape is the ring or a stub, so each such finding is between two shapes of the fixture.
+FIXTURE_SPACING_KINDS = ("min_space", "wide_parallel_spacing")
+
+
 def fixture_exemptions(profile: ProcessRuleProfile | str,
-                       conductor: str | None = None) -> frozenset[tuple[str, str]]:
+                       conductor: str | None = None,
+                       metal_rule: str | None = None) -> frozenset[tuple[str, str]]:
     """The ``ignore_findings`` every product-scope verdict on ``profile``
     (a profile or its id) passes: ``max_width`` on the conductor the ground
     fixture was drawn on -- ``conductor``, the build's
@@ -601,28 +607,46 @@ def fixture_exemptions(profile: ProcessRuleProfile | str,
     ``geometry.fixture_metal``; T19.1), else ``profile.fixture_conductor``,
     the bottom of the metal stack, whatever the profile calls it (T15.6).
     The fixture ring is drawn as wide as its config says, wider than that
-    metal's max_width by design; every other rule on that metal, and every
-    rule on the other metals, still counts. A ``conductor`` that is no metal
-    of the profile fails closed (``ValueError``).
+    metal's max_width by design. A ``conductor`` that is no metal of the
+    profile fails closed (``ValueError``).
 
-    Under ``ground_fixture.metal_rule: shared`` (T19.2) that metal may also
-    carry the device's own internal shapes, and the exemption, which is by
-    layer, covers their ``max_width`` too -- nothing else of theirs. The
-    built-in families' internal shapes (crossunders, bridges) are as wide as
-    a winding, far below any metal's max_width, so nothing is hidden in
+    ``metal_rule`` is the rule that metal was chosen under, the build's
+    (``GeometryGenerationResult.fixture_metal_rule``; T19.5). ``"free"``
+    (``ground_fixture.metal`` set, ``auto`` or a name, under T19.1's rule):
+    the device draws nothing on that metal, so every shape there is the
+    ring or a stub, and a spacing finding there (``FIXTURE_SPACING_KINDS``:
+    ``min_space``, ``wide_parallel_spacing``) is between two shapes of the
+    fixture -- exempt too, as ``max_width`` is. A tap port's stub between
+    the other winding's two stubs (xfm_bs with a small opening) comes that
+    close; stubs that touch are refused when they are laid out
+    (``fixture.add_ground_fixture``). None -- no metal chosen: the fixture
+    conductor, where a patterned ground shield is a real, fabricated
+    structure tied to the ring -- and ``"shared"`` (T19.2: the device's own
+    internal shapes on that metal too) exempt ``max_width`` alone: every
+    other rule on that metal, and every rule on the other metals, still
+    counts. Without a ``conductor`` the rule is not read. Another rule
+    fails closed (``ValueError``).
+
+    Under ``shared`` the exemption, which is by layer, covers the internal
+    shapes' ``max_width`` too -- nothing else of theirs. The built-in
+    families' internal shapes (crossunders, bridges) are as wide as a
+    winding, far below any metal's max_width, so nothing is hidden in
     practice; a plugin family with wide internal shapes should not use
     ``shared``."""
     if isinstance(profile, str):
         profile = get_process_rule_profile(profile)
     if conductor is None:
         return frozenset({("max_width", profile.fixture_conductor)})
+    if metal_rule not in (None, "free", "shared"):
+        raise ValueError(f"the ground fixture's metal_rule {metal_rule!r} is none of 'free', 'shared' (or None: no metal chosen)")
     stack = tuple(profile.metal_stack)
     try:
         name = _stack.name_in(stack, _stack.position_in(stack, conductor))
     except ValueError as exc:
         raise ValueError(f"the ground fixture's metal {conductor!r} is not a metal of profile "
                          f"{profile.process_id}: {exc}") from None
-    return frozenset({("max_width", name)})
+    kinds = ("max_width", *FIXTURE_SPACING_KINDS) if metal_rule == "free" else ("max_width",)
+    return frozenset((kind, name) for kind in kinds)
 
 
 def product_scope_record(

@@ -68,10 +68,10 @@ def layer(metal: str, kind: str = "drawing") -> tuple[int, int]:
 
 def gate(gen, model, result) -> dict:
     """The product DRC gate's verdict on a build (``stages.em_chain._audit``): the generator's conductors drawn, no finding
-    but max_width on the fixture's metal."""
+    but max_width on the fixture's metal -- and spacing there when the build chose that metal under ``free`` (T19.5)."""
     with use_stack(PROFILE):
         return product_scope_record(audit_gds(result.gds_path, PROFILE), expected_conductors(gen, model),
-                                    ignore_findings=fixture_exemptions(PROFILE, result.fixture_metal))
+                                    ignore_findings=fixture_exemptions(PROFILE, result.fixture_metal, result.fixture_metal_rule))
 
 
 # 1. the construction
@@ -272,19 +272,24 @@ def test_the_drc_gate_passes_a_same_metal_tapped_device_on_the_auto_metal(tmp_pa
 
 def test_a_narrow_opening_needs_the_other_windings_port_spacing_widened(tmp_path):
     """The tap port sits between the other winding's port pair and its ground stub between theirs on the fixture's metal. A
-    1.55 um secondary opening puts the 3 um CTP stub 0.05 um from the P2 and N2 stubs on M4 (min space 0.1 um): the gate
-    fails on min_space there, twice. Widening the secondary's port pair by 2 um (10.1 um, the natural pitch is 8.1 um) makes
-    room and the gate passes. The via-stack tap cannot draw this geometry at all: its M5 pad sits in the secondary's opening."""
+    1.55 um secondary opening puts the 3 um CTP stub 0.05 um from the P2 and N2 stubs on M4 (min space 0.1 um). With M4
+    chosen under ``metal_rule: shared`` (``auto`` takes M4 under either rule here) the gate fails on min_space there, twice;
+    widening the secondary's port pair by 2 um (10.1 um, the natural pitch is 8.1 um) makes room and the gate passes. Under
+    ``free`` M4 holds the fixture alone, so the three stubs' spacing is the fixture's own and the gate passes the natural
+    pitch too (T19.5). The via-stack tap cannot draw this geometry at all: its M5 pad sits in the secondary's opening."""
     narrow = {"secondary_opening_um": 1.55, "ct_primary_metal": "6", "ct_primary_width_um": 3.0, "port_order": [*XFM_PORTS, "CTP"]}
-    fixture = {**AUTO_STUBS, "metal": "auto"}
-    gen, model, natural = generate(tmp_path, "natural", fixture, **narrow)
-    assert natural.fixture_metal == "M4"
+    shared = {**AUTO_STUBS, "metal": "auto", "metal_rule": "shared"}
+    gen, model, natural = generate(tmp_path, "natural", shared, **narrow)
+    assert (natural.fixture_metal, natural.fixture_metal_rule) == ("M4", "shared")
     record = gate(gen, model, natural)
     assert record["outcome"] == "fail" and record["violations"] == [{"kind": "min_space", "layer": "M4", "count": 2}], record
-    gen, model, widened = generate(tmp_path, "widened", fixture, **narrow, secondary_port_spacing_um=10.1)
+    gen, model, widened = generate(tmp_path, "widened", shared, **narrow, secondary_port_spacing_um=10.1)
     assert gate(gen, model, widened)["outcome"] == "pass"
+    gen, model, free = generate(tmp_path / "free", "natural", {**AUTO_STUBS, "metal": "auto"}, **narrow)
+    assert (free.fixture_metal, free.fixture_metal_rule) == ("M4", "free") and gate(gen, model, free)["outcome"] == "pass"
+    assert free.gds_path.read_bytes() == natural.gds_path.read_bytes()   # the same drawing (one file name: the top cell's)
     with pytest.raises(PortError, match="primary/secondary nets short"):
-        generate(tmp_path, "stack", fixture, **{**narrow, "ct_primary_metal": "4", "ct_primary_width_um": None})
+        generate(tmp_path, "stack", {**AUTO_STUBS, "metal": "auto"}, **{**narrow, "ct_primary_metal": "4", "ct_primary_width_um": None})
 
 
 # 7. xfm_ms keeps its rule

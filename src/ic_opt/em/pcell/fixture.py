@@ -14,7 +14,8 @@ is the one place that resolves and checks it; ``add_ground_fixture`` -- every
 family, and any plugin generator that calls it -- draws through it, and
 records the box of the device it drew around (``Cell.device_bbox_um``: the
 footprint's record, since under ``shared`` the fixture's layer no longer tells
-the two apart).
+the two apart). Stubs that would touch or overlap are refused before anything
+is drawn (T19.5): their merged edge would hold two G pins, which EMX refuses.
 """
 
 from __future__ import annotations
@@ -280,6 +281,34 @@ def _refuse_contact(cell: Cell, layer: tuple[int, int], shapes: list, conductor:
                     "device and its reference; name another metal, or use metal_rule 'free'")
 
 
+def _refuse_touching_stubs(stubs: list[tuple[str, str, list]], conductor: str) -> None:
+    """Two stubs that touch or overlap make one polygon whose edge holds two ``G`` pins, which EMX refuses (it allows no
+    two ports' pins on one edge). ``stubs``: (port name, side, outline) in drawing order. ``PortError`` before anything
+    is drawn, naming the two ports and the gap between their outlines, chamfers included -- across the stubs for two on
+    one side (their roots, the widest part of each, lie on one line), the separation of their boxes otherwise; 0 is
+    touching, below 0 overlapping (T19.5). Exact on the drawn nanometres: each outline is snapped as ``Cell.add_polygon``
+    snaps it, and a touching edge or corner counts. Stubs closer than the metal's minimum spacing without touching are the
+    DRC gate's to judge (``drc_audit.fixture_exemptions``)."""
+    outlines = []
+    for name, side, points in stubs:
+        polygon = kdb.Polygon([kdb.Point(_nm(x), _nm(y)) for x, y in points])
+        outlines.append((name, side, kdb.Region(polygon), polygon.bbox()))
+    for i, (name_a, side_a, region_a, a) in enumerate(outlines):
+        for name_b, side_b, region_b, b in outlines[i + 1:]:
+            if region_a.interacting(region_b).is_empty():
+                continue
+            across_y = max(b.bottom - a.top, a.bottom - b.top)
+            across_x = max(b.left - a.right, a.left - b.right)
+            if side_a == side_b:
+                gap = across_y if side_a in ("left", "right") else across_x
+            else:
+                gap = max(across_x, across_y)
+            raise PortError(f"ground fixture: the stubs of ports {name_a} and {name_b} on {conductor} "
+                            f"{'touch' if gap == 0 else 'overlap'} (gap {gap * DBU_UM:g} um between their outlines, chamfers "
+                            "included): one edge would hold both G pins, which EMX refuses; give the two ports more room or "
+                            "their stubs less width")
+
+
 def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
                        process: ProcessRuleContext | None = None) -> None:
     """Draw a ground ring + one chamfered stub per port + a ``G{index:02d}``
@@ -300,8 +329,10 @@ def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
     ``PortError``, before anything is drawn, when the cell has no
     ``emx_ports``, the fixture metal has no pin layer or is refused
     (``fixture_metal``), the per-port map names a port that does not exist
-    on the cell, or -- under ``metal_rule: shared`` -- a fixture shape would
-    touch a device shape on the shared metal (``_refuse_contact``)."""
+    on the cell, two stubs would touch or overlap (``_refuse_touching_stubs``,
+    T19.5: one edge would hold two G pins), or -- under ``metal_rule:
+    shared`` -- a fixture shape would touch a device shape on the shared
+    metal (``_refuse_contact``)."""
     if not cell.emx_ports:
         raise PortError("ground fixture: cell has no emx_ports")
     if fixture.stub_width_by_port_um:
@@ -366,6 +397,7 @@ def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
         (inner_xmin, inner_ymax, inner_xmax, outer_ymax),
         (inner_xmin, outer_ymin, inner_xmax, inner_ymin))]
     pins = []
+    stubs = []                                              # (port, side, outline): no two may touch (T19.5)
     by_port = fixture.stub_width_by_port_um or {}
     ch = fixture.stub_chamfer_um
     for index, (p, side) in enumerate(distances_by_port, start=1):
@@ -391,7 +423,9 @@ def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
             shapes.append([
                 (x - half, y), (x - half - ch, root),
                 (x + half + ch, root), (x + half, y)])
+        stubs.append((p["name"], side, shapes[-1]))
         pins.append((p, f"G{index:02d}", x, y))
+    _refuse_touching_stubs(stubs, conductor)
     if metal_rule_of(fixture) == SHARED:
         _refuse_contact(cell, m1_draw, shapes, conductor)
     for points in shapes:

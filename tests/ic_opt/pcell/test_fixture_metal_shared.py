@@ -201,27 +201,37 @@ def test_the_footprint_reads_the_record_and_falls_back_without_it(tmp_path, monk
 
 def test_the_drc_gate_on_a_shared_build(tmp_path):
     """The ms ``shared`` build passes the product-scope verdict with max_width exempted on M4, where the ring and the
-    crossunder both are; with the exemption left on M1 it fails on the ring's width; and a min-space violation drawn on M4
-    still fails it with the exemption in place."""
+    crossunder both are; with the exemption left on M1 it fails on the ring's width. Under ``shared`` the device's own
+    shapes may be on M4, so a spacing finding there is not known to lie between two fixture shapes and still counts
+    (T19.5 exempts spacing under ``free`` only): a min-space violation drawn on M4, and a device-like shape drawn 0.05 um
+    inside the ring's inner edge, both fail the gate with the build's own exemptions in place."""
     gen, model, result = generate("clean_port_xfm_ms", tmp_path, SHARED_AUTO)
+    assert (result.fixture_metal, result.fixture_metal_rule) == ("M4", "shared")
+    build = fixture_exemptions(PROFILE, result.fixture_metal, result.fixture_metal_rule)
+    assert build == fixture_exemptions(PROFILE, "M4") == frozenset({("max_width", "M4")})
     with use_stack(PROFILE):
         report = audit_gds(result.gds_path, PROFILE)
         expected = expected_conductors(gen, model)
         assert "M4" in expected                                       # the crossunder: the device's own conductor there
-        assert product_scope_record(report, expected, ignore_findings=fixture_exemptions(PROFILE, result.fixture_metal))["outcome"] == "pass"
+        assert product_scope_record(report, expected, ignore_findings=build)["outcome"] == "pass"
         stale = product_scope_record(report, expected, ignore_findings=fixture_exemptions(PROFILE))
         assert stale["outcome"] != "pass" and any(v["kind"] == "max_width" and v["layer"] == "M4" for v in stale["violations"])
-    layout = kdb.Layout()
-    layout.read(str(result.gds_path))
-    top = layout.top_cell()
-    li = layout.layer(*drawing("M4"))
-    top.shapes(li).insert(kdb.Box(-300_000, 400_000, -200_000, 405_000))       # two 5 um strips 0.05 um apart (M4 min space 0.1 um)
-    top.shapes(li).insert(kdb.Box(-300_000, 405_050, -200_000, 410_050))
-    close = tmp_path / "close.gds"
-    layout.write(str(close))
-    with use_stack(PROFILE):
-        record = product_scope_record(audit_gds(close, PROFILE), expected, ignore_findings=fixture_exemptions(PROFILE, "M4"))
-    assert record["outcome"] != "pass" and any(v["layer"] == "M4" and v["kind"] != "max_width" for v in record["violations"])
+    regions, _texts = content(result.gds_path)
+    ring = max(regions[drawing("M4")].each(), key=lambda polygon: polygon.area()).bbox()     # the ring and its stubs: one polygon
+    inner_left, inner_top = ring.left + 20_000, ring.top - 20_000                           # FIXTURE's ring_width_um, 20 um
+    for name, boxes in (("close", [kdb.Box(-300_000, 400_000, -200_000, 405_000),          # two 5 um strips 0.05 um apart
+                                   kdb.Box(-300_000, 405_050, -200_000, 410_050)]),        # (M4 min space 0.1 um)
+                        ("near_ring", [kdb.Box(inner_left + 50, inner_top - 3_000, inner_left + 2_050, inner_top - 1_000)])):
+        layout = kdb.Layout()
+        layout.read(str(result.gds_path))
+        li = layout.layer(*drawing("M4"))
+        for box in boxes:
+            layout.top_cell().shapes(li).insert(box)
+        path = tmp_path / f"{name}.gds"
+        layout.write(str(path))
+        with use_stack(PROFILE):
+            record = product_scope_record(audit_gds(path, PROFILE), expected, ignore_findings=build)
+        assert record["outcome"] != "pass" and any(v["layer"] == "M4" and v["kind"] == "min_space" for v in record["violations"]), name
 
 
 @pytest.mark.parametrize("name", sorted(CASES))

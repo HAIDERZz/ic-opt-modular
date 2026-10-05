@@ -1224,10 +1224,17 @@ def _write_geometry_outputs_in_stack(
         **({"pgs_geometry": pgs_geometry} if pgs_geometry is not None else {}),
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
+    # the rule the fixture's metal was chosen under, for the DRC gate (T19.5): "free" -- the ring and the stubs alone on
+    # it -- lets the gate exempt spacing among them; None when no metal was chosen (the fixture conductor) or a shield
+    # shares the metal (its strips are a fabricated structure whose spacing counts). The config block of the manifest
+    # already says both, so nothing is added to the file.
+    fixture = config.ground_fixture
+    fixture_rule = None if fixture.metal is None or pgs is not None else (fixture.metal_rule or FIXTURE_RULE_DEFAULT)
     return GeometryGenerationResult(
         generator_id=generator_id, gds_path=gds_path,
         top_cell=resolved_top_cell, manifest_path=manifest_path,
-        emx_ports_path=emx_ports_path, fixture_metal=fixture_metal, device_bbox_um=device_bbox)
+        emx_ports_path=emx_ports_path, fixture_metal=fixture_metal, device_bbox_um=device_bbox,
+        fixture_metal_rule=fixture_rule)
 
 
 def translate_config(generator_id: str, config: dict) -> dict:

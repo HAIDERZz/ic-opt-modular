@@ -119,7 +119,13 @@ FIXTURE_METAL_NOTE = (
     "layer as before. The DRC gate still exempts `max_width` on the fixture's metal, by layer: "
     "under `shared` that covers the device's internal shapes on it as well, and nothing else of theirs. The families' internal "
     "shapes are as wide as a winding, far below any metal's `max_width`, so nothing is hidden in practice; a plugin family with "
-    "wide internal shapes should not use `shared`."
+    "wide internal shapes should not use `shared`.\n\n"
+    "On a metal chosen under `free` (`metal` set, `auto` or a name) every shape is the ring or a stub, so the gate exempts the "
+    "spacing rules there too (`min_space`, `wide_parallel_spacing`): a spacing finding on that metal lies between two shapes "
+    "of the fixture -- such as a tap port's stub between the other winding's two stubs (xfm_bs, below). Under `shared`, and "
+    "with `metal` absent (the bottom metal, where a patterned ground shield is a real, fabricated structure tied to the "
+    "ring), spacing counts as before. Stubs that would touch or overlap are refused when the fixture is laid out, naming the "
+    "two ports and the gap: one edge would hold two `G` pins, which EMX refuses."
 )
 
 XFM_BS_TAP_NOTE = (
@@ -137,8 +143,10 @@ XFM_BS_TAP_NOTE = (
     "the tap port's automatic stub width follows the lead); they are refused with a via-stack tap and without the matching "
     "tap metal. The tap port's ground stub runs between the other winding's two stubs on the fixture's metal: when that "
     "winding's leads are close together (a small opening), the three stubs can come closer than the fixture metal's "
-    "minimum spacing and the DRC gate fails the build. `primary_port_spacing_um` / `secondary_port_spacing_um` widen the "
-    "other winding's port pair to make room; nothing chooses that spacing automatically."
+    "minimum spacing. On a fixture metal chosen under `metal_rule: free` that is the fixture's own spacing and the DRC gate "
+    "passes it (`ground_fixture`, above); under `shared`, or on the default bottom metal, it fails the build, and "
+    "`primary_port_spacing_um` / `secondary_port_spacing_um` widen the other winding's port pair to make room (nothing "
+    "chooses that spacing automatically). Stubs that would touch are refused under any rule."
 )
 
 #: A paragraph after a family's field table.
