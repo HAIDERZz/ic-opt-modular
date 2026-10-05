@@ -65,6 +65,8 @@ def family_section(generator_id: str, model: type[BaseModel]) -> str:
     retired = getattr(model, "renamed", {})
     if retired:
         lines += ["", "Retired names (refused with the replacement): " + ", ".join(f"`{k}` → `{v}`" if v else f"`{k}` (removed)" for k, v in retired.items())]
+    if generator_id in NOTES:
+        lines += ["", NOTES[generator_id]]
     return "\n".join(lines) + "\n"
 
 
@@ -119,6 +121,28 @@ FIXTURE_METAL_NOTE = (
     "shapes are as wide as a winding, far below any metal's `max_width`, so nothing is hidden in practice; a plugin family with "
     "wide internal shapes should not use `shared`."
 )
+
+XFM_BS_TAP_NOTE = (
+    "Center taps (`ct_primary_metal` / `ct_secondary_metal`). A tap leaves its winding at the closed column, on the centre "
+    "line, toward the other winding -- the primary's tap crosses the secondary's opening side and the secondary's the "
+    "primary's -- and its lead runs on to the other winding's outer extent (never shorter than its own winding's lead), so "
+    "the tap port (`CTP` / `CTS`) sits at the lead's far tip, between the other winding's two ports. A tap metal equal to "
+    "its winding's metal (by stack position: `\"6\"`, `\"M6\"` and the position agree) is a same-metal tap: no via stack, "
+    "the lead drawn on the winding's own metal as one polygon with the winding, the port on that metal and its pin layer; "
+    "where the lead crosses the other winding it is on a different metal, a crossing, not a short. It draws nothing on any "
+    "other metal, so `ground_fixture.metal: auto` picks the same metal as for the untapped device. A tap metal below the "
+    "winding is a via-stack tap: a W × W via stack at the closed column drops to the tap metal, and the lead, as wide as "
+    "the winding, runs there (`auto` then goes below the tap metal). A tap metal above its winding is refused. "
+    "`ct_primary_width_um` / `ct_secondary_width_um` set the width of a same-metal tap's lead (absent: the winding's width; "
+    "the tap port's automatic stub width follows the lead); they are refused with a via-stack tap and without the matching "
+    "tap metal. The tap port's ground stub runs between the other winding's two stubs on the fixture's metal: when that "
+    "winding's leads are close together (a small opening), the three stubs can come closer than the fixture metal's "
+    "minimum spacing and the DRC gate fails the build. `primary_port_spacing_um` / `secondary_port_spacing_um` widen the "
+    "other winding's port pair to make room; nothing chooses that spacing automatically."
+)
+
+#: A paragraph after a family's field table.
+NOTES = {"clean_port_xfm_bs": XFM_BS_TAP_NOTE}
 
 TOPOLOGY_SECTION = """\
 ## Measurement topology (`topology`)

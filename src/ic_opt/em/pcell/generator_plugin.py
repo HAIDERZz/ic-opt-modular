@@ -250,7 +250,10 @@ class CleanPortGroundFixtureConfig(BaseModel):
 
 METAL_FIELDS = ("metal", "ct_metal", "primary_metal", "secondary_metal", "ct_primary_metal", "ct_secondary_metal")
 HALF_IS_A_COORDINATE = ("center_spacing_um", "port_spacing_um", "primary_port_spacing_um", "secondary_port_spacing_um",
-                        "straight_extension_um")
+                        "straight_extension_um", "ct_primary_width_um", "ct_secondary_width_um")
+#: Optional fields whose absence (None) the serializer drops, so a config that leaves them out keeps its historical
+#: identity: the patterned ground shield, and xfm_bs's tap widths (T19.4).
+DROPPED_WHEN_ABSENT = ("pgs", "ct_primary_width_um", "ct_secondary_width_um")
 
 
 class _CleanPortDeviceConfigBase(BaseModel):
@@ -335,9 +338,10 @@ class _CleanPortDeviceConfigBase(BaseModel):
     @model_serializer(mode="wrap")
     def _serialize_config(self, handler):
         data = handler(self)
-        # An absent shield must retain the historical config/cache identity.
-        if data.get("pgs") is None:
-            data.pop("pgs", None)
+        # An absent shield (or tap width) must retain the historical config/cache identity.
+        for key in DROPPED_WHEN_ABSENT:
+            if data.get(key) is None:
+                data.pop(key, None)
         if data.get("straight_extension_um") == 0:
             data.pop("straight_extension_um")
         return data
@@ -491,6 +495,9 @@ class CleanPortXfmBsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     secondary_metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
     ct_secondary_metal: str | None = None
+    # T19.4: the lead width of a same-metal tap (tap metal == its winding's); None: the winding's width
+    ct_primary_width_um: float | None = Field(default=None, gt=0, multiple_of=0.01)
+    ct_secondary_width_um: float | None = Field(default=None, gt=0, multiple_of=0.01)
     primary_port_spacing_um: float | None = Field(default=None, gt=0, multiple_of=0.01)     # M3.1: per winding, default 2*opening + width
     secondary_port_spacing_um: float | None = Field(default=None, gt=0, multiple_of=0.01)
 
@@ -520,25 +527,66 @@ class CleanPortXfmBsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
                 "transformer")
         return self
 
+    def _taps(self):
+        """(tap metal, its winding's metal, tap width, side) for the two windings."""
+        return ((self.ct_primary_metal, self.primary_metal, self.ct_primary_width_um, "primary"),
+                (self.ct_secondary_metal, self.secondary_metal, self.ct_secondary_width_um, "secondary"))
+
     @model_validator(mode="after")
-    def _ct_below_windings(self) -> CleanPortXfmBsConfig:
-        # The tap vias stack drops from the winding plane, so the CT metal
-        # must sit strictly below its winding (M13 ticket 05; the pcell
-        # repeats this guard fail-closed at generate time).
-        for ct, host, label in (
-                (self.ct_primary_metal, self.primary_metal, "primary"),
-                (self.ct_secondary_metal, self.secondary_metal,
-                 "secondary")):
+    def _ct_at_or_below_windings(self) -> CleanPortXfmBsConfig:
+        # A tap metal equal to its winding's (by stack position) is a
+        # same-metal tap -- the lead on the winding's own metal, no via stack
+        # (T19.4); below it, the M13 via-stack tap dropping from the winding
+        # plane; above it, refused. The pcell repeats this guard fail-closed
+        # at generate time.
+        for ct, host, _width, label in self._taps():
             if ct is None:
                 continue
             c = _metal_position(ct, self.process_profile)
             h = _metal_position(host, self.process_profile)
-            if c is not None and h is not None and c >= h:
+            if c is not None and h is not None and c > h:
                 raise ValueError(
-                    f"ct_{label}_metal {ct!r} must sit below "
-                    f"{label}_metal {host!r} (the tap stack drops from "
-                    "the winding plane)")
+                    f"ct_{label}_metal {ct!r} must sit at or below "
+                    f"{label}_metal {host!r}: a tap runs on its winding's own "
+                    "metal (a same-metal tap) or drops to a lower one through "
+                    "a via stack")
         return self
+
+    @model_validator(mode="after")
+    def _tap_widths_need_same_metal_taps(self) -> CleanPortXfmBsConfig:
+        # T19.4: a tap width sets the lead of a same-metal tap; a via-stack
+        # tap keeps its W x W stack and a lead as wide as the winding, and a
+        # winding without a tap has no lead to size.
+        for ct, host, width, label in self._taps():
+            if width is None:
+                continue
+            if ct is None:
+                raise ValueError(
+                    f"ct_{label}_width_um {width} needs ct_{label}_metal: it "
+                    f"is the width of the {label}'s tap lead, and the {label} "
+                    "has no tap")
+            c = _metal_position(ct, self.process_profile)
+            h = _metal_position(host, self.process_profile)
+            if c is not None and h is not None and c < h:
+                raise ValueError(
+                    f"ct_{label}_width_um {width} applies to a same-metal tap "
+                    f"only (ct_{label}_metal equal to {label}_metal); "
+                    f"ct_{label}_metal {ct!r} sits below {label}_metal "
+                    f"{host!r}, a via-stack tap, which keeps the winding width")
+        return self
+
+    def has_tap_stack(self) -> bool:
+        """Whether a tap drops through a via stack (its metal below its winding's): the only via source of this
+        family -- the windings are via-less, and a same-metal tap draws none (T19.4). A metal no position resolves
+        counts as a stack (the pcell refuses it first)."""
+        for ct, host, _width, _label in self._taps():
+            if ct is None:
+                continue
+            c = _metal_position(ct, self.process_profile)
+            h = _metal_position(host, self.process_profile)
+            if c is None or h is None or c < h:
+                return True
+        return False
 
     @field_validator("primary_metal", "secondary_metal")
     @classmethod
@@ -880,7 +928,8 @@ def _auto_stub_widths(config) -> dict[str, float]:
 
     The inductor's every lead (P/N and the CT tap) is width_um wide; on the
     two-winding devices the P1/N1/CTP leads carry the primary/single width
-    and P2/N2/CTS the secondary/multi width. xfm_tw and xfm_il both draw
+    and P2/N2/CTS the secondary/multi width, except an xfm_bs same-metal tap
+    with its own ``ct_*_width_um`` (T19.4). xfm_tw and xfm_il both draw
     every port (taps included) at the SAME width_um (P and S share the
     winding's own W), same rule as ind_sym's single
     winding."""
@@ -894,6 +943,11 @@ def _auto_stub_widths(config) -> dict[str, float]:
             f"no auto stub-width rule for config type {type(config).__name__}")
     side = {"P1": p_w, "N1": p_w, "CTP": p_w,
             "P2": s_w, "N2": s_w, "CTS": s_w}
+    # T19.4: an xfm_bs same-metal tap's lead can be narrower than its winding; its stub follows the lead it lands on
+    for tap, field in (("CTP", "ct_primary_width_um"), ("CTS", "ct_secondary_width_um")):
+        width = getattr(config, field, None)
+        if width is not None:
+            side[tap] = width
     return {name: side[name] for name in config.port_order}
 
 
@@ -1244,15 +1298,16 @@ class CleanPortXfmBsGenerator(_CleanPortGenerator):
             process=p.process_rule_context(config.process_profile),
             PORT_SPACING_P=config.primary_port_spacing_um,
             PORT_SPACING_S=config.secondary_port_spacing_um,
+            CT_P_W=config.ct_primary_width_um,
+            CT_S_W=config.ct_secondary_width_um,
         )
-        # the broadside windings are via-less; the tap stacks are the only
-        # via source, so via expectation follows the CT fields (M13)
-        has_ct = (config.ct_primary_metal is not None
-                  or config.ct_secondary_metal is not None)
+        # the broadside windings are via-less; the via-stack taps are the
+        # only via source, so via expectation follows the CT fields (M13) --
+        # a same-metal tap draws no via (T19.4)
         return _write_geometry_outputs(
             p, cell, config, generator_id=self.generator_id,
             outdir=outdir, gds_name=gds_name,
-            requires_vias=has_ct)
+            requires_vias=config.has_tap_stack())
 
 
 class CleanPortXfmMsGenerator(_CleanPortGenerator):

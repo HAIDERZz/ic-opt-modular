@@ -406,7 +406,8 @@ def _conductor_below(metal: str, process_profile: str | None) -> str:
 def _ct_chain(winding_metal: str, ct_metal: str | None,
               process_profile: str | None = None) -> list[str]:
     """Conductors the tap vias stack lands on: every level from one below
-    the winding plane down to the CT lead metal (M13 ticket 05)."""
+    the winding plane down to the CT lead metal (M13 ticket 05); none when
+    the CT metal is the winding's own (an xfm_bs same-metal tap, T19.4)."""
     if ct_metal is None:
         return []
     top = _metal_index(winding_metal)

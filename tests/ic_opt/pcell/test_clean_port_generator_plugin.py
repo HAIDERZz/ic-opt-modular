@@ -1344,10 +1344,15 @@ def test_xfm_bs_ct_config_port_sets():
 def test_xfm_bs_ct_metal_validators():
     gp = _load_plugin()
     base = _xfm_bs_config_dict()
-    with pytest.raises(ValidationError, match="below"):
+    # T19.4: a tap above its winding is refused; on the winding's own metal it is a same-metal tap
+    windings = {"primary_metal": "6", "secondary_metal": "5"}
+    with pytest.raises(ValidationError, match="at or below"):
         gp.CleanPortXfmBsConfig.model_validate(
-            {**base, "ct_primary_metal": "10",
-             "port_order": ["P1", "N1", "P2", "N2", "CTP"]})
+            {**base, **windings, "ct_secondary_metal": "6",
+             "port_order": ["P1", "N1", "P2", "N2", "CTS"]})
+    gp.CleanPortXfmBsConfig.model_validate(
+        {**base, **windings, "ct_primary_metal": "6",
+         "port_order": ["P1", "N1", "P2", "N2", "CTP"]})
     with pytest.raises(ValidationError, match="reserved for the ground fixture"):
         gp.CleanPortXfmBsConfig.model_validate(
             {**base, "ct_primary_metal": "M1",

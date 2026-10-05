@@ -126,8 +126,11 @@ def test_metals_not_called_m_n_get_every_rule(profiles):
         validate("clean_port_ind_sym", config("clean_port_ind_sym", "demo_me", 6, ct_metal="ME5", port_order=["P1", "N1", "CT"]))
     validate("clean_port_ind_sym", config("clean_port_ind_sym", "demo_me", 6, ct_metal="ME4", port_order=["P1", "N1", "CT"]))
     taps = ["P1", "N1", "P2", "N2", "CTP"]
-    with pytest.raises(ValidationError, match="ct_primary_metal 'ME6' must sit below primary_metal 'ME6'"):
-        validate("clean_port_xfm_bs", config("clean_port_xfm_bs", "demo_me", 6, ct_primary_metal="ME6", port_order=taps))
+    # xfm_bs: a tap on its winding's own metal is a same-metal tap (T19.4); above the winding it is refused
+    validate("clean_port_xfm_bs", config("clean_port_xfm_bs", "demo_me", 6, ct_primary_metal="ME6", port_order=taps))
+    with pytest.raises(ValidationError, match="ct_secondary_metal 'ME6' must sit at or below secondary_metal 'ME5'"):
+        validate("clean_port_xfm_bs", config("clean_port_xfm_bs", "demo_me", 6, ct_secondary_metal="ME6",
+                                             port_order=["P1", "N1", "P2", "N2", "CTS"]))
     with pytest.raises(ValidationError, match="ct_primary_metal 'ME6' must sit below metal 'ME6'"):
         validate("clean_port_xfm_balun", config("clean_port_xfm_balun", "demo_me", 6, ct_primary_metal="ME6", port_order=taps))
     il = config("clean_port_xfm_il", "demo_me", 6, port_order=taps)

@@ -195,7 +195,10 @@ coupling — with **opposite, outward** openings (primary at
 - Metals are fully parameterized (never hardcoded): `PRI_ME`/`SEC_ME` must
   differ (else `PortError`); an optional per-winding center tap
   (`CT_P_ME`/`CT_S_ME`) taps that winding's **closed column** down to a lower
-  metal, the CT lead exiting outward. Since M13 ticket 05 each winding (plus
+  metal, the CT lead exiting outward. Since T19.4 the tap metal may also be
+  the winding's own metal: a same-metal tap, no via stack, the CT lead drawn
+  on the winding's metal over the same span (`CT_P_W`/`CT_S_W` set its
+  width, the winding's by default). Since M13 ticket 05 each winding (plus
   its tap) is built in its own sub-cell and the **layer-complete net gate**
   (`_xfm_net_short`, shared with `xfm_balun`) intersects the two complete
   nets on every drawn layer — tap leads and winding leads included. This
@@ -206,7 +209,7 @@ coupling — with **opposite, outward** openings (primary at
   on a real short.
 - **The coil itself has no vias** (same-metal leads); a CT stack uses the
   via levels between its winding and the tap metal, each at the profile's
-  own via geometry.
+  own via geometry (a same-metal tap uses none).
 - `ground_fixture` (M7M) wires every port to its `G0n` local-ref pin
   (`-p P1=P1:G01 …`); without it, plain `-p P1=P1 …`.
 - The opening-side straight octagon edge must provide at least one complete

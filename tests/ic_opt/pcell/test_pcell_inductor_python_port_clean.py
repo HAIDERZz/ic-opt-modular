@@ -2257,9 +2257,12 @@ def test_xfm_bs_failclosed_same_metal_and_ct_rules():
     with pytest.raises(port.PortError):
         port.xfm_bs(PRI_ME="9", SEC_ME="9")
     with pytest.raises(port.PortError):
-        port.xfm_bs(CT_P_ME="10")              # CT not below PRI=M10
+        port.xfm_bs(PRI_ME="5", SEC_ME="6", CT_P_ME="6")    # CT above PRI=M5
     with pytest.raises(port.PortError):
-        port.xfm_bs(CT_S_ME="9")               # CT not below SEC=M9
+        port.xfm_bs(PRI_ME="6", SEC_ME="5", CT_S_ME="6")    # CT above SEC=M5
+    # T19.4: a CT on the winding's own metal is a same-metal tap, no via stack
+    same = port.xfm_bs(PRI_ME="6", SEC_ME="5", CT_P_ME="6", CT_S_ME="5")
+    assert {q["name"]: q["metal"] for q in same.emx_ports if q["name"].startswith("CT")} == {"CTP": "M6", "CTS": "M5"}
     # CT_P geometric short: the tap (W_P=6) overhangs the secondary's left
     # opening gap (width 2*OPENING_S); shorts when OPENING_S < W_P/2 (=3)
     with pytest.raises(port.PortError):

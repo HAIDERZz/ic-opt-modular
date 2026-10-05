@@ -10,6 +10,7 @@ from ic_opt.em.pcell._pcell_core import (
     PortError,
     ProcessRuleContext,
     _metal_index,
+    _metal_name,
     _pin,
     _xfm_order_ports,
     finalize_emx_ports,
@@ -40,7 +41,8 @@ from ic_opt.em.pcell.stack import builds_on_profile_stack
 # Clean-room composition of the ported primitives (no single .il models this
 # device): two open-octagon windings on two different metals, independent
 # OD_P/OD_S + CENTER_SPACING (M7R2), openings opposite, optional per-winding
-# center tap with a geometric Region clearance, optional M1 ground fixture.
+# center tap (same-metal or via-stack, T19.4) with a geometric Region
+# clearance, optional M1 ground fixture.
 # Replaces an earlier gdsfactory placeholder.
 # ---------------------------------------------------------------------------
 
@@ -84,9 +86,20 @@ def _bs_winding(cell, center_x, OD, W, OPENING, LEAD, MET, side,
 
 
 def _bs_center_tap(cell, center_x, radius, W, LEAD, WINDING_ME, CT_ME, side,
-                   txt, process):
-    """W x W via stack at the winding's closed column (center_x ± radius) +
-    CT lead on CT_ME exiting outward; registers a CT port.
+                   txt, process, TAP_W=None):
+    """Center tap at the winding's closed column (center_x ± radius): a CT
+    lead exiting outward along the centre line; registers a CT port.
+
+    Two constructions, told apart by CT_ME (T19.4):
+
+    * CT_ME below WINDING_ME, a via-stack tap: a W x W via stack at the
+      closed column drops to CT_ME and the lead runs on CT_ME, W wide.
+    * CT_ME equal to WINDING_ME, a same-metal tap: no via stack; the lead
+      runs on the winding's own metal over the same x span (the column plus
+      LEAD outward), so it overlaps the column and merges with the winding,
+      ``TAP_W`` wide (None: W) about the same centre line; the port sits on
+      the winding's metal and its pin layer. ``TAP_W`` with a via-stack tap
+      is refused: that construction keeps the winding width.
 
     ``side='left'`` taps the closed column at center_x-radius (exits -x);
     ``side='right'`` taps at center_x+radius (exits +x).
@@ -107,6 +120,20 @@ def _bs_center_tap(cell, center_x, radius, W, LEAD, WINDING_ME, CT_ME, side,
         tap_x = center_x + radius - W
         lead_x = tap_x
         port_x_um = None
+    if cm == wm:
+        w = W if TAP_W is None else TAP_W
+        cell.inst(
+            base_lead(L=LEAD + W, W=w, TOP_ME=wm, BTM_ME=wm,
+                      process=process,
+                      port_name=txt, port_logical_name=txt, port_metal=wm,
+                      port_label_layer=_pin(wm, process), port_x_um=port_x_um),
+            (lead_x, -w / 2), "R0")
+        return
+    if TAP_W is not None:
+        raise PortError(
+            f"_bs_center_tap: a tap width ({TAP_W}) belongs to a same-metal "
+            f"tap; the {_metal_name(cm)} tap of a {_metal_name(wm)} winding "
+            "drops through a via stack, which keeps the winding width")
     cell.inst(vias(Length=W, Width=W, TOP_ME=wm, BTM_ME=cm, process=process),
               (tap_x, -W / 2), "R0")
     cell.inst(
@@ -140,6 +167,42 @@ def check_stacked_overlap(where: str, center_spacing: float, od_a: float,
             "makes this a transformer")
 
 
+def _bs_tap_guard(label: str, ct_me, width, winding_i: int, winding: str,
+                  process: ProcessRuleContext | None) -> None:
+    """xfm_bs's fail-closed tap rules (T19.4), repeated from the config
+    validators: the tap metal sits at or below its winding -- equal (by stack
+    position) is a same-metal tap, below a via-stack tap, above is refused;
+    a tap width needs a same-metal tap, is positive and keeps the winding
+    metal's min width (its max width is checked where the lead is drawn)."""
+    if ct_me is None:
+        if width is not None:
+            raise PortError(
+                f"xfm_bs: {label}_W={width} needs {label}_ME: it is the width "
+                f"of the {winding}'s tap lead, and the {winding} has no tap")
+        return
+    ct_i = _metal_index(ct_me)
+    if ct_i > winding_i:
+        raise PortError(
+            f"xfm_bs: {label} metal {_metal_name(ct_i)} must sit at or below "
+            f"the {winding} {_metal_name(winding_i)}")
+    if width is None:
+        return
+    if ct_i < winding_i:
+        raise PortError(
+            f"xfm_bs: {label}_W={width} applies to a same-metal tap only; the "
+            f"{_metal_name(ct_i)} tap of the {winding} {_metal_name(winding_i)} "
+            "drops through a via stack, which keeps the winding width")
+    if not width > 0:
+        raise PortError(f"xfm_bs: {label}_W={width} must be > 0")
+    if process is not None:
+        name = _metal_name(winding_i)
+        min_width = process.adapter.metal_rule(name).min_width_um
+        if min_width is not None and width < min_width - _EPS:
+            raise PortError(
+                f"xfm_bs: {label}_W={width} is below the {name} min width "
+                f"{min_width} of profile {process.profile_id}")
+
+
 @builds_on_profile_stack
 def xfm_bs(
     OD_P: float = 90.0,
@@ -160,6 +223,8 @@ def xfm_bs(
     STRAIGHT_EXTENSION: float = 0.0,
     PORT_SPACING_P: float | None = None,
     PORT_SPACING_S: float | None = None,
+    CT_P_W: float | None = None,
+    CT_S_W: float | None = None,
 ) -> Cell:
     """Broadside single-turn two-layer transformer with independent primary/
     secondary outer diameters (OD_P/OD_S) and adjustable center-to-center
@@ -170,8 +235,11 @@ def xfm_bs(
     replaces. Primary at (-CENTER_SPACING/2,0) opens LEFT (outward); secondary
     at (+CENTER_SPACING/2,0) opens RIGHT (outward); ports P1/N1 left, P2/N2
     right. Larger CENTER_SPACING moves both coil centers and lead terminals
-    farther apart. Optional per-winding center tap on a lower metal. Each
-    winding (plus its tap) is built in its own sub-cell and the
+    farther apart. Optional per-winding center tap (CT_P_ME / CT_S_ME, at or
+    below the winding's metal): on the winding's own metal a same-metal tap,
+    no via stack, its lead CT_P_W / CT_S_W wide (None: the winding width;
+    T19.4); on a lower metal the via-stack tap of M13, as wide as the
+    winding. Each winding (plus its tap) is built in its own sub-cell and the
     layer-complete net gate (_xfm_net_short, shared with xfm_balun) fails
     closed on ANY overlap between the two nets — tap leads and winding
     leads included (M13 ticket 05; replaces the old box-only clearance).
@@ -184,14 +252,8 @@ def xfm_bs(
             f"(got M{pri_i} for both)")
     check_stacked_overlap("xfm_bs", CENTER_SPACING, OD_P, OD_S)
     xP, xS = -CENTER_SPACING / 2.0, CENTER_SPACING / 2.0
-    if CT_P_ME is not None and _metal_index(CT_P_ME) >= pri_i:
-        raise PortError(
-            f"xfm_bs: CT_P metal M{_metal_index(CT_P_ME)} must be below "
-            f"the primary M{pri_i}")
-    if CT_S_ME is not None and _metal_index(CT_S_ME) >= sec_i:
-        raise PortError(
-            f"xfm_bs: CT_S metal M{_metal_index(CT_S_ME)} must be below "
-            f"the secondary M{sec_i}")
+    _bs_tap_guard("CT_P", CT_P_ME, CT_P_W, pri_i, "primary", process)
+    _bs_tap_guard("CT_S", CT_S_ME, CT_S_W, sec_i, "secondary", process)
     params = {"OD_P": OD_P, "OD_S": OD_S, "W_P": W_P, "W_S": W_S,
               "OPENING_P": OPENING_P, "OPENING_S": OPENING_S,
               "LEAD_P": LEAD_P, "LEAD_S": LEAD_S,
@@ -199,8 +261,13 @@ def xfm_bs(
               "SEC_ME": SEC_ME, "CT_P_ME": CT_P_ME, "CT_S_ME": CT_S_ME}
     if process is not None:
         params["process"] = process.profile_id
-    cell = Cell(f"xfm_bs_P{OD_P}_S{OD_S}_C{CENTER_SPACING}_{PRI_ME}{SEC_ME}",
-                "xfm_bs", params)
+    name = f"xfm_bs_P{OD_P}_S{OD_S}_C{CENTER_SPACING}_{PRI_ME}{SEC_ME}"
+    # a tap width enters the identity only when set: unchanged names and params for every other build
+    for key, width in (("CT_P_W", CT_P_W), ("CT_S_W", CT_S_W)):
+        if width is not None:
+            params[key] = width
+            name += f"_{key.replace('_', '')}{width:g}"
+    cell = Cell(name, "xfm_bs", params)
     pri = Cell("xfm_bs_pri", "xfm_bs_pri", {})
     _bs_winding(pri, xP, OD_P, W_P, OPENING_P, LEAD_P, PRI_ME, "left",
                 "P1", "N1", process, port_spacing=PORT_SPACING_P)
@@ -210,17 +277,19 @@ def xfm_bs(
     # Each tap exits toward the OTHER winding; its lead runs on to that
     # winding's outer edge (never shorter than LEAD), so the tap port is a
     # true peripheral port and its ground stub keeps the designed length
-    # instead of an M1 strip under the other winding (2026-09-22).
+    # instead of an M1 strip under the other winding (2026-09-22). A
+    # same-metal tap (T19.4) crosses the other winding on its own, different
+    # metal: a crossing, not a short (_xfm_net_short still checks it).
     if CT_P_ME is not None:
         # primary opens left -> closed column RIGHT; tap exits right
         _bs_center_tap(pri, xP, OD_P / 2.0, W_P,
                        ct_lead_to_edge(LEAD_P, xP + OD_P / 2.0, _drawing_bbox_um(sec)[2]),
-                       PRI_ME, CT_P_ME, "right", "CTP", process)
+                       PRI_ME, CT_P_ME, "right", "CTP", process, TAP_W=CT_P_W)
     if CT_S_ME is not None:
         # secondary opens right -> closed column LEFT; tap exits left
         _bs_center_tap(sec, xS, OD_S / 2.0, W_S,
                        ct_lead_to_edge(LEAD_S, xS - OD_S / 2.0, _drawing_bbox_um(pri)[0]),
-                       SEC_ME, CT_S_ME, "left", "CTS", process)
+                       SEC_ME, CT_S_ME, "left", "CTS", process, TAP_W=CT_S_W)
     pri = extend_straight_x(pri, STRAIGHT_EXTENSION, center_x_um=xP, process=process)
     sec = extend_straight_x(sec, STRAIGHT_EXTENSION, center_x_um=xS, process=process)
     if STRAIGHT_EXTENSION:
