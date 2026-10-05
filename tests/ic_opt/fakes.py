@@ -311,6 +311,68 @@ def rlc_snp(argv: list[str], n_ports: int, z0: float, cwd: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+TAP_LOSS = 1.03          # coupled_snp: what a centre tap adds to its winding's series resistance (the Q a tap costs)
+
+
+def coupled_snp(argv: list[str], n_ports: int, z0: float, cwd: str) -> str:
+    """A geometry-dependent coupled pair for transformer library tests (xfm_bs): each winding an R + jωL branch -- the
+    primary from P1 to N1, the secondary from N2 to P2, so the drives (P1, N1), (N2, P2) measure k > 0 -- coupled by k,
+    C/2 to ground at each winding port, on EMX's own frequency grid (0 .. stop in ``--sweep-stepsize`` steps).
+
+    L, R, C and k follow the diameters, widths and centre offset in the pcell's geometry manifest (next to the GDS in
+    ``cwd``); the larger devices resonate below 40 GHz. A centre tap -- a ``CTP`` / ``CTS`` port among the EMX ports --
+    splits its winding into two halves at the tap port (each 0.3 L, coupled to the other by 0.2 L: L in all) and adds
+    ``TAP_LOSS`` to its resistance. A differential drive leaves a symmetric winding's midpoint at 0 V, so with the tap
+    grounded L, k and the resonance stay as they were and Q drops by about that factor."""
+    import json
+
+    import numpy as np
+
+    if n_ports < 4:
+        return synthetic_snp(argv, n_ports, z0)
+    cfg = json.loads((Path(cwd) / "geometry_manifest.json").read_text())["geometry"]["config"]
+    names = sorted(argv[i + 1].split(":", 1)[0].split("=", 1) for i, a in enumerate(argv) if a == "-p")    # EMX sorts by port name
+    labels = [label for _name, label in names]
+    op, os_ = float(cfg["primary_outer_diameter_um"]), float(cfg["secondary_outer_diameter_um"])
+    wp, ws, cs = float(cfg["primary_width_um"]), float(cfg["secondary_width_um"]), float(cfg["center_spacing_um"])
+    offset = 4 * cs / (op + os_)
+    k = 0.75 * np.exp(-1.5 * np.log(op / os_) ** 2) * (1 - 1.2 * offset**2) * (1 - 0.3 * (wp / op + ws / os_))
+    windings = [("P1", "N1", "CTP", 0.35e-9 * (op / 100) ** 1.25 * (5 / wp) ** 0.12, 0.4 + 0.02 * op / wp, 80e-15 * (op / 100) ** 2),
+                ("N2", "P2", "CTS", 0.35e-9 * (os_ / 100) ** 1.25 * (5 / ws) ** 0.12, 0.4 + 0.02 * os_ / ws, 80e-15 * (os_ / 100) ** 2)]
+    mutual = k * np.sqrt(windings[0][3] * windings[1][3])
+    branches = []                                   # (from, to, winding)
+    for w, (plus, minus, tap, *_rest) in enumerate(windings):
+        branches += [(plus, tap, w), (tap, minus, w)] if tap in labels else [(plus, minus, w)]
+    count = [sum(b[2] == w for b in branches) for w in range(2)]
+    nb = len(branches)
+    ind, res = np.zeros((nb, nb)), np.zeros(nb)
+    for i, (_a, _b, wi) in enumerate(branches):
+        l_self, r_self = windings[wi][3], windings[wi][4]
+        res[i] = r_self * (TAP_LOSS if count[wi] == 2 else 1.0) / count[wi]
+        for j, (_c, _d, wj) in enumerate(branches):
+            if wi != wj:
+                ind[i, j] = mutual / (count[wi] * count[wj])
+            elif count[wi] == 1:
+                ind[i, j] = l_self
+            else:
+                ind[i, j] = 0.3 * l_self if i == j else 0.2 * l_self
+    incidence = np.zeros((len(labels), nb))
+    for j, (a, b, _w) in enumerate(branches):
+        incidence[labels.index(a), j], incidence[labels.index(b), j] = 1.0, -1.0
+    caps = np.array([windings[0][5] / 2 if p in ("P1", "N1") else windings[1][5] / 2 if p in ("P2", "N2") else 0.0 for p in labels])
+    step = float(next(a for a in argv if a.startswith("--sweep-stepsize=")).split("=", 1)[1])
+    stop = float(argv[-1])
+    lines = ["! Touchstone simulation data from EMX version 2024.1.0 (fake coupled)", "! EMX was run on fake as:", "! " + " ".join(argv[:3]),
+             f"# Hz S RI R {z0:g}"]
+    eye = np.eye(len(labels))
+    for f in np.arange(0.0, stop + step / 2, step):
+        w = 2 * np.pi * f
+        y = incidence @ np.linalg.inv(np.diag(res) + 1j * w * ind) @ incidence.T + np.diag(1j * w * caps)
+        s = (eye - z0 * y) @ np.linalg.inv(eye + z0 * y)
+        lines.append(f"{f:.0f} " + " ".join(f"{v.real:.12e} {v.imag:.12e}" for v in s.reshape(-1)))
+    return "\n".join(lines) + "\n"
+
+
 def restamp(store: RunStore, **stamps: str) -> None:
     """Rewrite every observation of ``store`` with these fingerprints, as an older version would have stamped them."""
     rows = [o.model_copy(update=stamps) for o in store.observations()]

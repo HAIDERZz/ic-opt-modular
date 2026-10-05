@@ -507,6 +507,104 @@ predicted value, bounds, measurement, z score and whether it fell inside.
 under fresh ids. The next dataset build includes them, and the content key
 of every cache and every `predict` stage changes with it.
 
+## 7b. Tapped twins: `lib_tap`
+
+```bash
+ic-opt run lib_tap <project> library=<library root> stratum=<stratum> \
+    'taps={"primary": "same", "secondary": "same", "primary_width_um": 3, "secondary_width_um": 3, "measure": "grounded"}' \
+    'window={"frequency_ghz": <f>, "ranges": {"Lp": [<lower>, <upper>], "Ls": [<lower>, <upper>], "k": [<lower>, <upper>]}}' --plan
+ic-opt run lib_tap <project> library=<library root> stratum=<stratum> \
+    'taps={"primary": "same", "secondary": "same", "primary_width_um": 3, "secondary_width_um": 3, "measure": "grounded"}' \
+    rows=<file> adopt=<new stratum>
+```
+
+Center taps move a transformer's inductances and coupling by a few per
+cent, but they cost Q. On one process, 367 tapped rows against the untapped
+table's model: Lp and Ls -0.5 % at the median, within ±2.5 % for 80 % of the
+rows, k +1.2 %; a tap drawn on its winding's own metal cost about 3 % of Q, a
+via-stack tap about 10 %. So geometries are found on the untapped tables, and
+a circuit that binds a tapped device needs that device's own S-parameters.
+`lib_tap` builds them: for the rows of one window of an untapped
+`clean_port_xfm_bs` table, the same geometry with taps, through real EMX, row
+for row, adopted into the library as a new table when asked.
+
+`taps` says which taps: `primary` / `secondary` is `"same"` (a same-metal tap,
+on the winding's own metal), a metal below the winding (a via-stack tap) or
+null (no tap on that winding); the widths are optional and apply to
+same-metal taps only ([devices.md](devices.md), xfm_bs). `measure` is
+required: `"grounded"`, both taps AC-grounded as a mixer uses them -- the
+device's topology lists the tap ports under `grounded`. `"floating"` (taps
+open) is refused for now: a topology holds every port in a drive or at 0 V.
+
+The rows are a `window` -- every row of the stratum's index at `frequency_ghz`
+(section 5d, `srf_margin` optional) whose values lie inside every range,
+inclusive, in the column's unit -- or `rows=<file>`: a `lib.index out=` table
+(each cell's best row), a `lib.pick` answer, or a list of `{"part": ...,
+"obs_id": ...}`. A row that is not the stratum's is refused.
+
+A twin is its row's own geometry built with the spec of the row's part, with
+three changes and no other:
+
+- the taps: the tap metals (`"same"` is the winding's metal), the widths, the
+  tap ports `CTP` / `CTS` added to the device's ports and grounded;
+- the ground fixture stays where the row's was: on the conductor the row's
+  build recorded beside its GDS (the selected rows of a part must agree),
+  under `metal_rule: free`, or `shared` when a via-stack tap's stack passes
+  through that metal ([devices.md](devices.md), ground fixture);
+- this run's `threads=`, `memory_gb=` and `process_file=`, which are not
+  physics: the twins are the library's generation.
+
+The device itself is not changed to make room for a tap port. A tap port sits
+between the other winding's two ports, so with a small opening its ground stub
+comes closer to theirs than the fixture metal's minimum spacing allows. That
+spacing is the fixture's own -- on a metal chosen under `free` it holds the
+ring and the stubs and nothing else -- and the DRC gate exempts it there;
+stubs that would touch are refused. Widening the other winding's port pair
+instead would change the device's leads and mix their effect into the twin's
+comparison with its row. Each twin's `origin` is `tap:<part>:<obs id>`, the
+row it is the twin of; after adoption every tapped row names its untapped row.
+
+The preflight runs every time and is all that `--plan` does: every twin is
+drawn by the generator and passed through the pcell stage's DRC gate, on the
+machine running ic-opt within its `hosts.local` entry, without EMX. A twin the
+generator or the gate refuses is listed with the reason and not simulated.
+The plan prints the rows per part, the taps, the fixture each part keeps, the
+outcomes, the envelope (jobs, EMX threads and memory cap) and the rows' own
+EMX peak memory from their `emx.log` (median, max), which is what
+`memory_gb=` should cover. Real EMX: run with `--plan` first; it is the
+approval point.
+
+`<project>` is a directory with a `spec.yaml`, any valid em_only spec (a copy
+of a part's will do): its store holds the twins, its
+`simulator.parallel_jobs` caps the EMX runs at once and its `budget` counts
+them. The clean twins run through `em_only`, one step per part
+(`lib_tap:<part>`); a twin already in the store is reused. Every ok twin is
+then measured with the library's definitions -- the stratum's bands, anchors
+and low-frequency limit -- and compared with its row: twin / row for `Lp_lf`,
+`Ls_lf`, `k_lf`, `Qp_peak`, `Qs_peak`, `SRF` and, with a window, its columns
+at its frequency. `.icopt/reports/lib_tap.json` holds the call, the rows, the
+preflight's outcomes, every twin's values and ratios, and the summary: per
+quantity the median and the 10th and 90th percentiles of the ratio, and the
+twins whose L or k moved by more than 5 %. The run's last line gives ok /
+attempted, the medians and the report's path.
+
+`adopt=<new stratum>` takes the ok twins into the library after the run;
+failed ones are not adopted. Each source part's twins go into a new part
+store `<library root>/<new stratum>__<part>`, with the twin spec
+(`.icopt/spec.json`) and their sims directories, under fresh obs ids, their
+origins kept. The new stratum takes the source stratum's definition --
+generator, dims, steps, quantities with the same bands, anchors, models and
+feature maps -- with the new parts and a `note` saying what it is: whose
+twins, how many, the window or file, the taps, how they were measured, the
+date. `library.yaml` is backed up first (`library.yaml.bak_<UTC time>`), the
+entry is appended at its end, and the file is read back to check that it is
+the old manifest plus exactly the new stratum; when `strata` is not the
+file's last top-level block that cannot be ensured, and the entry goes to
+`<library root>/<new stratum>.stratum.yaml` instead, the file left as it was.
+The run then builds the new stratum's dataset and reports its rows and
+exclusions. A stratum or part store of that name is refused before anything
+runs.
+
 ## 8. Library devices in a circuit spec
 
 A device of a circuit spec may come from a library table instead of being
@@ -604,7 +702,8 @@ fitted or a batch predicted. Datasets, coverage, measured rows and models
 already cached (see [Cache](#cache)) need no entry; without one, a fit is
 refused with the entry to add. `lib_design` and `lib_signoff` fit on the same entry
 (`run.site.host("local")`), never on the simulation host's; `lib_design` fits
-every model it needs once, before the search starts.
+every model it needs once, before the search starts. `lib_tap` draws its
+preflight there too, one twin per thread, at most `max_threads` at once.
 
 - Fitting: one worker process per uncached model, at most
   `max_threads // 2` (a fit keeps about two cores busy whatever BLAS gets),
@@ -643,7 +742,7 @@ stratum and frequency asked) and the rows' footprints (`footprint-*`), both
 keyed by the dataset's content. A file that no longer matches is never read, and
 deleting the directory only costs the time to compute it again. By default
 the files go to the library's own `.cache/`. Every `lib.*` block,
-`lib_design` and `lib_signoff` take `cache_dir=` to put them in another
+`lib_design`, `lib_signoff` and `lib_tap` take `cache_dir=` to put them in another
 directory, for example on a local disk:
 
 ```bash

@@ -141,8 +141,10 @@ def main(run: Run, *, library: str, candidates: str, stratum: str | None = None,
         run.note(f"lib_signoff: adopted {len(summary['adopted'])} observations into {', '.join(groups)}")
 
 
-def _adopt(part_dir: Path, source: RunStore, observations) -> list[str]:
-    """Copy observations and their sims directories into the library part store under fresh obs ids."""
+def _adopt(part_dir: Path, source: RunStore, observations, origin=None) -> list[str]:
+    """Copy observations and their sims directories into the library part store under fresh obs ids, each with the origin
+    ``origin(observation)`` -- by default ``signoff:<run>:<obs id>``, the sign-off run that measured it (``lib_tap`` keeps
+    its twins' own, ``tap:<part>:<obs id>``)."""
     target = RunStore(part_dir)
     adopted = []
     with target.lock():
@@ -151,7 +153,8 @@ def _adopt(part_dir: Path, source: RunStore, observations) -> list[str]:
             shutil.copytree(source.root / "sims" / o.obs_id, target.root / "sims" / new_id)
             children = {k: c.model_copy(update={"sim_dir": c.sim_dir.replace(f"/sims/{o.obs_id}/", f"/sims/{new_id}/") if c.sim_dir else None})
                         for k, c in o.children.items()}
-            target.append(o.model_copy(update={"obs_id": new_id, "origin": f"signoff:{source.project_dir.name}:{o.obs_id}", "children": children}))
+            named = origin(o) if origin is not None else f"signoff:{source.project_dir.name}:{o.obs_id}"
+            target.append(o.model_copy(update={"obs_id": new_id, "origin": named, "children": children}))
             adopted.append(new_id)
     with (part_dir / ".icopt" / "adopted.yaml").open("a", encoding="utf-8") as log:
         log.write(yaml.safe_dump([{"from": str(source.project_dir), "ids": adopted}]))
