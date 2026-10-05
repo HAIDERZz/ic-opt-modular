@@ -99,3 +99,116 @@ before committing. Do not change `GEOMETRY_VERSION`, the golden GDS files, or an
 the private process (metal names beyond demo_6m's, thicknesses, rule values, private paths) in code, tests or docs.
 Commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Do not merge or push; report the commits, the
 exact test counts, and every deviation from this specification.
+
+## 5. Record
+
+Status: done on branch `t19-4-same-metal-tap` (2026-10-05), not merged. Feature, tests and the regenerated
+`docs/em/devices.md`: commit `2b8bf03`; this record and the backlog row: the commit after it.
+
+What was done (sections 1-3):
+
+1. The pcell (`_pcell_xfm_bs.py`). `xfm_bs` takes `CT_P_W` / `CT_S_W` (default None) and checks each tap before it draws
+   anything (`_bs_tap_guard`): the tap metal at or below its winding by stack position, above refused ("xfm_bs: CT_S metal
+   M6 must sit at or below the secondary M5"); a width only with a same-metal tap, positive, and in process mode not below
+   the winding metal's min width (the max width stays the lead primitive's own check). `_bs_center_tap` takes `TAP_W`:
+   with the tap metal equal to the winding's it draws only the `base_lead`, on the winding's metal, over the via-stack
+   lead's x span (the closed column plus the lead run on to `ct_lead_to_edge`), `TAP_W` wide (None: W) about y = 0, and
+   registers the port at the far tip on that metal and its pin layer; below the winding it draws the M13 via stack and
+   lead as before and refuses a `TAP_W`. The widths enter the cell's params and its name (`_CTPW<w>` / `_CTSW<w>`) only
+   when set. xfm_ms calls `_bs_center_tap` as before and keeps its guard.
+2. The config (`CleanPortXfmBsConfig`). `ct_primary_width_um` / `ct_secondary_width_um` (> 0, multiple of 0.01, default
+   None). `_ct_below_windings` is now `_ct_at_or_below_windings` and refuses only a tap above its winding
+   ("ct_secondary_metal '6' must sit at or below secondary_metal '5': ..."); `_tap_widths_need_same_metal_taps` refuses a
+   width without its tap metal ("ct_secondary_width_um 3.0 needs ct_secondary_metal ...") and a width with a via-stack tap
+   ("ct_primary_width_um 3.0 applies to a same-metal tap only ...; ct_primary_metal '4' sits below primary_metal '6', a
+   via-stack tap, which keeps the winding width"). The serializer drops an absent width (`DROPPED_WHEN_ABSENT`, with
+   `pgs`), so a config without them keeps its manifest. The generator passes the widths to the pcell.
+3. Documents: `reference.py` renders a paragraph after the xfm_bs table (`XFM_BS_TAP_NOTE`, through a `NOTES` table: the
+   model has no docstring paragraph to carry it): same-metal or via-stack, the widths, where the tap port sits, the `auto`
+   fixture metal, and the port-spacing note of 1.3. `docs/em/devices.md` regenerated.
+
+Additions and deviations (the commit message says the same):
+
+- **`requires_vias` follows the via-stack taps** (needed, not in this specification). The generator declared vias
+  required whenever a tap was set; a build with only same-metal taps has no via, and the via landing audit refuses an
+  empty audit when vias are declared. `CleanPortXfmBsConfig.has_tap_stack()` -- a tap metal below its winding's (or one
+  no position resolves) -- decides it now; untapped and via-stack builds declare what they declared before.
+- **The automatic stub width of a tap port follows the tap width** (`_auto_stub_widths`): with `stub_width_um` left out
+  each stub is as wide as the lead it lands on (M13 ticket 09), so a 3 µm tap gets a 3 µm stub. Absent widths change
+  nothing.
+- **Half the tap width is a coordinate**: the lead is centred on the centre line, so the two widths joined
+  `HALF_IS_A_COORDINATE`; on a profile with another grid they must be a multiple of twice it (D9), as `multiple_of=0.01`
+  says for the 0.005 µm grid.
+- The pcell's tap messages name the metals by the profile's names (`_metal_name`), no longer `M<position>`.
+- Three existing tests said "a tap on its winding's own metal is refused" and now say "above is refused, equal builds":
+  `test_config_metal_positions.py::test_metals_not_called_m_n_get_every_rule` (demo profiles) and, in the files that need
+  the private profile, `test_pcell_inductor_python_port_clean.py::test_xfm_bs_failclosed_same_metal_and_ct_rules` and
+  `test_clean_port_generator_plugin.py::test_xfm_bs_ct_metal_validators` (the changed lines use M6 / M5 only).
+- Beyond section 3: two sentences in `src/ic_opt/em/pcell/README.md` (its xfm_bs paragraph said the tap goes "down to a
+  lower metal") and one clause in the docstring of `drc_audit._ct_chain` (a same-metal tap adds no expected conductor:
+  its chain is empty, so the gate expects the two winding metals only). `FUNCTION_MAPPING`'s xfm_bs entry is not
+  extended (it already leaves out `STRAIGHT_EXTENSION` and the port spacings).
+
+Tests: `tests/ic_opt/pcell/test_xfm_bs_same_metal_tap.py`, 24 tests, demo_6m. Section 2, point by point:
+
+1. `test_same_metal_taps_run_on_the_windings_own_metals` (with and without a straight extension; each winding with its
+   tap is one merged polygon) and `test_the_taps_are_on_their_windings_nets` (`connectivity.nets` on the written GDS);
+2. `test_the_tap_width_sets_the_lead_about_the_centre_line` (the drawn lead, the port, the cell's name and params) and
+   `test_the_automatic_stub_of_a_tap_port_is_as_wide_as_its_lead`;
+3. `test_the_config_refuses_with_the_fields_named`, `test_the_pcell_refuses_fail_closed`,
+   `test_half_the_tap_width_stays_on_the_profile_grid`;
+4. `test_the_golden_bs_cases_are_unchanged_byte_for_byte` (the GDS is the golden file's bytes, the port files as these
+   cases always wrote them, no width key in the manifest) and `test_widths_left_out_or_null_change_no_byte` (nine
+   existing configurations); the before/after of everything else is the comparison below;
+5. `test_auto_takes_the_same_fixture_metal_with_same_metal_taps` (M4 untapped and same-metal; M2 via-stack and one of
+   each);
+6. `test_the_drc_gate_passes_a_same_metal_tapped_device_on_the_auto_metal` and
+   `test_a_narrow_opening_needs_the_other_windings_port_spacing_widened`;
+7. `test_xfm_ms_still_refuses_a_primary_tap_on_its_own_metal`.
+
+Runs (`PYTHONPATH=<worktree>/src`): `tests/ic_opt/pcell` 427 passed, 635 skipped (403 passed, 635 skipped before);
+`ruff check src tests` clean; the seven em / library files that build xfm_bs (`test_em_pcell`, `test_em_circuit`,
+`test_em_measure`, `test_library_footprint`, `test_library_xfm`, `test_library_composed`, `test_spec_library`) 114
+passed, 1 skipped; the rest of `tests/ic_opt` 902 passed, 12 skipped. With the private profiles of this machine on
+`IC_OPT_PROFILE_DIRS` (not asked for; run because three changed tests live in files that need them): `tests/ic_opt/pcell`
+1061 passed, 1 skipped.
+
+Byte for byte, a scratch comparison (not committed): main's test files run once with main's sources (`545cb91`) and once
+with the branch's, every temporary directory kept, and every GDS, `emx_ports.txt`, `geometry_manifest.json` and
+`*.coordinates.json` at the same path compared byte for byte. demo_6m (the pcell suite and the seven files above): 882
+files, 44 xfm_bs generator builds among them (8 with via-stack taps). With the private profiles (the pcell suite): 1 236
+files, 55 xfm_bs generator builds among them (12 with via-stack taps) and 20 GDS of pcell-level xfm_bs builds (the five
+xfm_bs demos of `generate_all` and their coordinate files among them). All identical, except 9 GDS that tests write
+themselves with klayout's default writer (a toy plugin's strip, an RDL via audit input, the empty and two-top-cell audit
+inputs), which differ only in their BGNLIB / BGNSTR timestamps. Main's tests failed on the branch's sources exactly where
+intended: the three tests above and `test_reference.py` (`devices.md` regenerated).
+
+Not foreseen here:
+
+1. **The narrow-opening case on demo_6m** (section 2, point 6). Under `auto` a same-metal-tapped bs on M6 / M5 has its
+   fixture on M4, min space 0.1 µm. The gate fails only while the tap's stub stays within 0.1 µm of a neighbouring stub
+   without touching it: stubs that touch or overlap merge into one polygon (one ground net) and pass. Built: a 1.55 µm
+   secondary opening, a 3 µm primary tap, automatic stub widths -- the CTP stub (±1.5 µm) is 0.05 µm from the P2 and N2
+   stubs (1.55 to 6.55 µm), two `min_space` findings on M4; `secondary_port_spacing_um` 10.1 µm (natural 8.1 µm) passes,
+   and so does 8.2 µm (a gap of exactly 0.1 µm). With chamfered stubs (`stub_chamfer_um` c) the stubs close in toward the
+   ring and the failing window widens to tip gaps between 0 and 2c + min space: with c = 1 µm and 5 µm stubs, secondary
+   openings of 2.55, 3 and 4.55 µm fail (tip gaps 0.05, 0.5 and 2.05 µm), 2.5 µm (touching) and 4.6 µm pass, and the
+   3 µm opening still fails with the port pair 2 µm wider. For T19.5: choose the other winding's port spacing so that the
+   gap at the ring end, tip gap − 2 × chamfer, is at least the fixture metal's min space (microns on a thick fixture metal
+   of a real stack, not 0.1 µm). In the terms of T19.5's port-room rule (G, the other winding's lead gap: its port spacing
+   minus its width): G ≥ t + 2s + 4c, with t the width of the tap port's stub, s the min space and c the stub chamfer.
+   Its `tap width + 2 x s` is the case c = 0 with automatic stub widths, where t is the tap width; an explicit
+   `stub_width_um` makes the tap's stub that wide instead (`stub_width_by_port_um` can set it per port).
+2. **The via-stack tap cannot build that geometry at all**: its stack's pad on the secondary's metal sits in the 1.55 µm
+   opening and `_xfm_net_short` refuses it (test 6 checks this). Same-metal taps make small openings of the other winding
+   buildable, which is where the stub spacing starts to matter.
+3. **xfm_ms: lifting the guard would be as small as here.** The single-turn primary sits strictly above everything the
+   multi-turn secondary draws (its winding, its crossunder one level down, its own tap at least two levels down), so a
+   same-metal primary tap never meets the other net. In a scratch run with only the pcell's comparison relaxed (`>=` to
+   `>`), demo_6m xfm_ms with `CT_P_ME` on the single-turn metal built DRC-clean for NT_M 2 and 3, CTP on the primary's
+   net, the `auto` fixture metal unchanged (M3: the secondary's crossunder already holds M4). The change would be that
+   comparison, the P side of `_ct_metal_rules` and the tests; for a width, `ct_primary_width_um` → `CT_P_W` →
+   `_bs_center_tap(TAP_W=...)` (already there), and `_auto_stub_widths` already reads the field by name. `requires_vias`
+   stays True (the multi-turn crossunder always has vias). The CTS side is ind_sym's tap, a different construction.
+4. `docs/refactor/analysis/em/02_pcell_geometry_layer.md` still says the xfm_bs tap metals sit below their windings: a
+   dated study (2026-09-22), left as it is.
