@@ -1,5 +1,6 @@
-"""N-82: an AnalogGym transient simulation that hit its timeout is a failed simulation, and the waveform it was
-writing when it was killed is never read.
+"""N-82: an AnalogGym simulation that did not finish is a failed simulation, and the files it left are not read.
+A transient run that hit its timeout, crashed or exited nonzero never has its waveform used for metrics, and an ac/dc
+run that hit its timeout is no different (a nonzero exit of an ac/dc run keeps its own rules: not tested here).
 
 A real ngspice is not needed (and not used): ``ICOPT_BENCH_NGSPICE`` points at a small shell script that drops the files
 a scenario asks for into the working directory and then either exits or keeps running until it is killed, and
@@ -22,12 +23,14 @@ TIMEOUT_S = 1.5          # the hanging fake is killed at this; the files it drop
 _FAKE_NGSPICE = """#!/bin/sh
 # Stands in for `ngspice -b -o <log> <cir>` (run in the cir's directory). What it does is read from the scenario
 # directory it sits in: files under <run>/ are dropped into the working directory, <run>.hang keeps it running (the
-# caller has to kill it), <run>.exit is the exit code otherwise; <run> is the cir's stem.
+# caller has to kill it), <run>.crash kills it with a signal, <run>.exit is the exit code otherwise; <run> is the
+# cir's stem.
 here=$(dirname "$0")
 run=$(basename "$4" .cir)
 : > "$3"
 if [ -d "$here/$run" ]; then cp "$here/$run"/* .; fi
 if [ -e "$here/$run.hang" ]; then exec sleep 60; fi
+if [ -e "$here/$run.crash" ]; then kill -KILL $$; fi
 if [ -e "$here/$run.exit" ]; then exit "$(cat "$here/$run.exit")"; fi
 exit 0
 """
@@ -52,6 +55,9 @@ class FakeNgspice:
     def exits(self, run: str, code: int) -> None:
         (self.root / f"{run}.exit").write_text(str(code))
 
+    def crashes(self, run: str) -> None:
+        (self.root / f"{run}.crash").touch()
+
 
 @pytest.fixture
 def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeNgspice:
@@ -70,6 +76,13 @@ def _scalar_file(metrics: list[tuple[str, str]]) -> str:
     """A ``wrdata`` file of scalar ``.let``s: one (x, value) pair per metric on a row."""
     row = "  ".join(f"0.0  {1.0 + i}" for i, _ in enumerate(metrics))
     return f"{row}\n{row}\n"
+
+
+def _scalar_file_cut_in_a_number(metrics: list[tuple[str, str]]) -> str:
+    """The same file, killed while writing its first row: every pair whole but the last, whose value is cut after its
+    first digit (``6`` of ``61.7``) -- still a number, so it reads as a result."""
+    pairs = ["0.0  1.0"] * (len(metrics) - 1) + ["0.0  6"]
+    return "  ".join(pairs)
 
 
 def _step_response_rows() -> list[str]:
@@ -111,13 +124,24 @@ def _ldo_acdc_files() -> dict[str, str]:
             "ldo_lnr_min": _scalar_file(ag._LDO_LNR_MIN), "ldo_ac": _scalar_file(ag._LDO_AC)}
 
 
+_ACDC_FILE_SETS = {
+    "leung_nmcf_pin_3": [("acdc_dc", ag._ACDC_DC), ("acdc_ac", ag._ACDC_AC), ("acdc_gbwpm", ag._ACDC_GBWPM)],
+    "ldo_simple": [("ldo_dc", ag._LDO_DC), ("ldo_lnr_max", ag._LDO_LNR_MAX), ("ldo_lnr_min", ag._LDO_LNR_MIN),
+                   ("ldo_ac", ag._LDO_AC)],
+}
+
+
 def _simulate(name: str, workdir: Path):
     workdir.mkdir()
     return ag.simulate(ag.circuits()[name], {}, workdir=workdir, timeout_s=TIMEOUT_S)
 
 
 def _never_read_wave(path: Path):
-    raise AssertionError(f"the waveform of a run that hit its timeout was read: {path}")
+    raise AssertionError(f"the waveform of a run that did not finish was read: {path}")
+
+
+def _never_extract(*args, **kwargs):
+    raise AssertionError("the output files of a run that hit its timeout were read")
 
 
 # --- the premises: the files these tests cut are the dangerous kind --------------------------------------------------
@@ -132,6 +156,25 @@ def test_the_cut_waveforms_are_the_dangerous_kinds() -> None:
         sr_p, settle_p, sr_n, settle_n = ag._step_response(arr[:, 0], arr[:, 3], arr[:, 1])
         assert not any(np.isnan([sr_p, settle_p, sr_n, settle_n]))
     assert {len(line.split()) for line in _wave_cut_in_a_line().splitlines()} == {4, 2}
+
+
+def test_a_scalar_file_cut_in_a_number_reads_as_a_result(tmp_path: Path) -> None:
+    """What the ac/dc timeout test relies on: killed inside its row, a scalar file reads with a wrong last value."""
+    path = tmp_path / "acdc_gbwpm"
+    path.write_text(_scalar_file_cut_in_a_number(ag._ACDC_GBWPM))
+    assert ag._read_row(path, len(ag._ACDC_GBWPM)) == [1.0, 6.0]
+
+
+def test_read_wave_returns_none_on_ragged_rows(tmp_path: Path) -> None:
+    """A line cut inside a number leaves rows of different lengths: a malformed file, not an exception. Whole rows, cut
+    or not, still read."""
+    path = tmp_path / "tran_wave"
+    path.write_text(_wave_cut_in_a_line())
+    assert ag._read_wave(path) is None
+    for text, rows in ((_whole_wave(), 401), (_wave_cut_at_a_line_boundary(), 300)):
+        path.write_text(text)
+        wave = ag._read_wave(path)
+        assert wave is not None and len(wave[0]) == rows
 
 
 # --- _run_ngspice tells the three endings apart ----------------------------------------------------------------------
@@ -191,6 +234,89 @@ def test_ldo_transient_timeout_is_a_failure_and_its_file_is_not_read(fake: FakeN
     assert tran.issues == [f"ngspice timed out after {TIMEOUT_S:g} seconds"]
     assert tran.metrics == {}
     assert children["acdc/nominal"].status == "ok"
+
+
+# --- a transient run that crashed or exited nonzero is a failed simulation too --------------------------------------
+
+def _end_badly(fake: FakeNgspice, run: str, ending: str) -> None:
+    if ending == "exit_1":
+        fake.exits(run, 1)
+    else:
+        fake.crashes(run)
+
+
+@_POSIX
+@pytest.mark.parametrize("ending", ["exit_1", "killed_by_a_signal"])
+@pytest.mark.parametrize("wave", [_wave_cut_in_a_line, _wave_cut_at_a_line_boundary, _whole_wave],
+                         ids=["ragged", "short", "whole"])
+def test_amplifier_transient_that_did_not_finish_is_a_failure_whatever_it_left(
+        fake: FakeNgspice, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ending: str, wave) -> None:
+    fake.writes("acdc", **_amplifier_acdc_files())
+    fake.writes("tran", tran_wave=wave())
+    _end_badly(fake, "tran", ending)
+    monkeypatch.setattr(ag, "_read_wave", _never_read_wave)
+
+    children = _simulate("leung_nmcf_pin_3", tmp_path / "work")
+
+    assert (tmp_path / "work" / "tran_wave").exists()
+    tran = children["tran/nominal"]
+    assert tran.status == "failed:ngspice"
+    assert tran.issues == ["ngspice did not finish"]             # it did not time out
+    assert tran.metrics == {}
+    assert children["acdc/nominal"].status == "ok"
+
+
+@_POSIX
+@pytest.mark.parametrize("ending", ["exit_1", "killed_by_a_signal"])
+def test_ldo_transient_that_did_not_finish_is_a_failure_whatever_it_left(
+        fake: FakeNgspice, tmp_path: Path, ending: str) -> None:
+    fake.writes("acdc", **_ldo_acdc_files())
+    fake.writes("tran", ldo_tran=_scalar_file(ag._LDO_TRAN))
+    _end_badly(fake, "tran", ending)
+
+    children = _simulate("ldo_simple", tmp_path / "work")
+
+    tran = children["tran/nominal"]
+    assert tran.status == "failed:ngspice"
+    assert tran.issues == ["ngspice did not finish"]
+    assert tran.metrics == {}
+    assert children["acdc/nominal"].status == "ok"
+
+
+# --- an ac/dc run that hit its timeout is a failed simulation ----------------------------------------------------
+
+def _normal_tran_files(circuit: str) -> dict[str, str]:
+    return {"tran_wave": _whole_wave()} if circuit == "leung_nmcf_pin_3" else \
+        {"ldo_tran": _scalar_file(ag._LDO_TRAN)}
+
+
+@_POSIX
+@pytest.mark.parametrize("circuit", ["leung_nmcf_pin_3", "ldo_simple"])
+def test_acdc_timeout_is_a_failure_and_its_files_are_not_read(
+        fake: FakeNgspice, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, circuit: str) -> None:
+    *whole, (last_name, last_metrics) = _ACDC_FILE_SETS[circuit]
+    fake.writes("acdc", **{name: _scalar_file(metrics) for name, metrics in whole},
+                **{last_name: _scalar_file_cut_in_a_number(last_metrics)})
+    fake.hangs("acdc")
+    fake.writes("tran", **_normal_tran_files(circuit))
+    extract_calls: list[set[str]] = []
+    real_extract = ag._extract
+
+    def spy(workdir, log_text, files_and_names):
+        extract_calls.append({name for name, _ in files_and_names})
+        return real_extract(workdir, log_text, files_and_names)
+
+    monkeypatch.setattr(ag, "_extract", spy)
+
+    children = _simulate(circuit, tmp_path / "work")
+
+    assert (tmp_path / "work" / last_name).exists()              # the cut file is there to be read, and is not
+    acdc = children["acdc/nominal"]
+    assert acdc.status == "failed:ngspice"
+    assert acdc.issues == [f"ngspice timed out after {TIMEOUT_S:g} seconds"]
+    assert acdc.metrics == {}
+    assert not any(names & {name for name, _ in _ACDC_FILE_SETS[circuit]} for names in extract_calls)
+    assert children["tran/nominal"].status == "ok"               # the transient run is its own, and finished
 
 
 # --- a normal run, and an ordinary failure, are as they were ---------------------------------------------------------

@@ -269,8 +269,8 @@ def _read_wave(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
             rows.append([float(tok) for tok in line.split()])
         except ValueError:
             return None
-    if not rows or len(rows[0]) < 4:
-        return None
+    if not rows or len(rows[0]) < 4 or any(len(row) != len(rows[0]) for row in rows):
+        return None                  # ragged rows (a line cut short) are a malformed file; np.array would raise
     arr = np.array(rows)
     return arr[:, 0], arr[:, 1], arr[:, 3]
 
@@ -360,6 +360,16 @@ def _ldo_paths(circuit: Circuit, workdir: Path, params: dict[str, str]) -> tuple
     return acdc, tran
 
 
+def _unfinished_child(unit: str, outcome: NgspiceOutcome, timeout_s: float) -> ChildResult:
+    """The child of a run that did not finish: ``failed:ngspice``, with the issue line of how it ended. Whatever files
+    such a run left are not read: a run killed on its timeout leaves a file cut off wherever the kill found it
+    (mid-line, or exactly at a line boundary, a short result that analyses like a whole one), and a run that crashed
+    or exited nonzero is no more to be trusted."""
+    if outcome is NgspiceOutcome.TIMED_OUT:
+        return child(unit, {}, failed="ngspice", issue=f"ngspice timed out after {timeout_s:g} seconds")
+    return child(unit, {}, failed="ngspice")
+
+
 # --- simulate ----------------------------------------------------------------------------------------------------
 
 def simulate(circuit: Circuit, params: dict[str, str], *, workdir: Path | None = None,
@@ -379,53 +389,48 @@ def simulate(circuit: Circuit, params: dict[str, str], *, workdir: Path | None =
                           ("ldo_ac", _LDO_AC)]
 
         acdc_log = workdir / "acdc.log"
-        acdc_ok = bool(_run_ngspice(acdc, acdc_log, timeout_s))
-        log_text = acdc_log.read_text(errors="ignore") if acdc_log.exists() else ""
-        metrics, missing, any_present = _extract(workdir, log_text, acdc_files)
-        if not acdc_ok and not any_present:
-            acdc_child = child("acdc", {}, failed="ngspice")
-        elif missing:
-            acdc_child = child("acdc", metrics, missing=missing)
+        acdc_run = _run_ngspice(acdc, acdc_log, timeout_s)
+        if acdc_run is NgspiceOutcome.TIMED_OUT:
+            acdc_child = _unfinished_child("acdc", acdc_run, timeout_s)      # nothing a killed run wrote is read
         else:
-            acdc_child = child("acdc", metrics)
+            log_text = acdc_log.read_text(errors="ignore") if acdc_log.exists() else ""
+            metrics, missing, any_present = _extract(workdir, log_text, acdc_files)
+            if not acdc_run and not any_present:
+                acdc_child = child("acdc", {}, failed="ngspice")
+            elif missing:
+                acdc_child = child("acdc", metrics, missing=missing)
+            else:
+                acdc_child = child("acdc", metrics)
 
         tran_log = workdir / "tran.log"
         tran_run = _run_ngspice(tran, tran_log, timeout_s)
-        tran_ok = bool(tran_run)
-        if tran_run is NgspiceOutcome.TIMED_OUT:
-            # A transient simulation that hit its timeout is a failed simulation, and nothing it wrote is read: the
-            # waveform (or the scalar file of an LDO) is cut off wherever the kill found it -- mid-line (ragged
-            # rows) or exactly at a line boundary (a short waveform that analyses like a result) -- and neither
-            # can be told from a finished one.
-            tran_child = child("tran", {}, failed="ngspice", issue=f"ngspice timed out after {timeout_s:g} seconds")
+        if tran_run is not NgspiceOutcome.FINISHED:
+            # A transient run that did not finish -- killed on its timeout, a nonzero exit, a signal -- is a failed
+            # simulation whatever files it left: its waveform (or an LDO's scalar file) is never used for metrics.
+            tran_child = _unfinished_child("tran", tran_run, timeout_s)
         elif circuit.kind == "amplifier":
             wave = _read_wave(workdir / "tran_wave")
-            if not tran_ok and wave is None:
-                tran_child = child("tran", {}, failed="ngspice")
+            tran_metrics: dict[str, float] = {}
+            tran_missing: list[str] = []
+            if wave is None:
+                tran_missing = ["SR", "TS"]
             else:
-                tran_metrics: dict[str, float] = {}
-                tran_missing: list[str] = []
-                if wave is None:
-                    tran_missing = ["SR", "TS"]
+                time, vout, vin = wave
+                sr_p, settle_p, sr_n, settle_n = _step_response(time, vin, vout)
+                if math.isnan(sr_p) or math.isnan(sr_n):
+                    tran_missing.append("SR")
                 else:
-                    time, vout, vin = wave
-                    sr_p, settle_p, sr_n, settle_n = _step_response(time, vin, vout)
-                    if math.isnan(sr_p) or math.isnan(sr_n):
-                        tran_missing.append("SR")
-                    else:
-                        tran_metrics["SR"] = min(abs(sr_p), abs(sr_n)) * 1e-6   # V/s -> V/us
-                    if math.isnan(settle_p) or math.isnan(settle_n):
-                        tran_missing.append("TS")
-                    else:
-                        tran_metrics["TS"] = max(abs(settle_p), abs(settle_n))
-                tran_child = child("tran", tran_metrics, missing=tran_missing) if tran_missing else \
-                    child("tran", tran_metrics)
+                    tran_metrics["SR"] = min(abs(sr_p), abs(sr_n)) * 1e-6   # V/s -> V/us
+                if math.isnan(settle_p) or math.isnan(settle_n):
+                    tran_missing.append("TS")
+                else:
+                    tran_metrics["TS"] = max(abs(settle_p), abs(settle_n))
+            tran_child = child("tran", tran_metrics, missing=tran_missing) if tran_missing else \
+                child("tran", tran_metrics)
         else:
             tran_log_text = tran_log.read_text(errors="ignore") if tran_log.exists() else ""
-            tran_metrics, tran_missing, tran_present = _extract(workdir, tran_log_text, [("ldo_tran", _LDO_TRAN)])
-            if not tran_ok and not tran_present:
-                tran_child = child("tran", {}, failed="ngspice")
-            elif tran_missing:
+            tran_metrics, tran_missing, _ = _extract(workdir, tran_log_text, [("ldo_tran", _LDO_TRAN)])
+            if tran_missing:
                 tran_child = child("tran", tran_metrics, missing=tran_missing)
             else:
                 tran_child = child("tran", tran_metrics)
