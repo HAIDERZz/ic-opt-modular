@@ -127,3 +127,97 @@ all clean before committing. No real simulator, nothing under `ic-opt-library` o
 private in code, tests or docs. Do not edit `docs/refactor/BACKLOG_CN.md` (the coordinator records the status). Commit
 in the repository's style, trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; append a `## 6. Record`
 section to this file (what was done, commits, test counts, deviations). Do not merge or push.
+
+## 6. Record (2026-10-07)
+
+Implemented by the coding subagent on `n63-device-first`: `dfb269e` (feature, tests, docs), this record in the commit
+after it; not merged, not pushed.
+
+What was done:
+
+- `eval/schedule.py`: `Schedule(..., stop_kinds=)` and `Schedule.from_history(..., stop_kinds=)`, default both kinds
+  (what a schedule meant before); `stop_after` says None for a child of a kind not in `stop_kinds`; the kind-agnostic
+  test is `Schedule.failure` (the history's failure counts use it); `kind_of` reads a child's kind from its unit.
+  `spec_order`: the device children first -- library devices, then the others, each in the spec's device order -- then
+  the testbenches as before; `order`: those devices, then the testbenches by score. The order is learned only when the
+  testbench kind may stop (`from_history` returns the spec's order otherwise and reads no rows).
+- `eval/engine.py` (`_run_point`): a stop found at a device child takes effect at the first testbench child after it;
+  the other device children still run. A point whose children are all devices is never cut short; the stop reason is
+  None when every child ran.
+- `blocks/evaluate.py`: `stop_kinds(spec, children, override) -> frozenset[str]`: `testbench` from `stop_wanted`
+  (unchanged), `device` when the children hold a device child and a testbench child and neither the override nor,
+  without one, the spec's switch is False. `sim.evaluate` builds a schedule when the set is non-empty; `_schedule`
+  reads the store only when the testbench kind is in it. `plan_shape` and the batch line as in 1.4.
+- `sim/corner.py`: `stopped_at_device(spec, o)`: the child `stopper` names is one of the spec's devices.
+- `digest.py`: `counts.stopped_at_device`; `digest.md`'s head reads `N stopped early (D at the device; S simulations
+  not run)` when D > 0, as before otherwise.
+- Documents: `skills/ic-opt/SKILL.md` (a sentence under Run, one under Read, and the library-device paragraph, which
+  said "with the stop on the device's child runs first"), `skills/author-spec/SKILL.md` (one line under the
+  `stop_at_first_failure` field), `docs/em/library.md` (the same library-device sentence), the `signoff` docstring and
+  the comment of `Simulator.stop_at_first_failure`.
+
+Tests (fakes only; Python of the main tree's venv with `PYTHONPATH=<worktree>/src`), before (bf25119) -> after:
+
+| suite | before | after |
+| --- | --- | --- |
+| `test_schedule.py` | 20 passed | 29 passed (9 new) |
+| `test_em_circuit.py` | 9 passed | 10 passed (1 new) |
+| `test_engine.py` | 19 passed | 19 passed |
+| `test_digest.py` | 24 passed | 24 passed (the exact counts dict gains `stopped_at_device: 0`) |
+| `test_digest_leak.py` | 3 passed | 3 passed |
+| `test_digest_library.py` | 2 passed | 2 passed |
+| `test_cli_recipes.py` | 40 passed | 40 passed |
+| `test_signoff_tighten.py` | 24 passed | 24 passed |
+| `test_library_device.py` | 9 passed | 9 passed (the plan line updated) |
+| `test_library_device_run.py` | 6 passed | 6 passed (the plan and batch lines updated) |
+| `test_replay_parity.py` + `test_em_replay.py`, without their variables | 3 skipped | 3 skipped |
+| the same with `IC_OPT_RECORDED_RUNS`, `IC_OPT_EM_RECORDED_RUNS`, `IC_OPT_PROFILE_DIRS` set (recordings outside the repository, read only) | 6 passed | 6 passed, unchanged files |
+| `tests/ic_opt` whole, once | -- | 1358 passed, 647 skipped |
+
+No `test_corner*.py`, `test_report*.py` or `test_recipe*.py` exists. Also run before and after, equal: `test_multi_corner`
+15, `test_em_engine` 18, `test_em_measure` 15 + 1 skipped, `test_library_stage` 5, `test_library_signoff` 3,
+`test_site` 47, `test_threads` 14, `test_optimize` 33, `test_metric_gp` 36, `test_skill_author_spec` 8,
+`test_library_docs` 4, `test_lib_tap` 13, `test_blocks` 11 + 1 skipped, `test_advice` 32. `ruff check src tests`: clean.
+The 9 new tests of `test_schedule.py` but the golden one fail on bf25119's source (checked); the golden one, the
+circuit-only line recorded at bf25119, passes on both.
+
+Deviations from the specification, and why:
+
+1. `simulations` of a device-stopped EM point = its point-level cache misses + the device measurements that ran (1 per
+   EM device), not "+ 0". The EM pipeline's `Measure` declares no `simulates = False`, so the engine has always counted
+   an EM device's measurement as a simulation: in the budget's ceiling per point, in every record, in the plan line (the
+   N-51 store: 861 = 80 × 9 Spectre + 80 measurements + 61 EMX runs). Section 2 keeps the budget, and changing the count
+   would change every EM record. A library row's measurement (`simulates=False`) counts 0, as before.
+2. All device children run before a device's stop takes effect, so a device-stopped point holds every device child and
+   `not_run` is every testbench child (1.3) also with several devices; they cost nothing and their metrics reach the
+   models. Under a stop that was already on, a spec with two devices now measures the second where it was cut off.
+3. The device kind needs a testbench child among the children: an em_only / library_only run (no testbench) builds no
+   schedule by default and records as before; under an explicit `true` its later devices are no longer cut off by a
+   failing first one (before N-63 they were).
+4. The plan line joins the two texts in one parenthesis, `up to N simulations per point (the device measured first: a
+   point whose device fails a constraint stops before any testbench simulation; a point stops at the first simulation
+   that fails it)`, and says "up to" for the device kind alone too (the count is a ceiling).
+5. The batch line's `(D at the device)` appears when the batch's points have device children; a circuit-only batch
+   prints the line of T17.8 unchanged.
+6. With the device kind alone the testbenches run in `spec_order`, as 1.2 says; it differs from the engine's order only
+   when a corner named `nominal` is not the first of the spec's corners or a `corners=` subset is given out of spec
+   order. The observation keeps the engine's order, so no record changes.
+7. A child's kind is read from its unit (a `ChildResult` carries no kind): a testbench whose id equals a device's would
+   be read as the device (such a spec without corners already gives both children one key).
+8. `DIGEST_VERSION` stays 4 (T17.9's `stopped_at` did not bump it either).
+
+What the specification did not foresee:
+
+- `signoff`'s re-check never meets a device-stopped point: it re-checks the feasible points of its search, a device's
+  metrics are the same at every corner (one sNp, cached), and a later round searches under tighter limits. `full=` thus
+  changes nothing for device stops in practice; test 4 goes through `signoff._recheck_stop` and `sim.evaluate`.
+- OpenBox, which `strategy=auto` takes for EM devices, gets a device-stopped point as a failed trial (T17.8 revision 1,
+  item 4): its objective and every constraint, the SRF too, are filled with the successful trials' column maxima instead
+  of the point's own SRF residual, and such points do not count toward `surrogate_minimum`, so the space-filling design
+  may run longer when many points stop at the device. In N-51's terms 22 of 80 points would change from
+  constraint-failed trials with residuals to failed trials; TuRBO likewise takes them as failed trials. `metric_gp`
+  (library devices) keeps training its device-metric models on them (revision 1, item 5). Acceptance 4.3 measures the
+  `metric_gp` side; the OpenBox side on an EM run is not measured.
+- Tests that pinned texts the rule now changes: `test_digest.py`'s counts dict, the library device plan line
+  (`test_library_device.py`, `test_library_device_run.py`) and batch line (`test_library_device_run.py`); the
+  monkeypatched `Schedule.from_history` in `test_schedule.py` forwards the new keyword.
