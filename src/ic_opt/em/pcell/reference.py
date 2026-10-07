@@ -149,8 +149,27 @@ XFM_BS_TAP_NOTE = (
     "chooses that spacing automatically). Stubs that would touch are refused under any rule."
 )
 
+XFM_MS_TAP_NOTE = (
+    "Center taps (`ct_primary_metal` / `ct_secondary_metal`). The single-turn primary is tapped as xfm_bs taps a winding "
+    "(above): at its closed column, on the centre line, toward the secondary, the lead running on to the secondary's outer "
+    "extent (never shorter than the primary's own lead), the port `CTP` at the lead's far tip. A tap metal equal to the "
+    "primary's metal (by stack position) is a same-metal tap: no via stack, the lead drawn on the primary's own metal as one "
+    "polygon with the winding, the port on that metal and its pin layer. The primary sits above everything the secondary "
+    "draws, so the lead crosses the secondary on another metal, a crossing, not a short, and `ground_fixture.metal: auto` "
+    "picks the same metal as for the untapped device. A tap metal below the primary is a via-stack tap, its lead as wide as "
+    "the primary (`auto` then goes below the tap metal); above the primary it is refused. `ct_primary_width_um` sets the "
+    "width of a same-metal tap's lead (absent: the primary's width; the tap port's automatic stub width follows the lead); "
+    "it is refused with a via-stack tap and without `ct_primary_metal`. The multi-turn secondary is tapped as `ind_sym` taps "
+    "an inductor: a via stack from the midpoint turn down to `ct_secondary_metal`, which sits at least two levels below the "
+    "secondary (the secondary's crossunder holds the level in between and crosses the tap's lead path), the lead as wide as "
+    "the secondary, the port `CTS` at its tip; there is no same-metal tap on the secondary (a lead on its own metal would "
+    "cross its turns) and no width field. The secondary's tap leaves on the side opposite the primary's for an odd "
+    "`secondary_turns` and on the primary tap's side, on the same centre line, for an even one: there the two tap ports' "
+    "ground stubs overlap and the fixture refuses the build, so a device with both taps has an odd `secondary_turns`."
+)
+
 #: A paragraph after a family's field table.
-NOTES = {"clean_port_xfm_bs": XFM_BS_TAP_NOTE}
+NOTES = {"clean_port_xfm_bs": XFM_BS_TAP_NOTE, "clean_port_xfm_ms": XFM_MS_TAP_NOTE}
 
 TOPOLOGY_SECTION = """\
 ## Measurement topology (`topology`)

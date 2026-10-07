@@ -21,7 +21,6 @@ from pydantic import ValidationError
 from ic_opt.em.pcell import get_generator
 from ic_opt.em.pcell._pcell_core import PortError, process_rule_context
 from ic_opt.em.pcell._pcell_xfm_bs import xfm_bs
-from ic_opt.em.pcell._pcell_xfm_ms import xfm_ms
 from ic_opt.em.pcell.connectivity import nets
 from ic_opt.em.pcell.drc_audit import (
     audit_gds,
@@ -292,18 +291,5 @@ def test_a_narrow_opening_needs_the_other_windings_port_spacing_widened(tmp_path
         generate(tmp_path, "stack", {**AUTO_STUBS, "metal": "auto"}, **{**narrow, "ct_primary_metal": "4", "ct_primary_width_um": None})
 
 
-# 7. xfm_ms keeps its rule
-
-
-def test_xfm_ms_still_refuses_a_primary_tap_on_its_own_metal():
-    """xfm_ms taps its single-turn primary with the same construction (``_bs_center_tap``) but keeps the strictly-below
-    rule, at validation and in the pcell; the tap widths are not its fields."""
-    gen = get_generator("clean_port_xfm_ms", plugin_module="builtin:clean_port")
-    config = {**CASES["xfm_ms_nt3"][1], "process_profile": PROFILE, "ground_fixture": dict(FIXTURE), "ct_primary_metal": "6",
-              "port_order": [*XFM_PORTS, "CTP"]}
-    with pytest.raises(ValidationError, match="ct_primary_metal '6' must sit below primary_metal '6'"):
-        gen.config_model.model_validate(config)
-    with pytest.raises(ValidationError, match="ct_primary_width_um"):
-        gen.config_model.model_validate({**config, "ct_primary_metal": "4", "ct_primary_width_um": 3.0})
-    with pytest.raises(PortError, match="must be below the single-turn winding plane M6"):
-        xfm_ms(SINGLE_ME="6", MULTI_ME="5", CT_P_ME="6", process=process_rule_context(PROFILE))
+# 7. xfm_ms: T19.4 kept its single-turn primary refusing a tap on its own metal; T19.6 lifted that guard (the same
+# _bs_center_tap construction), tested in test_xfm_ms_same_metal_tap.py

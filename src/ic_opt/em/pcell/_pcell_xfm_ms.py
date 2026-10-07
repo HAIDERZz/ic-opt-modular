@@ -24,6 +24,7 @@ from ic_opt.em.pcell._pcell_straight_extension import (
 )
 from ic_opt.em.pcell._pcell_xfm_bs import (
     _bs_center_tap,
+    _bs_tap_guard,
     _bs_winding,
     check_stacked_overlap,
     ct_lead_to_edge,
@@ -58,6 +59,7 @@ def xfm_ms(
     STRAIGHT_EXTENSION: float = 0.0,
     PORT_SPACING_S: float | None = None,
     PORT_SPACING_M: float | None = None,
+    CT_P_W: float | None = None,
 ) -> Cell:
     """Impedance-transforming transformer: a single-turn winding on the higher
     metal (SINGLE_ME) broadside over a multi-turn winding on the lower metal
@@ -76,13 +78,16 @@ def xfm_ms(
 
     Optional per-winding center taps (M13 ticket 06). Port-side naming:
     the P side (ports P1/N1, tap CTP via CT_P_ME) is the SINGLE-turn
-    winding, tapped at its closed column like xfm_bs; the S side (ports
-    P2/N2, tap CTS via CT_S_ME) is the MULTI-turn winding, tapped through
-    ind_sym's CT_ME path — so CT_S_ME obeys the same N1 adjacency rule as
-    the inductor (at least two levels below MULTI_ME; the crossunder
-    occupies MULTI_ME-1). Each winding (plus its tap) builds in its own
-    sub-cell and the layer-complete _xfm_net_short gate fails closed on
-    any overlap between the two nets.
+    winding, tapped at its closed column like xfm_bs: CT_P_ME at or below
+    SINGLE_ME -- on SINGLE_ME itself a same-metal tap, no via stack, its
+    lead CT_P_W wide (None: the winding width; T19.6, xfm_bs's T19.4
+    construction), below it the via-stack tap, as wide as the winding. The
+    S side (ports P2/N2, tap CTS via CT_S_ME) is the MULTI-turn winding,
+    tapped through ind_sym's CT_ME path — so CT_S_ME obeys the same N1
+    adjacency rule as the inductor (at least two levels below MULTI_ME; the
+    crossunder occupies MULTI_ME-1). Each winding (plus its tap) builds in
+    its own sub-cell and the layer-complete _xfm_net_short gate fails
+    closed on any overlap between the two nets.
 
     STRAIGHT_EXTENSION (same contract as xfm_bs) adds the same total X width
     to each winding about its OWN centre, in non-negative 0.01 um steps;
@@ -100,10 +105,12 @@ def xfm_ms(
     if NT_M < 2:
         raise PortError(
             f"xfm_ms: NT_M={NT_M} is not multi-turn; use xfm_bs for 1+1")
-    if CT_P_ME is not None and _metal_index(CT_P_ME) >= si:
-        raise PortError(
-            f"xfm_ms: CT_P metal {_metal_name(_metal_index(CT_P_ME))} must "
-            f"be below the single-turn winding plane {_metal_name(si)}")
+    # The single-turn primary sits above everything the multi-turn secondary
+    # draws (its winding, its crossunder one level down, its own tap at least
+    # two levels down), so a same-metal primary tap never meets the other
+    # net (T19.6; _xfm_net_short still checks).
+    _bs_tap_guard("CT_P", CT_P_ME, CT_P_W, si, "single-turn primary", process,
+                  family="xfm_ms")
     if CT_S_ME is not None:
         _ind_ct_adjacency_guard("xfm_ms", MULTI_ME, CT_S_ME, process=process)
     check_stacked_overlap("xfm_ms", CENTER_SPACING, OD_S, OD_M)
@@ -116,7 +123,12 @@ def xfm_ms(
               "CT_P_ME": CT_P_ME, "CT_S_ME": CT_S_ME}
     if process is not None:
         params["process"] = process.profile_id
-    cell = Cell(f"xfm_ms_S{SINGLE_ME}_M{MULTI_ME}_NT{NT_M}", "xfm_ms", params)
+    name = f"xfm_ms_S{SINGLE_ME}_M{MULTI_ME}_NT{NT_M}"
+    # the tap width enters the identity only when set: unchanged names and params for every other build
+    if CT_P_W is not None:
+        params["CT_P_W"] = CT_P_W
+        name += f"_CTPW{CT_P_W:g}"
+    cell = Cell(name, "xfm_ms", params)
     # single-turn winding on the higher metal (opens LEFT, outward); built
     # first because its outer extent sizes the multi winding's tap lead.
     sing = Cell("xfm_ms_single", "xfm_ms_single", {})
@@ -194,11 +206,13 @@ def xfm_ms(
         # the multi winding's outer edge. The multi is already extended
         # (inside ind_sym) while the single is extended below, after this
         # tap: size the reach against the multi's UNextended edge so both
-        # tips move by the same half extension and stay aligned.
+        # tips move by the same half extension and stay aligned. A
+        # same-metal tap (T19.6) runs over the multi on SINGLE_ME, where the
+        # multi draws nothing: a crossing, not a short.
         multi_edge = _drawing_bbox_um(mult)[2] - STRAIGHT_EXTENSION / 2.0
         _bs_center_tap(sing, xS, OD_S / 2.0, W_S,
                        ct_lead_to_edge(LEAD_S, xS + OD_S / 2.0, multi_edge),
-                       SINGLE_ME, CT_P_ME, "right", "CTP", process)
+                       SINGLE_ME, CT_P_ME, "right", "CTP", process, TAP_W=CT_P_W)
     sing = extend_straight_x(sing, STRAIGHT_EXTENSION, center_x_um=xS, process=process)
     if STRAIGHT_EXTENSION:
         cell.params["STRAIGHT_EXTENSION"] = sing.params["STRAIGHT_EXTENSION"]

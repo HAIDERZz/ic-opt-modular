@@ -255,8 +255,11 @@ the single plane (no cross-winding short). Inherits `OD_S`/`OD_M` and
 `CENTER_SPACING` from M7R2.
 
 Since M13 ticket 06 both windings carry optional center taps: `CT_P_ME`
-taps the **single** winding's closed column (`_bs_center_tap`, strictly
-below `SINGLE_ME`, port `CTP`); `CT_S_ME` taps the **multi** winding
+taps the **single** winding's closed column (`_bs_center_tap`, port
+`CTP`), at or below `SINGLE_ME`: since T19.6 on `SINGLE_ME` itself a
+same-metal tap, no via stack, the CT lead on the winding's metal
+(`CT_P_W` sets its width, the winding's by default), as xfm_bs's T19.4
+tap; below it the via-stack tap. `CT_S_ME` taps the **multi** winding
 through `ind_sym`'s `CT_ME` path (port `CTS`), so it obeys the inductor's
 N1 adjacency rule (at least two actual profile levels below `MULTI_ME` —
 the crossunder occupies the immediately lower conductor). Each winding (plus its tap) builds in its own

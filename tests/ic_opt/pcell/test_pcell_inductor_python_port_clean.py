@@ -2948,9 +2948,13 @@ def test_xfm_ms_multi_ct_adjacency_guard_same_rule_as_ind():
         port.xfm_ms(CT_S_ME="9")
 
 
-def test_xfm_ms_ct_p_must_sit_below_single_plane():
-    with pytest.raises(port.PortError, match="below"):
-        port.xfm_ms(CT_P_ME="AP")
+def test_xfm_ms_ct_p_must_sit_at_or_below_single_plane():
+    """Above the single-turn primary is refused; on its own metal it is a
+    same-metal tap, no via stack (T19.6)."""
+    with pytest.raises(port.PortError, match="must sit at or below the single-turn primary M5"):
+        port.xfm_ms(SINGLE_ME="5", MULTI_ME="4", CT_P_ME="6")
+    cell = port.xfm_ms(SINGLE_ME="6", MULTI_ME="5", CT_P_ME="6")
+    assert {q["name"]: q["metal"] for q in cell.emx_ports}["CTP"] == "M6"
 
 
 def test_xfm_ms_dual_ct_mutual_lead_short_fails_closed():

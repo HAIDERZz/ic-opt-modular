@@ -252,7 +252,7 @@ METAL_FIELDS = ("metal", "ct_metal", "primary_metal", "secondary_metal", "ct_pri
 HALF_IS_A_COORDINATE = ("center_spacing_um", "port_spacing_um", "primary_port_spacing_um", "secondary_port_spacing_um",
                         "straight_extension_um", "ct_primary_width_um", "ct_secondary_width_um")
 #: Optional fields whose absence (None) the serializer drops, so a config that leaves them out keeps its historical
-#: identity: the patterned ground shield, and xfm_bs's tap widths (T19.4).
+#: identity: the patterned ground shield, and the tap widths of xfm_bs (T19.4) and xfm_ms's primary (T19.6).
 DROPPED_WHEN_ABSENT = ("pgs", "ct_primary_width_um", "ct_secondary_width_um")
 
 
@@ -625,6 +625,9 @@ class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
     secondary_metal: str = Field(min_length=1)
     ct_primary_metal: str | None = None
     ct_secondary_metal: str | None = None
+    # T19.6: the lead width of a same-metal tap on the single-turn primary (ct_primary_metal == primary_metal); None: the
+    # primary's width. The multi-turn secondary's tap is a via-stack tap (ind_sym's) and has no width of its own.
+    ct_primary_width_um: float | None = Field(default=None, gt=0, multiple_of=0.01)
     primary_port_spacing_um: float | None = Field(default=None, gt=0, multiple_of=0.01)     # M3.1: per winding, default 2*opening + width
     secondary_port_spacing_um: float | None = Field(default=None, gt=0, multiple_of=0.01)
 
@@ -661,7 +664,12 @@ class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
 
     @model_validator(mode="after")
     def _ct_metal_rules(self) -> CleanPortXfmMsConfig:
-        # P side taps the single-turn primary: strictly below its plane.
+        # P side taps the single-turn primary as xfm_bs taps a winding: on
+        # its own metal (by stack position) a same-metal tap, no via stack
+        # (T19.6, xfm_bs's T19.4 construction); below it the via-stack tap
+        # dropping from the winding plane; above it refused. The primary
+        # sits above everything the secondary draws, so a same-metal tap
+        # never meets the other net.
         # S side taps the multi-turn secondary through ind_sym's CT path,
         # so it obeys the same N1 adjacency rule as the inductor: at least
         # two levels below secondary_metal (the crossunder occupies
@@ -669,11 +677,12 @@ class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
         ct_p = _metal_position(self.ct_primary_metal, self.process_profile) \
             if self.ct_primary_metal is not None else None
         primary = _metal_position(self.primary_metal, self.process_profile)
-        if ct_p is not None and primary is not None and ct_p >= primary:
+        if ct_p is not None and primary is not None and ct_p > primary:
             raise ValueError(
-                f"ct_primary_metal {self.ct_primary_metal!r} must sit "
-                f"below primary_metal {self.primary_metal!r} (the tap stack "
-                "drops from the winding plane)")
+                f"ct_primary_metal {self.ct_primary_metal!r} must sit at or "
+                f"below primary_metal {self.primary_metal!r}: a tap runs on "
+                "the primary's own metal (a same-metal tap) or drops to a "
+                "lower one through a via stack")
         ct_s = _metal_position(self.ct_secondary_metal, self.process_profile) \
             if self.ct_secondary_metal is not None else None
         secondary = _metal_position(self.secondary_metal, self.process_profile)
@@ -684,6 +693,30 @@ class CleanPortXfmMsConfig(_FixedXfmPortOrderMixin, _CleanPortDeviceConfigBase):
                 f"{self.secondary_metal!r}: the secondary's crossunder "
                 "occupies secondary_metal-1 and crosses the CT lead path, "
                 "shorting the tap net (bug review 2026-07-17 N1)")
+        return self
+
+    @model_validator(mode="after")
+    def _tap_width_needs_a_same_metal_tap(self) -> CleanPortXfmMsConfig:
+        # T19.6: the width sets the lead of a same-metal primary tap; a
+        # via-stack tap keeps its W x W stack and a lead as wide as the
+        # winding, and a primary without a tap has no lead to size.
+        width = self.ct_primary_width_um
+        if width is None:
+            return self
+        if self.ct_primary_metal is None:
+            raise ValueError(
+                f"ct_primary_width_um {width} needs ct_primary_metal: it is "
+                "the width of the primary's tap lead, and the primary has no "
+                "tap")
+        c = _metal_position(self.ct_primary_metal, self.process_profile)
+        h = _metal_position(self.primary_metal, self.process_profile)
+        if c is not None and h is not None and c < h:
+            raise ValueError(
+                f"ct_primary_width_um {width} applies to a same-metal tap only "
+                "(ct_primary_metal equal to primary_metal); ct_primary_metal "
+                f"{self.ct_primary_metal!r} sits below primary_metal "
+                f"{self.primary_metal!r}, a via-stack tap, which keeps the "
+                "winding width")
         return self
 
 
@@ -928,11 +961,10 @@ def _auto_stub_widths(config) -> dict[str, float]:
 
     The inductor's every lead (P/N and the CT tap) is width_um wide; on the
     two-winding devices the P1/N1/CTP leads carry the primary/single width
-    and P2/N2/CTS the secondary/multi width, except an xfm_bs same-metal tap
-    with its own ``ct_*_width_um`` (T19.4). xfm_tw and xfm_il both draw
-    every port (taps included) at the SAME width_um (P and S share the
-    winding's own W), same rule as ind_sym's single
-    winding."""
+    and P2/N2/CTS the secondary/multi width, except a same-metal tap with its
+    own ``ct_*_width_um`` (xfm_bs T19.4, xfm_ms's primary T19.6). xfm_tw and
+    xfm_il both draw every port (taps included) at the SAME width_um (P and
+    S share the winding's own W), same rule as ind_sym's single winding."""
     if isinstance(config, (CleanPortIndSymConfig, CleanPortXfmTwConfig,
                            CleanPortXfmIlConfig)):
         return {name: config.width_um for name in config.port_order}
@@ -943,7 +975,8 @@ def _auto_stub_widths(config) -> dict[str, float]:
             f"no auto stub-width rule for config type {type(config).__name__}")
     side = {"P1": p_w, "N1": p_w, "CTP": p_w,
             "P2": s_w, "N2": s_w, "CTS": s_w}
-    # T19.4: an xfm_bs same-metal tap's lead can be narrower than its winding; its stub follows the lead it lands on
+    # T19.4 / T19.6: a same-metal tap's lead (xfm_bs, xfm_ms's primary) can be narrower than its winding; its stub follows
+    # the lead it lands on
     for tap, field in (("CTP", "ct_primary_width_um"), ("CTS", "ct_secondary_width_um")):
         width = getattr(config, field, None)
         if width is not None:
@@ -1342,7 +1375,10 @@ class CleanPortXfmMsGenerator(_CleanPortGenerator):
             STRAIGHT_EXTENSION=config.straight_extension_um,
             PORT_SPACING_S=config.primary_port_spacing_um,
             PORT_SPACING_M=config.secondary_port_spacing_um,
+            CT_P_W=config.ct_primary_width_um,
         )
+        # the multi-turn secondary's crossunder always has vias, so a build
+        # with only a same-metal primary tap (T19.6) still declares them
         return _write_geometry_outputs(
             p, cell, config, generator_id=self.generator_id,
             outdir=outdir, gds_name=gds_name,

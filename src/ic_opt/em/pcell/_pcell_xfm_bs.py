@@ -168,38 +168,41 @@ def check_stacked_overlap(where: str, center_spacing: float, od_a: float,
 
 
 def _bs_tap_guard(label: str, ct_me, width, winding_i: int, winding: str,
-                  process: ProcessRuleContext | None) -> None:
-    """xfm_bs's fail-closed tap rules (T19.4), repeated from the config
-    validators: the tap metal sits at or below its winding -- equal (by stack
-    position) is a same-metal tap, below a via-stack tap, above is refused;
-    a tap width needs a same-metal tap, is positive and keeps the winding
-    metal's min width (its max width is checked where the lead is drawn)."""
+                  process: ProcessRuleContext | None,
+                  family: str = "xfm_bs") -> None:
+    """The fail-closed rules of a ``_bs_center_tap`` (T19.4; xfm_ms's
+    single-turn primary since T19.6, ``family`` naming the device), repeated
+    from the config validators: the tap metal sits at or below its winding --
+    equal (by stack position) is a same-metal tap, below a via-stack tap,
+    above is refused; a tap width needs a same-metal tap, is positive and
+    keeps the winding metal's min width (its max width is checked where the
+    lead is drawn)."""
     if ct_me is None:
         if width is not None:
             raise PortError(
-                f"xfm_bs: {label}_W={width} needs {label}_ME: it is the width "
+                f"{family}: {label}_W={width} needs {label}_ME: it is the width "
                 f"of the {winding}'s tap lead, and the {winding} has no tap")
         return
     ct_i = _metal_index(ct_me)
     if ct_i > winding_i:
         raise PortError(
-            f"xfm_bs: {label} metal {_metal_name(ct_i)} must sit at or below "
+            f"{family}: {label} metal {_metal_name(ct_i)} must sit at or below "
             f"the {winding} {_metal_name(winding_i)}")
     if width is None:
         return
     if ct_i < winding_i:
         raise PortError(
-            f"xfm_bs: {label}_W={width} applies to a same-metal tap only; the "
+            f"{family}: {label}_W={width} applies to a same-metal tap only; the "
             f"{_metal_name(ct_i)} tap of the {winding} {_metal_name(winding_i)} "
             "drops through a via stack, which keeps the winding width")
     if not width > 0:
-        raise PortError(f"xfm_bs: {label}_W={width} must be > 0")
+        raise PortError(f"{family}: {label}_W={width} must be > 0")
     if process is not None:
         name = _metal_name(winding_i)
         min_width = process.adapter.metal_rule(name).min_width_um
         if min_width is not None and width < min_width - _EPS:
             raise PortError(
-                f"xfm_bs: {label}_W={width} is below the {name} min width "
+                f"{family}: {label}_W={width} is below the {name} min width "
                 f"{min_width} of profile {process.profile_id}")
 
 
