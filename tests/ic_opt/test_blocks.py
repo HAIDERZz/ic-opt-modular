@@ -133,7 +133,7 @@ def test_report_from_recorded_run(tmp_path):
     md = path.read_text(encoding="utf-8")
     assert md.startswith("# IC-Opt report — ") and "## Summary" in md and "## Best observed" in md and "## Constraint margins" in md
     assert "real_066" not in md and analyze.best(spec, obs)[0].params == {"F": "26", "L": "40n", "VB_LO": "310m", "W": "1u"}
-    assert "- IIP3 gt 0 dBm: pass 64/64" in md
+    assert "- IIP3 > 0 dBm: pass 64/64" in md
     assert (store.reports_dir() / "report.html").stat().st_size > 20_000
     figures = {p.name for p in store.reports_dir().glob("*.png")}
     assert {"feasible_convergence.png", "convergence.png", "constraint_margins.png"} <= figures
