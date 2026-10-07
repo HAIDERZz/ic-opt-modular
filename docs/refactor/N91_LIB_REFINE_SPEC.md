@@ -105,3 +105,115 @@ private in code, tests or docs. Do not edit `docs/refactor/BACKLOG_CN.md`. Do no
 subagent is changing it; reuse through imports, or factor a helper out of `lib_signoff.py` if needed). Commit style of
 the repository, trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; append `## 7. Record` to this file.
 Do not merge or push.
+
+## 7. Record
+
+Status: done on branch `n91-lib-refine` (2026-10-07), not merged. The recipe, its tests and the documents: `8fd07a0`; this
+record: the commit after it.
+
+What was done:
+
+1. `src/ic_opt/recipes/lib_refine.py`, sections 1-3 with the deviations below. `best_point` (this problem's observations,
+   a re-checked point first, `digest._best_of`), `row_of` (`ChildResult.library_row`), `local_grid`, `model_columns`
+   (index column -> the model columns: a curve `Lp@<f>` through `Library.columns`, `Qmin` from `Qp@<f>` and `Qs@<f>`, a
+   scalar itself, `area` drawn), `verdict` (the window's rules in their order), `plan_device` (one device's pass up to
+   EMX, with the plan's lines), `check_device` (predicted against measured, ratios to the row), `main`. Reused through
+   imports, both files unchanged: `lib_signoff._adopt(origin=)`, `_signoff_em`, `_z`; `lib_tap.preflight` (a `Twins` of
+   the part's spec and the ranked points), `_peak_gb`, `_median_max`, `_per_point`, `_observations`, `_scalar`, `_strict`.
+   `recipe.BUILTIN_RECIPES` lists `lib_refine`.
+2. The plan prints the best point (step, re-checked or not, objective), per device the row (geometry, its index values),
+   the local grid (size, the dims and their steps, the held dims, the rows of the table among them), the drops per rule
+   (outside a range per variable), the preflight's outcome with each refusal's reason, each candidate's changed dims,
+   predicted values, SRF and combination, the envelope with the part's rows' own EMX peak memory, the budget line, then
+   `sim.evaluate`'s own plan line. The report is written before adopting and again after; the run's lines end with one
+   per device (candidates / ok / adopted, the row's `prefer` value against the best adopted, where the adopted rows land
+   on the device's grid, the dataset's rows before -> after) and the continuation.
+3. Documents: `docs/em/library.md` section 7c "Refining around a run's best point: `lib_refine`", `lib_refine` in its
+   Compute and Cache sections and one sentence in section 8; the ic-opt skill's built-ins and one line of its recipe
+   cheatsheet (its `ic-opt run` lines: read as "under Run"); the module docstring.
+
+Deviations and additions:
+
+1. **The range rule is the table's own** (`index.Axis.level`): a predicted value is inside its variable's range when the
+   table would take a row with that value onto the grid -- the end levels reach half an end interval beyond the bounds,
+   in the variable's search scale -- not only inside [lower, upper]. Otherwise a neighbour predicted 0.3 pH above the
+   upper bound would be dropped although a row adopted there is a candidate of the run (the best row itself may sit
+   there).
+2. **SRF strictly above** margin x f, the index's own rule (it drops `srf <= margin * f`), where section 2.3 says "at
+   least"; the margin is the index's (`Index.srf_margin`: the manifest's curves', or the device's `srf_margin` when
+   larger). An SRF above the sweep passes (the index keeps a row without a resonance); an `out_of_domain` or `uncertain`
+   SRF drops the neighbour under that rule; a stratum without an `SRF` quantity has no margin rule and the plan says so.
+3. **PROJECT's budget counts the EMX** (the part's spec takes PROJECT's `budget`, as lib_tap's twins do; the line is
+   lib_tap's: used, needed, NOT ENOUGH; a shortfall refused before any EMX). lib_signoff keeps the part's own budget,
+   which the engine would compare with every simulation of the circuit project's store. The part's constraints are kept
+   (lib_signoff's way): a candidate a constraint fails is not `ok`, and the dataset would leave it out as it leaves out
+   such rows of the part.
+4. "Re-checked" is a point of the signoff recipe's re-check steps (`signoff`, `signoff#<k>`); the digest itself has no
+   such rule. Otherwise the best over every step of this problem (the spec's fingerprints).
+5. A dim without a step in `library.yaml` keeps the row's value, like the turns dim (the turns dim even when `steps`
+   names it); a stratum with no step for any other dim is refused. The neighbours' values are computed in decimal (no
+   float drift: 4.9, not 4.8999...), their text is the shortest exact decimal, and a point's other parameters are the
+   row's own observation's.
+6. Ranking ties: fewer steps from the row first, then the geometry; a neighbour without a predicted `prefer` value (not
+   `predicted`, or no footprint) ranks last. `area` is drawn (`query.footprint_at(build=True)`, a pcell build, about
+   0.1 s on demo_6m) only for the neighbours the models keep.
+7. Added: each candidate's combination on the device's grid -- predicted in the plan, measured in the report -- whether
+   the table holds it already, whether the run evaluated it, and whether the device's next index keeps the row
+   (`in_index`: every curve has a value at the frequency, the system SRF above the margin). See "Not foreseen" 1.
+8. Two devices on one table: a geometry an earlier device's pass chose is left out of the later passes' (it would be
+   simulated once and adopted twice).
+9. The continuation: the recipe read from the best point's step (`optimize`; `coarse` / `fine` -> `coarse_to_fine`;
+   `search@<corner>` / `signoff` -> `signoff corner=<corner>`; anything else `optimize`), the budget the points of its
+   search step so far plus one per adopted row (section 2.7 does not say how much larger); the run's strategy, batch and
+   seed are not in the store, so the line asks for them; it also gives the spec budget's use.
+10. The origin's `<project>` is the project directory's name (lib_signoff's `signoff:<run>` convention); the adopted rows
+    carry the current best point's id also when the engine reused an ok observation of an earlier call (a call that
+    stopped before adopting).
+11. Besides a failed candidate, an `ok` one whose sNp the library cannot measure is reported (`check`) and not adopted.
+
+Not foreseen:
+
+1. **An adopted row helps the next round only on a combination the run can still propose.** The finer steps are the
+   geometry's; in electrical values every adopted row lands on the run's variable grid. On a combination the table did
+   not hold it is a new candidate; on one it holds it competes with that combination's rows by `prefer`, and when the run
+   evaluated that combination already it is not proposed again, so even a better row there never reaches the circuit.
+   Each candidate says which (plan and report), and the device's line counts the adopted rows on new and on held
+   combinations and how many of those the run evaluated. A grid fine enough that most combinations hold one row (section
+   8 of `library.md`) is what turns the adopted rows into candidates.
+2. A library device's run fits no model and its frequency is often no anchor of the manifest: the first lib_refine on a
+   table fits the models of the device's columns (extension columns at its frequency), under `--plan` too, minutes per
+   column on a large stratum; the plan line names them.
+3. The dataset keeps a part's most common generation only: the candidates run the part's own spec with machine facts
+   changed (not physics), so they join it; a `process_file=` of another content would make them another generation,
+   which the dataset leaves out (the device's line shows `excluded`). The tests therefore build their table through the
+   real em_only chain (162 rows, about 30 s with its models), not as synthetic rows stamped `gen1`.
+4. `lib_tap.py` is being changed in parallel (T19.6): lib_refine builds `lib_tap.Twins` by keyword and uses its private
+   helpers; a change to `Twins`' fields or those helpers' signatures must be followed here at the merge.
+5. Cost: one `query.query` per neighbour -- `steps=1` on a five-dim table is 242 geometries (about 1.5 s on the test's
+   cached models), `steps=2` is 3124.
+
+Tests: `tests/ic_opt/test_lib_refine.py` 14, demo_6m and the fake EMX (`fakes.coupled_snp`). Section 4, point by point:
+
+1. `test_the_best_point_is_found_a_rechecked_one_first_and_refused_without_one`;
+2. `test_the_local_grid_leaves_out_the_row_the_table_and_other_turns_levels` (a synthetic table with a turns dim: the
+   row, a table row and another turns level left out, a dim without a step held, steps=2 grows, no steps refused),
+   `test_the_local_grid_of_the_table`;
+3. `test_the_window_rules_in_their_order` (each rule and the order, the half end interval, an SRF above the sweep),
+   `test_the_window_drops_and_counts_and_the_kept_ones_rank_by_prefer` (out of domain, outside a range, below the SRF
+   margin, each consistent with its prediction; ranked by Qmin and by Qp; a prefer column the index lacks refused),
+   `test_a_column_too_uncertain_drops_its_neighbours`, `test_min_area_draws_the_kept_neighbours_and_ranks_them`,
+   `test_a_refused_candidate_is_replaced_by_the_next_in_rank`, `test_a_second_pass_on_the_same_table_leaves_out_the_first_one_s_candidates`;
+4. `test_the_plan_runs_no_emx_and_the_run_measures_adopts_and_says_what_next` (no EMX and no report under `--plan`; the
+   run: a failing candidate reported and not adopted, predicted against measured, adopted with the refine origin,
+   `adopted.yaml`, the dataset grown by the adopted rows, `library.yaml` byte for byte, the last line's command);
+5. `test_after_adoption_a_new_library_and_the_device_s_index_hold_the_rows` (a new `Library`'s dataset, the next process's
+   index and table hold the rows, `link.identity` changed);
+6. `ruff check src tests`: clean.
+
+Also `test_calls_that_cannot_be_carried_out_are_refused` (an unknown device, steps / n, the budget, a spec without a
+library device), `test_the_continuation_follows_the_recipe_that_ran`, `test_lib_refine_is_a_built_in_recipe`.
+
+Runs (2026-10-07, `PYTHONPATH=<worktree>/src`, the ic-opt-modular venv): `test_lib_refine.py` 14 passed; `test_lib_tap.py`
+13 passed; `test_library*.py` 221 passed, 6 skipped (`test_library_gates.py`: needs `IC_OPT_LIBRARY`, the private library);
+`test_spec_library.py` 36 passed (one run of the four: 284 passed, 6 skipped); `ruff check src tests` clean. No real EMX;
+nothing under `ic-opt-library` or `ic-opt-accept` touched.
