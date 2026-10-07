@@ -617,6 +617,108 @@ The run then builds the new stratum's dataset and reports its rows and
 exclusions. A stratum or part store of that name is refused before anything
 runs.
 
+## 7c. Refining around a run's best point: `lib_refine`
+
+```bash
+ic-opt run lib_refine <project> n=8 --plan
+ic-opt run lib_refine <project> device=<id> steps=1 n=8 prefer=max:Qmin threads=<N> memory_gb=<G>
+```
+
+A circuit run whose devices come from a library table (section 8) moves
+between the rows the table holds and nothing else. After such a run,
+`lib_refine` measures the geometries next to the best point's row that the
+table does not hold, with a few real EMX runs, and adopts them into the row's
+part, so that the run's next round has rows between the table's own. Every
+adopted row is a real measurement of the library's generation, and the circuit
+re-optimizes on it directly: no model is corrected at the device's ports.
+
+`<project>` is the circuit run's project. Its best point is the feasible
+observation with the best objective over every step of this problem, a point
+the `signoff` recipe re-checked at every corner (`signoff`, `signoff#<k>`)
+first; without a feasible point the call is refused. Each library device of
+the spec is refined in its own pass (`device=<id>` for one), from the row the
+best point took (`library_row` in its device child: part, obs id, geometry,
+values).
+
+The neighbours are every geometry whose dims differ from the row's by at
+most `steps` steps of the stratum's `steps` in `library.yaml` -- the turns dim
+keeps the row's level (another turns level is another model, not a
+neighbour), and so does a dim without a step -- less the row itself and every
+row the table holds: at most 3^d - 1 over the d dims with a step for
+`steps=1`, 5^d - 1 for `steps=2`. Each goes through `lib.query` for the
+columns the device's variables map to, at the device's frequency (`Lp` is the
+column `Lp@<f>`, `Qmin` the smaller of `Qp@<f>` and `Qs@<f>`, `area` the
+footprint of the geometry drawn by the generator, no EMX), for the `prefer`
+column and for the system `SRF`. A neighbour is kept when
+
+- every variable's column is `predicted`: otherwise it is dropped as
+  `out_of_domain`, or as `uncertain` (too uncertain, or no value); the SRF
+  likewise;
+- each predicted value lies inside its variable's range as the table takes a
+  row onto the grid (the end levels reach half an end interval beyond the
+  bounds): otherwise `outside_range`. A row adopted inside it is a candidate
+  of the run;
+- the predicted SRF lies above the index's margin x the frequency, the margin
+  every row of the device's table satisfies (the manifest's curves', or the
+  device's `srf_margin` when larger); an SRF above the sweep passes: otherwise
+  `srf_margin`. A stratum without an `SRF` quantity has no such rule, and the
+  plan says so.
+
+The first rule a neighbour fails drops it, in that order, and the plan counts
+the drops per rule. The kept ones are ranked by `prefer` on the predicted
+value (`max:<column>` / `min:<column>` over the index's columns; default the
+device's own `prefer`, else `max:Qmin`) and preflighted in that order through
+the generator and the DRC gate without EMX, as `lib_tap` preflights its twins:
+a refused one is listed with the reason and the next in rank takes its place,
+until `n` are clean or the list runs out. Each candidate names the
+combination of the device's variables its predicted values sit on, whether
+the table holds that combination already (an adopted row there competes with
+the rows it holds, by `prefer`) and whether the run evaluated it (an
+evaluated combination keeps its observation and is not proposed again).
+
+`--plan` prints the best point, each device's row, the local grid and what
+each rule dropped, the candidates with their predicted values, combinations
+and preflight outcomes, the envelope (jobs, EMX threads and memory cap), the
+part's rows' own EMX peak memory from their `emx.log` (median, max: what
+`memory_gb=` should cover) and the budget, and runs no EMX. Real EMX: run with
+`--plan` first; it is the approval point. The models of the columns asked are
+fitted first when they are not cached, under `--plan` too (the device's
+frequency is often no anchor of the manifest, and a library device's run
+fits no model).
+
+The run: the clean candidates go through `em_only` into the project's store,
+one step per device (`lib_refine:<part>`), with the spec of the row's part --
+generator, fixed fields, EMX physics, ground fixture -- and this run's
+`threads=`, `memory_gb=` and `process_file=`, which are not physics, so the
+candidates are the library's generation. The project's
+`simulator.parallel_jobs` caps the EMX runs at once and its
+`budget.max_simulations` counts them: a shortfall is refused before any EMX
+runs. The predictions are taken before EMX; each ok candidate is then
+measured with the library's definitions and compared, as `lib_signoff`
+compares (predicted value, calibrated bounds, measurement, z, inside), and
+with the row: every index column at the device's frequency, candidate / row.
+Every ok candidate is adopted into the row's part store under a fresh obs id,
+with the origin `refine:<project>:<best obs id>` (the part's `adopted.yaml`
+lists them); `library.yaml` is not touched. The stratum's dataset is built
+again and its rows reported; a failed candidate is reported and not adopted.
+`.icopt/reports/lib_refine.json` holds the call, the best point, and per device
+the row, the grid, the drops, the candidates, every measured candidate's
+values, ratios, z and inside, the adopted obs ids and the dataset after; one
+line per device gives candidates, ok and adopted, and the row's `prefer` value
+against the best adopted one. `cache_dir=` is where the library's cache files
+go.
+
+The last line says what next. The grown table is a new generation for the
+next process (section 8: the index's content is part of the pipeline
+fingerprint). The run continues with its own recipe and a larger budget: the
+line gives the command with the project's path -- the recipe read from the
+best point's step (`optimize`, `coarse_to_fine`, `signoff`), the budget the
+points of its search step so far plus one per adopted row -- to which the
+run's own strategy, batch and seed are added. Its observations stay (the same
+spec fingerprint) and the adopted rows are candidates of its next batch.
+`lib_refine` does not continue the run itself; a `lib_refine` after that round
+is the next round.
+
 ## 8. Library devices in a circuit spec
 
 A device of a circuit spec may come from a library table instead of being
@@ -702,7 +804,8 @@ The library is read once per process: a run sees one table for its whole
 life. A library that grows is a new generation: the pipeline's fingerprint
 follows the index's content (with the grids and `prefer`), so a later run
 evaluates the grown table; a combination already evaluated keeps its
-observation and is not proposed again.
+observation and is not proposed again. `lib_refine` (section 7c) grows the
+table around a run's best point.
 
 ## Compute
 
@@ -715,7 +818,8 @@ already cached (see [Cache](#cache)) need no entry; without one, a fit is
 refused with the entry to add. `lib_design` and `lib_signoff` fit on the same entry
 (`run.site.host("local")`), never on the simulation host's; `lib_design` fits
 every model it needs once, before the search starts. `lib_tap` draws its
-preflight there too, one twin per thread, at most `max_threads` at once.
+preflight there too, one twin per thread, at most `max_threads` at once, and
+`lib_refine` fits, predicts and preflights there as well.
 
 - Fitting: one worker process per uncached model, at most
   `max_threads // 2` (a fit keeps about two cores busy whatever BLAS gets),
@@ -754,7 +858,7 @@ stratum and frequency asked) and the rows' footprints (`footprint-*`), both
 keyed by the dataset's content. A file that no longer matches is never read, and
 deleting the directory only costs the time to compute it again. By default
 the files go to the library's own `.cache/`. Every `lib.*` block,
-`lib_design`, `lib_signoff` and `lib_tap` take `cache_dir=` to put them in another
+`lib_design`, `lib_signoff`, `lib_tap` and `lib_refine` take `cache_dir=` to put them in another
 directory, for example on a local disk:
 
 ```bash

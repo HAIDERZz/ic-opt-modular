@@ -11,7 +11,7 @@ The user owns the design question; you own the mechanics and the evidence.
 ## Mental model
 
 - `spec.yaml` = WHAT: testbenches, corners, variables (grid), metrics, constraints, objective, simulator limits, budget. A metric is an OCEAN expression, an EM device's `quantity`, or `saturation_margin: {instances: [M1, M2]}` with `unit: V` and its `testbench` -- the smallest `|vds| - |vdsat|` of those transistors, computed from that testbench's operating points (a DC-only testbench as a cheap first gate, constrained `ge 0.05 V`: `skills/author-spec/SKILL.md`).
-- Recipe = HOW: `main(run, **params)` composing blocks. Built-ins: `optimize`, `fix_run`, `coarse_to_fine`, `signoff`, and for the device library `lib_design`, `lib_signoff`, `lib_tap`.
+- Recipe = HOW: `main(run, **params)` composing blocks. Built-ins: `optimize`, `fix_run`, `coarse_to_fine`, `signoff`, and for the device library `lib_design`, `lib_signoff`, `lib_tap`, `lib_refine`.
 - Blocks: `env.doctor`, `netlist.import`, `points.{fixed,sobol,grid,one_at_a_time,from}`, `sim.evaluate`, `opt.suggest`, `opt.optimize`, `opt.advise`, `opt.revoke_advice`, `analyze.best`, `analyze.report`; device library `lib.{load,coverage,query,suggest,region,densify,index,pick}`; process profiles `em.validate_profile`. `ic-opt blocks` lists them, `ic-opt describe NAME` shows a signature.
 - Results: `PROJECT/.icopt/observations.jsonl` (fact table), `advice.jsonl` (advice given, only when some was), `steps.jsonl`, `sims/<obs>/<tb>/<corner>/`, `reports/report.md|html`.
 - Re-running continues: `opt.optimize` stops when its step holds `budget` observations; raise `budget` to go on.
@@ -79,6 +79,7 @@ ic-opt run signoff  PROJECT corner=tt budget=60 top=5 [strategy=auto] [current=f
 # constraint (limit, miss, next limit); .icopt/reports/signoff_rounds.json holds every round and why they ended. The later
 # searches are other problems (their own fingerprint): the digest shows the first search and every re-check. With rounds
 # above 1 a limit written with an SI prefix (50m V) is refused
+ic-opt run lib_refine PROJECT [device=ID] [steps=1] [n=8] [prefer=max:Qmin] [threads=N memory_gb=G] --plan   # after a run whose devices come from library tables: real EMX on the n geometries next to the best point's row the table lacks (predicted inside the run's window, ranked by prefer, preflighted), adopted into the row's part; the last line is the command that continues the run (docs/em/library.md 7c)
 ic-opt run my_recipe.py PROJECT key=value          # custom composition
 ic-opt call analyze.best PROJECT k=5               # any block, spec/store/observations filled in
 ic-opt advise PROJECT advice.yaml [--corners tt]   # advice for the next batches (step 7); --list; --revoke ID --reason TEXT
