@@ -140,8 +140,9 @@ def test_the_plan_names_each_table_and_says_that_no_emx_runs(root, tmp_path, cap
     assert "[plan] [note] em: not used: the devices are library rows, no EMX runs" in out
     assert "[plan] strategy auto: metric_gp (library devices: no EMX in the loop)" in out
     assert ("[plan] opt.optimize step='optimize' strategy=metric_gp: 0/12 points done, up to 12 more in batches of 4 × "
-            "(1 testbench sims + 1 device measurements of library rows, no simulation) = 1 simulations per point on local, "
-            "2 workers × (2 + 1) threads (spectre), no EMX runs (the devices are library rows)") in out
+            "(1 testbench sims + 1 device measurements of library rows, no simulation) = up to 1 simulations per point "
+            "(the device measured first: a point whose device fails a constraint stops before any testbench simulation) "
+            "on local, 2 workers × (2 + 1) threads (spectre), no EMX runs (the devices are library rows)") in out   # N-63
     assert "device:xfmr" not in out and "[plan] [ok] emx" not in out and "em:envelope" not in out
     assert not (run.store.root / "observations.jsonl").exists()
 
@@ -220,5 +221,5 @@ def test_the_library_device_runs_first_and_a_point_that_fails_its_constraint_sim
     (stopped,) = evaluate(spec, [point(failing[6])], ex, store, deck=deck, limits=FAKE_HOST)
     assert stopped.status == "constraint_failed" and stopped.not_run == ["tb/tt", "tb/ss"] and stopped.simulations == 0
     assert stopped.corners() == {"tt", "ss"} and any(f"Qp gt {limit!r} violated by" in i for i in stopped.issues)
-    assert "1 of 1 points stopped early, 2 simulations not run" in capsys.readouterr().out
+    assert "1 of 1 points stopped early (1 at the device), 2 simulations not run" in capsys.readouterr().out   # N-63
     assert not list((store.root / "sims" / stopped.obs_id).glob("tb"))                 # no simulation ran for it

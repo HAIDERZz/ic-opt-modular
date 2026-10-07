@@ -26,7 +26,10 @@ point is ``constraint_failed`` at a corner in the constraint scope whose present
 objective. It is never feasible, and its issues carry, after the failure's own lines, ``NOT_SIMULATED``: how many
 children were not simulated and after which one the point stopped. That line is for the reader; the engine names the
 children not run in the observation's ``not_run``, which is what code reads, and :func:`stopper` names, from a recorded
-point, the child the line names (T17.9: the digest counts where points stopped).
+point, the child the line names (T17.9: the digest counts where points stopped). A point stopped at its device (N-63: the
+devices are measured first, and one that fails stops the point before its first testbench) holds only its device
+children and names every testbench child in ``not_run``; it is judged as any other incomplete set, its device's
+violation counted at every corner the point was to run at, and :func:`stopped_at_device` says it was stopped there.
 
 The point as a strategy sees it (T17.9): :func:`worst_metrics`, each metric the constraints or the objective name at its
 worst over the corners the point was simulated at, is what ``metric_gp``'s models are given; the verdict above stays the
@@ -166,6 +169,14 @@ def stopper(spec: Spec, o: Observation) -> str | None:
     run, the one its "not simulated" issues line names (:func:`_stopper`, the one rule for both). None for a point that
     ran every child it was to run, and for one whose children show nothing that fails it under ``spec``."""
     return _stopper(spec, o.children, [*o.children, *o.not_run]) if o.not_run else None
+
+
+def stopped_at_device(spec: Spec, o: Observation) -> bool:
+    """Whether the schedule stopped the point ``o`` at a device child (N-63): the child :func:`stopper` names is one of
+    the spec's devices -- an EM device's measurement, or a library row's. False for a point not stopped."""
+    key = stopper(spec, o)
+    child = o.children.get(key) if key is not None else None
+    return child is not None and child.unit in spec.device_ids
 
 
 def _stopper(spec: Spec, children: dict[str, ChildResult], wanted: list[str] = ()) -> str | None:

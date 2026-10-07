@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from ic_opt.blocks.evaluate import default_pipeline, evaluate
+from ic_opt.blocks.evaluate import default_pipeline, evaluate, plan_shape
 from ic_opt.blocks.netlist import import_netlists
 from ic_opt.deck import Deck
 from ic_opt.em import nport
 from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
-from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec
+from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, make_spec, rlc_snp
 from tests.ic_opt.test_blocks import maestro_export
 from tests.ic_opt.test_em_pcell import demo_spec
 
@@ -81,6 +81,46 @@ def test_em_circuit_pipeline_binds_the_snp_and_runs_spectre(tmp_path):
     assert 'file="models/ind.s2p" interp=bbspice' in netlist and "parameters temperature=27 F=20" in netlist
     assert (store.root / "sims" / "obs_0001" / "tb" / "tt" / "netlist" / "models" / "ind.s2p").read_text().startswith("! Touchstone")
     assert obs[0].children["tb/tt"].sim_dir.endswith("obs_0001/tb/tt")
+
+
+def test_a_point_whose_device_fails_its_constraint_runs_no_spectre(tmp_path, capsys):
+    """N-63: the EM chain end to end (pcell, the fake host's EMX with a geometry-dependent sNp, the device's measurement,
+    bind_nport and Spectre at two corners). The device is measured first; a point whose SRF fails its constraint runs no
+    Spectre simulation -- the count rule is off (2 per point) and the spec does not name the switch -- and a point whose
+    device passes runs both corners as before."""
+    d = em_circuit_spec(tmp_path, corners=("tt", "ss")).model_dump(mode="json")
+    d["metrics"].append({"name": "SRF", "unit": "Hz", "device": "ind", "quantity": "SRF_p"})
+    d["constraints"].append({"metric": "SRF", "op": "gt", "value": "80e9 Hz"})   # od 100: 91 GHz passes, od 120: 69 GHz fails
+    spec = Spec.model_validate(d)
+    points = [Point({"ind.od": "100", "ind.w": "5", "F": "20"}, "user"), Point({"ind.od": "120", "ind.w": "5", "F": "22"}, "user")]
+
+    def run(project: Path, **kwargs):
+        store = RunStore(project)
+        ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 7.0 + (1.0 if c == "ss" else 0.0)}, snp_fn=rlc_snp)
+        deck = import_netlists(spec, ex, store)
+        return store, ex, deck, evaluate(spec, points, ex, store, deck=deck, parallel_jobs=1, limits=FAKE_HOST, **kwargs)
+
+    store, ex, deck, (passes, fails) = run(tmp_path / "on")
+    pipeline = default_pipeline(spec, deck)
+    assert [s.name for s in pipeline] == ["pcell", "emx:ind", "bind_nport", "spectre", "ocean", "extract", "measure"]
+    assert plan_shape(spec, pipeline, "all", ex, 4, FAKE_HOST).startswith(
+        "(1 EMX runs + 2 testbench sims + 1 device measurements) = up to 4 simulations per point (the device measured "
+        "first: a point whose device fails a constraint stops before any testbench simulation) on local")
+    assert set(passes.children) == {"tb/tt", "tb/ss", "ind/nominal"} and passes.status == "ok" and passes.not_run == []
+    assert list(fails.children) == ["ind/nominal"] and fails.not_run == ["tb/tt", "tb/ss"] and not fails.feasible
+    assert fails.status == "constraint_failed" and fails.metrics["SRF"] < 80e9 and set(fails.metrics) == {"SRF"}
+    assert fails.issues[-1] == "not simulated: 2 of 3 children (stopped after ind/nominal)"
+    assert fails.cache == {"emx:ind": "miss"} and fails.simulations == 2          # its EMX run and its measurement
+    assert ex.emx_runs == 2 and not (store.root / "sims" / fails.obs_id / "tb").exists()  # no netlist, no Spectre for it
+    assert "1 of 2 points stopped early (1 at the device), 2 simulations not run" in capsys.readouterr().out
+
+    _, _, _, (whole, failed) = run(tmp_path / "off", stop_at_first_failure=False)
+    assert set(failed.children) == {"tb/tt", "tb/ss", "ind/nominal"} and failed.status == "constraint_failed"
+    records = [o.model_dump(mode="json", exclude={"started_at", "finished_at"}) for o in (passes, whole)]
+    for record in records:                     # the point the device did not stop: recorded as without the stop
+        for child in record["children"].values():
+            child["seconds"] = 0.0
+    assert records[0] == records[1]
 
 
 def test_the_em_circuit_spectre_takes_the_license_queue_wait_from_the_spec(tmp_path):

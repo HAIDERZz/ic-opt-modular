@@ -47,7 +47,9 @@ Definitions the specification leaves open:
   failing child. ``counts`` gives how many (``stopped_early``), those children added up (``simulations_not_run``) and
   where they stopped (``stopped_at``, T17.9: per child ``<unit>/<corner>`` the points stopped after it, most first; the
   child ``sim.corner.stopper`` names, as the point's "not simulated" line does). Such a point holds only the children
-  that ran, so its metrics are those of the corners it reached.
+  that ran, so its metrics are those of the corners it reached. ``stopped_at_device`` (N-63): how many of them a device
+  child stopped -- an EM device's or a library row's measurement, which runs first, so such a point ran no testbench
+  (``sim.corner.stopped_at_device``).
 
 The value helpers (units, SI prefixes, a constraint as a reader says it, a point's value per corner) live here and the
 report (``blocks/analyze.py``) imports them: importing ``ic_opt.blocks`` loads every block and the strategies'
@@ -115,7 +117,13 @@ from scipy import stats
 
 from ic_opt import space
 from ic_opt.observation import Observation
-from ic_opt.sim.corner import NOT_SIMULATED, metrics_per_corner, scored_corners, stopper
+from ic_opt.sim.corner import (
+    NOT_SIMULATED,
+    metrics_per_corner,
+    scored_corners,
+    stopped_at_device,
+    stopper,
+)
 from ic_opt.space import split_origin
 from ic_opt.spec import Spec
 
@@ -279,6 +287,7 @@ def _counts(spec: Spec, rows: list[Observation]) -> dict[str, Any]:
             "simulations": sum(o.simulations or 0 for o in rows), "per_step": per_step,
             "stopped_early": sum(1 for o in rows if o.not_run), "simulations_not_run": sum(len(o.not_run) for o in rows),
             "stopped_at": dict(sorted(stopped_at.items(), key=lambda kv: (-kv[1], kv[0]))),
+            "stopped_at_device": sum(1 for o in rows if o.not_run and stopped_at_device(spec, o)),
             "notes": {"simulations": f"{unknown} points recorded before 0.2.x carry no count"} if unknown else {}}
 
 
@@ -912,7 +921,8 @@ def markdown(d: dict[str, Any]) -> str:
     head = f"{counts['points']} points · " + (" · ".join(f"{k} {v}" for k, v in counts["by_status"].items()) or "none")
     head += f" · {counts['simulations']} simulations"
     if counts["stopped_early"]:
-        head += f" · {counts['stopped_early']} stopped early ({counts['simulations_not_run']} simulations not run)"
+        at_device = f"{counts['stopped_at_device']} at the device; " if counts.get("stopped_at_device") else ""
+        head += f" · {counts['stopped_early']} stopped early ({at_device}{counts['simulations_not_run']} simulations not run)"
     head += f" · step `{d['step']}`" if d["step"] else ""
     parts = [f"# Run digest — {d['project']}", head, *_md_stopped_at(counts),
              "## What is optimized", _md_problem(problem),

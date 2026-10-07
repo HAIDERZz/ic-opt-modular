@@ -324,7 +324,10 @@ the user does not want the netlist touched; not in the fingerprint),
 that shows it cannot be feasible when it needs 20 or more simulations, testbenches
 × corners, and runs every simulation below that; `true` stops it whatever the
 count, `false` runs every simulation of every point, for a characterization run;
-not in the fingerprint).
+not in the fingerprint). A device constraint written as a constraint (an SRF, a
+Q, an inductance window on an EM or library device's metric) is checked before
+any circuit simulation, whatever the count: a point that fails it runs no
+testbench; `stop_at_first_failure: false` runs everything.
 
 ### `budget`
 `max_simulations`: the ceiling on simulations the project may hold. Size it

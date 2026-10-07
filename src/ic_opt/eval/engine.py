@@ -25,6 +25,11 @@ engine's own order in the observation whatever order they ran in, so a point
 that is not stopped is recorded as without a schedule. The budget check still
 reserves every child of a point. The step log counts the points stopped early
 and the children not run. Without a schedule: the engine's order, no stop.
+The device children run first (N-63); one that shows the point cannot be
+feasible stops it before its first testbench child, while the other device
+children still run: a measurement costs no simulation (the EMX run is the
+point's), and their metrics are kept. A point whose children are all devices
+is never cut short.
 
 Interrupts. Ctrl-C reaches the running commands through the executors' signal
 forwarding (``process_group``), which counts it before anything else; the
@@ -359,7 +364,8 @@ def _run_cached(stage: Stage, value, ctx: StageContext, stopping=None):
 def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child], executor, store, cshrc, stopping=None,
                schedule: Schedule | None = None):
     """The point's results (in the order of ``children``), its point-level cache use, and why ``schedule`` stopped it
-    early (None when every child ran)."""
+    early (None when every child ran). A stop found at a device child takes effect at the first testbench child after
+    it: the device children in between still run (N-63, module docstring)."""
     point_dir = store.root / "sims" / job.obs_id
     point_dir.mkdir(parents=True, exist_ok=True)
     ctx = StageContext(spec=spec, executor=executor, store=store, obs_id=job.obs_id, workdir=point_dir,
@@ -374,6 +380,8 @@ def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child]
     order = children if schedule is None else schedule.order(children)
     reason = None
     for place, child in enumerate(order):
+        if reason is not None and child.unit_kind != "device":
+            break                                                   # a device showed the point cannot be feasible
         _unless_stopping(stopping, f"{job.obs_id} {child.key}")     # before the child's scratch directory, too
         chain = [s for s in child_stages if getattr(s, "unit", "testbench") == child.unit_kind]
         workdir = store.sim_dir(job.obs_id, child.unit, child.corner)
@@ -388,10 +396,13 @@ def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child]
         result.seconds = round(time.monotonic() - started, 3)
         result.sim_dir = store.relative(workdir)
         ran[child.key] = result
-        if schedule is not None and place + 1 < len(order) and (reason := schedule.stop_after(result, child.corner)):
+        if schedule is None or reason is not None or place + 1 == len(order):
+            continue
+        reason = schedule.stop_after(result, child.corner)
+        if reason is not None and child.unit_kind != "device":
             break                                                   # the point cannot be feasible: nothing more runs for it
     results = {c.key: ran[c.key] for c in children if c.key in ran}  # the engine's order, whatever order they ran in
-    return results, dict(ctx.cache), reason
+    return results, dict(ctx.cache), reason if len(results) < len(children) else None
 
 
 def _retain(spec: Spec, job: Job, children: dict[str, ChildResult], executor: Executor, store: RunStore) -> None:

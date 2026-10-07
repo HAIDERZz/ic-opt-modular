@@ -10,6 +10,7 @@ from ic_opt.eval.schedule import Schedule
 from ic_opt.eval.stage import Stage
 from ic_opt.executor import Executor
 from ic_opt.observation import Observation, Observations
+from ic_opt.sim.corner import stopped_at_device
 from ic_opt.sim.ocean import WaveformExport
 from ic_opt.site import HostLimits, per_job
 from ic_opt.space import Point
@@ -40,33 +41,37 @@ def evaluate(
     ``limits`` is the executor host's site.yaml entry (``run.limits`` in a recipe): it caps the concurrency and
     refuses a stage bigger than the host, under ``--plan`` too.
 
-    ``stop_at_first_failure`` (None: :func:`stop_wanted` decides -- the spec's ``simulator.stop_at_first_failure`` when
-    set, else on when the points run at several corners): a point's children run in an order learned from this problem's
-    observations, and a point stops at the first child whose result shows it cannot be feasible
-    (``ic_opt.eval.schedule``, T17.8); False runs every child of every point, for a complete per-corner table.
-    ``initial``: observations from elsewhere the order is learned from too -- the rows ``opt.optimize`` adopted from its
-    ``initial=``; they are neither evaluated nor stored."""
+    ``stop_at_first_failure`` (None: :func:`stop_kinds` decides by the spec's ``simulator.stop_at_first_failure`` and the
+    simulations a point needs): a point stops at the first child whose result shows it cannot be feasible
+    (``ic_opt.eval.schedule``, T17.8) -- a testbench child when :func:`stop_wanted` says so, its testbench children then
+    running in an order learned from this problem's observations, and an EM device's or a library row's measurement,
+    which runs first, unless the spec's switch or this override is False (N-63); False runs every child of every point,
+    for a complete per-corner table. ``initial``: observations from elsewhere the order is learned from too -- the rows
+    ``opt.optimize`` adopted from its ``initial=``; they are neither evaluated nor stored."""
     from ic_opt.recipe import PLAN_MODE
 
     if pipeline is None:
         pipeline = default_pipeline(spec, deck, waveforms)
     corner_ids = spec.corner_ids if corners == "all" else list(corners)
-    stop = stop_wanted(spec, engine.children_of(spec, pipeline, corner_ids), stop_at_first_failure)
+    children = engine.children_of(spec, pipeline, corner_ids)
+    kinds = stop_kinds(spec, children, stop_at_first_failure)
     if PLAN_MODE.get():
         print(f"[plan] sim.evaluate step={step!r}: {len(points)} points × "
-              f"{plan_shape(spec, pipeline, corners, executor, parallel_jobs, limits, stop)}")
+              f"{plan_shape(spec, pipeline, corners, executor, parallel_jobs, limits, stop_at_first_failure)}")
         return Observations()
     obs = engine.run(
         spec, pipeline, points, executor, store, corners=corners, step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
-        schedule=_schedule(spec, pipeline, corners, store, initial) if stop else None,
+        schedule=_schedule(spec, pipeline, corners, store, initial, kinds) if kinds else None,
     )
     _report_failed_metrics(obs, step)
     _report_binding_constraints(obs, step)
-    _report_stopped(obs, step)
+    _report_stopped(spec, obs, step, devices=any(c.unit_kind == "device" for c in children))
     return obs
 
 
 STOP_FROM_SIMULATIONS = 20   # a point that runs this many simulations or more stops at its first failing one by default
+DEVICE_FIRST = "the device measured first: a point whose device fails a constraint stops before any testbench simulation"
+TESTBENCH_STOP = "a point stops at the first simulation that fails it"     # the plan line's words for each kind of stop
 
 
 def stop_wanted(spec: Spec, children: Sequence[engine.Child], override: bool | None = None) -> bool:
@@ -83,7 +88,9 @@ def stop_wanted(spec: Spec, children: Sequence[engine.Child], override: bool | N
     point the stop was worse in 15 of 18 (p = 0.008), at 2 per point in 12 of 18: a point stopped early loses the
     metrics of the simulations it did not run, and when a point needs few simulations that loss outweighs what the
     stop saves. Between 20 and 61 nothing was measured; 20 is where the loss had disappeared. The spec's switch
-    forces either way."""
+    forces either way.
+
+    This is the rule for a testbench child's failure; a device child's has its own (:func:`stop_kinds`, N-63)."""
     if override is not None:
         return override
     if spec.simulator.stop_at_first_failure is not None:
@@ -91,23 +98,53 @@ def stop_wanted(spec: Spec, children: Sequence[engine.Child], override: bool | N
     return sum(1 for c in children if c.unit_kind != "device") >= STOP_FROM_SIMULATIONS
 
 
-def _schedule(spec: Spec, pipeline: list[Stage], corners, store: RunStore, initial: Sequence[Observation]) -> Schedule:
-    """The batch's schedule, learned from this problem's observations (``Schedule.from_history``): the store's, read
-    under the store's lock -- the engine, which takes the lock next, gets the same rows from the store without reading
-    the file again -- and ``initial``."""
+def stop_kinds(spec: Spec, children: Sequence[engine.Child], override: bool | None = None) -> frozenset[str]:
+    """The kinds of child whose failure stops a point of the batch (``Schedule.stop_kinds``), two independent rules over
+    ``children`` (what one point runs at the run's corners, ``engine.children_of``):
+
+    - ``testbench`` when :func:`stop_wanted` says so: ``override``, else the spec's switch, else the count rule;
+    - ``device`` when the children hold a device child and a testbench child and neither ``override`` nor, without one,
+      the spec's ``simulator.stop_at_first_failure`` is False (N-63, ``docs/refactor/N63_DEVICE_FIRST_SPEC.md``). The
+      device is measured first, at no simulation's cost, and a point whose device fails a constraint is known infeasible
+      before any simulation ran; the metrics its simulations would give the models come from a device that cannot be
+      used. The loss the count rule weighs (T17.9 revision 2) was measured for testbench stops, where a stopped point
+      loses the metrics of a device that is fine. Without a testbench child there is nothing to stop before.
+
+    Empty: no schedule (``sim.evaluate`` builds none), the engine's order, no stop -- a circuit-only run below the count
+    rule and any run under ``stop_at_first_failure: false`` (or the override False: ``signoff full=true``)."""
+    kinds = {"testbench"} if stop_wanted(spec, children, override) else set()
+    device_rule = override if override is not None else spec.simulator.stop_at_first_failure is not False
+    unit_kinds = {c.unit_kind for c in children}
+    if device_rule and "device" in unit_kinds and unit_kinds - {"device"}:
+        kinds.add("device")
+    return frozenset(kinds)
+
+
+def _schedule(spec: Spec, pipeline: list[Stage], corners, store: RunStore, initial: Sequence[Observation],
+              kinds: frozenset[str]) -> Schedule:
+    """The batch's schedule with ``kinds`` (:func:`stop_kinds`), its testbench order learned from this problem's
+    observations (``Schedule.from_history``) when testbench children may stop a point: the store's, read under the
+    store's lock -- the engine, which takes the lock next, gets the same rows from the store without reading the file
+    again -- and ``initial``. Otherwise the spec's order, and the store is not read."""
     corner_ids = spec.corner_ids if corners == "all" else list(corners)
     children = engine.children_of(spec, pipeline, corner_ids)
+    scope = spec.corner_policy.constraints
+    if "testbench" not in kinds:
+        return Schedule.from_history(spec, (), children, scope, stop_kinds=kinds)
     same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}         # as the engine counts them ("Identity")
     with store.lock():
         rows = [o for o in store.observations() if o.spec_fingerprint in same_problem]
-    return Schedule.from_history(spec, [*initial, *rows], children, spec.corner_policy.constraints)
+    return Schedule.from_history(spec, [*initial, *rows], children, scope, stop_kinds=kinds)
 
 
-def _report_stopped(obs, step: str) -> None:
-    """One line per batch in which the schedule stopped points early (T17.8): how many, and the simulations not run."""
+def _report_stopped(spec: Spec, obs, step: str, *, devices: bool = False) -> None:
+    """One line per batch in which the schedule stopped points early (T17.8): how many -- and, when the points have
+    device children, how many of them a device stopped (N-63, ``sim.corner.stopped_at_device``) -- and the simulations
+    not run."""
     stopped = [o for o in obs if o.not_run]
     if stopped:
-        print(f"[evaluate] step={step!r}: {len(stopped)} of {len(obs)} points stopped early, "
+        at_device = f" ({sum(stopped_at_device(spec, o) for o in stopped)} at the device)" if devices else ""
+        print(f"[evaluate] step={step!r}: {len(stopped)} of {len(obs)} points stopped early{at_device}, "
               f"{sum(len(o.not_run) for o in stopped)} simulations not run")
 
 
@@ -183,13 +220,14 @@ def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, p
     """'<children per point> ... on <host>, N workers (<heaviest stage> threads/memory)' for the --plan lines, a
     testbench stage's threads with the extra core a testbench job takes (``(4 + 1)``: ``engine.extraction_threads``,
     N-78); refuses (EnvelopeError) a pipeline whose job does not fit the host, so the preview fails where the run would.
-    ``stop_at_first_failure`` as for :func:`evaluate` (None: :func:`stop_wanted`, as the run decides it); on, the count
-    per point is a ceiling. A library pipeline (T18.2B) counts its testbench simulations only -- a library row's
+    ``stop_at_first_failure`` as for :func:`evaluate` (None: :func:`stop_kinds`, as the run decides it); when a kind of
+    child may stop a point the count per point is a ceiling, and the line says which: the device measured first (N-63),
+    then a testbench's stop (T17.8). A library pipeline (T18.2B) counts its testbench simulations only -- a library row's
     measurement is none, the budget does not count it -- and says that no EMX runs."""
     workers = engine.workers_for(spec, pipeline, parallel_jobs, limits)
     corner_ids = spec.corner_ids if corners == "all" else list(corners)
     children = engine.children_of(spec, pipeline, corner_ids)
-    stop = stop_wanted(spec, children, stop_at_first_failure)
+    kinds = stop_kinds(spec, children, stop_at_first_failure)
     tb = sum(c.unit_kind == "testbench" for c in children)
     dev = sum(c.unit_kind == "device" for c in children)
     em = engine.point_runs(pipeline)
@@ -200,8 +238,9 @@ def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, p
     heaviest = max(pipeline, key=lambda s: (s.resources.threads + engine.extraction_threads(s), s.resources.memory_gb))
     cap = spec.em.parallel_jobs if em and spec.em is not None else None
     count = f"{simulated + em} simulations per point"
-    if stop:
-        count = f"up to {count} (a point stops at the first simulation that fails it)"
+    stops = ([DEVICE_FIRST] if "device" in kinds else []) + ([TESTBENCH_STOP] if "testbench" in kinds else [])
+    if stops:
+        count = f"up to {count} ({'; '.join(stops)})"
     return (f"({' + '.join(p for p in parts if p)}) = {count} on {executor.host}, "
             f"{workers} workers × {per_job(heaviest.resources.threads, engine.extraction_threads(heaviest))} threads"
             + (f" / {heaviest.resources.memory_gb:g} GB" if heaviest.resources.memory_gb else "") + f" ({heaviest.name})"

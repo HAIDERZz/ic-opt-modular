@@ -200,8 +200,9 @@ def test_a_circuit_with_a_library_device_is_evaluated_without_emx(root, tmp_path
     steps = [json.loads(line) for line in (store.root / "steps.jsonl").read_text(encoding="utf-8").splitlines()]
     assert steps[-1]["simulations"] == 4                                                  # 2 points x 2 testbench simulations
     assert plan_shape(spec, pipeline, "all", ex, 1, FAKE_HOST) == (
-        "(2 testbench sims + 1 device measurements of library rows, no simulation) = 2 simulations per point on local, "
-        "1 workers × (2 + 1) threads (spectre), no EMX runs (the devices are library rows)")
+        "(2 testbench sims + 1 device measurements of library rows, no simulation) = up to 2 simulations per point (the "
+        "device measured first: a point whose device fails a constraint stops before any testbench simulation) on local, "
+        "1 workers × (2 + 1) threads (spectre), no EMX runs (the devices are library rows)")                     # N-63
 
 
 def test_the_budget_counts_the_testbench_simulations_only(root, tmp_path):

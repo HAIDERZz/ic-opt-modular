@@ -675,9 +675,9 @@ bindings' order), and `measure` computes the spec's device metrics from that
 sNp. The device's child in `observations.jsonl` names the row it took
 (`library_row`: stratum, part, obs id, geometry, electrical values,
 footprint). No EMX runs; the budget counts the testbench simulations (a
-row's measurement is none); with the stop at the first failure on, the
-device's child runs first, so a point that fails one of its constraints (an
-SRF, a Q) runs no simulation. `strategy=auto` runs `metric_gp` ("library
+row's measurement is none); the device's child runs first, so a point that
+fails one of its constraints (an SRF, a Q) runs no simulation, unless
+`simulator.stop_at_first_failure: false` (N-63). `strategy=auto` runs `metric_gp` ("library
 devices: no EMX in the loop"). The digest lists per device the table, the
 frequency, the rule, the combinations on the grid and how many the run
 visited, and for the best points the row each one took; the report's "Best

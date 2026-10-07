@@ -309,8 +309,8 @@ def test_optimize_hands_the_schedule_the_rows_it_adopted(tmp_path, monkeypatch):
     spec = two_by_two(simulator={**minimal_spec()["simulator"], "stop_at_first_failure": True})   # 4 per point: on by the spec
     seen: list[list[Observation]] = []
     learn = Schedule.from_history
-    monkeypatch.setattr(Schedule, "from_history", classmethod(lambda cls, spec, rows, children, scope:
-                                                              seen.append(list(rows)) or learn(spec, rows, children, scope)))
+    monkeypatch.setattr(Schedule, "from_history", classmethod(lambda cls, spec, rows, children, scope, **kinds:
+                                                              seen.append(list(rows)) or learn(spec, rows, children, scope, **kinds)))
     foreign = row(spec, 99, child("tb", "tt", NF=8.0), child("g", "tt", G=2.0)).model_copy(
         update={"params": {"F": "30", "W": "1.2u"}, "spec_fingerprint": "elsewhere", "metrics": {"NF": 8.0, "G": 2.0}})
     store = RunStore(tmp_path)
@@ -608,3 +608,370 @@ def test_improved_when_the_best_moves_from_a_stopped_point_to_one_that_ran_every
     assert region.improved(before, after) is True and improved_as_before(before, after) is False
     state = region.replay(spec, rows, 2)                   # the batch that brought the complete point is a success
     assert (state.successes, state.failures) == (1, 0)
+
+
+# -- N-63, step 3: the device first (docs/refactor/N63_DEVICE_FIRST_SPEC.md, section 3) -------------------------------------
+
+
+def srf(od: str) -> float:
+    """The fake device's SRF: 60 GHz at an outer diameter of 80 um, 6 GHz less per 10 um more -- 120 um fails SRF > 40 GHz."""
+    return 60e9 - (float(od) - 80) / 10 * 6e9
+
+
+def device_spec(*devices: str, **overrides) -> Spec:
+    """pair_spec's two testbenches (tb gives NF, g gives G; NF < 9, G > 1, minimize NF - G) and EM devices (``ind`` unless
+    named) whose SRF must exceed 40 GHz, each drawn from its own outer diameter ``<device>.od``: two testbench simulations
+    per point, the count rule off."""
+    devices = devices or ("ind",)
+    d = minimal_spec(
+        testbenches=[bench("tb"), bench("g")],
+        devices=[{"id": dev, "generator": "demo", "profile": "demo_6m", "ports": ["P1", "N1"], "fixed": {"turns": 1}}
+                 for dev in devices],
+        variables=[*minimal_spec()["variables"],
+                   *({"name": f"{dev}.od", "kind": "integer", "lower": "80", "upper": "120", "step": "10"} for dev in devices)],
+        metrics=[{"name": "NF", "unit": "dB", "expression": "nf()", "testbench": "tb"},
+                 {"name": "G", "unit": "dB", "expression": "g()", "testbench": "g"},
+                 *({"name": f"SRF_{dev}", "unit": "Hz", "device": dev, "quantity": "SRF_p"} for dev in devices)],
+        constraints=[{"metric": "NF", "op": "lt", "value": "9"}, {"metric": "G", "op": "gt", "value": "1"},
+                     *({"metric": f"SRF_{dev}", "op": "gt", "value": "40e9"} for dev in devices)],
+        objective={"direction": "minimize", "expression": "NF - G"}, budget={"max_simulations": 1000})
+    d.update(overrides)
+    return Spec.model_validate(d)
+
+
+def switch(value: bool | None) -> dict:
+    """``simulator`` with ``stop_at_first_failure`` as given."""
+    return {"simulator": {**minimal_spec()["simulator"], "stop_at_first_failure": value}}
+
+
+class FakeEmx:
+    """The point-level stage of a fake EM pipeline: one EMX simulation per geometry (``runs = 1``; the engine caches it on
+    the outer diameters), every device's SRF from its outer diameter (:func:`srf`); ``calls`` counts the runs."""
+
+    name = "emx"
+    level = "point"
+    runs = 1
+    resources = Resources()
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def fingerprint(self, point: Point, ctx: StageContext) -> str:
+        return "-".join(point.params[f"{d}.od"] for d in ctx.spec.device_ids)
+
+    def run(self, point: Point, ctx: StageContext) -> dict[str, float]:
+        self.calls += 1
+        return {d: srf(point.params[f"{d}.od"]) for d in ctx.spec.device_ids}
+
+    def save(self, out: dict[str, float], directory) -> None:
+        (directory / "srf.json").write_text(json.dumps(out), encoding="utf-8")
+
+    def load(self, directory, point: Point, ctx: StageContext) -> dict[str, float]:
+        return json.loads((directory / "srf.json").read_text(encoding="utf-8"))
+
+
+class FakeMeasure:
+    """The device child of the fake EM pipeline: the SRF the point's EMX stage gave. It declares no ``simulates``, as the
+    EM pipeline's ``Measure`` does not: the engine counts its measurement as the EM pipeline counts it."""
+
+    name = "measure"
+    level = "child"
+    unit = "device"
+    resources = Resources()
+
+    def __init__(self, ran: list) -> None:
+        self.ran = ran
+
+    def fingerprint(self, inp, ctx: StageContext) -> str | None:
+        return None
+
+    def run(self, srfs: dict[str, float], ctx: StageContext) -> ChildResult:
+        self.ran.append((ctx.point.params["F"], ctx.unit, ctx.corner))
+        return ChildResult(unit=ctx.unit, corner=None, status="ok", metrics={f"SRF_{ctx.unit}": srfs[ctx.unit]})
+
+
+class Bench:
+    """The testbench child of the fake EM pipeline: NF from tb (9.5 at F=26, else 8), G from g (2)."""
+
+    name = "bench"
+    level = "child"
+    unit = "testbench"
+    resources = Resources()
+
+    def __init__(self, ran: list) -> None:
+        self.ran = ran
+
+    def fingerprint(self, inp, ctx: StageContext) -> str | None:
+        return None
+
+    def run(self, srfs: dict[str, float], ctx: StageContext) -> ChildResult:
+        f = ctx.point.params["F"]
+        self.ran.append((f, ctx.unit, ctx.corner))
+        metrics = {"NF": 9.5 if f == "26" else 8.0} if ctx.unit == "tb" else {"G": 2.0}
+        return ChildResult(unit=ctx.unit, corner=ctx.corner, status="ok", metrics=metrics)
+
+
+def em_pipeline() -> tuple[list, list, FakeEmx]:
+    """point-level fake EMX -> device measurement child + testbench children, and the order the children ran in."""
+    ran: list = []
+    emx = FakeEmx()
+    return [emx, FakeMeasure(ran), Bench(ran)], ran, emx
+
+
+# F picks the testbench results (F=26 fails NF < 9 at tb), ind.od the device's SRF (120 um fails SRF > 40 GHz)
+DEVICE_POINTS = [Point({"F": f, "W": "0.6u", "ind.od": od}, "user") for f, od in (("20", "80"), ("22", "120"), ("24", "120"),
+                                                                                   ("26", "100"))]
+
+
+def run_devices(project, spec: Spec, points=DEVICE_POINTS, **kwargs):
+    store = RunStore(project)
+    pipeline, ran, emx = em_pipeline()
+    obs = evaluate(spec, points, LocalExecutor(store.root / "sims"), store, pipeline=pipeline, parallel_jobs=1,
+                   limits=FAKE_HOST, **kwargs)
+    return store, ran, emx, obs
+
+
+def test_the_device_children_run_first_whatever_the_history():
+    """Item 1: the device children first -- the library devices', then the others', each in the spec's device order --
+    then the testbenches; a history that reorders the testbenches never moves a device child behind one."""
+    spec = device_spec("ind", "xfm")
+    children = [Child("testbench", "tb", None), Child("testbench", "g", None), Child("device", "ind", None),
+                Child("device", "xfm", None)]
+    every = Schedule.from_history(spec, [], children, "all_corners")
+    assert keys(every.spec_order(children[::-1])) == ["ind/nominal", "xfm/nominal", "tb/nominal", "g/nominal"]
+    assert keys(every.order(children)) == ["ind/nominal", "xfm/nominal", "tb/nominal", "g/nominal"]
+
+    # a valid spec does not mix library and EM devices (T18.2B refuses it); the order still says which comes first
+    from ic_opt.spec import LibrarySource
+
+    mixed = spec.model_copy(update={"devices": [spec.devices[0], spec.devices[1].model_copy(update={
+        "library": LibrarySource.model_construct(root="/lib", stratum="xfm", frequency_hz=1e10)})]})
+    assert [d.id for d in mixed.library_devices] == ["xfm"]
+    assert keys(Schedule.from_history(mixed, [], children, "all_corners").order(children)) == [
+        "xfm/nominal", "ind/nominal", "tb/nominal", "g/nominal"]
+
+    # g fails on every recorded point and costs a millisecond, the devices never fail and take 100 s: by the score a
+    # device would run last; it runs first, the testbenches in their learned order after it
+    history = [row(spec, i, child("ind", seconds=100.0, SRF_ind=50e9), child("xfm", seconds=100.0, SRF_xfm=50e9),
+                   child("tb", seconds=5.0, NF=8.0), child("g", seconds=0.001, G=0.5), status="constraint_failed")
+               for i in range(12)]
+    learned = Schedule.from_history(spec, history, children, "all_corners")
+    assert learned.histories is not None and learned.history_of(children[1]).failed == 12
+    assert learned.history_of(children[2]).score < learned.history_of(children[0]).score    # the device scores lowest
+    assert keys(learned.order(children)) == ["ind/nominal", "xfm/nominal", "g/nominal", "tb/nominal"]
+    # the device kind alone (the count rule off): the learned order is not used, the spec's is
+    device_only = Schedule.from_history(spec, history, children, "all_corners", stop_kinds=frozenset({"device"}))
+    assert device_only.histories is None
+    assert keys(device_only.order(children)) == ["ind/nominal", "xfm/nominal", "tb/nominal", "g/nominal"]
+
+
+def test_a_device_stops_a_point_by_its_own_rule_a_testbench_by_the_count_rule():
+    """Item 2: with the count rule off a device's violation stops the point, a testbench's does not; with the count rule
+    on both do; under ``stop_at_first_failure: false`` neither; the recipe override False wins over everything."""
+    from ic_opt.blocks.evaluate import stop_kinds
+    from ic_opt.eval import engine
+
+    pipeline, _, _ = em_pipeline()
+    bad_device, bad_bench = child("ind", SRF_ind=36e9), child("tb", NF=9.5)
+
+    def stops(spec: Spec, children, override=None) -> tuple[bool, bool]:
+        """Whether the device's violation and the testbench's stop a point of ``spec`` under ``override``."""
+        kinds = stop_kinds(spec, children, override)
+        schedule = Schedule.from_history(spec, [], children, "all_corners", stop_kinds=kinds)
+        return (schedule.stop_after(bad_device, None) is not None,
+                schedule.stop_after(bad_bench, children[0].corner) is not None)
+
+    few = device_spec()                                                         # 2 testbench simulations per point
+    few_children = engine.children_of(few, pipeline, few.corner_ids)
+    assert stop_kinds(few, few_children) == {"device"} and stops(few, few_children) == (True, False)
+    schedule = Schedule.from_history(few, [], few_children, "all_corners", stop_kinds=stop_kinds(few, few_children))
+    assert schedule.stop_after(bad_device, None) == "ind/nominal: SRF_ind gt 40e9 violated by 3.6e+10"
+    assert schedule.failure(bad_bench, None) == "tb/nominal: NF lt 9 violated by 9.5"     # a failure, not a stop
+    assert schedule.stop_after(child("ind", status="failed:measure"), None) == "ind/nominal: failed:measure"
+
+    many = device_spec(corners=[{"id": f"c{i}"} for i in range(10)])           # 2 x 10 = 20: the count rule on
+    many_children = engine.children_of(many, pipeline, many.corner_ids)
+    assert stop_kinds(many, many_children) == {"device", "testbench"} and stops(many, many_children) == (True, True)
+
+    for spec, children in ((few, few_children), (many, many_children)):
+        off = spec.model_copy(update={"simulator": spec.simulator.model_copy(update={"stop_at_first_failure": False})})
+        on = spec.model_copy(update={"simulator": spec.simulator.model_copy(update={"stop_at_first_failure": True})})
+        assert stop_kinds(off, children) == frozenset() and stops(off, children) == (False, False)
+        assert stop_kinds(on, children) == {"device", "testbench"}                # true: every child may stop it
+        for which in (spec, off, on):                                            # the override decides alone
+            assert stop_kinds(which, children, False) == frozenset()
+            assert stop_kinds(which, children, True) == {"device", "testbench"}
+
+    circuit = pair_spec()                                                       # no device child: the count rule alone
+    assert stop_kinds(circuit, engine.children_of(circuit, [Prepared()], circuit.corner_ids)) == frozenset()
+    devices_only = [c for c in few_children if c.unit_kind == "device"]         # no testbench: nothing to stop before
+    assert stop_kinds(few, devices_only) == frozenset()
+
+
+def test_a_point_whose_device_fails_runs_no_testbench(tmp_path, capsys):
+    """Item 3: the fake EM pipeline, the count rule off. A point whose device violates its constraint holds its device
+    child only and names both testbenches in ``not_run``; one whose device passes runs every child, recorded as without
+    a schedule; the batch line counts the points the device stopped."""
+    spec = device_spec()
+    store, ran, emx, obs = run_devices(tmp_path / "on", spec)
+    by_f = {o.params["F"]: o for o in obs}
+
+    assert ran[:3] == [("20", "ind", None), ("20", "tb", None), ("20", "g", None)]          # the device first
+    whole = by_f["20"]
+    assert list(whole.children) == ["tb/nominal", "g/nominal", "ind/nominal"] and whole.status == "ok" and whole.feasible
+    assert whole.not_run == [] and whole.simulations == 4                  # EMX + 2 testbenches + the device's measurement
+
+    stopped = by_f["22"]
+    assert list(stopped.children) == ["ind/nominal"] and stopped.not_run == ["tb/nominal", "g/nominal"]
+    assert (stopped.status, stopped.feasible, stopped.fom, stopped.objective) == ("constraint_failed", False, None, None)
+    assert stopped.metrics == {"SRF_ind": 36e9} and stopped.constraint_penalty == pytest.approx(0.1 ** 2)
+    assert stopped.issues == ["nominal: SRF_ind gt 40e9 violated by 3.6e+10",
+                              "not simulated: 2 of 3 children (stopped after ind/nominal)"]
+    # the point-level runs (one EMX run, a miss) and the device's measurement, which the EM pipeline counts; no testbench
+    assert stopped.cache == {"emx": "miss"} and stopped.simulations == 2
+    assert [c for c in ran if c[0] == "22"] == [("22", "ind", None)]
+    assert not (store.root / "sims" / stopped.obs_id / "tb").exists()
+    again = by_f["24"]                                                     # the same geometry: EMX served from the cache
+    assert again.cache == {"emx": "hit"} and again.simulations == 1 and again.not_run == ["tb/nominal", "g/nominal"]
+    assert emx.calls == 3
+
+    fails_nf = by_f["26"]                                                  # a testbench's violation stops nothing here
+    assert list(fails_nf.children) == ["tb/nominal", "g/nominal", "ind/nominal"] and fails_nf.not_run == []
+    assert fails_nf.status == "constraint_failed" and fails_nf.issues == ["nominal: NF lt 9 violated by 9.5"]
+
+    out = capsys.readouterr().out
+    assert "[evaluate] step='evaluate': 2 of 4 points stopped early (2 at the device), 4 simulations not run" in out
+    step = last_step(store)
+    assert (step["stopped"], step["not_run"], step["simulations"]) == (2, 4, 4 + 2 + 1 + 4)
+
+    # the switch off: every child of every point, and the points the device did not stop are recorded as with the stop
+    off_store, off_ran, _, off = run_devices(tmp_path / "off", spec, stop_at_first_failure=False)
+    assert all(len(o.children) == 3 and o.not_run == [] for o in off) and len(off_ran) == 12
+    assert off_ran[:3] == [("20", "tb", None), ("20", "g", None), ("20", "ind", None)]      # the engine's order
+    assert {o.params["F"]: o.status for o in off} == {"20": "ok", "22": "constraint_failed", "24": "constraint_failed",
+                                                      "26": "constraint_failed"}
+    for obs_id in ("obs_0001", "obs_0004"):
+        assert json.dumps(line_of(store, obs_id)) == json.dumps(line_of(off_store, obs_id))
+    assert "stopped early" not in capsys.readouterr().out
+
+
+def test_several_devices_are_all_measured_before_the_point_stops(tmp_path):
+    """A device's failure stops the point before its first testbench; the other devices still run, at no simulation's
+    cost, so the record holds every device child and ``not_run`` every testbench child (N63 spec, 1.3)."""
+    spec = device_spec("ind", "xfm")
+    points = [Point({"F": "20", "W": "0.6u", "ind.od": "120", "xfm.od": "80"}, "user")]
+    _, ran, _, (o,) = run_devices(tmp_path, spec, points)
+    assert ran == [("20", "ind", None), ("20", "xfm", None)]
+    assert list(o.children) == ["ind/nominal", "xfm/nominal"] and o.not_run == ["tb/nominal", "g/nominal"]
+    assert o.status == "constraint_failed" and o.metrics == {"SRF_ind": 36e9, "SRF_xfm": 60e9}
+    assert o.issues[-1] == "not simulated: 2 of 4 children (stopped after ind/nominal)"
+
+
+def test_a_device_whose_measurement_fails_stops_the_point_unless_the_spec_says_false(tmp_path):
+    """A measurement that fails (``failed:measure``) stops the point as a violated constraint does, its status the
+    child's; under the spec's ``stop_at_first_failure: false`` every child of every point runs, the device's too."""
+    from ic_opt.eval.stage import StageFailure
+
+    class Unmeasurable(FakeMeasure):
+        def run(self, srfs, ctx):
+            if ctx.point.params["ind.od"] == "90":
+                raise StageFailure("device ind: no resonance found")
+            return super().run(srfs, ctx)
+
+    def run(project, spec):
+        store = RunStore(project)
+        ran: list = []
+        pipeline = [FakeEmx(), Unmeasurable(ran), Bench(ran)]
+        points = [Point({"F": "20", "W": "0.6u", "ind.od": od}, "user") for od in ("90", "120")]
+        return evaluate(spec, points, LocalExecutor(store.root / "sims"), store, pipeline=pipeline, parallel_jobs=1,
+                        limits=FAKE_HOST), ran
+
+    (lost, violates), ran = run(tmp_path / "on", device_spec())
+    assert lost.status == "failed:measure" and list(lost.children) == ["ind/nominal"]
+    assert lost.not_run == ["tb/nominal", "g/nominal"] and lost.metrics == {} and lost.simulations == 2
+    assert lost.issues == ["ind/nominal: device ind: no resonance found",
+                           "not simulated: 2 of 3 children (stopped after ind/nominal)"]
+    assert violates.status == "constraint_failed" and violates.not_run == ["tb/nominal", "g/nominal"]
+    assert ran == [("20", "ind", None)]                    # the second point's measurement; the first raised, no testbench ran
+    off, ran = run(tmp_path / "off", device_spec(**switch(False)))
+    assert [(o.status, list(o.children), o.not_run) for o in off] == [
+        ("failed:measure", ["tb/nominal", "g/nominal", "ind/nominal"], []),
+        ("constraint_failed", ["tb/nominal", "g/nominal", "ind/nominal"], [])]
+    assert len(ran) == 5                                   # 2 + 2 testbenches and the second point's measurement
+
+
+def test_the_plan_says_the_device_is_measured_first(tmp_path):
+    executor = LocalExecutor(tmp_path)
+    pipeline, _, _ = em_pipeline()
+    device_first = ("up to 4 simulations per point (the device measured first: a point whose device fails a constraint "
+                    "stops before any testbench simulation")
+    line = plan_shape(device_spec(), pipeline, "all", executor, None, FAKE_HOST)
+    assert line.startswith(f"(1 EMX runs + 2 testbench sims + 1 device measurements) = {device_first}) on local")
+    assert plan_shape(device_spec(), pipeline, "all", executor, None, FAKE_HOST, stop_at_first_failure=True).startswith(
+        f"(1 EMX runs + 2 testbench sims + 1 device measurements) = {device_first}; a point stops at the first simulation "
+        "that fails it) on local")
+    for spec, override in ((device_spec(**switch(False)), None), (device_spec(), False)):    # the spec's false, the override's
+        assert plan_shape(spec, pipeline, "all", executor, None, FAKE_HOST, override).startswith(
+            "(1 EMX runs + 2 testbench sims + 1 device measurements) = 4 simulations per point on local")
+
+
+def test_signoff_full_runs_the_testbenches_of_a_point_its_device_stops(tmp_path):
+    """Item 4: what the recipe's re-check passes to ``sim.evaluate`` (``_recheck_stop``): without ``full`` the device
+    stops the point, with ``full=True`` every corner of every testbench runs. (The recipe re-checks the feasible points
+    of its search, whose device metrics are the same at every corner, so its own re-check meets no such point.)"""
+    spec = device_spec(corners=[{"id": "tt"}, {"id": "ss"}])
+    failing = [Point({"F": "22", "W": "0.6u", "ind.od": "120"}, "user")]
+    for full, children in ((False, ["ind/nominal"]), (True, ["tb/tt", "tb/ss", "g/tt", "g/ss", "ind/nominal"])):
+        _, _, _, (o,) = run_devices(tmp_path / str(full), spec, failing, stop_at_first_failure=signoff._recheck_stop(spec, full))
+        assert list(o.children) == children and o.status == "constraint_failed", full
+        assert o.not_run == ([] if full else ["tb/tt", "tb/ss", "g/tt", "g/ss"]) and o.corners() == {"tt", "ss"}
+
+
+GOLDEN_LINE = {   # obs_0001 of run_batch(two_by_two()), recorded by the code before N-63 (bf25119), the clock taken out
+    "obs_id": "obs_0001", "params": {"F": "20", "W": "0.6u"}, "origin": "user",
+    "children": {f"{tb}/{c}": {"unit": tb, "corner": c, "status": "ok", "metrics": {name: value},
+                               "issues": [], "sim_dir": f".icopt/sims/obs_0001/{tb}/{c}", "seconds": 0.0}
+                 for tb, c, name, value in (("tb", "tt", "NF", 9.5), ("tb", "ss", "NF", 9.6), ("g", "tt", "G", 2.0),
+                                            ("g", "ss", "G", 2.0))},
+    "metrics": {"NF": 9.6, "G": 2.0}, "fom": 7.6, "objective": None, "feasible": False,
+    "constraint_penalty": 0.004444444444444438, "status": "constraint_failed",
+    "issues": ["tt: NF lt 9 violated by 9.5", "ss: NF lt 9 violated by 9.6"], "spec_fingerprint": "a1e5b36c782a4bb4",
+    "pipeline_fingerprint": "5d0d682d55e76309", "step": "evaluate", "cache": {}, "simulations": 4, "started_at": "t",
+    "finished_at": "t"}
+
+
+def test_a_circuit_only_run_below_the_count_rule_builds_no_schedule_and_records_as_before(tmp_path, monkeypatch):
+    """Item 5: no device child and 4 simulations per point -- no schedule is built, the children run in the engine's
+    order, and a point a stop would have cut short is recorded field by field as before N-63."""
+    built = []
+    init = Schedule.__init__
+    monkeypatch.setattr(Schedule, "__init__", lambda self, *args, **kwargs: built.append(args) or init(self, *args, **kwargs))
+    store, stage, _ = run_batch(tmp_path, two_by_two())
+    assert built == []
+    for f in ("20", "22", "24", "26", "28"):
+        assert [c[1:] for c in stage.ran if c[0] == f] == [("tb", "tt"), ("tb", "ss"), ("g", "tt"), ("g", "ss")]
+    line = line_of(store, "obs_0001")
+    assert list(line) == list(GOLDEN_LINE)
+    for name, value in GOLDEN_LINE.items():
+        assert line[name] == value, name
+
+
+def test_the_digest_and_the_report_count_the_points_a_device_stopped(tmp_path):
+    """Item 6: a store with points stopped at the device (F=22, 24) and one stopped at a testbench (F=26, the switch on)."""
+    from ic_opt.sim.corner import stopped_at_device
+
+    spec = device_spec()
+    store, _, _, obs = run_devices(tmp_path, spec, stop_at_first_failure=True)
+    assert [o.not_run for o in obs] == [[], ["tb/nominal", "g/nominal"], ["tb/nominal", "g/nominal"], ["g/nominal"]]
+    assert [stopped_at_device(spec, o) for o in obs] == [False, True, True, False]
+    analyze.digest(spec, obs, store)
+    d = json.loads((store.reports_dir() / "digest.json").read_text(encoding="utf-8"))
+    counts = d["counts"]
+    assert (counts["stopped_early"], counts["stopped_at_device"], counts["simulations_not_run"]) == (3, 2, 5)
+    assert counts["stopped_at"] == {"ind/nominal": 2, "tb/nominal": 1}
+    md = (store.reports_dir() / "digest.md").read_text(encoding="utf-8")
+    assert "· 3 stopped early (2 at the device; 5 simulations not run)" in md
+    assert "stopped early: 3 points; at ind/nominal: 2, tb/nominal: 1" in md
+    report = analyze.report(spec, obs, store).read_text(encoding="utf-8")     # judged on what ran: the device's SRF
+    assert "- binding constraints: NF < 9 dB (1 of 4), SRF_ind > 40 GHz (2 of 4)" in report
+    assert "- SRF_ind > 40 GHz: pass 2/4, best margin 20 GHz (obs_0001), worst -4 GHz (obs_0002)" in report

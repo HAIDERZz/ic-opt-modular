@@ -289,8 +289,9 @@ class Simulator(Model):
     keep_failed_runs: bool = True
     keep_successful_runs: bool = True
     operating_points: bool = True        # T17.5: add the statements Spectre needs to write them, read them per child
-    # T17.8: a point stops at its first child that fails it (ic_opt.eval.schedule); None (T17.9): when it runs at several
-    # corners (blocks.evaluate.stop_wanted)
+    # T17.8: a point stops at its first child that fails it (ic_opt.eval.schedule); None: a testbench stops it when a point
+    # needs 20 or more simulations (T17.9 revision 2, blocks.evaluate.stop_wanted), an EM or library device -- measured
+    # first -- whatever the count (N-63, blocks.evaluate.stop_kinds); false: nothing stops a point
     stop_at_first_failure: bool | None = None
 
     engine: Literal["spectre_x"] = "spectre_x"

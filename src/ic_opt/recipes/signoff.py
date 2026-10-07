@@ -27,12 +27,13 @@ def main(run: Run, *, corner: str = "tt", budget: int = 60, batch: int = 10, top
          current: bool = True, start: str | None = None, full: bool = False, rounds: int = 1, tighten: float = 1.0) -> None:
     """``current`` / ``start`` as for ``optimize``, for the search step at ``corner``. ``strategy``: ``auto`` searches
     with ``metric_gp`` (one corner) unless the spec has EM devices (then ``openbox_gp_eic``). Unless
-    ``simulator.stop_at_first_failure`` says otherwise, a point of the search, at one corner, runs every simulation, and a
-    re-checked point stops at its first failing corner whatever the number of corners (:func:`_recheck_stop`; T17.8: on
-    the multi-corner benchmark 550 to 1340 of 3100 simulations per run went to points already known to fail. The
-    re-check verifies, it teaches no model, so the stop's only effect is the saving -- the default of
-    ``blocks.evaluate.stop_wanted``, made for a search, does not apply here); ``full=True`` simulates every corner of
-    every re-checked point, for a complete per-corner table.
+    ``simulator.stop_at_first_failure`` says otherwise, a point of the search, at one corner, runs every simulation --
+    but one whose EM or library device fails a constraint runs none, its device measured first (N-63,
+    ``blocks.evaluate.stop_kinds``) -- and a re-checked point stops at its first failing corner whatever the number of
+    corners (:func:`_recheck_stop`; T17.8: on the multi-corner benchmark 550 to 1340 of 3100 simulations per run went to
+    points already known to fail. The re-check verifies, it teaches no model, so the stop's only effect is the saving --
+    the default of ``blocks.evaluate.stop_wanted``, made for a search, does not apply here); ``full=True`` simulates every
+    corner of every re-checked point, for a complete per-corner table, whatever its devices measured.
 
     Rounds (T18.4). ``rounds=1`` (the default) is the recipe above, as it was. With ``rounds`` above 1, after each
     re-check -- every round's re-check is under the spec as written, the user's constraints:
