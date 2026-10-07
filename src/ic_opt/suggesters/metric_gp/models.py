@@ -7,6 +7,26 @@ and a few dozen points, where maximum likelihood picks short length scales and m
 
 Posterior quantities for the batch selection (section 8) are computed here from the fitted kernel, on the latent
 function (the white-noise term left out): the mean over the candidates and their joint covariance.
+
+The search for a metric's hyperparameters, and why it is still sklearn's (N-81, ``docs/refactor/N81_FAST_GP_SPEC.md``).
+sklearn's regressor hands the MAP optimizer its log marginal likelihood and gradient, and for the gradient builds an
+``(n, n, parameters)`` array at every evaluation: most of a proposal's time on a real circuit's history (12 metrics, 20
+variables) once a few hundred points are in it. :class:`Likelihood` is the same function computed without that array;
+with :data:`DIRECT_LIKELIHOOD` the search runs on it (the same kernel, bounds, priors, starts and random draws, the same
+``alpha`` on the diagonal) and the regressor is fitted once at the hyperparameters found, so that everything read from
+a fitted model is computed as before. Its value is sklearn's to the last bit and its gradient to rounding, but L-BFGS-B
+amplifies the gradient's rounding from one iteration to the next, and an ill-conditioned kernel (a noise level near
+1e-8) moves its stop by an iteration: the optimum is the same only to the optimizer's own tolerance. Measured (the
+spec's section 5): on 34 recorded metric_gp runs, 1131 fits of up to 92 points, 82 % of the hyperparameter vectors equal
+sklearn's to 1e-8 in log and 99.3 % to 1e-4, one fit reached another local optimum (a higher posterior), and all 249
+proposals were the same; on synthetic runs of 100 to 400 points (four benchmark problems, 28 proposals at one BLAS
+thread), where 70 of 91 hyperparameter vectors agree to 1e-4 and the largest difference is 1e-3, two proposals
+differed -- at 300 points two points of a batch swapped places, at 350 points three of ten were others.
+(sklearn's own search is not that stable either: on the same 28 histories its proposal changed once when only the BLAS
+threads went from one to two, five of ten points.) A proposal must not change -- the user's condition for N-81 -- so the
+default stays sklearn's search. The direct one takes 4 times less CPU on 300 points and 8 variables at one thread
+(1.85 s against 0.47 s), 3.3 to 5.9 times less for a proposal's fits at 400 points (2 to 5 metrics, 6 to 20 variables).
+Beyond a few hundred points the two searches may differ more (the research measured 0.005 in log at 775 values).
 """
 
 from __future__ import annotations
@@ -16,8 +36,9 @@ import warnings
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.linalg import solve_triangular
+from scipy.linalg import LinAlgError, cho_solve, cholesky, solve_triangular
 from scipy.optimize import minimize
+from scipy.spatial.distance import pdist, squareform
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessClassifier, GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Kernel, Matern, WhiteKernel
@@ -29,6 +50,9 @@ NOISE = (-4.0, 1.0)                  # the noise level is log-normal: ln(noise) 
 NOISE_PRIOR = (NOISE[0] - NOISE[1] ** 2, NOISE[1])     # what the MAP estimate adds, in terms of ln(noise): see length_prior
 PRIOR_DRAWS = 2                      # optimizer starts drawn from the prior, after its mode
 LOG_TARGET_SPAN = 100                # max / min of all-positive values from which a metric is modelled as log10
+SK_ALPHA = 1e-10                     # added to the kernel's diagonal: GaussianProcessRegressor(alpha=1e-10), as always
+SQRT5 = math.sqrt(5.0)
+DIRECT_LIKELIHOOD = False            # N-81: True searches the hyperparameters on Likelihood; False (default) on sklearn's
 
 
 def length_prior(d: int) -> tuple[float, float]:
@@ -91,27 +115,101 @@ class MetricModel:
 
 
 def fit_metric(name: str, x: np.ndarray, y: np.ndarray, rng: np.random.Generator) -> MetricModel:
-    """The model of one metric from its training inputs (active unit coordinates) and finite values."""
+    """The model of one metric from its training inputs (active unit coordinates) and finite values: sklearn's
+    regressor with the hyperparameters :func:`map_optimizer` finds, searching them on sklearn's own likelihood and
+    gradient (the regressor's fit) -- or, with :data:`DIRECT_LIKELIHOOD`, on :class:`Likelihood`, the regressor then
+    fitted once at them (``optimizer=None``)."""
     if len(y) < 2 or np.all(y == y[0]):
         return MetricModel(name, None, None, float(y[0]) if len(y) else math.nan)
     transform = Transform.of(y)
+    z = transform.forward(y)
     d = x.shape[1]
-    mode, _ = length_prior(d)
-    kernel = (ConstantKernel(1.0, CONSTANT_BOUNDS) * Matern(np.full(d, math.exp(mode)), LENGTH_BOUNDS, nu=2.5)
-              + WhiteKernel(math.exp(NOISE_PRIOR[0]), NOISE_BOUNDS))
-    gp = GaussianProcessRegressor(kernel, alpha=1e-10, optimizer=map_optimizer(kernel, d, rng), normalize_y=False,
+    kernel = metric_kernel(d)
+    if DIRECT_LIKELIHOOD:
+        theta, value = map_optimizer(kernel, d, rng)(Likelihood(x, z), kernel.theta, kernel.bounds)
+        gp = GaussianProcessRegressor(kernel.clone_with_theta(theta), alpha=SK_ALPHA, optimizer=None, normalize_y=False,
+                                      copy_X_train=False).fit(x, z)
+        gp.log_marginal_likelihood_value_ = -value  # what sklearn's own search leaves there: the optimum's log posterior
+        return MetricModel(name, gp, transform, math.nan)
+    gp = GaussianProcessRegressor(kernel, alpha=SK_ALPHA, optimizer=map_optimizer(kernel, d, rng), normalize_y=False,
                                   copy_X_train=False)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ConvergenceWarning)     # a hyperparameter at its bound: the bounds are the spec's
-        gp.fit(x, transform.forward(y))
+        gp.fit(x, z)
     return MetricModel(name, gp, transform, math.nan)
+
+
+def metric_kernel(d: int) -> Kernel:
+    """The metrics' kernel for ``d`` active variables at the priors' modes: ConstantKernel x Matern 5/2 with one length
+    scale per variable, plus WhiteKernel. Its ``theta``: ln constant, the ``d`` ln length scales, ln noise level (one
+    length scale when ``d`` is 1)."""
+    mode, _ = length_prior(d)
+    return (ConstantKernel(1.0, CONSTANT_BOUNDS) * Matern(np.full(d, math.exp(mode)), LENGTH_BOUNDS, nu=2.5)
+            + WhiteKernel(math.exp(NOISE_PRIOR[0]), NOISE_BOUNDS))
+
+
+class Likelihood:
+    """The negative log marginal likelihood of :func:`metric_kernel`'s Gaussian process on standardized values ``z``
+    and its gradient in ``theta`` (ln constant, ln length scales, ln noise level): what sklearn's regressor hands its
+    optimizer as ``obj_func`` (``alpha`` :data:`SK_ALPHA`), +inf and a zero gradient where the kernel matrix is not
+    positive definite.
+
+    Computed here because sklearn's way is what a proposal's time went into: at every evaluation it builds the kernel's
+    gradient as an ``(n, n, parameters)`` array, from an ``(n, n, d)`` array of squared differences per variable, and
+    contracts it with the ``(n, n)`` matrix ``W = alpha alpha^T - K^-1``. Here the squared differences per variable are
+    computed once, for the pairs ``i < j``, and every gradient entry is one sum over the pairs: for the Matern 5/2
+    kernel ``k = c (1 + t + t^2 / 3) exp(-t)``, ``t = sqrt5 r``, ``dk / d ln l_m = c 5/3 (1 + t) exp(-t) (x_im - x_jm)^2
+    / l_m^2``. Everything up to ``W`` is sklearn's own arithmetic (the kernel matrix from ``pdist`` of the scaled inputs,
+    its Cholesky factor, ``alpha``, ``K^-1`` by ``cho_solve``), so the likelihood is sklearn's to the last bit and the
+    kernel matrix fails to factor exactly where sklearn's does. The gradient differs from sklearn's by the order of its
+    sums only: 1e-14 of its largest entry at the priors' mode, up to 1e-6 where the noise level nears its bound of 1e-8
+    (the gradient is then what is left of sums of terms as large as ``K^-1``'s entries, 1e8, in either computation).
+    The sums over pairs are numpy's (``einsum``), not BLAS calls whose order of summation changes with the number of
+    threads."""
+
+    def __init__(self, x: np.ndarray, z: np.ndarray) -> None:
+        self.x = np.asarray(x, dtype=float)
+        self.y = np.asarray(z, dtype=float)[:, np.newaxis]
+        self.n = len(self.x)
+        # (d, pairs): (x_im - x_jm)^2 for the pairs i < j, in the order of pdist and squareform
+        self.squared = np.stack([pdist(self.x[:, m : m + 1], "sqeuclidean") for m in range(self.x.shape[1])])
+
+    def __call__(self, theta: np.ndarray, eval_gradient: bool = True) -> tuple[float, np.ndarray]:
+        """``(-log marginal likelihood, its gradient)`` at ``theta``; the gradient is always computed (the optimizer
+        asks for it at every evaluation)."""
+        n = self.n
+        c, length, s = np.exp(theta[0]), np.exp(theta[1:-1]), np.exp(theta[-1])
+        t = pdist(self.x / length, metric="euclidean") * SQRT5         # sklearn's Matern: distances of the scaled inputs
+        decay = np.exp(-t)
+        cm = c * ((1.0 + t + t**2 / 3.0) * decay)                       # the kernel over the pairs
+        k = squareform(cm, checks=False)
+        k[np.diag_indices(n)] = c + s + SK_ALPHA
+        try:
+            low = cholesky(k, lower=True, check_finite=False)
+        except LinAlgError:
+            return math.inf, np.zeros_like(theta)
+        alpha = cho_solve((low, True), self.y, check_finite=False)
+        lml = -0.5 * np.einsum("ik,ik->k", self.y, alpha)
+        lml -= np.log(np.diag(low)).sum()
+        lml -= n / 2 * np.log(2 * np.pi)
+        w = np.outer(alpha, alpha)
+        w -= cho_solve((low, True), np.eye(n), check_finite=False)   # W = alpha alpha^T - K^-1
+        w_pairs = squareform(w + w.T, checks=False)                   # W_ij + W_ji, i < j: K^-1 is symmetric to rounding
+        w_diag = np.diag(w)
+        grad = np.empty_like(theta)
+        grad[0] = 0.5 * (float(np.einsum("p,p->", w_pairs, cm)) + c * float(w_diag.sum()))
+        slope = w_pairs * ((c * (5.0 / 3.0)) * (1.0 + t) * decay)
+        grad[1:-1] = 0.5 * np.einsum("mp,p->m", self.squared, slope) / length**2
+        grad[-1] = 0.5 * s * float(w_diag.sum())
+        return -float(lml.sum()), -grad
 
 
 def map_optimizer(kernel: Kernel, d: int, rng: np.random.Generator):
     """An ``optimizer`` for sklearn's Gaussian processes that minimizes the negative log marginal likelihood sklearn
     hands it minus the log prior: normal priors on the log length scales and the log noise level, none on the constant.
     Starts at the prior's mode (the kernel's initial values), then :data:`PRIOR_DRAWS` draws from the prior, L-BFGS-B
-    from each; the best is kept."""
+    from each; the best is kept. With :data:`DIRECT_LIKELIHOOD` the metrics' fit hands it :class:`Likelihood` in place
+    of sklearn's ``obj_func``."""
     mean, std = _prior_vectors(kernel, d)
     has_prior = ~np.isnan(mean)
 
