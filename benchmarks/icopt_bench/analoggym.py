@@ -38,6 +38,7 @@ value returned, not on some hidden magnitude):
 
 from __future__ import annotations
 
+import enum
 import functools
 import json
 import math
@@ -124,22 +125,37 @@ def _single_threaded_env() -> dict[str, str]:
     return env
 
 
-def _run_ngspice(cir: Path, log: Path, timeout_s: float) -> bool:
+class NgspiceOutcome(enum.Enum):
+    """How one ngspice run ended. Truthy only for ``FINISHED``, so a caller that only asks "did it work" still reads
+    right; a caller that must tell a timeout from an ordinary failure compares the member."""
+    FINISHED = "finished"        # exit code 0: the log and every file it wrote are complete
+    FAILED = "failed"            # ended by itself with a nonzero exit code (or a signal of its own)
+    TIMED_OUT = "timed_out"      # still running at the timeout and killed: a file it was writing is cut off wherever
+                                 # the kill found it (mid-line, or exactly at a line boundary, which reads as a
+                                 # short, plausible result)
+
+    def __bool__(self) -> bool:
+        return self is NgspiceOutcome.FINISHED
+
+
+def _run_ngspice(cir: Path, log: Path, timeout_s: float) -> NgspiceOutcome:
     """Runs ``ngspice -b -o <log> <cir>`` in its own session, forced single-threaded; on timeout, kills the whole
-    process group. Returns whether the run finished with exit code 0 (a nonzero exit, a timeout or a crash are all
-    a failed run: only a clean exit means the log and any wrdata files are trustworthy)."""
+    process group. Returns how it ended (``NgspiceOutcome``): only ``FINISHED`` means the log and any wrdata files are
+    trustworthy; ``FAILED`` (nonzero exit, crash) and ``TIMED_OUT`` are a failed run, and ``TIMED_OUT`` additionally
+    means a file being written at the kill is cut off."""
     argv = [_ngspice(), "-b", "-o", str(log), str(cir)]
     process = subprocess.Popen(argv, cwd=cir.parent, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                 start_new_session=True, env=_single_threaded_env())
     try:
-        return process.wait(timeout=timeout_s) == 0
+        code = process.wait(timeout=timeout_s)
     except subprocess.TimeoutExpired:
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except OSError:
             pass
         process.wait()
-        return False
+        return NgspiceOutcome.TIMED_OUT
+    return NgspiceOutcome.FINISHED if code == 0 else NgspiceOutcome.FAILED
 
 
 _FAILED_RE = re.compile(r"^\s*(\w+)\s*=\s*failed", re.IGNORECASE | re.MULTILINE)
@@ -363,7 +379,7 @@ def simulate(circuit: Circuit, params: dict[str, str], *, workdir: Path | None =
                           ("ldo_ac", _LDO_AC)]
 
         acdc_log = workdir / "acdc.log"
-        acdc_ok = _run_ngspice(acdc, acdc_log, timeout_s)
+        acdc_ok = bool(_run_ngspice(acdc, acdc_log, timeout_s))
         log_text = acdc_log.read_text(errors="ignore") if acdc_log.exists() else ""
         metrics, missing, any_present = _extract(workdir, log_text, acdc_files)
         if not acdc_ok and not any_present:
@@ -374,8 +390,15 @@ def simulate(circuit: Circuit, params: dict[str, str], *, workdir: Path | None =
             acdc_child = child("acdc", metrics)
 
         tran_log = workdir / "tran.log"
-        tran_ok = _run_ngspice(tran, tran_log, timeout_s)
-        if circuit.kind == "amplifier":
+        tran_run = _run_ngspice(tran, tran_log, timeout_s)
+        tran_ok = bool(tran_run)
+        if tran_run is NgspiceOutcome.TIMED_OUT:
+            # A transient simulation that hit its timeout is a failed simulation, and nothing it wrote is read: the
+            # waveform (or the scalar file of an LDO) is cut off wherever the kill found it -- mid-line (ragged
+            # rows) or exactly at a line boundary (a short waveform that analyses like a result) -- and neither
+            # can be told from a finished one.
+            tran_child = child("tran", {}, failed="ngspice", issue=f"ngspice timed out after {timeout_s:g} seconds")
+        elif circuit.kind == "amplifier":
             wave = _read_wave(workdir / "tran_wave")
             if not tran_ok and wave is None:
                 tran_child = child("tran", {}, failed="ngspice")

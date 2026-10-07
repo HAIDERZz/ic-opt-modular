@@ -53,11 +53,13 @@ def make_spec(name: str, *, variables: Sequence[dict], metrics: Sequence[dict], 
 
 
 def child(unit: str, metrics: dict[str, float], *, missing: Sequence[str] = (), failed: str | None = None,
-          seconds: float = 0.0) -> ChildResult:
+          seconds: float = 0.0, issue: str | None = None) -> ChildResult:
     """One unit's result at the single condition of stage 1. ``missing`` names metrics that produced no value (the unit
-    ran: ``metric_failed``); ``failed`` names the stage that did not run to its end (``failed:<stage>``)."""
+    ran: ``metric_failed``); ``failed`` names the stage that did not run to its end (``failed:<stage>``), and ``issue``
+    replaces that stage's default issue line ("<stage> did not finish") with a more specific one."""
     if failed is not None:
-        return ChildResult(unit=unit, corner=None, status=f"failed:{failed}", issues=[f"{failed} did not finish"], seconds=seconds)
+        return ChildResult(unit=unit, corner=None, status=f"failed:{failed}",
+                           issues=[issue or f"{failed} did not finish"], seconds=seconds)
     if missing:
         return ChildResult(unit=unit, corner=None, status="metric_failed", metrics=dict(metrics),
                            issues=[f"metric {m} failed: no_value:nil" for m in missing], seconds=seconds)
