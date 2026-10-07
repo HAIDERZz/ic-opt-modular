@@ -525,13 +525,20 @@ rows, k +1.2 %; a tap drawn on its winding's own metal cost about 3 % of Q, a
 via-stack tap about 10 %. So geometries are found on the untapped tables, and
 a circuit that binds a tapped device needs that device's own S-parameters.
 `lib_tap` builds them: for the rows of one window of an untapped
-`clean_port_xfm_bs` table, the same geometry with taps, through real EMX, row
-for row, adopted into the library as a new table when asked.
+`clean_port_xfm_bs` or `clean_port_xfm_ms` table, the same geometry with taps,
+through real EMX, row for row, adopted into the library as a new table when
+asked.
 
 `taps` says which taps: `primary` / `secondary` is `"same"` (a same-metal tap,
 on the winding's own metal), a metal below the winding (a via-stack tap) or
 null (no tap on that winding); the widths are optional and apply to
-same-metal taps only ([devices.md](devices.md), xfm_bs). `measure` is
+same-metal taps only ([devices.md](devices.md), xfm_bs). On an xfm_ms table
+the single-turn primary takes either tap; the multi-turn secondary is tapped
+as an inductor is, through a via stack to a metal at least two levels below
+it (its crossunder holds the level in between), so its `"same"` and its width
+are refused before anything is built ([devices.md](devices.md), xfm_ms: both
+taps together need an odd `secondary_turns`, which the preflight shows as a
+refusal of the even rows). `measure` is
 required: `"grounded"`, both taps AC-grounded as a mixer uses them -- the
 device's topology lists the tap ports under `grounded`. `"floating"` (taps
 open) is refused for now: a topology holds every port in a drive or at 0 V.
@@ -550,7 +557,12 @@ three changes and no other:
 - the ground fixture stays where the row's was: on the conductor the row's
   build recorded beside its GDS (the selected rows of a part must agree),
   under `metal_rule: free`, or `shared` when a via-stack tap's stack passes
-  through that metal ([devices.md](devices.md), ground fixture);
+  through that metal ([devices.md](devices.md), ground fixture). A via-stack
+  tap that ends on that metal would put its port lead there, which the
+  fixture refuses: an xfm_ms table built with `ground_fixture.metal: auto`
+  whose primary sits right above its secondary has its fixture exactly two
+  levels below the secondary, the highest metal the secondary's tap may use,
+  so a twin of it taps the secondary at least one level lower (`shared`);
 - this run's `threads=`, `memory_gb=` and `process_file=`, which are not
   physics: the twins are the library's generation.
 

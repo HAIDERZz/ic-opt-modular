@@ -7,11 +7,14 @@ compared with its row and adopted into the library as a new table.
 Why: center taps move L and k by a few per cent at most, so geometries are found on the untapped tables; but taps cost Q
 (a same-metal tap about 3 %, a via-stack tap about 10 %), so a circuit that binds a tapped device needs that device's own
 S-parameters. lib_tap builds them for the rows of one window of an untapped table, row for row. The stratum's generator
-must be ``clean_port_xfm_bs``.
+must be ``clean_port_xfm_bs`` or ``clean_port_xfm_ms``.
 
 ``taps`` (JSON): ``{"primary": "same", "secondary": "same", "primary_width_um": 3, "secondary_width_um": 3, "measure":
 "grounded"}``. ``primary`` / ``secondary``: ``"same"`` (a same-metal tap, on the winding's own metal), a metal below the
 winding (a via-stack tap) or null (no tap on that winding); at least one tap. The widths: optional, same-metal taps only.
+On an xfm_ms table the primary is the single-turn winding and takes either tap; the secondary is the multi-turn winding,
+whose tap reaches its midpoint turn through a via stack to a metal at least two levels below it (the crossunder holds the
+level in between), so its ``"same"`` and its width are refused (a lead on the winding's own metal would cross its turns).
 ``measure`` (required): ``"grounded"``, both taps AC-grounded as a mixer uses them (the topology's ``grounded`` lists the
 tap ports). ``"floating"`` (taps open) is refused for now: a device's topology holds every port in a drive or at 0 V.
 
@@ -24,11 +27,13 @@ A twin is its row's geometry (the row's own parameters) built with the spec of t
 profile, fixed fields, EMX physics -- and three changes. The taps: the tap metals (``"same"`` is the winding's metal),
 the widths, the tap ports added (``CTP``, ``CTS``) and grounded. The ground fixture stays where the row's was: on the
 conductor the row's build recorded (``geometry_manifest.json`` beside its GDS; the selected rows of a part must agree),
-under ``metal_rule: free`` -- ``shared`` when a via-stack tap's stack passes through that metal. And this run's
-``threads`` / ``memory_gb`` / ``process_file``, which are not physics: the twins are the library's generation. Nothing
-else changes, the device included: a tap port sits between the other winding's two ports, so with a small opening its
-stub comes close to theirs on the fixture's metal; that spacing is the fixture's own and the DRC gate exempts it on a
-metal chosen under ``free``, while stubs that would touch are refused (``drc_audit.fixture_exemptions``,
+under ``metal_rule: free`` -- ``shared`` when a via-stack tap's stack passes through that metal; a via-stack tap that
+ends on that metal would put its port lead there, which the fixture refuses (the preflight lists it: an xfm_ms table
+built with ``auto`` whose primary sits right above its secondary has its fixture exactly two levels below the
+secondary, so the secondary's tap has to go lower). And this run's ``threads`` / ``memory_gb`` / ``process_file``, which are not physics: the twins are the library's
+generation. Nothing else changes, the device included: a tap port sits between the other winding's two ports, so with a
+small opening its stub comes close to theirs on the fixture's metal; that spacing is the fixture's own and the DRC gate
+exempts it on a metal chosen under ``free``, while stubs that would touch are refused (``drc_audit.fixture_exemptions``,
 ``fixture.add_ground_fixture``). Each twin's ``origin`` is ``tap:<part>:<obs id>``, the row it is the twin of.
 
 Preflight, always and all that ``--plan`` does: every twin is drawn by the generator and passed through the pcell stage's
@@ -89,7 +94,8 @@ from ic_opt.space import Point
 from ic_opt.spec import Spec
 from ic_opt.stages.em_chain import DrcRefused, build_device, em_only_pipeline
 
-SUPPORTED = "clean_port_xfm_bs"                     # the one generator whose tapped twins this version builds
+SUPPORTED = ("clean_port_xfm_bs", "clean_port_xfm_ms")    # the generators whose tapped twins this version builds
+MULTI_TURN_SECONDARY = "clean_port_xfm_ms"            # its secondary's tap is ind_sym's: a via stack, two levels down at least
 TAP_KEYS = ("primary", "secondary", "primary_width_um", "secondary_width_um", "measure")
 MEASURES = ("grounded", "floating")
 WINDINGS = (("primary", "CTP"), ("secondary", "CTS"))  # the generator's tap port order
@@ -373,6 +379,28 @@ def _peak_gb(log: Path) -> float | None:
     return float(value) * _GB[unit]
 
 
+def _multi_turn_tap(part: str, stack: tuple[str, ...], want: str, c: int, h: int, width: float | None) -> None:
+    """xfm_ms's secondary tap (T19.6): the multi-turn winding is tapped as ind_sym taps an inductor -- a via stack from the
+    midpoint turn down to a metal at least two levels below the winding, since its crossunder holds the level in between
+    and crosses the tap's lead path. A same-metal lead would cross the winding's own turns, and a via-stack tap keeps the
+    winding width: refused before anything is built, with why."""
+    winding = metal_stack.name_in(stack, h)
+    lowest = metal_stack.name_in(stack, h - 2) if h > 2 else None
+    where = f"{lowest} or lower" if lowest is not None else "none on this stack"
+    if c == h:
+        raise TapError(f"taps.secondary {want!r} ({winding}, the secondary's own metal): part {part} is an xfm_ms, whose secondary "
+                       "is its multi-turn winding; its tap reaches the midpoint turn through a via stack (ind_sym's tap), and a "
+                       "lead on the winding's own metal would cross its turns: give a metal at least two levels below the "
+                       f"secondary ({where}), or null")
+    if c > h - 2:
+        raise TapError(f"taps.secondary {want!r} ({metal_stack.name_in(stack, c)}) must sit at least two levels below part "
+                       f"{part}'s secondary metal {winding}: the multi-turn secondary's crossunder occupies "
+                       f"{metal_stack.name_in(stack, h - 1)} and crosses the tap's lead path ({where})")
+    if width is not None:
+        raise TapError(f"taps.secondary_width_um: part {part} is an xfm_ms, whose secondary tap is a via-stack tap (ind_sym's), "
+                       "which keeps the winding width; a tap width applies to a same-metal tap only (the primary's)")
+
+
 def twins_of_part(run: Run, lib: query.Library, part: str, rows: list[Selected], taps: Taps, *, threads, memory_gb,
                   process_file) -> Twins:
     """The twin spec of one part (its spec with the taps, the row's fixture kept, this run's EMX machine facts) and the
@@ -381,8 +409,8 @@ def twins_of_part(run: Run, lib: query.Library, part: str, rows: list[Selected],
     (device,) = source.devices
     if source.em is None:
         raise TapError(f"part {part}: its spec has no em section, the EMX settings its twins are simulated with")
-    if device.generator != SUPPORTED:
-        raise TapError(f"part {part}: generator {device.generator!r}; lib_tap builds tapped twins of {SUPPORTED} only")
+    if device.generator not in SUPPORTED:
+        raise TapError(f"part {part}: generator {device.generator!r}; lib_tap builds tapped twins of {' and '.join(SUPPORTED)} only")
     present = [k for k in ("ct_primary_metal", "ct_secondary_metal") if device.fixed.get(k) is not None]
     if present or any(p.upper().startswith("CT") for p in device.ports):
         raise TapError(f"part {part} is tapped already ({', '.join(present) or 'ports ' + str(device.ports)}): lib_tap makes "
@@ -406,6 +434,8 @@ def twins_of_part(run: Run, lib: query.Library, part: str, rows: list[Selected],
             raise TapError(f"taps.{winding} {want!r} ({metal_stack.name_in(stack, c)}) sits above part {part}'s {winding} "
                            f"metal {metal_stack.name_in(stack, h)}: a tap runs on its winding's own metal (\"same\") or "
                            "below it (a via-stack tap)")
+        if winding == "secondary" and device.generator == MULTI_TURN_SECONDARY:
+            _multi_turn_tap(part, stack, want, c, h, taps.width(winding))
         if c < h:
             if taps.width(winding) is not None:
                 raise TapError(f"taps.{winding}_width_um applies to a same-metal tap only; taps.{winding} {want!r} "
@@ -706,8 +736,8 @@ def main(run: Run, *, library: str, stratum: str, taps, window=None, rows=None, 
     if stratum not in lib.manifest.strata:
         raise TapError(f"no stratum {stratum!r} in {lib.root / manifest.MANIFEST}; have {lib.strata()}")
     rule = lib.manifest.strata[stratum]
-    if rule.generator != SUPPORTED:
-        raise TapError(f"stratum {stratum} is {rule.generator}; lib_tap builds tapped twins of {SUPPORTED} tables only")
+    if rule.generator not in SUPPORTED:
+        raise TapError(f"stratum {stratum} is {rule.generator}; lib_tap builds tapped twins of {' and '.join(SUPPORTED)} tables only")
     win = parse_window(window) if window is not None else None
     if win is not None:
         selected, origin_text = select_window(lib, stratum, win), win.text()
@@ -755,7 +785,7 @@ def main(run: Run, *, library: str, stratum: str, taps, window=None, rows=None, 
              + ("; NOT ENOUGH: raise budget.max_simulations in its spec.yaml" if short else ""))
     if adopt is not None:
         text = (lib.root / manifest.MANIFEST).read_text(encoding="utf-8")
-        how = ("appended to library.yaml (backed up first)" if _appended(text, adopt, {"generator": SUPPORTED}) is not None else
+        how = ("appended to library.yaml (backed up first)" if _appended(text, adopt, {"generator": rule.generator}) is not None else
                f"library.yaml cannot take it as appended text: the entry goes to {adopt}.stratum.yaml")
         run.note(f"lib_tap: adopt as {adopt}: part stores " + ", ".join(f"{adopt}__{t.part}" for t in twins)
                  + f" in {lib.root}, the stratum {how}")

@@ -4,7 +4,11 @@ A small transformer library built through the real em_only chain on demo_6m (the
 on ``auto``, which lands on M4): part ``xfm`` with 8 um openings and part ``xfm_narrow`` with a 1.55 um secondary opening,
 where a 3 um same-metal primary tap's stub comes 0.05 um from the secondary's two stubs (M4's min space is 0.1 um). The
 fake EMX (``fakes.coupled_snp``) answers with a coupled pair whose L and k follow the geometry and whose tap costs 3 % of
-resistance."""
+resistance.
+
+T19.6 (``docs/refactor/T19_6_MS_SAME_METAL_TAP_SPEC.md``): lib_tap on an xfm_ms table, a second small library on demo_6m
+(the single-turn primary on M6, the multi-turn secondary on M5, its crossunder on M4): part ``ms`` with the ground fixture
+on ``auto``, which lands on M3, and part ``ms_m1`` with the default fixture, on the bottom metal."""
 from __future__ import annotations
 
 import json
@@ -410,7 +414,8 @@ def test_calls_that_cannot_be_carried_out_are_refused_with_what_to_change(built,
         return params
 
     cases = [
-        (call(library=str(ind), stratum="ind_demo", taps=SAME, window=window()), "stratum ind_demo is clean_port_ind_sym; lib_tap builds tapped twins of clean_port_xfm_bs tables only"),
+        (call(library=str(ind), stratum="ind_demo", taps=SAME, window=window()),
+         "stratum ind_demo is clean_port_ind_sym; lib_tap builds tapped twins of clean_port_xfm_bs and clean_port_xfm_ms tables only"),
         (call(library=str(built), stratum=STRATUM, taps={"secondary": "6", "measure": "grounded"}, window=window()),
          r"taps.secondary '6' \(M6\) sits above part xfm's secondary metal M5"),
         (call(library=str(built), stratum=STRATUM, taps={"secondary": "3", "secondary_width_um": 3, "measure": "grounded"}, window=window()),
@@ -434,6 +439,167 @@ def test_calls_that_cannot_be_carried_out_are_refused_with_what_to_change(built,
     with pytest.raises(lib_tap.TapError, match=r"part xfm: the selected rows disagree on the ground fixture's metal \(M4: 5 .*; M3: 1 \(obs_0003\)\)"):
         main(run, library=str(library), stratum=STRATUM, taps=SAME, window=window())
     assert host.emx_runs == 0 and run.store.observations() == []
+
+
+# 8. xfm_ms (T19.6)
+
+MS_STRATUM = "ms_demo"
+MS_DIMS = [*XFM_DIMS, "secondary_spacing_um", "secondary_turns"]
+#: (primary OD, secondary OD, primary W, secondary W, centre spacing, secondary spacing, secondary turns)
+MS_POINTS = [(100, 76, 6, 3, 0, 2, 3), (100, 76, 6, 3, 0, 2, 2), (120, 90, 6, 3, 0, 2, 3), (110, 84, 5, 4, 0, 2, 2)]
+MS_M1_POINTS = [(100, 76, 6, 3, 0, 2, 3), (120, 90, 6, 3, 0, 2, 2)]
+MS_QUANTITIES = {"Lp_lf": {}, "Ls_lf": {}, "k_lf": {"feature_map": "xfm_ms_dimensionless"}, "Qp_peak": {"band_ghz": STOP_GHZ},
+                 "Qs_peak": {"band_ghz": STOP_GHZ}, "SRF": {}, "Lp": {"anchors_ghz": [10]},
+                 "k": {"anchors_ghz": [10], "feature_map": "xfm_ms_dimensionless"}}
+MS_ROWS = len(MS_POINTS) + len(MS_M1_POINTS)
+
+
+def ms_part_spec(project: str, fixture: dict) -> Spec:
+    """An untapped xfm_ms part: the single-turn primary on M6, the multi-turn secondary on M5, swept 0-40 GHz."""
+    d = part_spec(project).model_dump(mode="json")
+    d["devices"][0].update(id="ms", generator="clean_port_xfm_ms", variables={k: k for k in MS_DIMS},
+                           fixed={"primary_opening_um": 8.0, "secondary_opening_um": 6.0, "primary_lead_length_um": 20.0,
+                                  "secondary_lead_length_um": 15.0, "primary_metal": "6", "secondary_metal": "5",
+                                  "ground_fixture": fixture})
+    d["variables"] = [{"name": name, "kind": kind, "lower": lo, "upper": hi, "step": step}
+                      for name, kind, lo, hi, step in (("primary_outer_diameter_um", "continuous_step", "60", "200", "0.01"),
+                                                       ("secondary_outer_diameter_um", "continuous_step", "40", "200", "0.01"),
+                                                       ("primary_width_um", "continuous_step", "3", "10", "0.01"),
+                                                       ("secondary_width_um", "continuous_step", "2", "10", "0.01"),
+                                                       ("center_spacing_um", "continuous_step", "0", "100", "0.01"),
+                                                       ("secondary_spacing_um", "continuous_step", "1", "5", "0.01"),
+                                                       ("secondary_turns", "integer", "2", "4", "1"))]
+    d["metrics"] = [{"name": "k", "unit": "1", "device": "ms", "quantity": "k_lf"}]
+    d["em"]["three_d_metals"] = ["M6", "M5", "M4"]
+    return Spec.model_validate(d)
+
+
+def build_ms_part(root: Path, name: str, points, fixture: dict) -> None:
+    project = root / name
+    project.mkdir(parents=True)
+    part = ms_part_spec(name, fixture)
+    (project / "spec.yaml").write_text(yaml.safe_dump(part.model_dump(mode="json")), encoding="utf-8")
+    store = RunStore(project)
+    executor = FakeSpectreExecutor(store.root / "sims", snp_fn=coupled_snp)
+    obs = evaluate(part, [Point({d: f"{v:g}" for d, v in zip(MS_DIMS, p, strict=True)}, "grid") for p in points], executor, store,
+                   limits=FAKE_HOST)
+    assert [o.status for o in obs] == ["ok"] * len(points), [o.issues for o in obs]
+
+
+@pytest.fixture(scope="module")
+def ms_built(tmp_path_factory) -> Path:
+    root = tmp_path_factory.mktemp("mstaplib")
+    build_ms_part(root, "ms", MS_POINTS, {**FIXTURE, "metal": "auto"})
+    build_ms_part(root, "ms_m1", MS_M1_POINTS, dict(FIXTURE))
+    doc = {"schema_version": "ic-opt-library-v1", "process_profile": "demo_6m",
+           "strata": {MS_STRATUM: {"generator": "clean_port_xfm_ms", "dims": MS_DIMS, "nt_dim": "secondary_turns",
+                                   "parts": [{"store": "ms"}, {"store": "ms_m1"}],
+                                   "steps": {**STEPS, "secondary_spacing_um": 0.1, "secondary_turns": 1}, "quantities": MS_QUANTITIES}}}
+    (root / manifest.MANIFEST).write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+    return root
+
+
+def ms_rows(lib: query.Library, part: str) -> list:
+    return [s for s in lib_tap.select_window(lib, MS_STRATUM, lib_tap.parse_window(window())) if s.part == part]
+
+
+def ms_twins(run: Run, lib: query.Library, part: str, **taps) -> lib_tap.Twins:
+    return lib_tap.twins_of_part(run, lib, part, ms_rows(lib, part), lib_tap.parse_taps({**taps, "measure": "grounded"}),
+                                 threads=None, memory_gb=None, process_file=None)
+
+
+def test_xfm_ms_twins_tap_the_primary_on_its_own_metal(ms_built, tmp_path):
+    """``taps.primary: "same"`` on an xfm_ms part: the tap on the single-turn primary's metal (M6), its width, the CTP port
+    added and grounded, the fixture kept on M3 -- the metal the rows recorded under ``auto`` -- under ``free``, since a
+    same-metal tap draws nothing below the windings; every twin passes the preflight (generator and DRC gate)."""
+    run, _ = make_run(tmp_path)
+    lib = query.Library(ms_built, limits=LOCAL)
+    twins = ms_twins(run, lib, "ms", primary="same", primary_width_um=3)
+    device = twins.spec.devices[0]
+    assert device.generator == "clean_port_xfm_ms" and len(twins.points) == len(MS_POINTS)
+    assert device.fixed["ct_primary_metal"] == device.fixed["primary_metal"] == "6" and device.fixed["ct_primary_width_um"] == 3
+    assert "ct_secondary_metal" not in device.fixed and twins.taps == {"primary": "M6"}
+    assert device.fixed["ground_fixture"] == {**FIXTURE, "metal": "M3", "metal_rule": "free"}
+    assert device.ports == ["P1", "N1", "P2", "N2", "CTP"] and device.topology.grounded == ["CTP"]
+    assert [o.status for o in lib_tap.preflight([twins], 4)] == ["clean"] * len(MS_POINTS)
+
+
+def test_xfm_ms_secondary_taps_are_via_stacks_at_least_two_levels_down(ms_built, tmp_path):
+    """The multi-turn secondary keeps ind_sym's tap: two levels down (M3) builds on the part whose fixture is on the bottom
+    metal; on the part whose fixture ``auto`` put on M3 that tap would end on the fixture's metal, which holds no port lead:
+    the preflight lists the generator's refusal. Three levels down (M2) passes through M3: ``shared``. Beside a same-metal
+    primary tap it builds on the three-turn rows; on the two-turn rows the secondary's tap leaves on the primary tap's side
+    (ind_sym's tap exits right for an even turn count), on the same centre line, and the two tap stubs overlap: the
+    fixture refuses them, as it refuses a via-stack primary tap there (xfm_ms as it was before T19.6)."""
+    run, _ = make_run(tmp_path)
+    lib = query.Library(ms_built, limits=LOCAL)
+    low = ms_twins(run, lib, "ms_m1", secondary="3")
+    assert low.spec.devices[0].fixed["ground_fixture"] == {**FIXTURE, "metal": "M1", "metal_rule": "free"}
+    assert low.spec.devices[0].ports == ["P1", "N1", "P2", "N2", "CTS"] and low.taps == {"secondary": "M3"}
+    assert [o.status for o in lib_tap.preflight([low], 4)] == ["clean"] * len(MS_M1_POINTS)
+    onto = ms_twins(run, lib, "ms", secondary="3")
+    assert (onto.fixture_metal, onto.metal_rule) == ("M3", "free")
+    refused = lib_tap.preflight([onto], 4)
+    assert [o.status for o in refused] == ["generator"] * len(MS_POINTS)
+    assert all(any("ground fixture: metal 'M3' (M3) carries the lead of port CTS" in r for r in o.reasons) for o in refused), refused
+    both = ms_twins(run, lib, "ms", primary="same", secondary="2")
+    assert (both.fixture_metal, both.metal_rule) == ("M3", "shared") and both.taps == {"primary": "M6", "secondary": "M2"}
+    assert both.spec.devices[0].ports == ["P1", "N1", "P2", "N2", "CTP", "CTS"]
+    outcomes = lib_tap.preflight([both], 4)
+    assert [o.status for o in outcomes] == ["clean" if p[-1] % 2 else "generator" for p in MS_POINTS]
+    assert all("the stubs of ports CTP and CTS on M3 overlap" in o.reasons[0] for o in outcomes if o.status != "clean"), outcomes
+
+
+def test_xfm_ms_secondary_taps_that_cannot_be_drawn_are_refused_with_why(ms_built, tmp_path):
+    """Before anything is built: the secondary's tap on its own metal (``"same"`` or spelled out), one level down (its
+    crossunder's metal), or with a width -- each naming why."""
+    run, host = make_run(tmp_path)
+    main = load_recipe("lib_tap")
+    cases = [
+        ({"secondary": "same"}, (r"taps.secondary 'same' \(M5, the secondary's own metal\): part ms is an xfm_ms, whose secondary "
+                                 r"is its multi-turn winding; .* would cross its turns: give a metal at least two levels below "
+                                 r"the secondary \(M3 or lower\), or null")),
+        ({"secondary": "M5"}, r"taps.secondary 'M5' \(M5, the secondary's own metal\)"),
+        ({"secondary": "4"}, (r"taps.secondary '4' \(M4\) must sit at least two levels below part ms's secondary metal M5: the "
+                              r"multi-turn secondary's crossunder occupies M4")),
+        ({"secondary": "2", "secondary_width_um": 3}, "taps.secondary_width_um: part ms is an xfm_ms, whose secondary tap is a via-stack tap"),
+        ({"primary": "same", "primary_width_um": 3, "secondary": "same"}, r"taps.secondary 'same' \(M5"),
+    ]
+    for taps, message in cases:
+        with pytest.raises(lib_tap.TapError, match=message):
+            main(run, library=str(ms_built), stratum=MS_STRATUM, taps={**taps, "measure": "grounded"}, window=window())
+    assert host.emx_runs == 0 and run.store.observations() == []
+
+
+def test_a_run_adopts_xfm_ms_twins_as_an_xfm_ms_table(ms_built, tmp_path, capsys):
+    """A run on the xfm_ms table with a 3 um same-metal primary tap simulates every twin, reports L and k as the row's and
+    Qp down by the tap's resistance (Qs less so: the secondary is untapped and sees it through the coupling only), and
+    adopts them: the new stratum is the source's definition -- the ms generator, its dims with the turns, its quantities
+    and feature maps -- and its dataset builds, five ports a row."""
+    library = Path(shutil.copytree(ms_built, tmp_path / "lib"))
+    run, host = make_run(tmp_path)
+    load_recipe("lib_tap")(run, library=str(library), stratum=MS_STRATUM, taps={"primary": "same", "primary_width_um": 3, "measure": "grounded"},
+                           window=window(), adopt="ms_tap")
+    doc = report(run)
+    assert host.emx_runs == MS_ROWS and [p["status"] for p in doc["preflight"]] == ["clean"] * MS_ROWS
+    assert doc["twins"]["ms"]["taps"] == {"primary": "M6"} and (doc["twins"]["ms"]["fixture_metal"], doc["twins"]["ms"]["metal_rule"]) == ("M3", "free")
+    assert (doc["twins"]["ms_m1"]["fixture_metal"], doc["twins"]["ms_m1"]["metal_rule"]) == ("M1", "free")
+    ok = [p for p in doc["points"] if p["status"] == "ok"]
+    assert len(ok) == MS_ROWS
+    for p in ok:
+        for q in ("Lp_lf", "Ls_lf", "k_lf", "Lp@10"):
+            assert p["ratios"][q] == pytest.approx(1, abs=2e-3), (q, p)
+        assert 1 / TAP_LOSS - 0.01 < p["ratios"]["Qp_peak"] < p["ratios"]["Qs_peak"] < 1, p
+    after = yaml.safe_load((library / manifest.MANIFEST).read_text())
+    source, entry = after["strata"][MS_STRATUM], after["strata"]["ms_tap"]
+    assert {k: v for k, v in entry.items() if k not in ("parts", "note")} == {k: v for k, v in source.items() if k != "parts"}
+    assert entry["generator"] == "clean_port_xfm_ms" and entry["dims"] == MS_DIMS and entry["nt_dim"] == "secondary_turns"
+    assert entry["quantities"] == MS_QUANTITIES and entry["parts"] == [{"store": "ms_tap__ms"}, {"store": "ms_tap__ms_m1"}]
+    assert entry["note"].startswith(f"tapped twins of {MS_STRATUM} ({MS_ROWS} rows, window 10 GHz: Lp 1e-12..1e-06): taps primary same "
+                                    "(M6) width 3 um, secondary none, measured grounded; lib_tap, 20")
+    ds = query.Library(library, limits=LOCAL).dataset("ms_tap")
+    assert len(ds.rows) == MS_ROWS and ds.excluded == {} and dataset.check(ds)["ports"] == {5: MS_ROWS}
+    assert f"lib_tap: adopted {MS_ROWS} twins as ms_tap (ms_tap__ms, ms_tap__ms_m1); library.yaml updated" in capsys.readouterr().out
 
 
 # the pieces

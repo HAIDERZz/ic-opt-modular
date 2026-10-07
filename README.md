@@ -429,7 +429,7 @@ ic-opt call lib.index LIBRARY stratum=ind_sym_top frequency_ghz=F 'grid={"Lp": [
 ic-opt call lib.pick LIBRARY stratum=ind_sym_top frequency_ghz=F 'targets={"Lp": VALUE}' 'grid={"Lp": [LOWER, UPPER, STEP]}'
 ic-opt run lib_design PROJECT library=LIBRARY          # optimize on predictions (no EMX)
 ic-opt run lib_signoff PROJECT library=LIBRARY candidates=REPORT --plan
-ic-opt run lib_tap PROJECT library=LIBRARY stratum=XFM_BS_STRATUM 'taps={"primary": "same", "secondary": "same", "measure": "grounded"}' \
+ic-opt run lib_tap PROJECT library=LIBRARY stratum=XFM_STRATUM 'taps={"primary": "same", "secondary": "same", "measure": "grounded"}' \
     'window={"frequency_ghz": F, "ranges": {"k": [LOWER, UPPER]}}' --plan    # tapped twins of a window's rows (EMX)
 ic-opt call em.validate_profile PROFILE_DIR proc=SITE.proc generate=true    # bring up a new process profile
 ```
@@ -440,9 +440,9 @@ device's footprint: the box around what the generator draws, without the
 ground fixture EMX needs. `lib.index` lists a stratum's rows by their measured
 electrical values at one frequency, and `lib.pick` returns the rows nearest to
 target values on a grid, with their geometry, footprint and sNp. `lib_tap` builds
-tapped twins of a transformer table's rows -- the same geometry with center taps,
-the ground fixture where the row's was -- through real EMX, compares each with its
-row and adopts them into the library as a new table.
+tapped twins of a transformer table's rows (xfm_bs or xfm_ms) -- the same geometry
+with center taps, the ground fixture where the row's was -- through real EMX,
+compares each with its row and adopts them into the library as a new table.
 
 Building, querying and growing a library: [docs/em/library.md](docs/em/library.md); writing a
 process profile: [skills/author-process-rule/SKILL.md](skills/author-process-rule/SKILL.md).
