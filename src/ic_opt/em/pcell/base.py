@@ -25,6 +25,12 @@ class GeometryGenerationResult:
     # "shared" -- the device's internal shapes too. None: no metal was chosen (the fixture conductor, the bottom metal),
     # a patterned ground shield is drawn on it, or not reported -- the gate exempts max_width alone.
     fixture_metal_rule: str | None = None
+    # The chamfer (um) each ground stub was drawn with, {port name: {side: chamfer}}, sides named by the way they face
+    # ("bottom" / "top" for a stub on the ring's left or right, "left" / "right" on its bottom or top; N-65; the
+    # manifest's ``geometry.stub_chamfers_um``): present only when two neighbouring stubs' facing chamfers were
+    # shortened to keep the fixture metal's minimum spacing between them at the ring. None: every side has
+    # ``ground_fixture.stub_chamfer_um``, or not reported. Never hashed (the dict on the frozen dataclass is safe).
+    stub_chamfers_um: dict[str, dict[str, float]] | None = None
 
 
 class PassiveDeviceGenerator(ABC):

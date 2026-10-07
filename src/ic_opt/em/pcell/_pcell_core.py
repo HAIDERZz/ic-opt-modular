@@ -454,6 +454,10 @@ class Cell:
     # The box (x0, y0, x1, y1, um) around every shape the device drew, taken by ``fixture.add_ground_fixture`` before it
     # draws the fixture (T19.2): the footprint's record. None: no fixture.
     device_bbox_um: tuple[float, float, float, float] | None = None
+    # The chamfer (um) each stub was drawn with, {port name: {side: chamfer}} (``fixture.STUB_SIDES``), set by
+    # ``fixture.add_ground_fixture`` only when it shortened one (N-65: two neighbouring stubs' facing chamfers); None
+    # when every side has the config's ``stub_chamfer_um``, or no fixture.
+    stub_chamfers_um: dict[str, dict[str, float]] | None = None
 
     def add_shape(self, shape: Shape) -> None:
         """Append an already-snapped shape (the seam heal and the PGS build produce those)."""

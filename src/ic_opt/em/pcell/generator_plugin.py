@@ -1203,6 +1203,9 @@ def _write_geometry_outputs_in_stack(
     # footprint's record, written for every build whatever the fixture's metal and rule (the shield, drawn below on the
     # fixture conductor, belongs to the fixture and is not in it)
     device_bbox = None if cell.device_bbox_um is None else tuple(round(v, 3) for v in cell.device_bbox_um)
+    # the chamfer drawn per port and side, when add_ground_fixture shortened two neighbours' facing chamfers (N-65);
+    # None otherwise, and then nothing is written (an unchanged build's manifest is unchanged)
+    stub_chamfers = cell.stub_chamfers_um
     if pgs is not None and fixture_metal is not None and fixture_metal != _stack.name(1):
         raise ValueError(f"pgs ties its strips to the ground ring on {_stack.name(1)}, the fixture conductor, but the "
                          f"ring was drawn on {fixture_metal}: a shielded device keeps the default fixture metal")
@@ -1237,6 +1240,8 @@ def _write_geometry_outputs_in_stack(
         geometry.update(fixture_metal=fixture_metal, fixture_layer=list(adapter.layer(fixture_metal).drawing))
     if device_bbox is not None:
         geometry["device_bbox_um"] = list(device_bbox)          # [x0, y0, x1, y1], um (``footprint.recorded_device_bbox``)
+    if stub_chamfers is not None:
+        geometry["stub_chamfers_um"] = stub_chamfers            # {port: {side: um}} (``GeometryGenerationResult``)
     manifest_path.write_text(json.dumps({
         "schema_version": "1.1",
         "generator_id": generator_id,
@@ -1267,7 +1272,7 @@ def _write_geometry_outputs_in_stack(
         generator_id=generator_id, gds_path=gds_path,
         top_cell=resolved_top_cell, manifest_path=manifest_path,
         emx_ports_path=emx_ports_path, fixture_metal=fixture_metal, device_bbox_um=device_bbox,
-        fixture_metal_rule=fixture_rule)
+        fixture_metal_rule=fixture_rule, stub_chamfers_um=stub_chamfers)
 
 
 def translate_config(generator_id: str, config: dict) -> dict:

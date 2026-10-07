@@ -132,6 +132,12 @@ GroundFixtureConfig(inner_margin_um, ring_width_um,
   would touch or overlap -- a tap port's stub between the other winding's
   two stubs at a small opening: one edge would hold two G pins, which EMX
   refuses (the message names the two ports and the gap).
+- (N-65) Before that check, two neighbouring stubs on one side whose
+  chamfers would leave less than the fixture metal's minimum spacing between
+  them at the ring get shorter chamfers on their facing sides (the largest
+  grid value that keeps the minimum, never below 0; nothing in reference
+  mode); `cell.stub_chamfers_um` and the manifest's
+  `geometry.stub_chamfers_um` then record the chamfer drawn per port and side.
 - With `CT_ME` the fixture is applied after the CT port is placed, so the
   tap port receives its own G-stub like every signal port.
 - Every side obeys two independent bounds: the port tip plus

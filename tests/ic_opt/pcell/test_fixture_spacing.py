@@ -108,10 +108,22 @@ def test_stubs_that_touch_or_overlap_are_refused(tmp_path, width, word, gap):
 def test_chamfered_stubs_are_judged_by_their_outlines(tmp_path):
     """With ``stub_chamfer_um`` 1 each stub widens by 1 um a side towards the ring. A 3 um secondary opening leaves the tips
     of the 5 um CTP stub (the tap at the winding's width) and the P2 stub 0.5 um apart, and their roots 1.5 um into each
-    other: refused, the gap measured across the roots. A 5 um opening leaves the roots 0.5 um apart: built."""
+    other. In reference mode (no profile) nothing shortens a chamfer: refused, the gap measured across the roots. With
+    the profile N-65 shortens the facing chamfers first (``test_fixture_chamfer.py``), to 0.2 um, leaving M4's minimum
+    spacing of 0.1 um at the ring: built. A 5 um opening leaves the roots 0.5 um apart: built, every chamfer 1 um."""
+    from ic_opt.em.pcell._pcell_xfm_bs import xfm_bs
+    from ic_opt.em.pcell.fixture import GroundFixtureConfig
+    from tests.ic_opt.pcell.test_xfm_bs_same_metal_tap import GEOMETRY
+
+    reference = GroundFixtureConfig(**{**AUTO_STUBS, "stub_width_um": 5.0, "stub_chamfer_um": 1.0})
+    with pytest.raises(PortError, match=r"the stubs of ports P2 and CTP on M1 overlap \(gap -1.5 um"):
+        xfm_bs(**{**GEOMETRY, "OPENING_S": 3.0}, CT_P_ME="6", ground_fixture=reference)
     chamfered = {**AUTO_STUBS, "stub_chamfer_um": 1.0, "metal": "auto"}
     tap = {"ct_primary_metal": "6", "port_order": [*XFM_PORTS, "CTP"]}
-    with pytest.raises(PortError, match=r"the stubs of ports P2 and CTP on M4 overlap \(gap -1.5 um"):
-        generate(tmp_path / "close", "bs", chamfered, secondary_opening_um=3.0, **tap)
+    _, _, close = generate(tmp_path / "close", "bs", chamfered, secondary_opening_um=3.0, **tap)
+    assert close.fixture_metal == "M4"
+    assert close.stub_chamfers_um == {"P1": {"bottom": 1.0, "top": 1.0}, "N1": {"bottom": 1.0, "top": 1.0},
+                                      "P2": {"bottom": 0.2, "top": 1.0}, "N2": {"bottom": 1.0, "top": 0.2},
+                                      "CTP": {"bottom": 0.2, "top": 0.2}}
     _, _, built = generate(tmp_path / "room", "bs", chamfered, secondary_opening_um=5.0, **tap)
-    assert built.fixture_metal == "M4"
+    assert built.fixture_metal == "M4" and built.stub_chamfers_um is None

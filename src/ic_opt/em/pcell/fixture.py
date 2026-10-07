@@ -14,7 +14,11 @@ is the one place that resolves and checks it; ``add_ground_fixture`` -- every
 family, and any plugin generator that calls it -- draws through it, and
 records the box of the device it drew around (``Cell.device_bbox_um``: the
 footprint's record, since under ``shared`` the fixture's layer no longer tells
-the two apart). Stubs that would touch or overlap are refused before anything
+the two apart). Two neighbouring stubs whose chamfers would close the opening
+between them, at the ring, below the fixture metal's minimum spacing are drawn
+with shorter chamfers on their facing sides (N-65: no sharp wedge in the ring's
+opening); the build records the chamfers it drew (``Cell.stub_chamfers_um``)
+only then. Stubs that would still touch or overlap are refused before anything
 is drawn (T19.5): their merged edge would hold two G pins, which EMX refuses.
 """
 
@@ -44,6 +48,9 @@ AUTO = "auto"
 FREE = "free"            # metal_rule: the fixture's metal holds nothing of the device (T19.1's rule, the default)
 SHARED = "shared"        # metal_rule: it may hold the device's internal shapes, never a port lead (T19.2)
 METAL_RULES = (FREE, SHARED)
+#: The two chamfered sides of a stub, (low, high) along the ring's side it sits on, named by the way each faces: a stub
+#: on the left or right side of the ring runs along x, its sides face down and up; on the bottom or top, left and right.
+STUB_SIDES = {"left": ("bottom", "top"), "right": ("bottom", "top"), "bottom": ("left", "right"), "top": ("left", "right")}
 
 
 @dataclass(frozen=True)
@@ -281,6 +288,52 @@ def _refuse_contact(cell: Cell, layer: tuple[int, int], shapes: list, conductor:
                     "device and its reference; name another metal, or use metal_rule 'free'")
 
 
+def fixture_min_space_um(conductor: str, process: ProcessRuleContext | None) -> float | None:
+    """The minimum spacing of the fixture's metal ``conductor`` in the build's profile (its ``metal_width_space`` rule's
+    ``min_space_um``): what two neighbouring stubs' chamfers must leave between them at the ring (N-65). None in
+    reference mode (no profile) and when the profile states no minimum spacing for that metal: no adjustment then."""
+    if process is None:
+        return None
+    rule = process.adapter.profile.layout_rules.metal_width_space.get(process.adapter.layer(conductor).name)
+    return None if rule is None else rule.min_space_um
+
+
+def _facing_chamfers(stubs: list[tuple[str, float, float]], chamfer: float, min_space_um: float | None,
+                     grid_um: float | None) -> list[list[float]]:
+    """The chamfer each stub is drawn with on its two sides, ``[low, high]`` per stub (``STUB_SIDES``), in the order of
+    ``stubs``: (the ring's side the stub sits on, its centre along that side, its half width), one per port (N-65).
+
+    Every side keeps ``chamfer``, except where two neighbouring stubs on one side of the ring leave a gap between their
+    chamfered outlines at the ring's inner edge -- the narrowest place of the opening between them -- below
+    ``min_space_um``: both facing chamfers are then shortened, to one value, the largest on the manufacturing grid
+    ``grid_um`` at which that gap is at least ``min_space_um`` (exactly it whenever the numbers fall on the grid), never
+    below 0 -- at 0 the two sides are plain rectangle edges, which form no wedge. Each side faces one neighbour at most,
+    so each is decided once. The gap is measured on the drawn nanometres, each end snapped as ``Cell.add_polygon`` snaps
+    it, from the expressions ``add_ground_fixture`` draws. A pair already at or above the minimum, a stub without a
+    neighbour, ``chamfer`` 0 and ``min_space_um`` None (reference mode) change nothing. Stubs that still touch at 0 are
+    left to ``_refuse_touching_stubs``, a gap between 0 and the minimum at 0 to the DRC gate."""
+    chamfers = [[chamfer, chamfer] for _ in stubs]
+    if min_space_um is None or chamfer <= 0:
+        return chamfers
+    least = _nm(min_space_um)
+    step = max(1, _nm(grid_um)) if grid_um else 1
+    for side in STUB_SIDES:
+        row = sorted((centre, i) for i, (on, centre, _half) in enumerate(stubs) if on == side)
+        for (low, a), (high, b) in zip(row, row[1:]):
+            half_a, half_b = stubs[a][2], stubs[b][2]
+
+            def gap(c: float, low=low, high=high, half_a=half_a, half_b=half_b) -> int:
+                return _nm(high - half_b - c) - _nm(low + half_a + c)
+
+            if gap(chamfer) >= least:
+                continue
+            shortened = min(_nm(chamfer), (gap(0.0) - least) // 2 // step * step)
+            while shortened > 0 and gap(round(shortened * DBU_UM, 3)) < least:
+                shortened -= step
+            chamfers[a][1] = chamfers[b][0] = round(max(shortened, 0) * DBU_UM, 3)
+    return chamfers
+
+
 def _refuse_touching_stubs(stubs: list[tuple[str, str, list]], conductor: str) -> None:
     """Two stubs that touch or overlap make one polygon whose edge holds two ``G`` pins, which EMX refuses (it allows no
     two ports' pins on one edge). ``stubs``: (port name, side, outline) in drawing order. ``PortError`` before anything
@@ -332,7 +385,12 @@ def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
     on the cell, two stubs would touch or overlap (``_refuse_touching_stubs``,
     T19.5: one edge would hold two G pins), or -- under ``metal_rule:
     shared`` -- a fixture shape would touch a device shape on the shared
-    metal (``_refuse_contact``)."""
+    metal (``_refuse_contact``). Before that check, two neighbouring stubs on
+    one side whose chamfers would leave less than the fixture metal's minimum
+    spacing between them at the ring get shorter chamfers on their facing
+    sides (``_facing_chamfers``, N-65; a shorter chamfer only widens a gap);
+    ``cell.stub_chamfers_um`` then records the chamfer drawn per port and
+    side, and stays None when every side has ``stub_chamfer_um``."""
     if not cell.emx_ports:
         raise PortError("ground fixture: cell has no emx_ports")
     if fixture.stub_width_by_port_um:
@@ -400,29 +458,37 @@ def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
     stubs = []                                              # (port, side, outline): no two may touch (T19.5)
     by_port = fixture.stub_width_by_port_um or {}
     ch = fixture.stub_chamfer_um
-    for index, (p, side) in enumerate(distances_by_port, start=1):
+    laid = []                                               # (port, side, x, y, half width), in drawing order
+    for p, side in distances_by_port:
         x, y = xy_um(p)
-        half = by_port.get(p["name"], fixture.stub_width_um) / 2.0
+        laid.append((p, side, x, y, by_port.get(p["name"], fixture.stub_width_um) / 2.0))
+    # N-65: neighbours whose chamfers would leave less than the metal's minimum spacing at the ring get shorter facing
+    # chamfers -- before T19.5's check, since a shorter chamfer only widens a gap
+    chamfers = _facing_chamfers(
+        [(side, y if side in ("left", "right") else x, half) for _p, side, x, y, half in laid], ch,
+        fixture_min_space_um(conductor, process),
+        None if process is None else process.adapter.profile.layout_rules.manufacturing_grid_um)
+    for index, ((p, side, x, y, half), (lo, hi)) in enumerate(zip(laid, chamfers), start=1):
         if side == "left":
             root = inner_xmin
             shapes.append([
-                (root, y - half - ch), (x, y - half),
-                (x, y + half), (root, y + half + ch)])
+                (root, y - half - lo), (x, y - half),
+                (x, y + half), (root, y + half + hi)])
         elif side == "right":
             root = inner_xmax
             shapes.append([
-                (x, y - half), (root, y - half - ch),
-                (root, y + half + ch), (x, y + half)])
+                (x, y - half), (root, y - half - lo),
+                (root, y + half + hi), (x, y + half)])
         elif side == "bottom":
             root = inner_ymin
             shapes.append([
-                (x - half - ch, root), (x - half, y),
-                (x + half, y), (x + half + ch, root)])
+                (x - half - lo, root), (x - half, y),
+                (x + half, y), (x + half + hi, root)])
         else:
             root = inner_ymax
             shapes.append([
-                (x - half, y), (x - half - ch, root),
-                (x + half + ch, root), (x + half, y)])
+                (x - half, y), (x - half - lo, root),
+                (x + half + hi, root), (x + half, y)])
         stubs.append((p["name"], side, shapes[-1]))
         pins.append((p, f"G{index:02d}", x, y))
     _refuse_touching_stubs(stubs, conductor)
@@ -435,3 +501,6 @@ def add_ground_fixture(cell: Cell, fixture: GroundFixtureConfig,
         p["reference"] = ref_name
     cell.fixture_metal = conductor
     cell.device_bbox_um = (xmin, ymin, xmax, ymax)          # taken above, before the first fixture shape
+    # the chamfer drawn per port and side, recorded only when N-65 shortened one (an unchanged build records nothing)
+    cell.stub_chamfers_um = ({p["name"]: dict(zip(STUB_SIDES[side], pair)) for (p, side, *_), pair in zip(laid, chamfers)}
+                             if any(c != ch for pair in chamfers for c in pair) else None)

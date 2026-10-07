@@ -124,8 +124,13 @@ FIXTURE_METAL_NOTE = (
     "spacing rules there too (`min_space`, `wide_parallel_spacing`): a spacing finding on that metal lies between two shapes "
     "of the fixture -- such as a tap port's stub between the other winding's two stubs (xfm_bs, below). Under `shared`, and "
     "with `metal` absent (the bottom metal, where a patterned ground shield is a real, fabricated structure tied to the "
-    "ring), spacing counts as before. Stubs that would touch or overlap are refused when the fixture is laid out, naming the "
-    "two ports and the gap: one edge would hold two `G` pins, which EMX refuses."
+    "ring), spacing counts as before. Two neighbouring stubs on one side of the ring whose chamfers (`stub_chamfer_um`) "
+    "would leave less than the fixture metal's minimum spacing between them where they meet the ring are drawn with "
+    "shorter chamfers on their two facing sides: the largest value on the manufacturing grid that keeps that gap at the "
+    "minimum, never below 0 (in reference mode, without a profile, nothing changes). The build then records the chamfer "
+    "drawn per port and side (`geometry.stub_chamfers_um`), and only then. Stubs that would still touch or overlap are "
+    "refused when the fixture is laid out, naming the two ports and the gap: one edge would hold two `G` pins, which EMX "
+    "refuses."
 )
 
 XFM_BS_TAP_NOTE = (
