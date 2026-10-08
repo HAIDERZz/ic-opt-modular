@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from ic_opt.deck import Deck
 from ic_opt.eval import engine
 from ic_opt.eval.schedule import Schedule
-from ic_opt.eval.stage import Stage
+from ic_opt.eval.stage import Stage, pipeline_fingerprint
 from ic_opt.executor import Executor
 from ic_opt.observation import Observation, Observations
 from ic_opt.sim.corner import stopped_at_device
@@ -58,6 +58,8 @@ def evaluate(
     if PLAN_MODE.get():
         print(f"[plan] sim.evaluate step={step!r}: {len(points)} points × "
               f"{plan_shape(spec, pipeline, corners, executor, parallel_jobs, limits, stop_at_first_failure)}")
+        for line in plan_identity(spec, pipeline, store, executor):
+            print(f"[plan] sim.evaluate step={step!r}: {line}")
         return Observations()
     obs = engine.run(
         spec, pipeline, points, executor, store, corners=corners, step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits,
@@ -223,6 +225,31 @@ def default_pipeline(spec: Spec, deck: Deck | None, waveforms=()) -> list[Stage]
     if deck is None:
         raise ValueError("evaluate needs a deck (Spectre pipeline) or an explicit pipeline")
     return spectre_pipeline(spec, deck, waveforms=list(waveforms))
+
+
+HISTORY_NOT_REUSED = "{k} of the store's {n} observations were evaluated with another deck or pipeline: they are history, not reused"
+
+
+def plan_identity(spec: Spec, pipeline: list[Stage], store: RunStore, executor: Executor) -> list[str]:
+    """The plan's lines on what this run's observations are identified by (N-99): the deck its render stage carries,
+    ``deck <fp> (<n> testbenches, <m> support files)`` (``Deck.describe``; none for a pipeline without one), and, when the
+    store holds observations of this problem stamped with another pipeline fingerprint -- another deck, other requested
+    exports, another EMX process file or generator generation, another library generation, or a version before the deck
+    was part of it -- how many: they stay the problem's history (the budget counts them, the strategies learn from
+    them) and are never returned as an evaluation (``eval.engine``, "Identity"). The pipeline fingerprint is formed only
+    then, as the engine forms it: an EMX stage hashes its process file on the host."""
+    lines = []
+    deck = next((s.deck for s in pipeline if isinstance(getattr(s, "deck", None), Deck)), None)
+    if deck is not None:
+        lines.append(deck.describe())
+    same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}         # as the engine counts them ("Identity")
+    mine = [o for o in store.observations() if o.spec_fingerprint in same_problem]
+    if mine:
+        current = pipeline_fingerprint(pipeline, executor)
+        other = sum(1 for o in mine if o.pipeline_fingerprint != current)
+        if other:
+            lines.append(HISTORY_NOT_REUSED.format(k=other, n=len(mine)))
+    return lines
 
 
 def plan_shape(spec: Spec, pipeline: list[Stage], corners, executor: Executor, parallel_jobs: int | None, limits: HostLimits,

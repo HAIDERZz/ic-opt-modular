@@ -248,7 +248,8 @@ def library_circuit_pipeline(spec: Spec, deck, *, waveforms: list[WaveformExport
     return [Pick(spec), BindNport(deck),
             Spectre(preset=sim.preset, threads=sim.threads_per_run, timeout_s=sim.timeout_s,
                     license_queue_timeout_s=sim.license_queue_timeout_s),
-            Ocean(timeout_s=sim.timeout_s, waveforms=list(waveforms)), Extract(), Measure(simulates=False)]
+            Ocean(timeout_s=sim.timeout_s, waveforms=list(waveforms)),
+            Extract(waveforms=list(waveforms), operating_points=sim.operating_points), Measure(simulates=False)]
 
 
 def library_only_pipeline(spec: Spec) -> list:

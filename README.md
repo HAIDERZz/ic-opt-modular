@@ -364,6 +364,23 @@ EM circuit, `devices` only → EM characterization (`pcell → emx → measure`)
 neither → Spectre. Devices taken from a library table run `pick` in place of
 `pcell → emx` (the row's own sNp, no EMX). The recipes do not change.
 
+An observation is reused only for the same problem (the spec fingerprint), the
+same pipeline, the same point and the same children. The pipeline fingerprint
+holds everything the stages hand the simulation besides the point: the deck --
+the templated netlists and every support file Maestro exported with them, by
+content (`.icopt/decks/<fp>/`) -- the waveform exports requested and the
+operating-point setting, the EMX physics and process file, the pcell's
+geometry generation, a library's generation. A netlist fixed in Virtuoso and
+exported again, a changed support file or another export list is another
+pipeline: the point is simulated again, and the observations of the earlier
+one stay in the store as the problem's history -- the budget counts them, the
+strategies learn from them, none is returned as an evaluation. Files a netlist
+names outside the export (a PDK's model files by absolute path, Verilog-A, an
+sNp) are not part of the deck. `--plan` prints the deck it would import
+(`deck <fp> (<n> testbenches, <m> support files)`) and how many of the store's
+observations were evaluated with another deck or pipeline; `ic-opt doctor`
+names the deck last imported; the digest says when the store mixes pipelines.
+
 ### EM devices
 
 The example uses `demo_6m`, the fictitious six-metal profile that ships with the package (metals `M1`..`M6`,
@@ -612,9 +629,10 @@ assumes the process file has not changed since the rows were simulated; a
 second run changes nothing. Rows the 0.2.0 release wrote are matched by 0.2.0's
 own formulas (its spec schema had no EM fields yet, and its pipeline
 fingerprint hashed the stage names alone): those of the spec as it stands get
-its problem fingerprint and the Spectre pipeline's current one, and are reused
-from then on. The Spectre pipeline was the only one 0.2.0 shipped; a row from a
-stage list a recipe assembled itself keeps its pipeline fingerprint. Resource
+its problem fingerprint and the Spectre pipeline's fingerprint without a deck
+(the deck they ran is not known: they are history, see the next paragraph).
+The Spectre pipeline was the only one 0.2.0 shipped; a row from a stage list a
+recipe assembled itself keeps its pipeline fingerprint. Resource
 fields are required now, so a `spec.yaml` that left one to its old default is
 refused. The old stamps hash that default, and the other resources and the
 budget too: write the default in first (`simulator.threads_per_run: 10`;
@@ -623,6 +641,19 @@ everything else as it was when the rows were run, and only then set your own
 values. Rows it cannot match stay as they are and are reported: rows of another
 spec, the spec as it was before an edit included. They are not reused, and
 still count against `budget.max_simulations`.
+
+Since N-99 the pipeline fingerprint holds the deck (netlist and support files)
+and the requested exports (see "Evaluation = engine + stages"). Observations a
+version before it wrote carry a pipeline fingerprint without them, which no
+run forms now. Nothing to migrate: after upgrading, a continued run evaluates
+its new points as before -- the budget and the history are counted by the spec
+fingerprint, unchanged, so every earlier observation still counts and the
+strategies still learn from it -- and simulates again only a point it is asked
+to evaluate again, which `optimize` and `signoff` never do with a point their
+step already evaluated (`fix_run` on an earlier point does).
+`--plan` says how many of the store's observations are such history.
+`migrate-store` cannot tell which deck a row ran either: a Spectre or EM-circuit
+row it restamps gets its pipeline's fingerprint without a deck, and stays history.
 
 ## 0.1 projects
 

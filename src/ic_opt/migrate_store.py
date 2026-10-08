@@ -26,6 +26,12 @@ stamped the hash of its own names.
   digest and ports the key is formed from);
 - a ``library.yaml`` above the store that pins a restamped generation is repointed.
 
+The current fingerprint of a pipeline that renders a netlist (the Spectre chain, em_circuit) holds the deck since N-99
+(``Render`` / ``BindNport``: ``Deck.fingerprint``), and which deck a row was simulated with no stamp says: those rows are
+restamped with the pipeline's fingerprint without a deck, which no run forms -- their spec fingerprint is the problem's,
+so they count and the strategies learn from them, and they are not reused (``README.md``, "Stores written by an earlier
+version"). Taking the deck the store holds now would reuse rows across the very netlist change N-99 is about.
+
 Anything else stays as it is and is reported: a hash cannot tell which other spec or generation a row came from, and
 guessing would merge problems or generations -- so migrate before editing the spec. The old spec fingerprints hashed
 the resources and the budget too, so a resource the spec left to its old default must be written in with that value
@@ -79,9 +85,20 @@ def legacy_emx_identity(em: EmSettings) -> str:
     return json.dumps(_legacy_physics(em), sort_keys=True, separators=(",", ":"))
 
 
+# The stages that had no identity before N-99 gave them one (the deck's fingerprint, the requested exports): the formulas
+# of the versions before it see them as they were.
+NO_IDENTITY_BEFORE_N99 = ("render", "bind_nport", "extract")
+
+
 def legacy_pipeline_fingerprint(stages: list[Stage]) -> str:
-    """``pipeline_fingerprint`` before T15.2: each EMX stage identified by its process file's path."""
-    parts = [f"{s.name}:{legacy_emx_identity(s.em) if isinstance(s, Emx) else getattr(s, 'identity', '')}" for s in stages]
+    """``pipeline_fingerprint`` before T15.2: each EMX stage identified by its process file's path (and the render and
+    extract stages by none, as before N-99)."""
+    def identity(s: Stage) -> str:
+        if isinstance(s, Emx):
+            return legacy_emx_identity(s.em)
+        return "" if s.name in NO_IDENTITY_BEFORE_N99 else getattr(s, "identity", "")
+
+    parts = [f"{s.name}:{identity(s)}" for s in stages]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
 
@@ -245,7 +262,7 @@ def _em_pipelines(spec: Spec) -> dict[str, list[Stage]]:
         return {}
     pipelines = {"em_only": em_only_pipeline(spec)}
     if spec.testbenches:
-        pipelines["em_circuit"] = em_circuit_pipeline(spec, Deck())            # the deck is not part of the identity
+        pipelines["em_circuit"] = em_circuit_pipeline(spec, Deck())    # no deck: which one the rows ran is not known (N-99)
     return pipelines
 
 
@@ -254,7 +271,7 @@ def _v020_spectre(spec: Spec, executor: Executor) -> tuple[str, str] | None:
     0.2.0 shipped (module docstring). None for a spec with devices, which implies an EM pipeline."""
     if spec.devices:
         return None
-    stages = spectre_pipeline(spec, Deck())                                   # neither the deck nor waveforms name a stage
+    stages = spectre_pipeline(spec, Deck())         # no deck: which one the rows ran is not known, so not reused (N-99)
     return v020_pipeline_fingerprint(stages), pipeline_fingerprint(stages, executor)
 
 

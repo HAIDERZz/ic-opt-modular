@@ -146,7 +146,10 @@ def test_before_migrating_the_0_2_0_rows_load_and_count_but_are_not_reused(tmp_p
     assert spectre_runs(host) == 1
 
 
-def test_migrate_store_restamps_the_rows_0_2_0_wrote_and_the_engine_reuses_them(tmp_path):
+def test_migrate_store_restamps_the_rows_0_2_0_wrote_and_they_are_the_problems_history(tmp_path):
+    """The rows get the problem's fingerprint, so they count and the strategies learn from them. Which deck they ran
+    is not known, so they are not reused (N-99): their pipeline stamp is the Spectre pipeline's without a deck, which
+    no run forms (before N-99 they were reused)."""
     proj = project(tmp_path)
     spec = load_spec(proj / "spec.yaml")
     new_spec, new_pipe = spec.fingerprint(), spectre_now(spec)
@@ -177,15 +180,18 @@ def test_migrate_store_restamps_the_rows_0_2_0_wrote_and_the_engine_reuses_them(
     assert len(list(path.parent.glob("observations.jsonl.bak-*"))) == 1
 
     host = fake_host(proj)
-    reused = evaluate(spec, POINTS, host, RunStore(proj), deck=deck(spec), limits=FAKE_HOST)
-    assert spectre_runs(host) == 0
-    assert [(o.obs_id, o.metrics["NF"]) for o in reused] == [
-        ("obs_0001", 8.2),
-        ("obs_0002", 8.24),
-        ("obs_0003", 8.28),
+    store = RunStore(proj)
+    assert sum(o.spec_fingerprint == spec.fingerprint() for o in store.observations()) == 3     # the problem's history
+    again = evaluate(spec, POINTS, host, store, deck=deck(spec), limits=FAKE_HOST)
+    assert spectre_runs(host) == 3                      # N-99: the deck the rows ran is not known, so none is reused
+    assert [(o.obs_id, o.metrics["NF"]) for o in again] == [
+        ("obs_0004", 8.2),
+        ("obs_0005", 8.24),
+        ("obs_0006", 8.28),
     ]
     step = json.loads((proj / ".icopt" / "steps.jsonl").read_text().splitlines()[-1])
-    assert (step["reused"], step["new"], step["simulations"]) == (3, 0, 0)
+    assert (step["reused"], step["new"], step["simulations"]) == (0, 3, 3)
+    assert spectre_now(spec) != again[0].pipeline_fingerprint and len(store.observations()) == 6
 
 
 def test_a_0_2_spec_without_the_license_queue_wait_stays_without_it(tmp_path):
@@ -231,4 +237,4 @@ def test_rows_it_cannot_place_stay_as_they_are_and_are_reported(tmp_path):
     host = fake_host(proj)
     points = [POINTS[0], Point(other["params"], "user"), Point(custom["params"], "user")]
     evaluate(spec, points, host, RunStore(proj), deck=deck(spec), limits=FAKE_HOST)
-    assert spectre_runs(host) == 2  # the first point is reused, the other two simulated again
+    assert spectre_runs(host) == 3  # all three simulated again: a restamped row is history since N-99 (the first was reused before)

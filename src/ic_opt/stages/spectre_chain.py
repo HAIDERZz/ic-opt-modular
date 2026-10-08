@@ -21,12 +21,17 @@ keeps them in the child's result. None of it can fail a child or change a metric
 A saturation-margin metric (T17.11, ``Metric.saturation_margin``) is the one metric read from them: the extract stage
 computes it, and it fails as an OCEAN expression does when the table lacks a transistor it names (:class:`Extract`).
 The cache: a spec that gains such a metric is another problem (``Spec.fingerprint``: the metric is in it), so no
-observation recorded without it is reused for it; the pipeline's fingerprint is what it was (the stages' names), and a
-spec without such a metric extracts what it did before.
+observation recorded without it is reused for it; a spec without such a metric extracts what it did before.
+
+Identity (N-99). ``Render.identity`` is the deck's fingerprint (``Deck.fingerprint``: the templates and every support
+file's content) and ``Extract.identity`` the waveform exports requested (name, expression and testbench, in order) with
+the operating-point setting: the pipeline fingerprint changes when the netlist, a support file or the requested exports
+change, and the engine reuses no observation across that change (``eval.engine``, "Identity").
 """
 
 from __future__ import annotations
 
+import json
 import shlex
 import shutil
 from dataclasses import dataclass
@@ -65,6 +70,11 @@ class Render:
     def __init__(self, deck: Deck) -> None:
         self.deck = deck
 
+    @property
+    def identity(self) -> str:
+        """The deck's fingerprint (N-99): the netlist and its support files, as Maestro exported them."""
+        return self.deck.fingerprint()
+
     def fingerprint(self, point: Point, ctx: StageContext) -> str | None:
         return None
 
@@ -80,6 +90,8 @@ def render_netlist(deck: Deck, point: Point, ctx: StageContext) -> Netlist:
     except KeyError as exc:
         raise StageFailure(f"deck has no template for {ctx.unit}/{ctx.corner}") from exc
     bundle = deck.bundle(ctx.unit)
+    if bundle is None and ctx.unit in deck.digests:
+        raise StageFailure(f"the deck's support files of {ctx.unit} are not there (a preview's deck snapshot cannot run)")
     if bundle is not None:   # Maestro's support files (.modelFiles, .designVariables, ...) travel with the deck
         shutil.copytree(literal(bundle), literal(ctx.workdir / "netlist"), dirs_exist_ok=True)     # names may end in a dot
     circuit = {name: point.params[name] for name in ctx.spec.circuit_variables}
@@ -193,6 +205,17 @@ class Extract:
     level = "child"
     resources = Resources()
 
+    def __init__(self, *, waveforms: list[WaveformExport] = (), operating_points: bool = True) -> None:
+        self.waveforms = list(waveforms)                 # what the run asked OCEAN to export: part of the identity only
+        self.operating_points = operating_points        # simulator.operating_points: whether a child keeps them
+
+    @property
+    def identity(self) -> str:
+        """The waveform exports requested -- name, expression and testbench, in order -- and the operating-point setting
+        (N-99): an observation that lacks an export, or the operating points, is not reused for a run that asks for it."""
+        return json.dumps({"waveforms": [[w.name, w.expression, w.testbench] for w in self.waveforms],
+                           "operating_points": self.operating_points}, separators=(",", ":"))
+
     def fingerprint(self, scalars: Scalars, ctx: StageContext) -> str | None:
         return None
 
@@ -264,5 +287,5 @@ def spectre_pipeline(spec, deck: Deck, *, waveforms: list[WaveformExport] = ()) 
         Spectre(preset=sim.preset, threads=sim.threads_per_run, timeout_s=sim.timeout_s, output_format=sim.output_format,
                 license_queue_timeout_s=sim.license_queue_timeout_s),
         Ocean(timeout_s=sim.timeout_s, waveforms=waveforms),
-        Extract(),
+        Extract(waveforms=waveforms, operating_points=sim.operating_points),
     ]

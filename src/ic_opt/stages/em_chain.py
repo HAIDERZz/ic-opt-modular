@@ -276,6 +276,11 @@ class BindNport:
     def __init__(self, deck: Deck) -> None:
         self.deck = deck
 
+    @property
+    def identity(self) -> str:
+        """The deck's fingerprint, as ``Render``'s (N-99): the netlist and its support files are part of the pipeline's."""
+        return self.deck.fingerprint()
+
     def fingerprint(self, geometry: Geometry, ctx: StageContext) -> str | None:
         return None
 
@@ -311,7 +316,8 @@ def em_circuit_pipeline(spec: Spec, deck: Deck, *, waveforms: list[WaveformExpor
     return [Pcell(spec), *emx_stages(spec), BindNport(deck),
             Spectre(preset=sim.preset, threads=sim.threads_per_run, timeout_s=sim.timeout_s,
                     license_queue_timeout_s=sim.license_queue_timeout_s),
-            Ocean(timeout_s=sim.timeout_s, waveforms=list(waveforms)), Extract(), *devices]
+            Ocean(timeout_s=sim.timeout_s, waveforms=list(waveforms)),
+            Extract(waveforms=list(waveforms), operating_points=sim.operating_points), *devices]
 
 
 class Measure:

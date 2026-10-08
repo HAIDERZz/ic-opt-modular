@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from ic_opt import migrate_store
 from ic_opt.blocks.doctor import doctor
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
@@ -269,9 +270,11 @@ OLD_LINE = ('{"obs_id":"obs_0001","params":{"F":"22","W":"0.8u"},"origin":"user"
             '"finished_at":"2026-09-01T00:00:01Z"}')           # as 0.4.0 (30f2692) wrote it, for make_spec()'s problem
 
 
-def test_the_identity_of_the_problem_and_the_pipeline_is_what_it_was():
+def test_the_identity_of_the_problem_is_what_it_was():
     """Pinned on 30f2692: the spec without the field, with it on, and with it off are one problem (operating points
-    change no metric); the Spectre pipeline's fingerprint is unchanged, so every observation stays reusable."""
+    change no metric). The Spectre pipeline's fingerprint was unchanged by them then (0.4.0 stamped 1c79f40effa5daab,
+    the formula of the versions before N-99 still gives it); since N-99 it holds the deck and the operating-point setting
+    (``Extract.identity``): a point evaluated without them is history for a run that asks for them, never reused."""
     spec = make_spec()
     assert (spec.fingerprint(), spec._legacy_fingerprint()) == ("ba0f5751e8b31248", "1d1cf8fb28678108")
     base = {"parallel_jobs": 2, "threads_per_run": 2, "timeout_s": 60}
@@ -279,10 +282,14 @@ def test_the_identity_of_the_problem_and_the_pipeline_is_what_it_was():
     off = make_spec(simulator={**base, "operating_points": False})
     assert on.fingerprint() == off.fingerprint() == "ba0f5751e8b31248" and on._legacy_fingerprint() == "1d1cf8fb28678108"
     assert "operating_points" not in json.dumps(spec.problem()) and off.model_dump()["simulator"]["operating_points"] is False
-    assert pipeline_fingerprint(spectre_pipeline(spec, Deck())) == "1c79f40effa5daab"
+    assert migrate_store.legacy_pipeline_fingerprint(spectre_pipeline(spec, Deck())) == "1c79f40effa5daab"
+    assert pipeline_fingerprint(spectre_pipeline(on, Deck())) != pipeline_fingerprint(spectre_pipeline(off, Deck()))
+    assert "1c79f40effa5daab" not in {pipeline_fingerprint(spectre_pipeline(s, Deck())) for s in (spec, on, off)}
 
 
-def test_a_store_written_before_reads_as_it_did_and_its_points_are_reused(tmp_path):
+def test_a_store_written_before_reads_as_it_did_and_its_points_are_history(tmp_path):
+    """The 0.4.0 row reads and writes back as it was. Its pipeline stamp holds no deck (N-99), so the point is simulated
+    again; a row of the same shape stamped with this run's pipeline -- no operating points in it -- is reused as it is."""
     store = RunStore(tmp_path / "proj")
     store.observations_path.parent.mkdir(parents=True, exist_ok=True)
     store.observations_path.write_text(OLD_LINE + "\n")
@@ -293,6 +300,14 @@ def test_a_store_written_before_reads_as_it_did_and_its_points_are_reused(tmp_pa
     ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 9.0}, oppoints_fn=lambda p, tb, c: TABLE)
     deck = Deck(templates={("tb", None): WITHOUT_DC})
     obs = evaluate(make_spec(), [Point({"F": "22", "W": "0.8u"}, "user")], ex, store, deck=deck, limits=FAKE_HOST)[0]
+    assert obs.obs_id == "obs_0002" and obs.metrics == {"NF": 9.0}            # history, not reused: simulated (N-99)
+    assert obs.children["tb/nominal"].operating_points == TABLE
+
+    current = pipeline_fingerprint(spectre_pipeline(make_spec(), deck))
+    again = RunStore(tmp_path / "again")
+    again.observations_path.write_text(OLD_LINE.replace("1c79f40effa5daab", current) + "\n")
+    ex = FakeSpectreExecutor(again.root / "sims", lambda p, tb, c: {"NF": 9.0}, oppoints_fn=lambda p, tb, c: TABLE)
+    obs = evaluate(make_spec(), [Point({"F": "22", "W": "0.8u"}, "user")], ex, again, deck=deck, limits=FAKE_HOST)[0]
     assert obs.obs_id == "obs_0001" and obs.metrics == {"NF": 8.22}           # reused: no simulation
     assert obs.children["tb/nominal"].operating_points is None and not any(c.startswith("spectre") for c in ex.commands)
 

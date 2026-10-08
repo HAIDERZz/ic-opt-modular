@@ -48,7 +48,20 @@ observation stamped with the spec's pre-T15.2 fingerprint
 problem until ``ic-opt migrate-store`` restamps it; new observations carry the
 new one. The pipeline fingerprint is formed once per run, after the stages
 whose identity lives on the simulation host resolved it (EMX hashes its process
-file there), so every point of a run carries the same value.
+file there), so every point of a run carries the same value. It holds what
+the stages hand the simulation besides the point (N-99): the deck --
+``Render`` / ``BindNport`` carry ``Deck.fingerprint()``, the templates and
+every support file's content -- and the waveform exports requested with the
+operating-point setting (``Extract``), as well as the EMX physics and process
+file, the pcell's geometry generation and a library's generation. A changed
+netlist, support file or export list is another pipeline: no observation of
+the other one is reused for it. Those observations stay in the store as the
+problem's history -- the spec fingerprint is the problem's, unchanged -- so the
+budget counts them and the strategies learn from them; they are never returned
+as an evaluation. This is N-91's rule for a grown library table (a new
+generation for the next process), applied to the deck. Observations stamped
+before N-99 carry a pipeline fingerprint without the deck and are history in
+the same way: a point is simulated again only when it is asked for again.
 """
 
 from __future__ import annotations

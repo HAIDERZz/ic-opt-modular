@@ -89,6 +89,8 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
         path = f"{tb.maestro_point_root}/netlist/input.scs"
         add(Check(f"export:{tb.id}", executor.exists(path), path))
         add(_operating_points_check(spec, tb.id, path, executor))
+    if spec.testbenches and store is not None:
+        add(_deck_check(store))
 
     add(_envelope_check(spec, limits, executor.host))
     add(_machine_check(executor, limits))
@@ -133,6 +135,22 @@ def _spectre_checks(spec: Spec, executor: Executor, cshrc: str | None, limits: H
                             f"{head[0] if head else 'spectre -V failed'}; lmstat {len(features)} features" + (f" ({spectre})" if spectre else "")
                             if version.ok and probe.ok else (probe.stderr.strip() or version.stderr.strip() or "spectre -V / lmstat failed")))
     return checks
+
+
+def _deck_check(store: RunStore) -> Check:
+    """The deck the store last imported (N-99), ``<fp> (<n> testbenches, <m> support files)``: the identity of the
+    observations its runs recorded. Every run imports the exports again, and a deck of another fingerprint -- a changed
+    netlist or support file -- reuses none of them. Informative only."""
+    from ic_opt.blocks.netlist import last_imported
+
+    try:
+        deck = last_imported(store)
+    except OSError as exc:
+        return Check("deck", False, f"the last imported deck could not be read ({exc})", level="note")
+    if deck is None:
+        return Check("deck", True, "none imported yet: the run imports the exports")
+    return Check("deck", True, f"{deck.describe().removeprefix('deck ')}, as last imported; the run imports the exports "
+                               "again, and a changed netlist or support file is another deck, whose points are simulated anew")
 
 
 def _operating_points_check(spec: Spec, tb_id: str, path: str, executor: Executor) -> Check:

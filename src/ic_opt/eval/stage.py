@@ -14,7 +14,9 @@ dir)`` / ``load(dir)`` pair.
 
 A stage's ``identity`` (optional) names the settings that change its answer;
 the pipeline fingerprint hashes the stages' names and identities, and an
-observation is only reused under the same one. A stage whose identity lives on
+observation is only reused under the same one. Whatever a stage hands the
+simulation besides the point belongs in it: the render stages carry the deck's
+fingerprint, the extract stage the requested exports (N-99). A stage whose identity lives on
 the simulation host (EMX: the process file's content) also has
 ``resolve_identity(executor)``, which ``pipeline_fingerprint`` calls first.
 """

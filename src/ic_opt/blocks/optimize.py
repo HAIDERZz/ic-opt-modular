@@ -206,7 +206,7 @@ def optimize(
     what and why; a strategy keyword the resolved strategy does not take is refused there. A named strategy is taken as
     named: ``metric_gp`` on a spec with EM devices simulated in the loop is refused. ``metric_gp`` is handed the rows
     evaluated at this run's corners, of the store and of ``initial`` alike (``_at_corners``)."""
-    from ic_opt.blocks.evaluate import default_pipeline, plan_shape
+    from ic_opt.blocks.evaluate import default_pipeline, plan_identity, plan_shape
     from ic_opt.recipe import PLAN_MODE
 
     plan = PLAN_MODE.get()
@@ -255,6 +255,8 @@ def optimize(
         print(f"[plan] opt.optimize step={step!r} strategy={strategy}: {done}/{budget} points done, "
               f"up to {max(0, budget - done)} more in batches of {batch} × "
               f"{plan_shape(spec, shape, corners, executor, parallel_jobs, limits)} (spec budget {spec.budget.max_simulations})")
+        for line in plan_identity(spec, shape, store, executor):         # the deck, and the store's history (N-99)
+            print(f"[plan] opt.optimize step={step!r}: {line}")
         _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=True, note=note,
                       total=sized_for - done)
         handed = _at_corners(spec, mine, corners) if strategy == "metric_gp" else mine

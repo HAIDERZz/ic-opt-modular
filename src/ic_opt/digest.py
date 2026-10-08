@@ -117,6 +117,12 @@ point as before. An advice's *others* are the points of its own step (F3). ``mar
 every corner under the search's best, adds a section "Re-check at every corner", and names ``reports/points.md``
 (:func:`points_markdown`, ``ic-opt digest --points``: one row per point, every metric at its worst corner; not in the
 JSON).
+
+Since N-99 (``docs/refactor/N99_DECK_IDENTITY_SPEC.md``, version 5 unchanged otherwise) ``progress.pipelines`` says when
+the points carry more than one pipeline fingerprint -- the deck (netlist and support files) and the requested exports are
+part of it -- how many, and how many points hold the current one, the newest point's (``None`` while there is one);
+``markdown`` prints it as one line under "How far the run is". Points of another pipeline are counted in every entry as
+before: they are the problem's history, never reused as an evaluation.
 """
 
 from __future__ import annotations
@@ -245,7 +251,7 @@ def digest(spec: Spec, observations: Iterable[Observation], *, advice: Sequence[
         "top": top,
         "problem": _problem(spec, rows, grid),
         "counts": _counts(spec, rows),
-        "progress": _progress(spec, search, found),
+        "progress": {**_progress(spec, search, found), "pipelines": _pipelines(rows)},
         "constraints": _constraints(spec, rows, feasible),
         "variables": _variables(spec, rows, feasible[:top], grid),
         "failures": _failures(spec, rows, grid),
@@ -348,6 +354,17 @@ def _progress(spec: Spec, rows: list[Observation], feasible: list[Observation]) 
         "stall": _stall(rows, batches),
         "notes": notes,
     }
+
+
+def _pipelines(rows: list[Observation]) -> dict[str, int] | None:
+    """``progress.pipelines`` (N-99): ``None`` while every point carries one pipeline fingerprint; else how many the points
+    carry (``pipelines``) and how many points hold the current one (``current``: the newest point's). A point of another
+    pipeline -- another deck, other requested exports, another EMX process file or generation, a version before the deck
+    was part of it -- is the problem's history and is never reused as an evaluation (``eval.engine``, "Identity")."""
+    stamps = [o.pipeline_fingerprint for o in rows]
+    if len(set(stamps)) < 2:
+        return None
+    return {"pipelines": len(set(stamps)), "current": stamps.count(stamps[-1])}
 
 
 def _stall(rows: list[Observation], batches: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1148,6 +1165,9 @@ def _md_progress(p: dict[str, Any], recheck: dict[str, Any] | None = None, point
     that names the per-point table (F7)."""
     first = p["first_feasible"]
     lines = [f"- first feasible point: #{first['index']} (`{first['id']}`)" if first else "- first feasible point: none yet"]
+    if p.get("pipelines"):                      # N-99: points of another deck or pipeline are history, never reused
+        lines.append(f"- observations from {p['pipelines']['pipelines']} pipelines; the current one holds "
+                     f"{p['pipelines']['current']}")
     best = p["best"]
     of = " of the search" if recheck else ""
     table = (f"- one row per point: `reports/points.md` ({points} rows, written with this digest)" if points is not None
