@@ -182,15 +182,36 @@ missing quantity, `OP` returned nil silently here. How much of the 24 s saved is
   timing is `metrics/ocean.log` and `metrics/ocean_timing.tsv` in the child's directory.
 
 **What the specification did not foresee.**
-- `%.16g` is equal to the vectors to 16 digits, but does not give back every double: 45 % of the 102 401 resampled
+- (Answered by the follow-up: `%.17g`.) `%.16g` is equal to the vectors to 16 digits, but does not give back every double: 45 % of the 102 401 resampled
   times and 17 % of the values differ in the last bit after the round trip (17 digits, `%.17g`, would give every
   double back). The times stay strictly increasing here; whether "round-trips exactly" should mean bit for bit is for
   the user (changing `WAVEFORM_PRECISION` and the writer's three format strings would be all).
-- A waveform expression that returns a number used to give a file (ocnPrint printed PRINT-1067 and nothing useful);
-  it now gives no file and an issue `not written: not_a_waveform:<type>`, so such a child is `metric_failed`.
+- A waveform expression that returns a number: the old script wrote an empty `<name>.csv` (0 bytes; `ocnPrint`
+  answered `ERROR (PRINT-1030): Illegal keyword ?separator.`), and since the file existed the child had no issue
+  (`runs/wave17/old_scalar`, follow-up below). It now gives no file and the issue `not written:
+  not_a_waveform:<type>`, so such a child is `metric_failed` -- kept as the contract (follow-up below).
 - OCEAN's `xmin` / `xmax` are the x of the minimum / maximum y, not the ends of the axis (the first resample tried
   with them ran backwards); the real check uses the x vector's first and last elements.
 - Two of the 36 OCEAN starts in this work failed to check out `Virtuoso_Adv_Node_Framework` (ELI-00133 / LMF-02002,
   LMF-02005) and succeeded when run again; the OCEAN stage's own three attempts cover that.
 - `outputs(?type "diode")` lists 4 032 diodes; the bug report counted 2 016 by two name suffixes.
 - `ocnGetInstancesModelName()` unselects the current result (OCN-6038, then OCN-6034); not used.
+
+### Follow-up (coordinator, 2026-10-09): `%.17g`, the non-waveform contract, the evidence kept
+
+- Precision: `%.17g` everywhere in the waveform export -- `WAVEFORM_PRECISION`, the writer's three row formats, a
+  family's sweep values in the index, the meta file's `"precision"`, `docs/waveform_export.md`, README, the skill's
+  line, the fake and the tests (the operating-point table and the scalars keep `%.16g`; not asked). Real check (a)
+  again (`wave_check17.py`, `results_wave17.json`, `runs/wave17/`): the 102 401-point resample, two runs, and the
+  PSF's 2 501-point record, one run, each compared with the vectors dumped at `%.17g`: **0 times and 0 values differ
+  in any bit** (102 401 / 102 401 rows both runs, 2 501 / 2 501), `csv.reader` gives `time_s,y` and 2 fields per row,
+  times strictly increasing, last time `5.000000000000044e-09` equal to the PSF's, meta `"precision": "%.17g"`. OCEAN
+  start to exit 2.818 s / 2.714 s (export inside OCEAN 0.159 s / 0.158 s) for the long record, 2.553 s for the short.
+- An expression that returns a number stays as N-100 left it -- no file, the child `metric_failed` with
+  `not_a_waveform:<type>` -- and `docs/waveform_export.md` says it is the contract (a scalar belongs in a metric).
+- The real-check scripts, every run's `probe.ocn` / `ocean.log` / outputs, the result JSONs, the main-era `ocean.py`
+  used as the old script and the exploration scripts (`explore/e1-e4`: `dataTypes`, `outputParams`,
+  `outputs(?type)`, which call warns) are copied to `/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-accept/n100_accept/`
+  (53 MB; the `psf` entries in it are symlinks to the two read-only PSFs, not copies).
+- Tests: the specification's suites 123 passed, 1 skipped (unchanged count); with the other OCEAN suites 179 passed,
+  2 skipped; `ruff check src tests` clean.

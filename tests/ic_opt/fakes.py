@@ -256,13 +256,13 @@ def _call(fn, *args, cwd: str):
 def write_waveform(folder: Path, name: str, rows=((1e9, 1.0), (2e9, 1.5)), *, columns=("freq_Hz", "y"),
                    units=("Hz", "V"), expression: str = "fake") -> Path:
     """A waveform export as the replay script writes it (N-100, ``docs/waveform_export.md``): ``<name>.csv`` (header,
-    then one row per point, ``%.16g``) and ``<name>.meta.json``; returns the meta file."""
+    then one row per point, ``%.17g``) and ``<name>.meta.json``; returns the meta file."""
     import json
 
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / f"{name}.csv").write_text(",".join(columns) + "\n" + "".join(",".join(f"{v:.16g}" for v in r) + "\n" for r in rows))
+    (folder / f"{name}.csv").write_text(",".join(columns) + "\n" + "".join(",".join(f"{v:.17g}" for v in r) + "\n" for r in rows))
     meta = {"name": name, "expression": expression, "result": None, "kind": "waveform", "file": f"{name}.csv",
-            "columns": list(columns), "units": list(units), "points": len(rows), "separator": ",", "precision": "%.16g"}
+            "columns": list(columns), "units": list(units), "points": len(rows), "separator": ",", "precision": "%.17g"}
     (folder / f"{name}.meta.json").write_text(json.dumps(meta) + "\n")
     return folder / f"{name}.meta.json"
 

@@ -8,7 +8,7 @@ Working directory layout (identical on the local and the remote side):
                                                        ocean_timing.tsv, waveforms/}
 
 Waveforms (N-100, ``docs/waveform_export.md``): the OCEAN stage writes each requested waveform as a real CSV from its
-vectors at ``%.16g``, with a ``<name>.meta.json`` (a family: one CSV per member and ``<name>.families.json``); the
+vectors at ``%.17g``, with a ``<name>.meta.json`` (a family: one CSV per member and ``<name>.families.json``); the
 extract stage reads every file back against its meta file. The export and the operating-point read are timed inside
 OCEAN: a line each in ``metrics/ocean.log``, a row each in ``metrics/ocean_timing.tsv``, and a trace record each
 (``ocean:waveform:<name>``, ``ocean:oppoints``) beside the OCEAN run's own (``ocean#<attempt>``), so the time of an

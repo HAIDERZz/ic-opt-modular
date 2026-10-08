@@ -10,7 +10,8 @@ The files land in the child's `metrics/waveforms/` directory
 ## One waveform
 
 `<name>.csv` is a real CSV: comma separated, no padding, one header row, then one
-row per sample, every value written with `%.16g` (sixteen significant digits).
+row per sample, every value written with `%.17g` (seventeen significant digits: every
+double reads back exactly, bit for bit).
 
 | the expression gives | columns |
 |---|---|
@@ -35,7 +36,7 @@ time_s,y
 ```json
 {"name": "vout", "expression": "getData(\"/out\" ?result \"tran\")", "result": "tran",
  "kind": "waveform", "file": "vout.csv", "columns": ["time_s", "y"], "units": ["s", "V"],
- "points": 102401, "separator": ",", "precision": "%.16g"}
+ "points": 102401, "separator": ",", "precision": "%.17g"}
 ```
 
 `result` is the result selected before the expression (the `?result "..."` it
@@ -69,6 +70,11 @@ another export (`vout__0` beside `vout`): the script is refused.
 | gave a waveform whose x is not a number or whose y is neither a number nor complex | none | `metric_failed`, issue `waveform <name> not written: unsupported_x:<type>` / `unsupported_y:<type>` |
 
 The other metrics of the child stand, as with an expression that returned nil.
+
+An expression that returns a number (or a string) is not exported: a waveform
+export is for waveforms, and a scalar belongs in a metric. Such an expression
+gives no file and the child is `metric_failed` with `not_a_waveform:<type>`, as
+the table says. This is part of the contract.
 The extract stage reads every file back against its meta file (`csv.reader`, the
 header, the field count of every row, numbers only, the point count, a family's
 index): a file that does not match makes the child `metric_failed` with
@@ -87,7 +93,7 @@ for table in wave.tables:              # one for a waveform, one per member for 
 ## How it is written, and how long it takes
 
 The replay script writes the vectors directly (`drGetWaveformXVec` /
-`drGetWaveformYVec`, `drGetElem`, `fprintf` with `%.16g`, a complex value through
+`drGetWaveformYVec`, `drGetElem`, `fprintf` with `%.17g`, a complex value through
 `real()` / `imag()`); it does not use `ocnPrint`, whose output is a whitespace
 table of six significant digits and which slows down past 10 000 points (its own
 warning PRINT-1048).

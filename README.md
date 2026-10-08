@@ -577,7 +577,7 @@ Waveforms asked for with `waveforms=` (`fix_run`, `sim.evaluate`) land in the
 child's `sims/<obs>/<tb>/<corner>/metrics/waveforms/`: one real CSV per waveform,
 `<name>.csv` (comma separated, a header row, `x,y` or `x,re,im` for a complex
 one, the x column named after its quantity and unit -- `time_s`, `freq_Hz` --,
-every value `%.16g`), with `<name>.meta.json` (columns, units, the expression,
+every value `%.17g`), with `<name>.meta.json` (columns, units, the expression,
 the result, the point count, the precision); a family one file per member,
 `<name>__<i>.csv`, and `<name>.families.json` with the sweep values. OCEAN writes
 them from the vectors, not through `ocnPrint`, and times each export apart from

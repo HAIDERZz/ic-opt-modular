@@ -1,4 +1,4 @@
-"""N-100: the waveform files of the replay script (a real CSV at %.16g, written from the vectors, not by ``ocnPrint``),
+"""N-100: the waveform files of the replay script (a real CSV at %.17g, written from the vectors, not by ``ocnPrint``),
 the extract stage reading them back, the timing of the export, and the operating points read only on the instances of
 a component type that reports ``gm``.
 
@@ -26,12 +26,12 @@ VOUT = WaveformExport(name="vout", expression='getData("/out" ?result "tran")')
 # -- 1. the script's export block ----------------------------------------------------------------------------------------
 
 
-def test_a_waveform_is_written_from_its_vectors_at_sixteen_digits():
+def test_a_waveform_is_written_from_its_vectors_at_seventeen_digits():
     script = ocean.replay_script([], [VOUT], **PATHS)
     assert "ocnPrint" not in script                     # whitespace table, six digits, slow past 10 000 points (B02, B03)
     assert "drGetWaveformXVec(w)" in script and "drGetWaveformYVec(w)" in script and "drGetElem(xv i)" in script
-    assert 'fprintf(port "%.16g,%.16g\\n" drGetElem(xv i) drGetElem(yv i))' in script        # comma separated, no padding
-    assert 'fprintf(port "%.16g,%.16g,%.16g\\n" float(drGetElem(xv i)) float(real(z)) float(imag(z)))' in script
+    assert 'fprintf(port "%.17g,%.17g\\n" drGetElem(xv i) drGetElem(yv i))' in script        # comma separated, no padding
+    assert 'fprintf(port "%.17g,%.17g,%.17g\\n" float(drGetElem(xv i)) float(real(z)) float(imag(z)))' in script
     assert 'cols = list(icoptXColumn(xv) "re" "im")' in script and 'cols = list(icoptXColumn(xv) "y")' in script
     assert 'cond((equal(name "") "x") (equal(units "") name) (t strcat(name "_" units)))' in script   # time_s, freq_Hz, x
     # the export: its result selected, the expression inside errset as a metric's, the call with name, folder, and the
@@ -50,7 +50,7 @@ def test_the_meta_file_says_columns_units_expression_result_points_and_precision
     writer = script[script.index("procedure(icoptExportWave("):]
     for key in ("name", "expression", "result", "kind", "file", "columns", "units", "points", "separator", "precision"):
         assert f'\\"{key}\\": ' in writer
-    assert '\\"precision\\": \\"%.16g\\"' in writer
+    assert '\\"precision\\": \\"%.17g\\"' in writer
     # the meta file is written after the CSV: one that exists names files that are complete
     single = writer[writer.index("(t\n        file = strcat(name \".csv\")"):]
     assert single.index("icoptWriteWave(value") < single.index('".meta.json"')
@@ -103,18 +103,18 @@ def write_family(folder: Path, name: str) -> Path:
     entries, index = [], []
     for i, (values, rows) in enumerate(members):
         file = f"{name}__{i}.csv"
-        (folder / file).write_text("time_s,y\n" + "".join(f"{x:.16g},{y:.16g}\n" for x, y in rows))
+        (folder / file).write_text("time_s,y\n" + "".join(f"{x:.17g},{y:.17g}\n" for x, y in rows))
         entries.append({"file": file, "columns": ["time_s", "y"], "units": ["s", "V"], "points": len(rows)})
         index.append({"index": i, "file": file, "values": list(values)})
     (folder / f"{name}.families.json").write_text(json.dumps({"name": name, "sweeps": ["k"], "members": index}))
     meta = {"name": name, "expression": "fam", "result": "tran", "kind": "family", "index": f"{name}.families.json",
-            "members": entries, "separator": ",", "precision": "%.16g"}
+            "members": entries, "separator": ",", "precision": "%.17g"}
     (folder / f"{name}.meta.json").write_text(json.dumps(meta))
     return folder / f"{name}.meta.json"
 
 
 def test_the_reader_gives_real_complex_and_family_tables(tmp_path):
-    t = 0.4e-12 * 750_000                           # a time that needs all sixteen digits: read back as it was written
+    t = 0.4e-12 * 750_000                           # a time that needs all seventeen digits: read back as it was written
     real = ocean.read_waveform(write_waveform(tmp_path, "vt", [(0.0, 0.0), (t, -8.3148e-06)], columns=("time_s", "y"),
                                               units=("s", "V")))
     assert real.kind == "waveform" and real.tables[0].columns == ["time_s", "y"] and real.tables[0].units == ["s", "V"]

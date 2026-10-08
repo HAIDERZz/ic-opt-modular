@@ -24,8 +24,9 @@ SCALARS_HEADER = ["metric", "value", "unit", "status", "message"]
 OPPOINTS_HEADER = "instance\tquantity\tvalue"
 # D8: the quantities kept per transistor, fixed. `gm` first: an instance without it is not a transistor and is left out.
 OP_QUANTITIES = ("gm", "region", "ids", "vgs", "vds", "vbs", "vth", "vdsat", "gds", "gmoverid", "cgs", "cgd")
-# N-100: the waveform files. Every value is written with this format: sixteen significant digits.
-WAVEFORM_PRECISION = "%.16g"
+# N-100: the waveform files. Every value is written with this format: seventeen significant digits, which give back
+# every double exactly (sixteen do not: about half the times of a long transient record came back one bit off).
+WAVEFORM_PRECISION = "%.17g"
 TIMING_FILE = "ocean_timing.tsv"          # beside the scalars: part \t seconds \t outcome, one row per timed part
 
 
@@ -71,7 +72,7 @@ def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf
     operating points (:func:`saturation_margin`), not by OCEAN.
 
     Waveforms (N-100, ``docs/waveform_export.md``): each is written from its vectors (``drGetWaveformXVec`` /
-    ``drGetWaveformYVec``, ``%.16g``) as a real CSV, ``<name>.csv`` with ``<name>.meta.json``, a family one file per
+    ``drGetWaveformYVec``, ``%.17g``) as a real CSV, ``<name>.csv`` with ``<name>.meta.json``, a family one file per
     member (``<name>__<i>.csv``) with ``<name>.families.json``; not through ``ocnPrint``, whose output is a whitespace
     table of six significant digits and which slows past 10 000 points (PRINT-1048). Each export and the operating-point
     read are timed (``measureTime``, wall clock): a line in the OCEAN log and a row of ``timing_file`` (default:
@@ -96,7 +97,7 @@ def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf
             "if(icoptResult then",
             "  icoptValue = car(icoptResult)",
             "  if(numberp(icoptValue) then",
-            f'    fprintf(out "%s\\t%.16g\\t%s\\tpass\\t\\n" {_skill(metric.name)} icoptValue {_skill(metric.unit)})',
+            f'    fprintf(out "%s\\t%.17g\\t%s\\tpass\\t\\n" {_skill(metric.name)} icoptValue {_skill(metric.unit)})',
             "  else",
             "    if(null(icoptValue) then",             # SKILL's type(nil) is `list`: say what it is
             f'      fprintf(out "%s\\t\\t%s\\tfail\\tno_value:nil\\n" {_skill(metric.name)} {_skill(metric.unit)})',
@@ -120,7 +121,7 @@ def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf
 # The waveform writer, defined once per script (N-100). SKILL source as it is sent: "\\" is one backslash.
 # icoptWriteWave returns list(columns units points), or a string saying why nothing was written; icoptExportWave
 # writes a waveform or a family and its JSON files, the meta file last, and returns list(outcome points).
-_WAVEFORM_PROCEDURES = r"""; waveform export (ic-opt, N-100): a CSV per waveform written from its vectors, %.16g
+_WAVEFORM_PROCEDURES = r"""; waveform export (ic-opt, N-100): a CSV per waveform written from its vectors, %.17g
 procedure(icoptJsonString(s)
   let((out c)
     out = ""
@@ -137,7 +138,7 @@ procedure(icoptJsonValue(v)
     (stringp(v) icoptJsonString(v))
     (symbolp(v) icoptJsonString(get_pname(v)))
     (integerp(v) sprintf(nil "%d" v))
-    (floatp(v) sprintf(nil "%.16g" v))
+    (floatp(v) sprintf(nil "%.17g" v))
     (t icoptJsonString(sprintf(nil "%L" v)))
   )
 )
@@ -193,15 +194,15 @@ procedure(icoptWriteWave(w path)
             for(i 0 n-1
               let((z)
                 z = drGetElem(yv i)
-                fprintf(port "%.16g,%.16g,%.16g\n" float(drGetElem(xv i)) float(real(z)) float(imag(z)))
+                fprintf(port "%.17g,%.17g,%.17g\n" float(drGetElem(xv i)) float(real(z)) float(imag(z)))
               )
             )
           )
           (eq(xt 'double) && eq(yt 'double)
-            for(i 0 n-1 fprintf(port "%.16g,%.16g\n" drGetElem(xv i) drGetElem(yv i)))
+            for(i 0 n-1 fprintf(port "%.17g,%.17g\n" drGetElem(xv i) drGetElem(yv i)))
           )
           (t
-            for(i 0 n-1 fprintf(port "%.16g,%.16g\n" float(drGetElem(xv i)) float(drGetElem(yv i))))
+            for(i 0 n-1 fprintf(port "%.17g,%.17g\n" float(drGetElem(xv i)) float(drGetElem(yv i))))
           )
         )
         close(port)
@@ -269,7 +270,7 @@ procedure(icoptExportWave(name value dir expression result)
             icoptWriteText(strcat(dir "/" name ".meta.json")
                            strcat(head ", \"kind\": \"family\", \"index\": " icoptJsonString(strcat(name ".families.json"))
                                   ", \"members\": [" buildString(entries ", ") "]"
-                                  ", \"separator\": \",\", \"precision\": \"%.16g\"}\n"))
+                                  ", \"separator\": \",\", \"precision\": \"%.17g\"}\n"))
             list("written" points)
           )
         )
@@ -285,7 +286,7 @@ procedure(icoptExportWave(name value dir expression result)
                          strcat(head ", \"kind\": \"waveform\", \"file\": " icoptJsonString(file)
                                 ", \"columns\": " icoptJsonList(car(written)) ", \"units\": " icoptJsonList(cadr(written))
                                 sprintf(nil ", \"points\": %d" caddr(written))
-                                ", \"separator\": \",\", \"precision\": \"%.16g\"}\n"))
+                                ", \"separator\": \",\", \"precision\": \"%.17g\"}\n"))
           list("written" caddr(written))
         )
       )
