@@ -94,3 +94,71 @@ written (the session logs are read-only input); nothing private in the skill (no
 user's platform beyond the sentence of section 2). Do not edit `docs/refactor/BACKLOG_CN.md`. Use a private
 subdirectory of your scratchpad for helper files. Commit style of the repository, trailer `Co-Authored-By: Claude Opus 5.5
 <noreply@anthropic.com>`. Do not merge or push.
+
+## 5. Record
+
+Done 2026-10-08 by the coding subagent on `n98-signoff-total` (from main `f8c8771`; `git merge --ff-only main` found it
+up to date), not merged, not pushed. Commits: `0fcbf15` (implementation, tests, skill, README, T18.4 note) and the commit
+of this record.
+
+What was done.
+- `recipes/signoff.py`: `main(..., total=None)`. `_check_total` refuses a `total` below `budget` (and one that is not a
+  whole number) before anything runs, `--plan` too. The search is called with `budget=budget, total=total` (`total`
+  passed as given: a call without it prints the design line of before). While `budget < total` the call ends after the
+  search with `[run] signoff: the search holds <k> of <total> points; the re-check runs when it reaches <total> (signoff
+  budget=<total> total=<total>)` -- no re-check, no round, no report, no `signoff_rounds.json`; the call with
+  `budget == total` runs everything as before. Under `--plan` the line follows the search's plan, `<k>` being the points
+  the search will hold after the call (`max(held now, budget)`); with `budget == total` the re-check's plan prints
+  instead. With `rounds` above 1 the line `signoff round 1 of N: ...` is printed on the last call only.
+- `digest.py`: the `library` entry gains `combinations` -- `{device id: [{variable: grid text, ...}, ...]}`, the
+  combinations a row of the device's table sits on (`link.resolve(spec)[device].space_table`, its sorted order, texts
+  as the digest's grid writes them), `None` where the library cannot be read (with the existing note). Until now the
+  entry only counted them (`combinations` of `of` per device). `digest.md`'s "Library devices" names the entry in one
+  sentence; it does not print the list. `DIGEST_VERSION` stays 5.
+- `skills/ic-opt/SKILL.md`: step 4 gains the paragraph of the supervised loop (`signoff ... total=<N>` for a spec with
+  several corners, `optimize ... total=<N>` for one; the last call, `budget=<N>`, runs the re-check; one call with
+  `budget=<N>` is the run without advice). Step 7 is rewritten as items 1-5 of section 2 (when; what to read, including
+  `library.combinations` in `.icopt/reports/digest.json` and that a row off it is refused; how to decide -- the six
+  rules and the sessions' additions; the commands; the report back). Kept as they were, moved into the items: the advice
+  file's example, "What an advice may do" with the T17.6 measurements (item 4, the 2026-10-08 sentence added there), the
+  "Tools on your side" paragraph (item 3). The cheatsheet's `signoff` line takes `[total=N]`, with a two-line comment.
+  Nothing else of the skill changed.
+- README "Recipes": a paragraph on `signoff total=`. `T18_4_TIGHTEN_RECIPE_SPEC.md`: a note at its end.
+
+Tests. Section 5's suites (`test_signoff_tighten.py`, `test_cli_recipes.py`, `test_optimize.py`, `test_advice.py`,
+`test_digest*.py`, `test_library_device_run.py`, `test_skill_author_spec.py`, `test_replay_parity.py` with
+`IC_OPT_RECORDED_RUNS`): 187 passed before, 193 after, no skips. New: `tests/ic_opt/test_signoff_total.py` (five: four
+calls `budget=4/8/12/16 total=16` against one call `budget=16`, for `rounds=1` and `rounds=2` -- the search's points
+batch by batch, the re-checked points and their children, `steps.json`, `signoff_rounds.json` without fingerprints, the
+report, and the first three calls leaving no re-check, rounds file or report; the same project without `total` records a
+2-point design and parts from the second batch; an advice adopted after the first call against one call handed the same
+advice row; the `--plan` lines of both cases, nothing written; `total` below `budget` refused, `--plan` too) and one in
+`test_digest_library.py` (`library.combinations`; `None` where the library cannot be read). `ruff check src tests` clean.
+No `test_skill*.py` checks the `ic-opt` skill's text (`test_skill_author_spec.py` reads the author-spec skill only).
+
+Deviations and readings.
+- `library.combinations` is keyed by device id (`{"xfmr": [{"xfmr.Lp": "110p", ...}, ...]}`), not the bare list of
+  section 2's example: a spec may hold several library devices, each table over its own variables, and the per-device
+  `combinations` key already holds the count. The skill shows the keyed form.
+- The digest's version stays 5: one key added to an entry, every other value as it was.
+- The tests use the fake project of `test_signoff_tighten.py` on a widened grid (21 x 13 levels) in batches of 4 to a
+  total of 16, not 10/20/30/40 to 40: the design (8 points for 16, 2 for a first call of 4) then decides the second
+  batch, so the equality is not a coincidence of the first batch; the test shows the parting without `total`.
+- Step 7's rule "Review at every round" now reads "after every batch"; the rule on a limit read off the initial design
+  is merged with the new rule on what a ranges advice rests on; the 2026-10-08 sentence reads "ended no worse than the
+  same seed without it in 11 of 12 runs" (section 2's "never ended worse ... in 11 of 12" read as that).
+- Item 1 of step 7 gives `metric_gp`'s design as `min(max(2 x active variables, 8), 20)` "at most half the run's total"
+  -- the cap `initial_design_size` applies, which section 2's formula leaves out.
+
+Not foreseen by the specification.
+- Section 4 asks for `## 5. Record`, and section 5 is the working rules: this record is a second section 5.
+- A finished signoff run continued with `budget < total` (say `budget=10 total=40` on a store holding 40 search points)
+  stops after the search, as section 1 says, and prints "the search holds 40 of 40 points".
+- An advice row carries the spec's fingerprint, which follows the project's path (the spec names its export): copying
+  `advice.jsonl` to a twin project applies nothing there; the test restamps the row.
+- In the loop of step 4 the re-check runs on the last call only, so "after the first re-check the digest says which
+  corner erodes which metric" helps an agent only on a continued run or with `rounds` above 1; within one batch-advanced
+  run the corners' erosion is known from the spec's corners alone until the end. An interim re-check is not part of this
+  ticket.
+- `total` below `budget` through `ic-opt run` ends in a Python traceback (the command catches only `SiteError`,
+  `EnvelopeError`, `LinkError`), as N-96 recorded for `optimize`.
