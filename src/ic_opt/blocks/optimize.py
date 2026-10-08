@@ -19,10 +19,20 @@ Advice (T17.1.5, ``ic_opt.advice``): ``advise`` records an advice in ``<project>
 that file before every batch and hands its rows to ``suggest``, which applies the advice in effect at the batch's history
 size: its start rows first (origin ``advice:<id>``), for every strategy; its ranges, fixed levels and ``vary`` to
 ``metric_gp`` only. Without the file every proposal is what it was before advice existed.
+
+The initial design's size (N-96). It is decided by the first call of a step -- the one that finds no observation of this
+problem in the step -- from that call's ``total`` (the budget the run is meant to reach; default its ``budget``) and
+recorded in ``<project>/.icopt/steps.json``; every later call of the step keeps it. A run advanced in increments
+(``budget=10 total=40``, then ``budget=20 total=40``, ...) therefore proposes the points of one call with ``budget=40``.
+Until N-96 each call sized the design from its own budget, so a run continued 10 points at a time got a 5-point design
+on its first call and never the 20-point design of the one-shot run, and the two diverged from the second batch on. A
+store without the file (written before N-96) sizes the design from the current call's budget, as it always did.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
 import tempfile
 from collections.abc import Sequence
@@ -162,6 +172,7 @@ def optimize(
     store: RunStore,
     *,
     budget: int,
+    total: int | None = None,
     batch: int = 10,
     strategy: str = "auto",
     deck: Deck | None = None,
@@ -186,6 +197,11 @@ def optimize(
     Neither is evaluated again once in the history. ``limits`` is the executor host's site.yaml entry (``run.limits``),
     passed on to every ``sim.evaluate``. ``failure_penalty`` is ignored (see ``suggest``).
 
+    ``total``: the budget the run is meant to reach when it is advanced in increments (default ``budget``; below it is
+    refused). The initial design of ``metric_gp`` and ``openbox_*`` is sized from it by the step's first call and recorded
+    in ``.icopt/steps.json`` (``{step: {"initial_design": n, "budget": total}}``); later calls of the step keep the
+    recorded size (N-96, module docstring). ``initial_trials`` given is used and recorded. Not in any fingerprint.
+
     ``strategy="auto"`` (the default) is resolved here, once, before anything runs (``--plan`` too), and one line says to
     what and why; a strategy keyword the resolved strategy does not take is refused there. A named strategy is taken as
     named: ``metric_gp`` on a spec with EM devices simulated in the loop is refused. ``metric_gp`` is handed the rows
@@ -194,6 +210,10 @@ def optimize(
     from ic_opt.recipe import PLAN_MODE
 
     plan = PLAN_MODE.get()
+    if total is not None and int(total) < budget:
+        raise ValueError(f"total={total} is below budget={budget}: total is the budget the run is meant to reach, "
+                         "at least this call's")
+    sized_for = budget if total is None else int(total)
     n_corners = len(spec.corner_ids) if corners == "all" else len(list(corners))
     adopted = adopt(spec, initial)
     if strategy == suggesters.AUTO:
@@ -211,32 +231,42 @@ def optimize(
         initial = _at_corners(spec, Observations(initial), corners)
         adopted = adopt(spec, initial)
     same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}     # a store stamped before T15.2 is this problem too (engine.py, "Identity")
-    design = _initial_design(spec, strategy, strategy_kwargs, budget)
-    if design is not None and not strategy_kwargs.get("initial_trials"):
+    mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
+    done = len(mine.by_step(step))
+    given = strategy_kwargs.get("initial_trials")
+    recorded = _recorded_design(store.root, step) if done and not given else None     # N-96: a later call keeps it
+    design = _initial_design(spec, strategy, {**strategy_kwargs, "initial_trials": recorded["initial_design"]}
+                             if recorded else strategy_kwargs, sized_for)
+    if design is not None and not given:
         strategy_kwargs = {**strategy_kwargs, "initial_trials": design[0]}   # the suggester runs the design this run printed
+    note = ("" if design is None or given else
+            f"recorded by this step's first call, budget {recorded['budget']}" if recorded else
+            f"sized for a budget of {sized_for}" if total is not None else "")
     rows = list(start)
     if current:
         row, line = current_design(spec, _exports(spec, deck, executor, plan))
         print(f"{'[plan] opt.optimize' if plan else '[optimize]'} step={step!r}: {line}")
         rows = ([row] if row else []) + rows
     starts = space.points_from_params(spec, rows, origin="start")
-    mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
     history = Observations(list(adopted) + list(mine))
-    done = len(mine.by_step(step))
     fresh = len({p.key for p in starts} - history.keys())
     if plan:
         shape = pipeline if pipeline is not None else default_pipeline(spec, deck or Deck(), waveforms)
         print(f"[plan] opt.optimize step={step!r} strategy={strategy}: {done}/{budget} points done, "
               f"up to {max(0, budget - done)} more in batches of {batch} × "
               f"{plan_shape(spec, shape, corners, executor, parallel_jobs, limits)} (spec budget {spec.budget.max_simulations})")
-        _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=True)
+        _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=True, note=note,
+                      total=sized_for - done)
         handed = _at_corners(spec, mine, corners) if strategy == "metric_gp" else mine
         _announce(advice_rules.of_problem(advice_rules.read(store.root), same_problem), len(adopted) + len(handed),
                   strategy, set(), plan=True)
         return Observations()
-    _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=False)
+    _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=False, note=note,
+                  total=sized_for - done)
     announced: set[str] = set()
     with exclusive_lock(store.root / RUN_LOCK, what="project"):      # no advice is adopted while the run goes (advise)
+        if design is not None and (not done or given):     # the step's first call, or a size stated: recorded (N-96)
+            _record_design(store.root, step, design[0], sized_for)
         while True:
             mine = Observations(o for o in store.observations() if o.spec_fingerprint in same_problem)
             done = len(mine.by_step(step))
@@ -260,6 +290,28 @@ def optimize(
 
 
 RUN_LOCK = "run.lock"      # held by opt.optimize for its whole loop; the store's own lock is held per batch (sim.evaluate)
+STEPS = "steps.json"       # per step, the initial design its first call sized (N-96): {step: {initial_design, budget}}
+
+
+def _recorded_design(root: Path, step: str) -> dict | None:
+    """The entry ``.icopt/steps.json`` holds for ``step``: ``{"initial_design": n, "budget": b}``, the size the step's
+    first call recorded and the budget it was sized for; None without the file or the entry (a store written before
+    N-96: the size is then the current call's)."""
+    path = root / STEPS
+    if not path.is_file():
+        return None
+    entry = json.loads(path.read_text(encoding="utf-8")).get(step)
+    return entry if isinstance(entry, dict) and entry.get("initial_design") else None
+
+
+def _record_design(root: Path, step: str, size: int, budget: int) -> None:
+    """Write ``step``'s entry of ``.icopt/steps.json`` (the other steps' entries kept), replacing the file at once."""
+    path = root / STEPS
+    data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    data[step] = {"initial_design": int(size), "budget": int(budget)}
+    temporary = path.with_name(STEPS + ".tmp")
+    temporary.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
 
 
 def _announce(advice: Sequence[dict], k: int, strategy: str, announced: set[str], *, plan: bool) -> None:
@@ -481,16 +533,27 @@ def surrogate_points(history: int, new: int, batch: int, design: int, *, start: 
 
 
 def _print_design(strategy: str, design: tuple[int, int] | None, history: int, new: int, batch: int, start: int, *,
-                  plan: bool) -> None:
+                  plan: bool, note: str = "", total: int | None = None) -> None:
+    """The design line. ``note`` says where the size comes from when not from this call's budget (N-96); ``total``: the
+    new points up to the run's ``total`` (default ``new``). A call whose model proposes none of its points is a plain
+    line when its new points are all start points, or when the model proposes some of the points up to ``total`` (the
+    run goes on past the design: nothing to propose yet is no fault); the WARNING stays for a run that ends without one."""
     if design is None or new <= 0:
         return
     size, needed = design
     proposed = surrogate_points(history, new, batch, size, start=start, needed=needed)
     label, model = ("openbox", "surrogate") if strategy.startswith("openbox") else (strategy, "model")
     tag = "[plan] " if plan else "[optimize] "
-    first = f" ({start} start point{'s' if start != 1 else ''} first)" if start else ""
-    line = f"{tag}{label} initial design {size} points{first}: the {model} proposes {proposed} of the {new} new points"
-    if proposed == 0:
+    said = "; ".join(([note] if note else []) + ([f"{start} start point{'s' if start != 1 else ''} first"] if start else []))
+    line = (f"{tag}{label} initial design {size} points{f' ({said})' if said else ''}: the {model} proposes {proposed} of "
+            f"the {new} new points")
+    total = new if total is None else total
+    later = surrogate_points(history, total, batch, size, start=start, needed=needed) if total > new else 0
+    if proposed == 0 and start >= new:
+        line += " (all of them start points)"
+    elif proposed == 0 and later:
+        line += f" (none yet: it proposes {later} of the {total} points left to the run's total)"
+    elif proposed == 0:
         before = (f" (the {model} needs {needed} successful point{'s' if needed != 1 else ''} before a batch starts)"
                   if needed else "")
         line += (f" -- WARNING: none; this run is initial design throughout{before}. Raise budget"

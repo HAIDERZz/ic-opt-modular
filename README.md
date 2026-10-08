@@ -317,6 +317,20 @@ def main(run, *, per_dim=3):
     run.note(f"report: {b.report(run.spec, obs, run.store)}")
 ```
 
+A run continues when its recipe runs again with a larger `budget`. The initial
+design of `metric_gp` and `openbox_*` is sized by the step's first call and
+recorded in `.icopt/steps.json`; every later call of the step keeps that size.
+A run advanced in increments -- an agent advising between batches -- passes
+`total=<N>`, the budget it is meant to reach, on every call
+(`ic-opt run optimize PROJECT budget=10 total=40`, then `budget=20 total=40`,
+...): the first call sizes the design for `total` (the plan line says
+`initial design n points (sized for a budget of 40)`), and the run proposes
+the points one call with `budget=40` proposes. Without `total` the first call's
+own budget sizes it; `total` below `budget` is refused; a size stated with
+`initial_trials` (a keyword of `opt.optimize`) is recorded too. A store written
+before this file existed sizes the design from the current call's budget, as it
+did before.
+
 ### Evaluation = engine + stages
 
 `sim.evaluate` is a generic engine (dedup, budget, lock, testbench × corner

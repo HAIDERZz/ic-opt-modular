@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import itertools
+import json
 import re
 import warnings
 
@@ -184,8 +185,8 @@ def test_initial_design_size_defaults_to_the_smaller_of_twice_the_variables_and_
 
 def test_openbox_marks_initial_design_points_and_says_when_the_surrogate_never_proposes(tmp_path, capsys):
     """Two variables. A budget of 4 in one batch (design min(4, 2) = 2) starts with nothing to fit a surrogate on, so it is
-    design throughout, and the run says so; continuing to 8 (design 4) makes the second batch the surrogate's, and every
-    point's origin says which served it (N-27, ISSUE-8)."""
+    design throughout, and the run says so; continuing to 8 keeps the design the step's first call recorded (N-96) and
+    makes the second batch the surrogate's, and every point's origin says which served it (N-27, ISSUE-8)."""
     spec, store, ex, deck = project(tmp_path)
     first = optimize(spec, ex, store, deck=deck, strategy="openbox_gp_eic", budget=4, batch=4, seed=1, limits=FAKE_HOST)
     out = capsys.readouterr().out
@@ -193,7 +194,8 @@ def test_openbox_marks_initial_design_points_and_says_when_the_surrogate_never_p
     assert {o.origin for o in first} == {"suggest:openbox_gp_eic:init"}
     both = optimize(spec, ex, store, deck=deck, strategy="openbox_gp_eic", budget=8, batch=4, seed=1, limits=FAKE_HOST)
     out = capsys.readouterr().out
-    assert "[optimize] openbox initial design 4 points: the surrogate proposes 4 of the 4 new points" in out and "WARNING" not in out
+    assert ("[optimize] openbox initial design 2 points (recorded by this step's first call, budget 4): the surrogate "
+            "proposes 4 of the 4 new points") in out and "WARNING" not in out
     new = [o for o in both if o.obs_id not in {f.obs_id for f in first}]
     assert len(new) == 4 and {o.origin for o in new} == {"suggest:openbox_gp_eic:acq"}
     assert "[optimize] step='optimize': no current design: the deck carries no export of testbench tb" in out
@@ -536,3 +538,158 @@ def test_a_continued_auto_run_proposes_what_an_uninterrupted_one_does(tmp_path, 
     assert [(o.params, o.origin) for o in parts] == [(o.params, o.origin) for o in whole]
     assert [o.origin for o in whole] == ["suggest:metric_gp:init"] * 8 + ["suggest:metric_gp:grid:8"] * 4
     assert capsys.readouterr().out.count(f"[optimize] strategy auto: metric_gp ({ONE})") == 3
+
+
+# -- N-96: the initial design's size is the step's first call's ---------------------------------------------------------
+
+BROAD = [{"name": "F", "kind": "integer", "lower": "20", "upper": "60", "step": "2"},
+         {"name": "W", "kind": "continuous_step", "lower": "0.6u", "upper": "3u", "step": "0.2u"}]
+SIX = [{"name": n, "kind": "integer", "lower": "0", "upper": "20", "step": "1"} for n in "ABCDEG"]
+
+
+def six_bowl(params, tb=None, corner=None):
+    return {"NF": 1.0 + sum(((int(params[n]) - 10) / 10) ** 2 for n in "ABCD" if n in params)
+            + sum(((int(params[n]) - 6) / 10) ** 2 for n in "EG" if n in params)}
+
+
+def increments_project(path, strategy):
+    """Designs larger than the first batch of 10, so that a size sized for 10 points (5) and one sized for 40 differ in
+    what the second batch proposes. metric_gp: six circuit variables (design 12 at a budget of 40). openbox_gp_eic: four
+    circuit variables and a fake EM device's two (design 12 at 40), the strategy auto picks for such a spec."""
+    if strategy == "metric_gp":
+        spec = make_spec(variables=SIX, budget={"max_simulations": 200})
+        store = RunStore(path)
+        template = "simulator lang=spectre\nparameters temperature=27 " + " ".join(f"{n}={{{{{n}}}}}" for n in "ABCDEG")
+        return spec, store, FakeSpectreExecutor(store.root / "sims", six_bowl), Deck(templates={("tb", None): template
+                                                                                               + "\ntran tran stop=10n\n"})
+    pytest.importorskip("klayout.db")
+    from ic_opt.blocks.netlist import import_netlists
+    from tests.ic_opt.test_blocks import maestro_export
+    from tests.ic_opt.test_em_circuit import NETLIST
+    from tests.ic_opt.test_em_pcell import demo_spec
+
+    export = maestro_export(path / "maestro", "tb")
+    (export / "netlist" / "input.scs").write_text(NETLIST.replace("F=20", "A=1 B=1 C=1 D=1"))
+    d = demo_spec().model_dump(mode="json")
+    d["testbenches"] = [{"id": "tb", "maestro_point_root": str(export), "virtuoso_library": "l", "cell": "c", "test_name": "t"}]
+    d["devices"][0]["variables"] = {"outer_diameter_um": "ind.od", "width_um": "ind.w"}
+    d["variables"] = [{"name": "ind.od", "kind": "continuous_step", "lower": "80", "upper": "120", "step": "10"},
+                      {"name": "ind.w", "kind": "continuous_step", "lower": "3", "upper": "6", "step": "0.5"}] + SIX[:4]
+    d["em"] = {"process_file": "/site/n28.proc", "frequencies": {"start_hz": 0, "stop_hz": 200e9, "step_hz": 1e9},
+               "three_d_metals": ["M6", "M5"], "threads": 4, "memory_gb": 32, "timeout_s": 600}
+    d["bindings"] = [{"testbench": "tb", "instance": "NPORT0", "device": "ind", "terminals": ["P1", "N1"]}]
+    d["metrics"] = [{"name": "NF", "unit": "dB", "expression": "nf()", "testbench": "tb"}]
+    d["constraints"] = [{"metric": "NF", "op": "lt", "value": "9"}]
+    d["objective"] = {"direction": "minimize", "expression": "NF"}
+    d["budget"] = {"max_simulations": 400}                      # 40 points x (EMX + testbench)
+    spec = Spec.model_validate(d)
+    store = RunStore(path / "proj")
+    ex = FakeSpectreExecutor(store.root / "sims", six_bowl)          # the testbench sees the circuit variables
+    return spec, store, ex, import_netlists(spec, ex, store)
+
+
+def per_batch(rows, size=10) -> list[list[tuple[dict, str]]]:
+    return [[(o.params, o.origin) for o in rows[i : i + size]] for i in range(0, len(rows), size)]
+
+
+def recorded(store) -> dict:
+    return json.loads((store.root / "steps.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("strategy", ["metric_gp", "openbox_gp_eic"])
+def test_a_run_advanced_in_increments_with_total_proposes_what_one_call_proposes(tmp_path, strategy, capsys):
+    """N-96: budget 10, 20, 30, 40, each with total=40, proposes the points of one call with budget=40, batch by batch.
+    Without total the first call sizes the design for 10 points (5) and the runs part from the second batch on."""
+    spec, store, ex, deck = increments_project(tmp_path / "whole", strategy)
+    whole = optimize(spec, ex, store, deck=deck, budget=40, batch=10, seed=3, limits=FAKE_HOST)
+    runs = {}
+    for total in (40, None):
+        spec, store, ex, deck = increments_project(tmp_path / f"parts{total}", strategy)
+        capsys.readouterr()
+        for budget in (10, 20, 30, 40):
+            runs[total] = optimize(spec, ex, store, deck=deck, budget=budget, total=total, batch=10, seed=3,
+                                   limits=FAKE_HOST)
+        if total:
+            out, steps = capsys.readouterr().out, recorded(store)
+    label = "metric_gp" if strategy == "metric_gp" else "openbox"
+    assert f"[optimize] strategy auto: {strategy}" in out
+    assert per_batch(runs[40]) == per_batch(whole) and len(runs[40]) == 40
+    assert sum(o.origin.endswith(":init") for o in whole) == 12
+    assert per_batch(runs[None])[0] == per_batch(whole)[0] and per_batch(runs[None])[1] != per_batch(whole)[1]
+    assert steps == {"optimize": {"initial_design": 12, "budget": 40}}
+    assert f"{label} initial design 12 points (sized for a budget of 40): " in out
+    assert out.count(f"{label} initial design 12 points (recorded by this step's first call, budget 40): ") == 3
+
+
+def test_without_total_the_first_call_s_size_is_kept(tmp_path, capsys):
+    """A 10-then-40 run keeps the 5-point design its first call sized (stable across the continuation, not changed with
+    each budget: sized afresh at 40 it would be 12): it proposes what one call with budget 40 and initial_trials=5 does.
+    metric_gp serves its whole first batch from the design while nothing is scored, so the first 10 points are design."""
+    spec, store, ex, deck = increments_project(tmp_path / "one", "metric_gp")
+    once = optimize(spec, ex, store, deck=deck, budget=40, batch=10, seed=3, initial_trials=5, limits=FAKE_HOST)
+    spec, store, ex, deck = increments_project(tmp_path / "two", "metric_gp")
+    optimize(spec, ex, store, deck=deck, budget=10, batch=10, seed=3, limits=FAKE_HOST)
+    assert recorded(store) == {"optimize": {"initial_design": 5, "budget": 10}}
+    capsys.readouterr()
+    more = optimize(spec, ex, store, deck=deck, budget=40, batch=10, seed=3, limits=FAKE_HOST)
+    assert ("[optimize] metric_gp initial design 5 points (recorded by this step's first call, budget 10): the model "
+            "proposes 30 of the 30 new points") in capsys.readouterr().out
+    assert per_batch(more) == per_batch(once) and sum(o.origin.endswith(":init") for o in more) == 10
+    assert recorded(store) == {"optimize": {"initial_design": 5, "budget": 10}}
+
+
+def test_a_store_without_the_record_sizes_the_design_from_the_current_call(tmp_path, capsys):
+    """A store written before N-96 has no steps.json: the size is the current call's, as it always was, and a later call
+    of a step that already holds points records nothing."""
+    spec, store, ex, deck = increments_project(tmp_path, "metric_gp")
+    optimize(spec, ex, store, deck=deck, budget=10, batch=10, seed=3, limits=FAKE_HOST)
+    (store.root / "steps.json").unlink()
+    capsys.readouterr()
+    rows = optimize(spec, ex, store, deck=deck, budget=40, batch=10, seed=3, limits=FAKE_HOST)
+    assert ("[optimize] metric_gp initial design 12 points: the model proposes 28 of the 30 new points"
+            in capsys.readouterr().out)
+    assert sum(o.origin.endswith(":init") for o in rows) == 12 and not (store.root / "steps.json").exists()
+
+
+def test_total_below_budget_is_refused_and_a_stated_initial_trials_is_recorded_and_kept(tmp_path, capsys):
+    spec, store, ex, deck = increments_project(tmp_path, "metric_gp")
+    for plan in (False, True):
+        token = PLAN_MODE.set(plan)
+        try:
+            with pytest.raises(ValueError, match=re.escape("total=20 is below budget=30")):
+                optimize(spec, ex, store, deck=deck, budget=30, total=20, limits=FAKE_HOST)
+        finally:
+            PLAN_MODE.reset(token)
+    assert ex.commands == [] and store.observations() == [] and not (store.root / "steps.json").exists()
+    optimize(spec, ex, store, deck=deck, budget=10, batch=10, seed=3, initial_trials=6, total=40, limits=FAKE_HOST)
+    assert recorded(store) == {"optimize": {"initial_design": 6, "budget": 40}}
+    capsys.readouterr()
+    rows = optimize(spec, ex, store, deck=deck, budget=20, batch=10, seed=3, limits=FAKE_HOST)
+    assert "metric_gp initial design 6 points (recorded by this step's first call, budget 40): " in capsys.readouterr().out
+    assert sum(o.origin.endswith(":init") for o in rows) == 10     # the first batch: metric_gp's design while nothing is scored
+    optimize(spec, ex, store, deck=deck, budget=30, batch=10, seed=3, initial_trials=7, step="other", limits=FAKE_HOST)
+    optimize(spec, ex, store, deck=deck, budget=30, batch=10, seed=3, initial_trials=4, limits=FAKE_HOST)
+    assert recorded(store) == {"optimize": {"initial_design": 4, "budget": 30},       # stated on a later call: recorded
+                               "other": {"initial_design": 7, "budget": 30}}
+
+
+def test_the_design_line_with_total_and_when_the_model_proposes_none_of_a_call_s_points(tmp_path, capsys):
+    """N-96, 1.3: a call whose new points are all start points, or whose run goes on past the design to its total, says
+    so in a plain line; the WARNING stays for a run that ends inside the design. --plan records nothing."""
+    spec, store, ex, deck = project(tmp_path, variables=BROAD)
+    planned(optimize, spec, ex, store, deck=deck, strategy="metric_gp", budget=10, total=40, batch=10, current=False,
+            limits=FAKE_HOST)
+    out = capsys.readouterr().out
+    assert ("[plan] metric_gp initial design 8 points (sized for a budget of 40): the model proposes 0 of the 10 new "
+            "points (none yet: it proposes 30 of the 40 points left to the run's total)") in out
+    assert "WARNING" not in out and not (store.root / "steps.json").exists()
+    start = [{"F": "24", "W": "0.8u"}, {"F": "30", "W": "1.2u"}]
+    planned(optimize, spec, ex, store, deck=deck, strategy="metric_gp", budget=2, batch=2, start=start, current=False,
+            limits=FAKE_HOST)
+    out = capsys.readouterr().out
+    assert ("[plan] metric_gp initial design 1 points (2 start points first): the model proposes 0 of the 2 new points "
+            "(all of them start points)") in out and "WARNING" not in out
+    planned(optimize, spec, ex, store, deck=deck, strategy="metric_gp", budget=4, total=8, batch=4, initial_trials=8,
+            current=False, limits=FAKE_HOST)
+    assert ("[plan] metric_gp initial design 8 points: the model proposes 0 of the 4 new points -- WARNING: none; this "
+            "run is initial design throughout") in capsys.readouterr().out

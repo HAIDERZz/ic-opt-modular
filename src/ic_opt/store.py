@@ -2,6 +2,7 @@
 
 - ``observations.jsonl`` — the fact table, one Observation per line, append only
 - ``steps.jsonl``        — one line per block call (name, args digest, outcome)
+- ``steps.json``         — per optimize step, the initial design's size its first call recorded (N-96)
 - ``decks/``, ``sims/``, ``cache/``, ``reports/`` — artifacts, all rebuildable
 - ``lock``               — one writer per project (``fcntl`` or ``msvcrt``: the controller may be Windows)
 """
