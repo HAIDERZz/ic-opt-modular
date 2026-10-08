@@ -77,7 +77,8 @@ def test_auto_takes_metric_gp_and_every_point_of_every_batch_is_a_valid_one(root
     optimize.main(run, budget=14, batch=4, seed=3)
     out = capsys.readouterr().out
     assert "[optimize] strategy auto: metric_gp (library devices: no EMX in the loop)" in out
-    assert "no current design: the spec has EM devices" in out
+    assert ("no current design: the spec's devices come from a library table (their variables have no exported value)"
+            in out and "EM devices" not in out)                    # N-97, F6: not the EM wording
     obs = run.store.observations()
     assert len(obs) == 14 and len({o.key for o in obs}) == 14 and {o.status for o in obs} <= {"ok", "constraint_failed"}
     assert all(o.origin.startswith("suggest:metric_gp:") for o in obs)

@@ -240,8 +240,8 @@ def test_the_observation_holds_both_kinds_of_metric(tmp_path, capsys):
     assert lost.status == "metric_failed" and lost.metrics == {"NF": 8.0} and not lost.feasible
     assert lost.children["dc/nominal"].issues == ["metric SAT_MARGIN failed: no operating point for M2"]
     assert "dc/nominal: metric SAT_MARGIN failed: no operating point for M2" in lost.issues
-    assert ("[evaluate] step='evaluate': metric SAT_MARGIN failed on 1 of 2 points (no operating point for M2 1)"
-            in capsys.readouterr().out)
+    assert ("[evaluate] step='evaluate': metric SAT_MARGIN gave no value on 1 of 2 points (no operating point for M2); "
+            "the digest's \"no value\" split says where" in capsys.readouterr().out)        # N-97, F4: one point of two
 
 
 def test_the_schedule_runs_the_dc_testbench_first_and_stops_the_point_there(tmp_path):

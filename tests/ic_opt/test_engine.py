@@ -400,7 +400,9 @@ def test_a_nil_metric_at_one_corner_keeps_every_computed_metric(tmp_path):
 
 def test_evaluate_reports_a_metric_that_failed_on_some_points(tmp_path, capsys):
     """N-35 (2026-09-27): a metric wrong for a region of the space failed half a batch in silence while the optimizer
-    penalized exactly those points; sim.evaluate now says so once per batch."""
+    penalized exactly those points; sim.evaluate now says so once per batch. N-97 (F4): it says to fix the expression only
+    when every point of the batch lost the metric; on some of them the expression works, and the line points to the
+    digest's "no value" split instead (a P1dB that does not compress at a low bias is the design, not the expression)."""
     from ic_opt.blocks.evaluate import evaluate as evaluate_block
 
     spec = make_spec()
@@ -409,7 +411,12 @@ def test_evaluate_reports_a_metric_that_failed_on_some_points(tmp_path, capsys):
     evaluate_block(spec, [Point({"F": "20", "W": "0.6u"}, "user"), Point({"F": "22", "W": "0.6u"}, "user")], ex, store,
                    deck=deck_for(spec), limits=FAKE_HOST)
     out = capsys.readouterr().out
-    assert "[evaluate] step='evaluate': metric NF failed on 1 of 2 points (non_scalar 1); those points are metric_failed" in out
+    assert ("[evaluate] step='evaluate': metric NF gave no value on 1 of 2 points (non_scalar); the digest's \"no value\" "
+            "split says where\n") in out and "fix the expression" not in out
+    evaluate_block(spec, [Point({"F": "20", "W": "0.8u"}, "user"), Point({"F": "20", "W": "1u"}, "user")], ex, store,
+                   deck=deck_for(spec), limits=FAKE_HOST)
+    assert ("[evaluate] step='evaluate': metric NF failed on 2 of 2 points (non_scalar 2); those points are metric_failed "
+            "and the optimizer penalizes them -- fix the expression before spending more budget") in capsys.readouterr().out
 
 
 def test_evaluate_names_the_constraints_a_batch_violated(tmp_path, capsys):

@@ -160,7 +160,10 @@ A metric that fails on some points does not just lose a number: the point is
 (OpenBox and TuRBO: the worst value they have seen; `metric_gp`: a point that
 gave no value), so it steers the search away from exactly those points (N-35: the
 wide-band ones). `sim.evaluate` prints `metric X failed on N of M points` after
-a batch; stop and fix the expression before spending more budget. Device metric: `name`,
+a batch in which every point lost it; stop and fix the expression before spending more
+budget. When only some points lost it the line reads `metric X gave no value on N of M
+points`: the expression works, and the digest's "no value" split says where the others
+lie (it may be the design: a P1dB that does not compress at a low bias). Device metric: `name`,
 `unit`, `device`, `quantity` (a curve `Lp / Qp / Ls / Qs / k` needs
 `frequency_hz`; scalars `Lp_lf / Lp_res / Qp_peak / SRF_p / Ls_lf / Ls_res /
 Qs_peak / SRF_s / k_lf / SRF` do not). A metric whose expression returns nil or

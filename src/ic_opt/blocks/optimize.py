@@ -411,7 +411,11 @@ def current_design(spec: Spec, exports: dict[str, str] | str) -> tuple[dict[str,
     none). Returns the grid parameter row, or None, and the line that says which, or why not: every testbench must give
     a variable the same value; a value inside the variable's range but between grid points is moved to the nearest one
     (and the line says so); a value outside the range, or that is not a number, means no current design. A spec with EM
-    devices has none: its device variables have no exported value (T17 stage 1 covers circuit-only specs)."""
+    devices has none: its device variables have no exported value (T17 stage 1 covers circuit-only specs); nor has one
+    whose devices are library rows (T18.2B), and its line says so (N-97, F6)."""
+    if spec.library_devices:
+        return None, ("no current design: the spec's devices come from a library table (their variables have no exported "
+                      "value)")
     if spec.devices:
         return None, ("no current design: the spec has EM devices, whose variables have no exported value "
                       "(stage 1 of T17 covers circuit-only specs)")

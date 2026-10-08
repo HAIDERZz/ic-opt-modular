@@ -204,6 +204,17 @@ def test_openbox_marks_initial_design_points_and_says_when_the_surrogate_never_p
 # -- T17.0b: what the strategies are fed -----------------------------------------------------------------------------
 
 
+def test_no_current_design_names_the_case_of_a_library_device(tmp_path):
+    """N-97 (F6): a spec whose devices are library rows printed the EM devices' line; its own says what it is."""
+    from tests.ic_opt.library_device_fixtures import xfm_library
+    from tests.ic_opt.test_library_device_run import spec_at
+
+    spec = spec_at(xfm_library(tmp_path / "lib"), tmp_path)
+    assert spec.library_devices
+    assert current_design(spec, {}) == (None, ("no current design: the spec's devices come from a library table (their "
+                                                "variables have no exported value)"))
+
+
 def test_openbox_is_fed_true_objectives_and_failed_trials_as_failed():
     """Maximize NF with NF < 9. An infeasible point enters with its true objective (-fom), a failed one as OpenBox's own
     failed trial, whose objective and constraints OpenBox fills with the successful trials' column maxima; nothing is 1e6."""
