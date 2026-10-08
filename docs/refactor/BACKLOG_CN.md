@@ -163,7 +163,9 @@ T17 的第 2 步（评估调度与多 corner）、摘要第 3 版、饱和裕量
 
 **N-96、N-97 已合入**（2026-10-08，main @ ecfeb72）：`optimize total=` 与 `.icopt/steps.json`（增量续跑等于一次性运行）、`optimize initial_trials=`；摘要版本 5（复核一节、`--points`、建议统计只算本步骤的点）、report 指标标注最差工艺角、F4/F5/F6 的提示措辞。F1–F7 全部关闭。
 
-**N-98 已合入**（2026-10-08，main @ ff7ad49，`signoff total=`）：搜索分批推进（`signoff budget=10 total=40 → … → 40`，最后一次调用做复核，四次调用与一次性运行逐点相同）；`digest.json` 的 `library.combinations` 列出库器件有行的组合；skill 第 4 步加入『代理监督的运行分批推进』，第 7 步改写为五项流程（何时、读什么、怎么决定、命令、汇报），并补入 24 个会话的经验。代理读 skill 即可按批间建议的流程工作，不再需要任务书规定。种子 0 基线因 lib_refine 采纳行改变索引代表行而偏低（−0.584，10-06 为 −0.702），结论主要看 s1、s2。
+**N-98 已合入**（2026-10-08，main @ ff7ad49，`signoff total=`）：搜索分批推进（`signoff budget=10 total=40 → … → 40`，最后一次调用做复核，四次调用与一次性运行逐点相同）；`digest.json` 的 `library.combinations` 列出库器件有行的组合；skill 第 4 步加入『代理监督的运行分批推进』，第 7 步改写为五项流程（何时、读什么、怎么决定、命令、汇报），并补入 24 个会话的经验。代理读 skill 即可按批间建议的流程工作，不再需要任务书规定。
+
+**设计者笔记验证**（2026-10-09，`llm_compare/RESULT_CN.md` 补充二）：B2（无笔记）vs B2N（有笔记）× Opus / DeepSeek pro × 3 种子，走 `signoff total=` 产品路径：笔记 − 无笔记 同种子均值 +0.012（Opus）/ +0.003（DeepSeek），3 升 3 降，在噪声内；批间建议 12/12 ≥ 基线。结论：不做产品功能；知识可写进 spec `description`。小项待拍板：`points.md` 带参数列；只含起点行的建议跑完后应撤销（skill 一句）；start.json 重复行提示。种子 0 基线因 lib_refine 采纳行改变索引代表行而偏低（−0.584，10-06 为 −0.702），结论主要看 s1、s2。
 
 代理一致指出的产品问题（待拍板，均为小修）：
 
