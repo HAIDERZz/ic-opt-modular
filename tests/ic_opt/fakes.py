@@ -91,8 +91,10 @@ class FakeSpectreExecutor(LocalExecutor):
     scalars each OCEAN run reports; the netlist text is parsed for ``NAME=value``
     parameters so tests can make metrics depend on the point. Set ``fail_spectre``
     or ``fail_ocean`` to a predicate on (testbench, corner) to inject failures.
-    Waveform exports requested by the probe script are written as CSV unless
-    ``nil_waveforms`` names them (OCEAN returned nil). ``machine`` is the host's
+    Waveform exports requested by the probe script are written as the script writes
+    them (N-100: ``<name>.csv`` and ``<name>.meta.json``, a row each in
+    ``ocean_timing.tsv``) unless ``nil_waveforms`` names them (OCEAN returned nil:
+    no file, the timing row says ``nil``). ``machine`` is the host's
     size as ``nproc`` / ``/proc/meminfo`` report it (None: the probe fails).
     ``tools`` names the tools on the host's PATH (None: every one): ``which``
     finds only those, and running one that is missing answers 127.
@@ -183,9 +185,15 @@ class FakeSpectreExecutor(LocalExecutor):
                 rows.append(f"{name}\t{value!r}\tx\tpass\t" if value is not None else f"{name}\t\tx\tfail\tnon_scalar")
             (work / "metrics" / "ocean_scalars.tsv").write_text("\n".join(rows) + "\n")
             script = (work / "metrics" / "probe.ocn").read_text().splitlines()
+            timing = []
             for line in script:
-                if line.startswith("; waveform export: ") and (name := line.split(": ", 1)[1]) not in self.nil_waveforms:
-                    (work / "metrics" / "waveforms" / f"{name}.csv").write_text("freq,value\n1e9,1.0\n2e9,1.5\n")
+                if line.startswith("; waveform export: "):
+                    name = line.split(": ", 1)[1]
+                    timing.append(f"waveform:{name}\t0.001\t{'nil' if name in self.nil_waveforms else 'written'}\n")
+                    if name not in self.nil_waveforms:
+                        write_waveform(work / "metrics" / "waveforms", name)
+            if timing:
+                (work / "metrics" / "ocean_timing.tsv").write_text("".join(timing))
             self._oppoints(work, script, params, tb, corner)
         return CommandResult(0, "", "", argv, 0.01)
 
@@ -243,6 +251,20 @@ def _call(fn, *args, cwd: str):
 
     positional = [p for p in inspect.signature(fn).parameters.values() if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
     return fn(*args, cwd) if len(positional) > len(args) else fn(*args)
+
+
+def write_waveform(folder: Path, name: str, rows=((1e9, 1.0), (2e9, 1.5)), *, columns=("freq_Hz", "y"),
+                   units=("Hz", "V"), expression: str = "fake") -> Path:
+    """A waveform export as the replay script writes it (N-100, ``docs/waveform_export.md``): ``<name>.csv`` (header,
+    then one row per point, ``%.16g``) and ``<name>.meta.json``; returns the meta file."""
+    import json
+
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{name}.csv").write_text(",".join(columns) + "\n" + "".join(",".join(f"{v:.16g}" for v in r) + "\n" for r in rows))
+    meta = {"name": name, "expression": expression, "result": None, "kind": "waveform", "file": f"{name}.csv",
+            "columns": list(columns), "units": list(units), "points": len(rows), "separator": ",", "precision": "%.16g"}
+    (folder / f"{name}.meta.json").write_text(json.dumps(meta) + "\n")
+    return folder / f"{name}.meta.json"
 
 
 def _skill_escape(name: str) -> str:

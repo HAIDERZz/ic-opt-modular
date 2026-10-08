@@ -4,7 +4,14 @@
 
 Working directory layout (identical on the local and the remote side):
 
-    <dir>/netlist/input.scs   <dir>/psf/   <dir>/metrics/{probe.ocn, ocean.log, ocean_scalars.tsv, oppoints.tsv, waveforms/}
+    <dir>/netlist/input.scs   <dir>/psf/   <dir>/metrics/{probe.ocn, ocean.log, ocean_scalars.tsv, oppoints.tsv,
+                                                       ocean_timing.tsv, waveforms/}
+
+Waveforms (N-100, ``docs/waveform_export.md``): the OCEAN stage writes each requested waveform as a real CSV from its
+vectors at ``%.16g``, with a ``<name>.meta.json`` (a family: one CSV per member and ``<name>.families.json``); the
+extract stage reads every file back against its meta file. Each export is timed inside OCEAN: a line in
+``metrics/ocean.log``, a row in ``metrics/ocean_timing.tsv``, and a trace record (``ocean:waveform:<name>``) beside
+the OCEAN run's own (``ocean#<attempt>``), so the time of an export is told apart from the metrics'.
 
 Operating points (T17.5, ``simulator.operating_points``): the render stage adds what the netlist lacks for Spectre to
 write them (``sim.netlist.with_operating_points``), the OCEAN stage reads them after the metrics, the extract stage
@@ -22,6 +29,7 @@ from __future__ import annotations
 import shlex
 import shutil
 from dataclasses import dataclass
+from pathlib import Path
 
 from ic_opt.deck import Deck
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
@@ -170,9 +178,12 @@ class Ocean:
             rows = ocean_kernel.parse_scalars(scalars_path)
         except ValueError as exc:
             raise StageFailure(f"ocean scalars unreadable: {exc}") from exc
-        csvs = {w.name: local / "waveforms" / f"{w.name}.csv" for w in waveforms}
-        return Scalars(rows, {name: (path if path.exists() else None) for name, path in csvs.items()}, attempts,
-                       oppoints=local / "oppoints.tsv" if oppoints else None)
+        timing = ocean_kernel.parse_timing(local / ocean_kernel.TIMING_FILE)
+        for row in timing:
+            ctx.trace.append({"label": f"ocean:{row.part}", "seconds": round(row.seconds, 3), "outcome": row.outcome})
+        metas = {w.name: local / "waveforms" / f"{w.name}.meta.json" for w in waveforms}
+        return Scalars(rows, {name: (path if path.exists() else None) for name, path in metas.items()}, attempts,
+                       oppoints=local / "oppoints.tsv" if oppoints else None, outcomes={r.part: r.outcome for r in timing})
 
 
 class Extract:
@@ -188,6 +199,9 @@ class Extract:
         """Every metric OCEAN gave a scalar for is kept. One that came back nil, non-scalar or not at all, or a requested
         waveform that came back nil, makes the child ``metric_failed`` with that as its issue -- the simulation ran and the
         other metrics stand (N-31, 2026-09-27: a wrong expression used to fail the child and lose every metric).
+        A waveform is read back from its files (``sim.ocean.read_waveform``): one that was not written says why
+        (``waveform Vout returned nil``, ``waveform Vout not written: not_a_waveform:flonum``) and one whose files do not
+        match their meta file says that (``waveform Vout unreadable: ...``), each an issue as a nil does.
         Operating points are kept when OCEAN wrote them; none, or a file that does not parse, is ``None``, never an issue
         by itself.
 
@@ -219,11 +233,23 @@ class Extract:
                 issues.append(f"metric {metric.name} failed: no operating point for {', '.join(missing)}")
             else:
                 metrics[metric.name] = value
-        issues += [f"waveform {name} returned nil" for name, path in scalars.waveforms.items() if path is None]
+        issues += [_waveform_issue(name, path, scalars.outcomes.get(f"waveform:{name}"))
+                   for name, path in scalars.waveforms.items()]
+        issues = [issue for issue in issues if issue]
         return ChildResult(
             unit=ctx.unit, corner=ctx.corner, metrics=metrics, issues=issues,
             status="ok" if not issues else "metric_failed", operating_points=operating_points,
         )
+
+
+def _waveform_issue(name: str, meta: Path | None, outcome: str | None) -> str | None:
+    if meta is None:
+        return f"waveform {name} returned nil" if outcome in (None, "nil") else f"waveform {name} not written: {outcome}"
+    try:
+        ocean_kernel.read_waveform(meta)
+    except ValueError as exc:
+        return f"waveform {name} unreadable: {exc}"
+    return None
 
 
 def _tail(text: str, lines: int = 8) -> str:

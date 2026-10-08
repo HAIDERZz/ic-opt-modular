@@ -61,7 +61,7 @@ def test_ocean_script_and_scalar_parsing(tmp_path: Path):
     script = ocean.replay_script(metrics, waves, psf_dir="psf", scalars_file="metrics/s.tsv", waveform_dir="metrics/waveforms")
     assert 'openResults("psf")' in script and "selectResult('pac)" in script
     assert 'icoptResult = errset(value(getData("NF" ?result "pnoise") 3e9) t)' in script
-    assert "selectResult('pnoise)" in script and 'outfile("metrics/waveforms/nf_curve.csv" "w")' in script
+    assert "selectResult('pnoise)" in script and 'icoptExportWave("nf_curve" icoptWave "metrics/waveforms" ' in script
     assert script.rstrip().endswith("exit()")
     with pytest.raises(ValueError, match="outfile"):
         ocean.WaveformExport(name="bad", expression='outfile("x")')

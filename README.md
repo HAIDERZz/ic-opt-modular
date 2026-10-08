@@ -569,6 +569,18 @@ devices, each table on its grid, how many of its combinations the run visited
 and the rows the best points took -- every number computed from the
 observations).
 
+Waveforms asked for with `waveforms=` (`fix_run`, `sim.evaluate`) land in the
+child's `sims/<obs>/<tb>/<corner>/metrics/waveforms/`: one real CSV per waveform,
+`<name>.csv` (comma separated, a header row, `x,y` or `x,re,im` for a complex
+one, the x column named after its quantity and unit -- `time_s`, `freq_Hz` --,
+every value `%.16g`), with `<name>.meta.json` (columns, units, the expression,
+the result, the point count, the precision); a family one file per member,
+`<name>__<i>.csv`, and `<name>.families.json` with the sweep values. OCEAN writes
+them from the vectors, not through `ocnPrint`, and times each export apart from
+the metrics (`metrics/ocean.log`, `metrics/ocean_timing.tsv`). A waveform that
+came back nil, or is not a waveform, makes the child `metric_failed` and writes
+no file. The contract: [docs/waveform_export.md](docs/waveform_export.md).
+
 ### Stores written by an earlier version
 
 An observation's identity holds no machine facts any more: the spec fingerprint

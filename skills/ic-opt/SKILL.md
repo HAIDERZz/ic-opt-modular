@@ -89,6 +89,8 @@ ic-opt run optimize PROJECT budget=60 [total=N] batch=10 [strategy=auto|metric_g
 # its worst over a point's corners
 # every strategy proposes with simulator.strategy_threads threads (default 1: BLAS / OpenMP, and torch for turbo)
 ic-opt run fix_run  PROJECT points=points.json [waveforms=waveforms.json] [corners='["tt","ss"]']
+# waveforms.json: [{name, expression, testbench?}]; each lands as <name>.csv (x,y or x,re,im; %.16g) + <name>.meta.json
+# (a family: <name>__<i>.csv + <name>.families.json) in the child's metrics/waveforms/ -- docs/waveform_export.md
 ic-opt run coarse_to_fine PROJECT coarse_budget=40 fine_budget=40 [strategy=auto] [current=false] [start=start.json]   # current/start for the coarse step
 # auto: metric_gp in both steps, or (EM devices) openbox_gp_eic then turbo; a named strategy runs both steps
 ic-opt run signoff  PROJECT corner=tt budget=60 [total=N] top=5 [strategy=auto] [current=false] [start=start.json] [full=true] [rounds=1] [tighten=1.0]   # current/start for the search step
