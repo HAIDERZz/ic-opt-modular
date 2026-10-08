@@ -575,7 +575,7 @@ def increments_project(path, strategy):
     d["devices"][0]["variables"] = {"outer_diameter_um": "ind.od", "width_um": "ind.w"}
     d["variables"] = [{"name": "ind.od", "kind": "continuous_step", "lower": "80", "upper": "120", "step": "10"},
                       {"name": "ind.w", "kind": "continuous_step", "lower": "3", "upper": "6", "step": "0.5"}] + SIX[:4]
-    d["em"] = {"process_file": "/site/n28.proc", "frequencies": {"start_hz": 0, "stop_hz": 200e9, "step_hz": 1e9},
+    d["em"] = {"process_file": "/site/demo.proc", "frequencies": {"start_hz": 0, "stop_hz": 200e9, "step_hz": 1e9},
                "three_d_metals": ["M6", "M5"], "threads": 4, "memory_gb": 32, "timeout_s": 600}
     d["bindings"] = [{"testbench": "tb", "instance": "NPORT0", "device": "ind", "terminals": ["P1", "N1"]}]
     d["metrics"] = [{"name": "NF", "unit": "dB", "expression": "nf()", "testbench": "tb"}]
