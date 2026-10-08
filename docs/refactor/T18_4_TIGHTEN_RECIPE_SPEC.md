@@ -159,3 +159,10 @@ as "cannot be tightened", as specified. A lesson for the user documentation: the
 systematically far from the search corner (here about 2 dB of noise figure between 27 and 125 degrees) `tighten` above 1
 or more rounds are needed; `tighten=1.0` closes a gap that is small to begin with. Record: `T18_LIBRARY_DIRECTIONS_CN.md`
 section 13.
+
+**Note (2026-10-08, N-98).** `signoff` takes `total=<N>` (`docs/refactor/N98_SIGNOFF_TOTAL_SPEC.md`): the search at
+`corner` advanced in batches (`budget=10 total=40`, `budget=20 total=40`, ...), its initial design sized for `total` by
+the step's first call (N-96). A call whose `budget` is below `total` ends after the search, so the rounds of this
+specification -- and the first round's re-check -- run only on the call with `budget` equal to `total`; that call, and
+every later round's search (`budget` more points each, as above), are what one call `budget=<total>` runs. A call
+without `total` is the recipe above, unchanged.

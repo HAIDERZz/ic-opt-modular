@@ -23,8 +23,9 @@ from ic_opt.spec import Constraint, Spec
 ROUNDS_FILE = "signoff_rounds.json"         # in .icopt/reports/: every round's tightening, written when rounds > 1
 
 
-def main(run: Run, *, corner: str = "tt", budget: int = 60, batch: int = 10, top: int = 5, strategy: str = "auto", seed: int = 0,
-         current: bool = True, start: str | None = None, full: bool = False, rounds: int = 1, tighten: float = 1.0) -> None:
+def main(run: Run, *, corner: str = "tt", budget: int = 60, total: int | None = None, batch: int = 10, top: int = 5,
+         strategy: str = "auto", seed: int = 0, current: bool = True, start: str | None = None, full: bool = False,
+         rounds: int = 1, tighten: float = 1.0) -> None:
     """``current`` / ``start`` as for ``optimize``, for the search step at ``corner``. ``strategy``: ``auto`` searches
     with ``metric_gp`` (one corner) unless the spec has EM devices (then ``openbox_gp_eic``). Unless
     ``simulator.stop_at_first_failure`` says otherwise, a point of the search, at one corner, runs every simulation --
@@ -83,19 +84,37 @@ def main(run: Run, *, corner: str = "tt", budget: int = 60, batch: int = 10, top
 
     With ``rounds`` above 1 a constraint whose limit the recipe cannot write back in its own form is refused before
     anything runs, ``--plan`` too: a value that is not a number followed by a unit, and one whose unit is an SI prefix on
-    a unit (``50m V``: a constraint's value takes no prefix, and reads as 50 V) other than the metric's own."""
+    a unit (``50m V``: a constraint's value takes no prefix, and reads as 50 V) other than the metric's own.
+
+    A search advanced in batches (N-98, ``docs/refactor/N98_SIGNOFF_TOTAL_SPEC.md``). ``total``: the budget the search
+    is meant to reach (default ``budget``; below it is refused before anything runs, ``--plan`` too). The search step is
+    called with ``budget`` and ``total`` (N-96: its first call sizes the initial design for ``total`` and records it in
+    ``.icopt/steps.json``). While ``budget`` is below ``total`` the call ends after the search -- one line says how many
+    points the search holds and the call that runs the re-check -- with no re-check, no round and no report; the call
+    with ``budget`` equal to ``total`` (the default call among them) runs everything above. So ``budget=10/20/30/40
+    total=40``, four calls, give what one call ``budget=40`` gives, search points and re-check, and an advice adopted
+    between two calls (``ic-opt advise``) is in effect from the next batch, as for ``optimize``. ``--plan`` prints the
+    search's plan and that line -- the points the search will hold after the call, at least ``budget`` -- or the
+    re-check's plan when ``budget`` equals ``total``. With ``rounds`` above 1 the line "signoff round 1 of N" comes on
+    that last call only."""
     _check_rounds(rounds, tighten)
+    reach = _check_total(budget, total)
     rows = json.loads(Path(run.project, start).read_text(encoding="utf-8")) if start else []
     if rounds > 1:
         _refuse_unwritable_limits(run.spec, rounds)
     b.doctor(run.spec, run.executor, cshrc=run.cshrc, store=run.store, limits=run.limits).require_pass()
     deck = b.import_netlists(run.spec, run.executor, run.store)
-    if rounds > 1:
+    if rounds > 1 and budget == reach:
         run.note(f"signoff round 1 of {rounds}: the search at {corner} (step {_search_step(corner, 1)}), then the re-check "
                  f"of its top {top} at every corner (step {_check_step(1)})")
-    search = b.optimize(run.spec, run.executor, run.store, deck=deck, strategy=strategy, budget=budget, batch=batch, seed=seed,
-                        corners=[corner], step=f"search@{corner}", current=current, start=rows, cshrc=run.cshrc,
-                        parallel_jobs=run.jobs, limits=run.limits)
+    search = b.optimize(run.spec, run.executor, run.store, deck=deck, strategy=strategy, budget=budget, total=total,
+                        batch=batch, seed=seed, corners=[corner], step=f"search@{corner}", current=current, start=rows,
+                        cshrc=run.cshrc, parallel_jobs=run.jobs, limits=run.limits)
+    if budget < reach:
+        held = max(_held(run, f"search@{corner}"), budget) if run.plan else len(search)
+        run.note(f"signoff: the search holds {held} of {reach} points; the re-check runs when it reaches {reach} "
+                 f"(signoff budget={reach} total={reach})")
+        return
     winners = b.points_from(b.best(run.spec, search, top))
     signoff = b.evaluate(run.spec, winners, run.executor, run.store, deck=deck, corners="all", step="signoff",
                          cshrc=run.cshrc, parallel_jobs=run.jobs, limits=run.limits,
@@ -108,6 +127,26 @@ def main(run: Run, *, corner: str = "tt", budget: int = 60, batch: int = 10, top
         title += f" (round {last})" if last > 1 else ""
     if signoff:
         run.note(f"report: {b.report(run.spec, signoff, run.store, title=title)}")
+
+
+def _check_total(budget: int, total: int | None) -> int:
+    """The budget the search is meant to reach: ``total``, else ``budget``; a ``total`` below ``budget`` refused before
+    anything runs (``--plan`` too)."""
+    if total is None:
+        return budget
+    if isinstance(total, bool) or not isinstance(total, int):          # refused as the other parameters are: ValueError
+        raise ValueError(f"signoff: total must be a whole number, the budget the search is meant to reach, "  # noqa: TRY004
+                         f"got {total!r}")
+    if total < budget:
+        raise ValueError(f"signoff: total={total} is below budget={budget}: total is the budget the search is meant to "
+                         "reach, at least this call's")
+    return total
+
+
+def _held(run: Run, step: str) -> int:
+    """The observations of this problem the store holds in ``step`` (as ``opt.optimize`` counts them)."""
+    same_problem = {run.spec.fingerprint(), run.spec._legacy_fingerprint()}
+    return sum(1 for o in run.store.observations() if o.spec_fingerprint in same_problem and o.step == step)
 
 
 def _recheck_stop(spec, full: bool) -> bool:

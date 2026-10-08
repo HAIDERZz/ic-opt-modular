@@ -331,6 +331,18 @@ own budget sizes it; `total` below `budget` is refused; a size stated with
 before this file existed sizes the design from the current call's budget, as it
 did before.
 
+`signoff` takes `total` the same way for its search
+(`ic-opt run signoff PROJECT corner=tt budget=10 total=40`, then `budget=20
+total=40`, ...): a call whose `budget` is below `total` stops after the search
+with one line (`signoff: the search holds 10 of 40 points; the re-check runs
+when it reaches 40 (signoff budget=40 total=40)`) -- no re-check, no round, no
+report -- and the call with `budget` equal to `total` runs the re-check, the
+rounds and the report. Four calls `budget=10/20/30/40 total=40` give what one
+call `budget=40` gives, search points and re-check, and an advice adopted
+between two calls is in effect from the next batch. `total` below `budget` is
+refused before anything runs, `--plan` too; `--plan` prints the search's plan
+and that line, or the re-check's plan on the last call.
+
 ### Evaluation = engine + stages
 
 `sim.evaluate` is a generic engine (dedup, budget, lock, testbench × corner

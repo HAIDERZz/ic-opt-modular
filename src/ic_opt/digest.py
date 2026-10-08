@@ -100,7 +100,11 @@ combinations on the grid (``combinations`` of ``of``, holding ``rows`` rows) and
 the row each device took -- part, obs id, its geometry, its electrical values, its footprint -- as the device child
 recorded it (``ChildResult.library_row``). The table's size is the library's: read on the machine computing the digest
 (``ic_opt.library.link``, the process's resolution), else ``None`` with a note. Neither the library's root nor an sNp
-path reaches the digest.
+path reaches the digest. Since N-98 (``docs/refactor/N98_SIGNOFF_TOTAL_SPEC.md``, version 5 unchanged otherwise) the
+entry also lists the valid combinations themselves, for whoever writes a start row: ``library.combinations``, per device
+id the combinations a row sits on as the variables' grid texts (``[{"xfmr.Lp": "110p", "xfmr.Ls": "90p", "xfmr.k":
+"0.55"}, ...]``, in the table's sorted order; ``None`` where the library cannot be read). A start row, or any point,
+off them is refused (``space.check``). ``digest.md`` names the entry, it does not print the list.
 
 Version 5 (N-97, ``docs/refactor/N97_DIGEST_RECHECK_SPEC.md``: what the agents of the language-model comparison found
 misleading after a ``signoff`` re-check) keeps every entry of version 4 and adds ``recheck``: ``None`` without re-check
@@ -826,14 +830,17 @@ def _library(spec: Spec, rows: list[Observation], best: list[Observation], grid:
     if not devices:
         return None
     notes: dict[str, str] = {}
+    by_name = {g.name: g for g in grid}
     try:
         # the library's own modules load only for a spec that has one
         from ic_opt.library import link
 
         facts = link.summary(spec)
+        valid = {device: [{name: by_name[name].text(k) for name, k in zip(linked.space_table.names, levels, strict=True)}
+                          for levels in linked.space_table.levels]
+                 for device, linked in link.resolve(spec).items()}
     except (ValueError, OSError, KeyError):                 # its message may name the library's path: not kept
-        facts, notes["combinations"] = {}, LIBRARY_UNREAD
-    by_name = {g.name: g for g in grid}
+        facts, valid, notes["combinations"] = {}, None, LIBRARY_UNREAD
     tables = []
     for d in devices:
         names = [v.name for v in spec.variables if v.name in set(d.variables.values())]
@@ -846,7 +853,7 @@ def _library(spec: Spec, rows: list[Observation], best: list[Observation], grid:
     top = [{"id": o.obs_id, "objective": _num(o.fom), "rows": {d.id: _library_row(o, d.id) for d in devices}} for o in best]
     if not best:
         notes["top"] = "no feasible point: no row to show"
-    return {"devices": tables, "top": top, "notes": notes}
+    return {"devices": tables, "combinations": valid, "top": top, "notes": notes}
 
 
 def _library_row(o: Observation, device: str) -> dict[str, Any] | None:
@@ -1457,6 +1464,9 @@ def _md_library(entry: dict[str, Any]) -> str:
         held = f"{t['combinations']} of {t['of']} ({t['rows']} rows)" if t["combinations"] is not None else "—"
         lines.append(_row([t["device"], t["table"], quantity(t["frequency_hz"], "Hz"), t["prefer"] or "—", held,
                            str(t["visited"])]))
+    if entry.get("combinations"):
+        lines += ["", ("The combinations themselves, as grid values per device, are `library.combinations` in `digest.json`: "
+                       "a start row or a proposed point off them is refused.")]
     for note in entry["notes"].values():
         lines += ["", f"_{note}_"]
     if not entry["top"]:

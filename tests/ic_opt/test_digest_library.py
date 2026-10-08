@@ -83,6 +83,36 @@ def test_the_digest_names_each_table_what_the_run_visited_and_the_rows_the_best_
     assert plain["library"] is None and "## Library devices" not in dg.markdown(plain)
 
 
+def test_the_digest_lists_the_valid_combinations_as_grid_texts(tmp_path):
+    """N-98: ``library.combinations`` -- per device the combinations a row sits on, as the variables' grid texts, so that
+    whoever writes a start row has the list; every point the run took is one of them, every one is a valid point, and
+    ``digest.md`` names the entry without printing the list."""
+    from ic_opt import space
+
+    root = xfm_library(tmp_path / "lib")
+    run = library_run(root, tmp_path)
+    optimize.main(run, budget=8, batch=4, seed=1)
+    obs = run.store.observations()
+    path = analyze.digest(run.spec, obs, run.store)
+    d = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+    names = ("xfmr.Lp", "xfmr.Ls", "xfmr.k")
+    listed = d["library"]["combinations"]
+    assert set(listed) == {"xfmr"} and len(listed["xfmr"]) == link.summary(run.spec)["xfmr"]["combinations"]
+    assert all(set(row) == set(names) for row in listed["xfmr"])
+    table = link.resolve(run.spec)["xfmr"].space_table
+    assert [tuple(row[n] for n in table.names) for row in listed["xfmr"]] == [
+        tuple(space._level_text(next(v for v in run.spec.variables if v.name == n), k) for n, k in zip(table.names, levels,
+                                                                                                         strict=True))
+        for levels in table.levels]
+    combination = {tuple(row[n] for n in names) for row in listed["xfmr"]}
+    assert {tuple(o.params[n] for n in names) for o in obs} <= combination
+    for row in listed["xfmr"]:
+        space.check(run.spec, {"F": "20", **row})                                    # each a valid point's values
+    md = path.read_text(encoding="utf-8")
+    assert "are `library.combinations` in `digest.json`: a start row or a proposed point off them is refused." in md
+    assert listed["xfmr"][0]["xfmr.Lp"] not in md.split("## Library devices")[1].split("The rows the best")[0]
+
+
 def test_a_library_that_cannot_be_read_here_leaves_the_table_s_size_out_and_no_path(tmp_path):
     root = xfm_library(tmp_path / "lib")
     run = library_run(root, tmp_path)
@@ -95,6 +125,7 @@ def test_a_library_that_cannot_be_read_here_leaves_the_table_s_size_out_and_no_p
     (device,) = d["library"]["devices"]
     assert (device["combinations"], device["rows"], device["of"], device["prefer"]) == (None, None, None, None)
     assert d["library"]["notes"]["combinations"] == dg.LIBRARY_UNREAD and len(d["library"]["top"]) >= 1
+    assert d["library"]["combinations"] is None and "library.combinations" not in dg.markdown(d)
     assert d["strategy"]["metric_gp"] is None and "no search region" in d["strategy"]["notes"]["metric_gp"]
     text = json.dumps(d) + dg.markdown(d)
     assert str(root) not in text and str(tmp_path) not in text and ".s4p" not in text
