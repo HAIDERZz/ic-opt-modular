@@ -81,3 +81,105 @@ src tests`; all clean before committing. No simulator; nothing under `THz_TX_Dua
 you give under your scratchpad); nothing private. Do not edit `docs/refactor/BACKLOG_CN.md`. Private scratchpad
 subdirectory for helper files. Commit style of the repository, trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 Do not merge or push.
+
+## 5. Record
+
+Done 2026-10-09 by the coding subagent on `n99-deck-identity` (from main `eb32bc8`; `git merge --ff-only main` found it
+up to date), not merged, not pushed. Commits: `c628728` (implementation, tests, README) and the commit of this record.
+
+What was done.
+- `deck.py`: `fingerprint()` hashes the templates as before, then for each testbench with a bundle (sorted) every file's
+  relative path (`/` between names) and sha256, sorted by path (`tree_digests`: `os.walk(followlinks=True)` through
+  `literal`, so a symlink counts by the content it points to, as `copytree(symlinks=False)` copies it; an unreadable
+  directory or a dangling link raises; modes, times and empty directories do not count). A deck without bundles
+  fingerprints as before (pinned: `acc85b226bd9babe` on main). The fingerprint is read afresh on every call (the bug
+  report's bundle script changes a file under the same `Deck` object). `save()` writes `decks/<fp>/` as before; the same
+  `<fp>` means the same files, so the rewrite of an existing bundle replaces it with identical content. New: `describe()`
+  (`deck <fp> (<n> testbenches, <m> support files)`), `support_files(tb)`, `snapshot()` and the field `digests` (below).
+  The module docstring states the identity and that files outside the bundle (PDK models by absolute path, Verilog-A,
+  an sNp) are not part of it.
+- `stages/spectre_chain.py`: `Render.identity` = `deck.fingerprint()` (a property); `Extract(waveforms=, operating_points=)`
+  with `identity` = JSON of `[[name, expression, testbench], ...]` in order and the operating-point setting;
+  `spectre_pipeline` passes both. `stages/em_chain.py`: `BindNport.identity` = the deck's fingerprint (it renders from
+  the deck as `Render` does), and `em_circuit_pipeline` / `library/stage.py`'s `library_circuit_pipeline` build `Extract`
+  with the exports and the setting.
+- `blocks/netlist.py`: the import logs `deck=<fp>` (the saved directory's name) and `support_files=<m>` and returns
+  `Deck.load(saved)`; under `--plan` `_plan_check` builds the deck it previews (templates per corner, bundles in its
+  temporary fetch) and returns `deck.snapshot()` -- the bundles replaced by their digests before the fetch is removed, so
+  it fingerprints as the run's import will and cannot run (`render_netlist` fails it as `failed:render`) or be saved.
+  Before, the plan returned `Deck()`. `last_imported(store)`: the deck of the last `netlist.import` step.
+- `blocks/evaluate.py`: `plan_identity(spec, pipeline, store, executor)` gives the deck line (when a stage carries a deck)
+  and, when the store holds observations of this problem with another pipeline fingerprint, `<k> of the store's <n>
+  observations were evaluated with another deck or pipeline: they are history, not reused` (the pipeline fingerprint is
+  formed only then). `sim.evaluate` and `opt.optimize` print them under `--plan` after their shape line, prefixed as
+  their own lines (`[plan] sim.evaluate step=...:` / `[plan] opt.optimize step=...:`). `plan_shape`'s string is unchanged.
+- `blocks/doctor.py`: a `deck` check (informative, never failing): the deck last imported, `<fp> (<n> testbenches, <m>
+  support files), as last imported; ...`, or `none imported yet: the run imports the exports`.
+- `digest.py`: `progress.pipelines` = `None` while the points carry one pipeline fingerprint, else `{"pipelines": j,
+  "current": k}` (current: the newest point's); markdown "How far the run is" prints `- observations from <j> pipelines;
+  the current one holds <k>`. `DIGEST_VERSION` stays 5 (as N-98 did); no fingerprint reaches the digest.
+- `migrate_store.py`: `legacy_pipeline_fingerprint` (frozen) sees `render`, `bind_nport`, `extract` without identity, so it
+  keeps reproducing the stamps of before. A restamped 0.2.0 Spectre row or pre-T15.2 em_circuit row gets the pipeline's
+  fingerprint formed with `Deck()` -- which no run forms -- so it is the problem's history, not reused (docstring).
+- Docs: `engine.py` "Identity" paragraph, `eval/stage.py` module docstring, `deck.py` and `spectre_chain.py` docstrings;
+  README "Evaluation = engine + stages" (one paragraph) and "Stores written by an earlier version" (the 0.2.0 sentence
+  corrected, one paragraph added).
+
+Tests. The specification's suites (`test_engine`, `test_em_engine`, `test_em_replay`, `test_replay_parity` with the
+recorded runs, `test_blocks`, `test_em_circuit`, `test_library_device_run`, `test_cli_recipes`, `test_digest`): 141 passed
+before, 141 after; with the new `tests/ic_opt/test_deck_identity.py` (13 tests: items 1-5 and 7 of section 2, plus a
+modes-and-times test, the operating-point setting, the frozen formula, the no-bundle pin, a preview deck that cannot
+run, the doctor line) 154 passed. The replay tests passed unchanged: no recording pins a pipeline fingerprint.
+`ruff check src tests` clean. The whole `tests/ic_opt` (not required; run because every pipeline fingerprint changes):
+2126 passed, 9 skipped before; 2139 passed, 9 skipped at `c628728` (the 13 new tests added).
+Four existing tests asserted reuse of rows stamped before N-99 and were adapted:
+- `test_operating_points.py::test_the_identity_of_the_problem_and_the_pipeline_is_what_it_was` -> `..._problem_is_what_it_was`:
+  the problem assertions as they were; the 0.4.0 stamp `1c79f40effa5daab` is now asserted of the frozen formula, and the
+  current fingerprint differs with the operating-point setting on and off.
+- `test_operating_points.py::test_a_store_written_before_reads_as_it_did_and_its_points_are_reused` -> `..._are_history`:
+  the 0.4.0 row still reads and writes back byte for byte; it is simulated again (`obs_0002`); the same row restamped with
+  the current pipeline is reused with `operating_points` None (what the test compared before).
+- `test_migrate_store.py::test_migrate_store_restamps_the_rows_0_2_0_wrote_and_the_engine_reuses_them` ->
+  `..._and_they_are_the_problems_history`: the restamp and its report unchanged; afterwards the three points are
+  simulated again (`obs_0004`-`obs_0006`, reused 0, new 3) where they were reused.
+- `test_migrate_store.py::test_rows_it_cannot_place_stay_as_they_are_and_are_reported`: 3 Spectre runs where it was 2.
+
+The bug report's scripts, run with this repository's interpreter against the worktree at `c628728`, `--output` under
+the private scratchpad (`.../scratchpad/n99/repro_deck_reuse`, `.../repro_bundle_identity`); both exited 0 with no
+external command:
+- `reproduce_deck_reuse.py`: `bug_reproduced: false`, `Render_has_identity: true`, deck `4a5a0d29bb50c914` ->
+  `f764c685db896738`, pipeline `f4a6070adf91cc34` -> `96bae98dfdfb4ad0`; first run obs_0001 0.05 (1 call), same deck
+  obs_0001 0.05 (reused, 1 call), changed deck same store obs_0002 0.0 (2 calls), fresh store obs_0001 0.0 (3 calls);
+  `new_EDA_runs: 0`.
+- `reproduce_bundle_identity.py`: `bug_reproduced: false`, deck `5f625bcc62f67c28` -> `371277c02bd0f88a`
+  (`deck_fingerprint_changed: true`), `same_saved_path: false`, the first snapshot's sha256 `9f4005b1...aee35080` before and
+  after (`previous_saved_bundle_snapshot_overwritten: false`), `new_EDA_runs: 0`.
+
+Deviations.
+- `BindNport` got the deck identity too (the specification names `Render`): it is the render stage of the EM-circuit and
+  library-circuit pipelines, which would otherwise keep the defect.
+- `Extract.identity` holds each export's testbench as well as its name and expression.
+- The plan lines are printed beside `plan_shape`'s line, not inside it: `plan_shape`'s string is compared exactly by
+  about a dozen tests and is the one-line shape of a batch.
+- `ic-opt doctor` names the deck the store last imported (from `steps.jsonl`), not one fetched afresh: the doctor
+  fetches nothing; the plan's `netlist.import` and deck line show the deck the run will import.
+- For the plan to name the real deck, `netlist.import` under `--plan` now returns a deck snapshot instead of `Deck()`.
+
+What the specification did not foresee.
+- Under `--plan` the deck was always empty (`import_netlists` returned `Deck()`), so a plan line could not name it nor
+  compare pipelines without the snapshot above.
+- `migrate-store` formed "the current pipeline fingerprint" with `Deck()`; with the deck in it, the restamp cannot know
+  the deck a row ran, and its frozen pre-T15.2 formula would have changed with the new identities. Chosen: freeze the
+  formula; restamped deck pipelines are history (the bug report's item 5: no old observation relabelled as trusted).
+  README's sentence that restamped 0.2.0 rows "are reused from then on" was corrected. Taking the store's last deck
+  instead would re-create B01 for a store whose netlist changed after its rows were simulated.
+- Toggling `simulator.operating_points` now changes the pipeline fingerprint (it stays out of the problem): a point
+  evaluated with them off is re-simulated for a run with them on. `test_operating_points` had pinned the opposite.
+- `import_netlists` used to log `deck.fingerprint()` after removing the staging tree its bundles pointed at; with bundle
+  hashing that would raise, so the log takes the saved directory's name.
+- A deck directory saved before N-99 with bundles fingerprints, when loaded, to a value other than its name; nothing
+  depends on it (each run imports again), the doctor line shows the recomputed value.
+
+Open questions for the user: whether `fix_run` on a point a pre-N-99 store holds should be warned about beyond the plan's
+history line; whether `migrate-store` should leave deck-pipeline stamps as they are instead of restamping them to the
+deck-less fingerprint (both leave the rows unreused; the restamp keeps the report and its tests as they were).
