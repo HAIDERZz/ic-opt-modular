@@ -179,6 +179,19 @@ T17 的第 2 步（评估调度与多 corner）、摘要第 3 版、饱和裕量
 | F6 | "no current design: the spec has EM devices"对库器件 spec 措辞不对 | 4 个会话 |
 | F7 | 摘要无逐点指标表，代理都去读 observations.jsonl | 6 个会话 |
 
+## 0.15 THz DPA 项目的问题报告（2026-10-09，`THz_TX_Dual_band_DPA/bug_report_20261009/IC_OPT_BUG_REPORT_CN.md`；修复记录 `IC_OPT_FIX_RECORD_CN.md` 同目录）
+
+| ID | 问题 | 处理 |
+| --- | --- | --- |
+| B01 / B01-b | 网表或支持文件改了仍复用旧观测；bundle 不进 deck 指纹、同路径覆盖 | **已修**（N-99，c628728）：deck 指纹含 bundle 文件内容；`Render` / `BindNport` / `Extract` 有 identity，改网表 / 支持文件 / 导出请求 / 工作点设置即新 pipeline 指纹，旧观测只作历史；plan / doctor / digest 显示 deck 与"来自其它 pipeline 的观测数"；报告的复现脚本修复后 `bug_reproduced: false`；旧 store 无需迁移 |
+| B02 | 波形"csv"是空白表、6 位有效数字 | **已修**（N-100，45a5802 + 6fa9e38）：真 CSV、`%.17g` 逐位可回读、meta.json、族分文件；标量表达式不再静默写空文件（`metric_failed not_a_waveform`）；契约 `docs/waveform_export.md` |
+| B03 | 长波形 `ocnPrint` 导出极慢 | **已修**（同上）：直接从向量写出；同一 PSF 102 401 点实测 157 s → 2.7 s；导出计时进 ocean.log / ocean_timing.tsv / trace |
+| B04 | OP 读取对非 MOS 实例逐个探测、海量 OCN-6043 | **已修**（c77bb93）：只在含 `gm` 的器件类型上读；同一 PSF 告警 4 045 → 0、表逐字节相同、43.8 → 19.9 s；证据 `ic-opt-accept/n100_accept/` |
+| 第 6 节非 bug 项 | 实验设置 / 许可证 / 物理限制 | 同意归类，不处理 |
+| 留给用户 | `fix_run` 对 deck 已变的旧点是否额外告警；`migrate-store` 是否保留 deck 类 pipeline 的旧印记 | 待拍板 |
+
+全量门禁（含录制回放）全绿：非 pcell 1 149 / 12 跳过，pcell 1 118 / 1；main @ 890aa8a。这批改变了所有 Spectre / EM-circuit pipeline 指纹，应随 0.8.1 发布说明一起说明。
+
 ## 1. 已拍板事项（2026-09-25）
 
 | # | 事项 | 决定 | 落点 |
