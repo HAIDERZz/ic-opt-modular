@@ -26,15 +26,11 @@ prefix), `tests/ic_opt/test_optimize.py`, `test_metric_gp.py` (the pinned propos
    the recorded size to the strategy as `initial_trials` when the call gives none). A call that gives `initial_trials`
    records that. Not in any fingerprint; a store without the file behaves as today (the size is recomputed from the
    current call's budget, as it always was), so every recorded run and replay reads unchanged.
-2. **The incremental form is documented and equal to the one-shot form.** With the record, `optimize budget=10` then
-   `budget=40` still gives a 5-point design (its first call had 10). The agent's loop needs the one-shot size, so the
-   skill's step 7 and the README's "Recipes" say: to advise between batches, give the first call the run's whole budget
-   in `initial_trials` terms or -- simpler -- run the first call with the full budget and `batch=10` ... **No**: the
-   cleaner rule, and the one to implement, is that `optimize` takes `total=<N>` (an optional parameter: the budget the
-   run is meant to reach, default the call's `budget`): the design size is computed from `total`, recorded on the first
-   call, and the plan line says `initial design <n> points (sized for a budget of <total>)`. The harness of the
-   comparison then becomes `optimize budget=10 total=40`, `budget=20 total=40`, ...; and `signoff`'s search (which calls
-   the block with `budget=40` in one go) is unchanged. `total` below `budget` is refused.
+2. **`optimize` takes `total=<N>`, the budget the run is meant to reach** (optional; default: the call's `budget`;
+   below `budget` refused). The design size is computed from `total`, recorded on the first call (item 1), and the plan
+   line says `initial design <n> points (sized for a budget of <total>)`. An agent advising between batches runs
+   `optimize budget=10 total=40`, `budget=20 total=40`, ... and gets exactly the one-shot run's points; `signoff`'s
+   search, which calls the block with the whole budget in one go, is unchanged.
 3. **The warning line** `metric_gp initial design N points ...: the model proposes 0 of the M new points -- WARNING`
    (`_print_design`) is printed as a plain line, not a warning, when the call's new points are all start rows or all
    inside the design (nothing for the model to propose yet is not a fault); the WARNING form stays for a budget that
