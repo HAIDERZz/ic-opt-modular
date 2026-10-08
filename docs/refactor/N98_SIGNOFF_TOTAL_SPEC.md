@@ -95,7 +95,7 @@ user's platform beyond the sentence of section 2). Do not edit `docs/refactor/BA
 subdirectory of your scratchpad for helper files. Commit style of the repository, trailer `Co-Authored-By: Claude Opus 5.5
 <noreply@anthropic.com>`. Do not merge or push.
 
-## 5. Record
+## 6. Record
 
 Done 2026-10-08 by the coding subagent on `n98-signoff-total` (from main `f8c8771`; `git merge --ff-only main` found it
 up to date), not merged, not pushed. Commits: `0fcbf15` (implementation, tests, skill, README, T18.4 note) and the commit
