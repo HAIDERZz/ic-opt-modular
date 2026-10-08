@@ -246,6 +246,21 @@ def test_optimize_recipe_evaluates_the_exported_design_and_the_start_file_first_
     assert "start" not in {o.origin for o in other.store.observations()}
 
 
+def test_optimize_recipe_passes_total_and_initial_trials_and_the_step_records_the_size(tmp_path, capsys):
+    """N-96: ``ic-opt run optimize PROJECT ... initial_trials=N`` reaches the block (the README and the skill promise it),
+    and the stated size is recorded in steps.json with the run's total; the continuation keeps it."""
+    run = fake_run(project(tmp_path))
+    optimize.main(run, strategy="metric_gp", budget=4, total=8, batch=4, seed=1, current=False, initial_trials=3)
+    steps = run.store.root / "steps.json"
+    assert json.loads(steps.read_text(encoding="utf-8")) == {"optimize": {"initial_design": 3, "budget": 8}}
+    capsys.readouterr()
+    optimize.main(run, strategy="metric_gp", budget=8, total=8, batch=4, seed=1, current=False)
+    assert ("[optimize] metric_gp initial design 3 points (recorded by this step's first call, budget 8): the model "
+            "proposes 4 of the 4 new points") in capsys.readouterr().out
+    assert len(run.store.observations()) == 8
+    assert json.loads(steps.read_text(encoding="utf-8")) == {"optimize": {"initial_design": 3, "budget": 8}}
+
+
 def test_optimize_recipe_stops_when_doctor_fails(tmp_path):
     run = fake_run(project(tmp_path))
     run.spec.simulator.parallel_jobs = 8                       # 8 × (4 + 1) threads > the host's max 16

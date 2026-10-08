@@ -67,10 +67,11 @@ before committing. No simulator; nothing under `ic-opt-accept` or `ic-opt-librar
 shared with other agents). Commit style of the repository, trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 Do not merge or push.
 
-## 4. Record
+## 5. Record
 
 Done 2026-10-08 by the coding subagent, branch `n96-design-size` (not merged, not pushed). Commit `d727bab`
-(implementation, tests, README, skill) and this record.
+(implementation, tests, README, skill), `50c8747` (this record) and a follow-up asked by the coordinator: the record
+renumbered to section 5, and the `optimize` recipe's `initial_trials` (below, "Follow-up").
 
 What was done.
 - `blocks/optimize.py`: `optimize(..., total=None)`. `done` (this problem's observations in the step) is counted before
@@ -115,10 +116,9 @@ Deviations and readings.
   two, built like `test_em_circuit.em_circuit_spec`.
 
 Not foreseen by the specification.
-- `ic-opt run optimize PROJECT initial_trials=N`, which the skill's cheatsheet and README describe, raises a TypeError:
-  `recipes/optimize.py`'s `main` has no `initial_trials` parameter (nor `**kwargs`); only `ic-opt call opt.optimize` and
-  custom recipes reach the keyword. Not changed here (pre-existing; the README paragraph added calls it a keyword of
-  `opt.optimize`).
+- `ic-opt run optimize PROJECT initial_trials=N`, which the skill's cheatsheet and README describe, raised a TypeError:
+  `recipes/optimize.py`'s `main` had no `initial_trials` parameter (nor `**kwargs`); only `ic-opt call opt.optimize` and
+  custom recipes reached the keyword. Closed in the follow-up below.
 - `total < budget` through `ic-opt run` ends in a Python traceback, like every other `ValueError` the block raises
   there (the command catches only `SiteError`, `EnvelopeError`, `LinkError`).
 - `steps.json` is keyed by step name only, as specified. A step that holds no observation of the current problem (the
@@ -126,3 +126,12 @@ Not foreseen by the specification.
   share the entry only while both hold points in it.
 - `coarse_to_fine` and `signoff` take no `total`; a `signoff` re-run with a larger `budget` now keeps its search step's
   recorded size, like any continued step.
+
+Follow-up (the coordinator's request, same day). `recipes/optimize.py`'s `main` takes `initial_trials: int | None = None`
+and passes it to `opt.optimize` only when given (a strategy without the keyword, `random` or `turbo`, gets none, as
+before); so `ic-opt run optimize PROJECT initial_trials=N` works and, with `total=`, the size is recorded as item 1 says.
+`signoff` and `coarse_to_fine` are unchanged. New test `tests/ic_opt/test_cli_recipes.py::
+test_optimize_recipe_passes_total_and_initial_trials_and_the_step_records_the_size`: the recipe with `budget=4 total=8
+initial_trials=3` records `{"optimize": {"initial_design": 3, "budget": 8}}`, and the continuation to 8 keeps the size
+(`(recorded by this step's first call, budget 8)`). The seven named suites: 207 passed (206 + this test), no skips;
+`ruff check src tests` clean.
