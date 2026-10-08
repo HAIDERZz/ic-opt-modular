@@ -58,7 +58,7 @@ class Scalars:
     waveforms: dict[str, Path | None] = field(default_factory=dict)
     attempts: int = 1
     oppoints: Path | None = None           # local oppoints.tsv (None: not asked for)
-    outcomes: dict[str, str] = field(default_factory=dict)   # timed part ("waveform:<name>") -> its outcome
+    outcomes: dict[str, str] = field(default_factory=dict)   # timed part ("waveform:<name>", "oppoints") -> its outcome
 
 
 def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf_dir: str, scalars_file: str,
@@ -73,9 +73,9 @@ def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf
     Waveforms (N-100, ``docs/waveform_export.md``): each is written from its vectors (``drGetWaveformXVec`` /
     ``drGetWaveformYVec``, ``%.16g``) as a real CSV, ``<name>.csv`` with ``<name>.meta.json``, a family one file per
     member (``<name>__<i>.csv``) with ``<name>.families.json``; not through ``ocnPrint``, whose output is a whitespace
-    table of six significant digits and which slows past 10 000 points (PRINT-1048). Each export
-    is timed (``measureTime``, wall clock): a line in the OCEAN log and a row of ``timing_file`` (default:
-    ``ocean_timing.tsv`` beside ``scalars_file``). A script without waveforms is what it was before.
+    table of six significant digits and which slows past 10 000 points (PRINT-1048). Each export and the operating-point
+    read are timed (``measureTime``, wall clock): a line in the OCEAN log and a row of ``timing_file`` (default:
+    ``ocean_timing.tsv`` beside ``scalars_file``). A script without waveforms and operating points is what it was before.
 
     All paths are relative to the OCEAN working directory.
     """
@@ -112,7 +112,7 @@ def replay_script(metrics: list[Metric], waveforms: list[WaveformExport], *, psf
         lines += waveform_script(waveforms, waveform_dir=waveform_dir, timing_file=timing)
     lines.append("close(out)")
     if oppoint_result is not None:
-        lines += oppoint_script(oppoint_result, oppoints_file)
+        lines += oppoint_script(oppoint_result, oppoints_file, timing_file=timing, append_timing=bool(waveforms))
     lines.append("exit()")
     return "\n".join(lines) + "\n"
 
@@ -328,7 +328,8 @@ def waveform_script(waveforms: list[WaveformExport], *, waveform_dir: str, timin
     return lines
 
 
-def oppoint_script(result: str, oppoints_file: str) -> list[str]:
+def oppoint_script(result: str, oppoints_file: str, *, timing_file: str | None = None,
+                   append_timing: bool = False) -> list[str]:
     """The replay script's operating-point part. It runs after the metrics and waveforms, with their file closed, so it
     cannot change one. Every call that can fail is inside ``errset``; rows are collected first and written only when the
     whole read went through, so a failure leaves the file empty (as does a result without operating points).
@@ -339,11 +340,20 @@ def oppoint_script(result: str, oppoints_file: str) -> list[str]:
     in ``results()`` under both forms. A quantity is read with ``pv`` from that result -- the call that returned numbers
     in that run for both forms --, then with ``OP``, which reads the design environment's own result only, under the name
     as ``outputs()`` gives it and with a leading ``/``.
+
+    Only the instances of a component type that reports ``gm`` are read (N-100): ``dataTypes()`` lists the result's
+    component types, ``outputParams(type)`` a type's quantities and ``outputs(?type type)`` its instances -- none of which
+    warns --, and the instances are taken in the order ``outputs()`` lists them. ``pv`` on an instance without the quantity
+    writes one OCN-6043 warning: probing ``gm`` on every output wrote one per diode, source and inductor (4 045 on a
+    netlist with about 4 000 PDK-internal diodes, real run 2026-10-09). An instance of such a type that lacks a quantity
+    still gets its warning, and a result whose types cannot be listed is read as before, every output probed, with a
+    line in the log saying so.
     Instance names are written as ``outputs()`` gives them, with ``\\``, tab and newline escaped
-    (:func:`parse_oppoints` undoes it)."""
+    (:func:`parse_oppoints` undoes it). The read is timed: a line in the OCEAN log and, with ``timing_file``, a row
+    ``oppoints`` there (appended after the waveforms' rows with ``append_timing``)."""
     _check_selector(result, "operating-point result")
     quantities = " ".join(_skill(q) for q in OP_QUANTITIES[1:])
-    return [
+    lines = [
         "; operating points (ic-opt): after the metrics, whose file is closed; nothing here can change one",
         "procedure(icoptOpEscape(s)",
         "  let((escaped c)",
@@ -353,6 +363,24 @@ def oppoint_script(result: str, oppoints_file: str) -> list[str]:
         r'      escaped = strcat(escaped cond((equal(c "\\") "\\\\") (equal(c "\t") "\\t") (equal(c "\n") "\\n") (t c)))',
         "    )",
         "    escaped",
+        "  )",
+        ")",
+        "procedure(icoptOpName(inst) if(symbolp(inst) get_pname(inst) inst))",
+        "procedure(icoptOpInstances()",          # the selected result's instances of a type that reports gm
+        "  let((types kept)",
+        "    types = car(errset(dataTypes()))",
+        "    if(types then",
+        "      kept = makeTable('icoptOpKept nil)",
+        "      foreach(icoptOpType types",
+        f"        when(member({_skill(OP_QUANTITIES[0])} car(errset(outputParams(icoptOpType))))",
+        "          foreach(inst car(errset(outputs(?type icoptOpType))) kept[icoptOpName(inst)] = t)",
+        "        )",
+        "      )",
+        "      setof(inst mapcar('icoptOpName car(errset(outputs()))) kept[inst])",
+        "    else",
+        '      printf("ic-opt operating points: the result lists no component types; every output is probed\\n")',
+        "      mapcar('icoptOpName car(errset(outputs())))",
+        "    )",
         "  )",
         ")",
         "icoptOpResult = nil",
@@ -373,12 +401,13 @@ def oppoint_script(result: str, oppoints_file: str) -> list[str]:
         "  )",
         ")",
         "icoptOpRows = nil",
-        "icoptOpRead = errset(",
+        "icoptOpCount = 0",
+        "icoptOpTime = measureTime(icoptOpRead = errset(",
         "  when(icoptOpResult && errset(selectResult(icoptOpResult))",
-        "    foreach(icoptOpInst car(errset(outputs()))",
+        "    foreach(name icoptOpInstances()",
+        "      icoptOpCount = icoptOpCount + 1",
         "      errset(",
-        "        let((name gm row v)",
-        "          name = if(symbolp(icoptOpInst) get_pname(icoptOpInst) icoptOpInst)",
+        "        let((gm row v)",
         f"          gm = icoptOpValue(name {_skill(OP_QUANTITIES[0])})",
         "          when(gm",
         rf'            row = list(sprintf(nil "%s\t{OP_QUANTITIES[0]}\t%.16g\n" icoptOpEscape(name) float(gm)))',
@@ -386,22 +415,34 @@ def oppoint_script(result: str, oppoints_file: str) -> list[str]:
         "              v = icoptOpValue(name q)",
         r'              when(v row = cons(sprintf(nil "%s\t%s\t%.16g\n" icoptOpEscape(name) q float(v)) row))',
         "            )",
-        "            icoptOpRows = append(icoptOpRows reverse(row))",
+        "            icoptOpRows = cons(reverse(row) icoptOpRows)",
         "          )",
         "        )",
         "      )",
         "    )",
         "  )",
-        ")",
+        "))",
         f'icoptOpOut = car(errset(outfile({_skill(oppoints_file)} "w")))',
         "when(icoptOpOut",
         "  when(icoptOpRead && icoptOpRows",
         r'    fprintf(icoptOpOut "instance\tquantity\tvalue\n")',          # OPPOINTS_HEADER
-        '    foreach(icoptOpRow icoptOpRows fprintf(icoptOpOut "%s" icoptOpRow))',
+        "    foreach(icoptOpRow reverse(icoptOpRows) foreach(icoptOpLine icoptOpRow fprintf(icoptOpOut \"%s\" icoptOpLine)))",
         "  )",
         "  close(icoptOpOut)",
         ")",
+        (r'printf("ic-opt operating points: %d instance(s) read, %d with gm, %.3f s\n" icoptOpCount length(icoptOpRows) '
+         "caddr(icoptOpTime))"),
     ]
+    if timing_file is not None:
+        mode = "a" if append_timing else "w"
+        lines += [
+            f'icoptOpTiming = car(errset(outfile({_skill(timing_file)} "{mode}")))',
+            "when(icoptOpTiming",
+            r'  fprintf(icoptOpTiming "oppoints\t%.6f\t%s\n" caddr(icoptOpTime) if(icoptOpRead "read" "failed"))',
+            "  close(icoptOpTiming)",
+            ")",
+        ]
+    return lines
 
 
 def parse_oppoints(path: Path) -> dict[str, dict[str, float]] | None:
@@ -476,9 +517,9 @@ def parse_scalars(path: Path) -> dict[str, ScalarRow]:
 
 @dataclass
 class TimingRow:
-    part: str              # "waveform:<name>"
+    part: str              # "waveform:<name>" | "oppoints"
     seconds: float         # wall clock, measured inside OCEAN (measureTime)
-    outcome: str           # "written", "nil", "not_a_waveform:<type>", ...
+    outcome: str           # a waveform: "written", "nil", "not_a_waveform:<type>", ...; the operating points: "read" | "failed"
 
 
 def parse_timing(path: Path) -> list[TimingRow]:

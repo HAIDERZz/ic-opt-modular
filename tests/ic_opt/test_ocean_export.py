@@ -1,5 +1,6 @@
 """N-100: the waveform files of the replay script (a real CSV at %.16g, written from the vectors, not by ``ocnPrint``),
-the extract stage reading them back, and the timing of the export.
+the extract stage reading them back, the timing of the export, and the operating points read only on the instances of
+a component type that reports ``gm``.
 
 Every name and number here is made up."""
 
@@ -207,3 +208,28 @@ def test_the_ocean_stage_puts_each_export_in_the_trace(tmp_path):
     assert scalars.waveforms == {"vout": work / "metrics" / "waveforms" / "vout.meta.json", "gone": None}
     child = Extract().run(scalars, ctx)
     assert child.issues == ["waveform gone returned nil"] and child.metrics == {"NF": 8.0}
+
+
+# -- 4. operating points: only instances of a type that reports gm (B04) --------------------------------------------------
+
+
+def test_only_the_instances_of_a_type_that_reports_gm_are_probed():
+    script = ocean.replay_script([], [], **PATHS, oppoint_result="dcOpInfo", oppoints_file="metrics/oppoints.tsv")
+    part = script[script.index("close(out)"):]
+    listing = part[part.index("procedure(icoptOpInstances()"):part.index("icoptOpResult = nil")]
+    assert "types = car(errset(dataTypes()))" in listing
+    assert 'when(member("gm" car(errset(outputParams(icoptOpType))))' in listing
+    assert "foreach(inst car(errset(outputs(?type icoptOpType))) kept[icoptOpName(inst)] = t)" in listing
+    assert "setof(inst mapcar('icoptOpName car(errset(outputs()))) kept[inst])" in listing    # in outputs() order
+    # a result whose types cannot be listed is read as before, and says so
+    assert "every output is probed" in listing and "mapcar('icoptOpName car(errset(outputs())))" in listing
+    read = part[part.index("icoptOpTime = measureTime(icoptOpRead = errset("):]
+    assert "foreach(name icoptOpInstances()" in read and 'gm = icoptOpValue(name "gm")' in read
+    # a transistor that lacks a quantity is still probed for it (its warning stays), and nothing is muffled
+    assert "v = icoptOpValue(name q)" in read
+    assert "muffle" not in script.lower() and "ocnSetSilent" not in script
+    # timed: a log line and a row of the timing file (opened here: there are no waveforms before it)
+    assert 'printf("ic-opt operating points: %d instance(s) read, %d with gm, %.3f s\\n"' in part
+    assert 'icoptOpTiming = car(errset(outfile("metrics/ocean_timing.tsv" "w")))' in part
+    with_waves = ocean.replay_script([], [VOUT], **PATHS, oppoint_result="dcOpInfo", oppoints_file="metrics/oppoints.tsv")
+    assert 'icoptOpTiming = car(errset(outfile("metrics/ocean_timing.tsv" "a")))' in with_waves      # after their rows

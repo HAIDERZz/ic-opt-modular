@@ -284,6 +284,10 @@ end (after every analysis, so no metric changes); the rendered netlist says so i
 a comment, and `doctor` / `--plan` print one `operating points:<tb>` line per
 testbench (`in the export (<name>)`, `added by ic-opt (statement) ...`, `added by
 ic-opt (DC analysis and statement) ...`, `off`). `false` adds and reads nothing.
+OCEAN reads them only on the instances of a component type that reports `gm`
+(`dataTypes()`, `outputParams(type)`, `outputs(?type type)`): diodes, sources
+and other devices are not probed, so they write no OCN-6043 warning; a transistor
+that lacks a quantity still gets its warning.
 Not part of the fingerprint: it changes no metric.
 
 A metric may read those operating points instead of an OCEAN expression:

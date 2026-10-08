@@ -9,9 +9,10 @@ Working directory layout (identical on the local and the remote side):
 
 Waveforms (N-100, ``docs/waveform_export.md``): the OCEAN stage writes each requested waveform as a real CSV from its
 vectors at ``%.16g``, with a ``<name>.meta.json`` (a family: one CSV per member and ``<name>.families.json``); the
-extract stage reads every file back against its meta file. Each export is timed inside OCEAN: a line in
-``metrics/ocean.log``, a row in ``metrics/ocean_timing.tsv``, and a trace record (``ocean:waveform:<name>``) beside
-the OCEAN run's own (``ocean#<attempt>``), so the time of an export is told apart from the metrics'.
+extract stage reads every file back against its meta file. The export and the operating-point read are timed inside
+OCEAN: a line each in ``metrics/ocean.log``, a row each in ``metrics/ocean_timing.tsv``, and a trace record each
+(``ocean:waveform:<name>``, ``ocean:oppoints``) beside the OCEAN run's own (``ocean#<attempt>``), so the time of an
+export is told apart from the metrics'.
 
 Operating points (T17.5, ``simulator.operating_points``): the render stage adds what the netlist lacks for Spectre to
 write them (``sim.netlist.with_operating_points``), the OCEAN stage reads them after the metrics, the extract stage

@@ -98,4 +98,5 @@ metrics:
 - a line in the child's `metrics/ocean.log`:
   `ic-opt waveform export vout: written, 102401 point(s), 0.155 s (expression 0.099 s, file 0.056 s)`;
 - a row in `metrics/ocean_timing.tsv` (`part`, `seconds`, `outcome`, tab separated,
-  no header): `waveform:vout	0.154901	written`.
+  no header): `waveform:vout	0.154901	written`; the operating-point read, when the
+  spec keeps operating points, adds a row `oppoints`.
