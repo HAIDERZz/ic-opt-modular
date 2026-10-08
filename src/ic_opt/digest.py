@@ -101,6 +101,18 @@ the row each device took -- part, obs id, its geometry, its electrical values, i
 recorded it (``ChildResult.library_row``). The table's size is the library's: read on the machine computing the digest
 (``ic_opt.library.link``, the process's resolution), else ``None`` with a note. Neither the library's root nor an sNp
 path reaches the digest.
+
+Version 5 (N-97, ``docs/refactor/N97_DIGEST_RECHECK_SPEC.md``: what the agents of the language-model comparison found
+misleading after a ``signoff`` re-check) keeps every entry of version 4 and adds ``recheck``: ``None`` without re-check
+points (steps ``signoff``, ``signoff#<k>``: :func:`is_recheck`); else every re-checked point -- the search point it
+re-checks, that point's objective at the search's corner, its own at its worst corner, feasible or not, where it first
+fails -- and the best of them feasible at every corner, each constraint at its worst corner (:func:`_recheck`). A
+re-check is not a batch of the search: ``progress`` (the best, the first feasible point, the batches, the stall) and
+``advice`` are computed over the other points, so ``progress.best`` is the search's best; the other entries count every
+point as before. An advice's *others* are the points of its own step (F3). ``markdown`` names the best point feasible at
+every corner under the search's best, adds a section "Re-check at every corner", and names ``reports/points.md``
+(:func:`points_markdown`, ``ic-opt digest --points``: one row per point, every metric at its worst corner; not in the
+JSON).
 """
 
 from __future__ import annotations
@@ -123,11 +135,13 @@ from ic_opt.sim.corner import (
     scored_corners,
     stopped_at_device,
     stopper,
+    worst_objective,
+    worst_values,
 )
 from ic_opt.space import split_origin
 from ic_opt.spec import Spec
 
-DIGEST_VERSION = 4
+DIGEST_VERSION = 5
 SCORED = ("ok", "constraint_failed")
 MIN_CORRELATED = 10                # scored points below which no rank correlation is given
 MIN_SIDE = 5                       # points on either side of a split
@@ -141,6 +155,8 @@ MI_NEIGHBOURS = 3                  # the k of the mutual information's k-nearest
 STAGES = ("render", "spectre", "ocean", "pcell", "emx", "bind_nport", "measure")   # failed:<stage>, always counted (1.4)
 REGION_WEIGHTS = (0.2, 5.0)        # metric_gp's per-variable weights of the region's side (region.WEIGHT_CLIP)
 QUANTITIES = ("region", "ids", "vgs", "vds", "vbs", "vth", "vdsat", "gm", "gds", "gmoverid", "cgs", "cgd")   # section 4
+POINTS_LIMIT = 500                 # rows of the per-point table (N-97, F7): the newest
+RECHECK = re.compile(r"^signoff(#\d+)?$")    # the signoff recipe's re-check steps (recipes/signoff.py, _check_step)
 QUANTITY_UNITS = {"ids": "A", "vgs": "V", "vds": "V", "vbs": "V", "vth": "V", "vdsat": "V", "gm": "S", "gds": "S",
                   "gmoverid": "1/V", "cgs": "F", "cgd": "F"}
 
@@ -206,7 +222,7 @@ def _limit(constraint) -> float:
 
 def digest(spec: Spec, observations: Iterable[Observation], *, advice: Sequence[dict] = (), top: int = 5,
            step: str | None = None) -> dict[str, Any]:
-    """The digest of ``observations`` (only step ``step``'s when given) as a JSON-ready dict, ``"digest_version": 4``.
+    """The digest of ``observations`` (only step ``step``'s when given) as a JSON-ready dict, ``"digest_version": 5``.
     ``advice``: the rows of ``.icopt/advice.jsonl`` in file order (section 2); ``top``: how many of the best feasible
     points the spans and suggested ranges describe. The order of ``observations`` does not matter: they are taken in
     observation-number order, as the store and the strategies take them."""
@@ -215,7 +231,9 @@ def digest(spec: Spec, observations: Iterable[Observation], *, advice: Sequence[
     rows = [o for o in ordered if step is None or o.step == step]
     grid = [_Grid(v) for v in spec.variables]
     feasible = sorted((o for o in rows if o.feasible), key=lambda o: o.objective if o.objective is not None else math.inf)
-    sizes = [key if (key := batch_key(o.origin)) is not None else position[o.obs_id] for o in rows]
+    search = [o for o in rows if not is_recheck(o.step)]          # the search's points: progress and advice (N-97)
+    found = [o for o in feasible if not is_recheck(o.step)]
+    sizes = [key if (key := batch_key(o.origin)) is not None else position[o.obs_id] for o in search]
     return {
         "digest_version": DIGEST_VERSION,
         "project": spec.project,
@@ -223,17 +241,24 @@ def digest(spec: Spec, observations: Iterable[Observation], *, advice: Sequence[
         "top": top,
         "problem": _problem(spec, rows, grid),
         "counts": _counts(spec, rows),
-        "progress": _progress(spec, rows, feasible),
+        "progress": _progress(spec, search, found),
         "constraints": _constraints(spec, rows, feasible),
         "variables": _variables(spec, rows, feasible[:top], grid),
         "failures": _failures(spec, rows, grid),
         "suggested_ranges": suggested_ranges(spec, rows, top=top),
         "strategy": _strategy(spec, rows),
-        "advice": _advice(rows, sizes, advice, grid, feasible[0] if feasible else None),
+        "advice": _advice(search, sizes, advice, grid, found[0] if found else None),
         "advice_refused": _advice_refused(advice),
         "operating_points": _operating_points(rows, feasible),
         "library": _library(spec, rows, feasible[:top], grid),
+        "recheck": _recheck(spec, rows, ordered),
     }
+
+
+def is_recheck(step: str) -> bool:
+    """Whether ``step`` is a re-check of the ``signoff`` recipe (``signoff``, ``signoff#<k>``): points the search found,
+    simulated again at every corner -- not a batch of the search."""
+    return RECHECK.match(step) is not None
 
 
 def suggested_ranges(spec: Spec, observations: Iterable[Observation], *, top: int = 5) -> dict[str, Any]:
@@ -639,7 +664,10 @@ def _advice(rows: list[Observation], sizes: list[int], advice: Sequence[dict], g
     """Per adopted advice (T17.3b specification, 2.1-2.4): its row and status, its period, the points under it and the
     others of its period counted alike, its start points, and where the run's best point lies against its ranges; and
     (T17.10 specification, 1.2) whether the run's best improved in its period, the share of the period's points that
-    came from it, and the verdict. ``sizes``: the history size each row was proposed at."""
+    came from it, and the verdict. ``rows``: the search's points (no re-check, N-97); ``sizes``: the history size each
+    was proposed at. *The others* are the points of the advice's own step (the step of its points, else of the first
+    point of its period): a point of another step proposed meanwhile is neither under it nor among the others (N-97, F3:
+    a re-check's points counted as others took the share from 80% to 53%)."""
     adopted = [r for r in advice if r.get("event") == "adopt"]
     revoked = {r.get("id"): r for r in advice if r.get("event") == "revoke"}
     best_then = _best_then(rows)
@@ -653,8 +681,9 @@ def _advice(rows: list[Observation], sizes: list[int], advice: Sequence[dict], g
         under = [o for o in rows if split_origin(o.origin)[1] == ident]
         starts = [o for o in rows if split_origin(o.origin)[0] == f"advice:{ident}"]
         mine = {o.obs_id for o in under} | {o.obs_id for o in starts}
-        others = [o for o, k in zip(rows, sizes, strict=True)
-                  if since <= k and (until is None or k < until) and o.obs_id not in mine]
+        period = [o for o, k in zip(rows, sizes, strict=True) if since <= k and (until is None or k < until)]
+        own = (under + starts)[0].step if under or starts else period[0].step if period else None
+        others = [o for o in period if o.step == own and o.obs_id not in mine]
         if ident in revoked:
             status = "revoked"
         elif i + 1 < len(adopted):
@@ -832,6 +861,136 @@ def _library_row(o: Observation, device: str) -> dict[str, Any] | None:
             "values": {k: _num(v) for k, v in (row.get("values") or {}).items()}, "footprint": row.get("footprint")}
 
 
+def _recheck(spec: Spec, rows: list[Observation], ordered: list[Observation]) -> dict[str, Any] | None:
+    """``recheck`` (version 5, N-97): ``None`` without re-check points (:func:`is_recheck`); else per re-checked point,
+    in observation order, the search point it re-checks (``from:<obs id>``), that point's objective at the search's
+    corner, its own objective at its worst corner and that corner (``sim.corner.worst_objective``; a feasible point's
+    ``fom``), whether it is feasible, and where it first fails (:func:`_first_failure`); and the best of those feasible
+    at every corner, with each constraint at its worst corner (:func:`_binding`). ``ordered``: every observation handed
+    to the digest, where the search points are looked up."""
+    checks = [o for o in rows if is_recheck(o.step)]
+    if not checks:
+        return None
+    by_id = {o.obs_id: o for o in ordered}
+    points = []
+    for o in checks:
+        base = split_origin(o.origin)[0]
+        searched_id = base[len("from:"):] if base.startswith("from:") else None
+        searched = by_id.get(searched_id) if searched_id else None
+        value, corner = worst_objective(spec, o)
+        points.append({"id": o.obs_id, "step": o.step, "search_id": searched_id,
+                       "search_objective": _num(searched.fom) if searched is not None else None,
+                       "search_corners": sorted(searched.corners()) if searched is not None else [],
+                       "objective": _num(o.fom if o.feasible else value), "objective_corner": corner,
+                       "status": o.status, "feasible": o.feasible,
+                       "first_failure": None if o.feasible else _first_failure(spec, o)})
+    best = _best_of(checks)
+    notes = {} if best is not None else {"best": f"no re-checked point is feasible at every corner ({len(checks)} re-checked)"}
+    entry = next((e for e in points if best is not None and e["id"] == best.obs_id), None)
+    return {"points": points, "feasible": sum(1 for o in checks if o.feasible),
+            "best": None if best is None else {**{k: entry[k] for k in ("id", "step", "search_id", "objective",
+                                                                         "objective_corner")},
+                                               "constraints": _binding(spec, best)},
+            "notes": notes}
+
+
+def _ran(spec: Spec, o: Observation) -> list[str]:
+    """The corners at which ``o`` has a testbench child, in the spec's order."""
+    return [cid for cid in ([c.id for c in spec.corners] or ["nominal"]) if any(ch.corner == cid for ch in o.children.values())]
+
+
+def _binding(spec: Spec, o: Observation) -> list[dict[str, Any]]:
+    """Per constraint, its metric's worst value at ``o`` over the scored corners the point ran (the smallest for a lower
+    bound, the largest for an upper one), the corner of it -- the first of equal ones; none where every corner gives the
+    same value (a device's) -- and the margin."""
+    per_corner = metrics_per_corner(spec, o)
+    ran = _ran(spec, o)
+    scored = [cid for cid in scored_corners(spec) if cid in ran] or ran
+    out = []
+    for c in spec.constraints:
+        found = [(per_corner[cid][c.metric], cid) for cid in scored
+                 if c.metric in per_corner[cid] and math.isfinite(per_corner[cid][c.metric])]
+        if found:
+            value = (max if c.op in ("lt", "le") else min)(v for v, _cid in found)
+            corner = next(cid for v, cid in found if v == value) if len({v for v, _cid in found}) > 1 else None
+        else:
+            value, corner = o.metrics.get(c.metric), None
+        out.append({"constraint": constraint_text(spec, c), "metric": c.metric, "unit": unit_of(spec, c.metric),
+                    "value": _num(value), "corner": corner,
+                    "margin": _num(margin(c, value)) if value is not None and math.isfinite(value) else None})
+    return out
+
+
+_LOST = re.compile(r"metric (\w+) (?:failed|missing from OCEAN output)")
+
+
+def _first_failure(spec: Spec, o: Observation) -> dict[str, Any]:
+    """Where a re-checked point that is not feasible first fails: its device children first (measured once, before any
+    testbench; ``corner`` None), then each corner in the spec's order -- at each, a child that did not run to its end
+    (``what``: its status), else a metric a child lost (``what``: ``no value``), else the first constraint in the spec's
+    order whose metric violates it there (a corner the constraints' policy scores). The point's status when none of
+    these shows it."""
+    per_corner = metrics_per_corner(spec, o)
+    scored = set(scored_corners(spec))
+    groups = [(None, [ch for ch in o.children.values() if ch.corner is None])]
+    groups += [(cid, [ch for ch in o.children.values() if ch.corner == cid]) for cid in _ran(spec, o)]
+    for cid, children in groups:
+        if not children:
+            continue
+        failed = next((ch for ch in children if ch.status not in ("ok", "metric_failed")), None)
+        if failed is not None:
+            return {"corner": cid, "child": failed.unit, "metric": None, "what": failed.status, "value": None, "unit": ""}
+        lost = next((m.group(1) for ch in children if ch.status == "metric_failed" for text in ch.issues
+                     if (m := _LOST.search(text))), None)
+        if lost is not None or any(ch.status == "metric_failed" for ch in children):
+            return {"corner": cid, "child": None, "metric": lost, "what": "no value", "value": None, "unit": ""}
+        metrics = {k: v for ch in children for k, v in ch.metrics.items()} if cid is None else per_corner[cid]
+        if cid is not None and cid not in scored:
+            continue
+        for c in spec.constraints:
+            value = metrics.get(c.metric)
+            if value is not None and math.isfinite(value) and margin(c, value) < 0:
+                return {"corner": cid, "child": None, "metric": c.metric, "what": constraint_text(spec, c),
+                        "value": _num(value), "unit": unit_of(spec, c.metric)}
+    return {"corner": None, "child": None, "metric": None, "what": o.status, "value": None, "unit": ""}
+
+
+def points_markdown(spec: Spec, observations: Iterable[Observation], *, step: str | None = None,
+                    limit: int | None = None) -> str:
+    """``reports/points.md`` (N-97, F7; ``ic-opt digest --points``): one row per observation -- only step ``step``'s when
+    given -- in observation order: obs id, step, origin, status, objective, every metric at its worst corner over the
+    point's corners with that corner (``sim.corner.worst_values``), and per library device the row the point took
+    (``part/obs id``). The newest ``limit`` rows (``POINTS_LIMIT`` unless given); a line says when older ones are left
+    out. Not in the digest's JSON."""
+    limit = POINTS_LIMIT if limit is None else limit
+    rows = [o for o in sorted(observations, key=_obs_order) if step is None or o.step == step]
+    shown = rows[-limit:] if len(rows) > limit else rows
+    devices = spec.library_devices
+    lines = [f"# Points — {spec.project}", "",
+             (f"{len(rows)} points" + (f" of step `{step}`" if step else "") + ", one row each, in observation order. Each "
+              "metric at its worst corner over the point's corners, that corner in brackets (none where the point ran "
+              "at one corner or every corner gives the same value); objective: the point's own, as the store holds it "
+              "(a feasible point's at its worst corner under `worst_case`; none for a point that gave no value)."
+              + (" Per library device, the row the point took (part/obs id)." if devices else ""))]
+    if len(shown) < len(rows):
+        lines += ["", (f"_the newest {len(shown)} of {len(rows)} points; the {len(rows) - len(shown)} older ones are "
+                       "in `observations.jsonl`_")]
+    lines += ["", _row(["obs", "step", "origin", "status", "objective", *(m.name for m in spec.metrics),
+                        *(f"{d.id} row" for d in devices)]), _rule(5 + len(spec.metrics) + len(devices))]
+    for o in shown:
+        values = worst_values(spec, o)
+        cells = []
+        for m in spec.metrics:
+            value, corner = values.get(m.name, (None, None))
+            cells.append(quantity(value, unit_of(spec, m.name)) + (f" ({corner})" if corner else ""))
+        library = []
+        for d in devices:
+            r = _library_row(o, d.id)
+            library.append(f"{r['part']}/{r['obs_id']}" if r else "—")
+        lines.append(_row([f"`{o.obs_id}`", o.step, f"`{o.origin}`", o.status, quantity(o.fom, ""), *cells, *library]))
+    return "\n".join(lines) + "\n"
+
+
 # -- small pieces -------------------------------------------------------------------------------------------------------
 
 class _Grid:
@@ -915,8 +1074,10 @@ spec's bound says the best points lie at it; only the user widens the spec's ran
 - A split says where points gave no value, not why."""
 
 
-def markdown(d: dict[str, Any]) -> str:
-    """The digest for a reader who has not seen the project: tables, values with their units."""
+def markdown(d: dict[str, Any], *, points: int | None = None) -> str:
+    """The digest for a reader who has not seen the project: tables, values with their units. ``points``: the rows of
+    ``reports/points.md`` when it was written with this digest (``ic-opt digest --points``), named under "How far the
+    run is"; None: that line says how to write it."""
     counts, problem = d["counts"], d["problem"]
     head = f"{counts['points']} points · " + (" · ".join(f"{k} {v}" for k, v in counts["by_status"].items()) or "none")
     head += f" · {counts['simulations']} simulations"
@@ -926,7 +1087,8 @@ def markdown(d: dict[str, Any]) -> str:
     head += f" · step `{d['step']}`" if d["step"] else ""
     parts = [f"# Run digest — {d['project']}", head, *_md_stopped_at(counts),
              "## What is optimized", _md_problem(problem),
-             "## How far the run is", _md_progress(d["progress"]),
+             "## How far the run is", _md_progress(d["progress"], d.get("recheck"), points),
+             *(["## Re-check at every corner", _md_recheck(d["recheck"])] if d.get("recheck") else []),
              "## What is in the way", _md_constraints(d["constraints"]),
              "## Where the good points are", _md_variables(d),
              "## What failed and where", _md_failures(d["failures"]),
@@ -973,19 +1135,27 @@ def _md_problem(p: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _md_progress(p: dict[str, Any]) -> str:
+def _md_progress(p: dict[str, Any], recheck: dict[str, Any] | None = None, points: int | None = None) -> str:
+    """"How far the run is": the first feasible point, the search's best with its stall line, parameters and metrics;
+    then, after a re-check, the best point feasible at every corner (N-97, F1); the best after each batch; and the line
+    that names the per-point table (F7)."""
     first = p["first_feasible"]
     lines = [f"- first feasible point: #{first['index']} (`{first['id']}`)" if first else "- first feasible point: none yet"]
     best = p["best"]
+    of = " of the search" if recheck else ""
+    table = (f"- one row per point: `reports/points.md` ({points} rows, written with this digest)" if points is not None
+             else "- one row per point: `ic-opt digest PROJECT --points` writes `reports/points.md`")
     if best is None:
-        lines += [f"- best feasible point: {p['notes']['best']}", _md_stall(p["stall"], len(p["batches"]))]
+        lines += [f"- best feasible point{of}: {p['notes']['best']}", _md_stall(p["stall"], len(p["batches"])),
+                  *_md_recheck_best(recheck), table]
         return "\n".join(lines)
-    lines += [(f"- best feasible point: #{best['index']} `{best['id']}` (origin `{best['origin']}`), objective "
+    lines += [(f"- best feasible point{of}: #{best['index']} `{best['id']}` (origin `{best['origin']}`), objective "
                f"**{quantity(best['objective'], '')}** ({p['direction'] or 'no objective'})"),
               _md_stall(p["stall"], len(p["batches"])),
               "- its parameters: " + ", ".join(f"{k}={v}" for k, v in best["params"].items()), "",
               _row(list(best["metrics"])), _rule(len(best["metrics"])),
               _row([quantity(m["value"], m["unit"]) for m in best["metrics"].values()]), "",
+              *([*_md_recheck_best(recheck), ""] if recheck else []),
               "Best objective after each batch (the batches where it changed, and the last):", "",
               _row(["batch", "points so far", "best objective", "point"]), _rule(4)]
     batches, previous = p["batches"], None
@@ -994,7 +1164,56 @@ def _md_progress(p: dict[str, Any]) -> str:
             lines.append(_row([b["batch"], str(b["points"]), quantity(b["best"], ""),
                                f"`{b['best_id']}`" if b["best_id"] else "—"]))
         previous = b["best_id"]
+    return "\n".join([*lines, "", table])
+
+
+def _md_recheck_best(recheck: dict[str, Any] | None) -> list[str]:
+    """The lines under the search's best that name the best point feasible at every corner (N-97, F1)."""
+    if not recheck:
+        return []
+    best = recheck["best"]
+    if best is None:
+        return [(f"- best point feasible at every corner: none -- {recheck['notes']['best']}; where each first fails is "
+                 "in \"Re-check at every corner\"")]
+    corner = f" ({best['objective_corner']})" if best["objective_corner"] else ""
+    lines = [(f"- best point feasible at every corner: `{best['id']}` (step `{best['step']}`, the re-check of "
+              f"`{best['search_id']}`), objective at its worst corner **{quantity(best['objective'], '')}**{corner}")]
+    if best["constraints"]:
+        lines.append("- its constraints at their worst corner: " + " · ".join(
+            f"`{c['constraint']}` {quantity(c['value'], c['unit'])}" + (f" ({c['corner']})" if c["corner"] else "")
+            + f", margin {quantity(c['margin'], c['unit'])}" for c in best["constraints"]))
+    return lines
+
+
+def _md_recheck(r: dict[str, Any]) -> str:
+    """``recheck`` as a table: every re-checked point, its search point, the two objectives, and where it first fails."""
+    lines = [(f"The points the search found best, simulated at every corner (the `signoff` recipe): {r['feasible']} of "
+              f"{len(r['points'])} feasible at every corner. Objective at the search's corner: the search point's; at its "
+              "worst corner: the re-checked point's own, that corner in brackets (the first of equal ones; a point stopped at "
+              "its first failure: over the corners it ran). First failure: a device's measurement first, then the "
+              "corners in the spec's order."), "",
+             _row(["re-check", "step", "re-checks", "objective at the search's corner", "objective at its worst corner",
+                   "feasible", "first failure"]), _rule(7)]
+    for e in r["points"]:
+        search = (quantity(e["search_objective"], "")
+                  + (f" ({', '.join(e['search_corners'])})" if e["search_corners"] else ""))
+        worst = quantity(e["objective"], "") + (f" ({e['objective_corner']})" if e["objective_corner"] else "")
+        lines.append(_row([f"`{e['id']}`", e["step"], f"`{e['search_id']}`" if e["search_id"] else "—", search, worst,
+                           "yes" if e["feasible"] else "no", _md_failure(e["first_failure"])]))
     return "\n".join(lines)
+
+
+def _md_failure(f: dict[str, Any] | None) -> str:
+    if f is None:
+        return "—"
+    where = f["corner"] or "device"
+    if f["child"] is not None:
+        return f"{where}: {f['child']} {f['what']}"
+    if f["what"] == "no value":
+        return f"{where}: {f['metric'] or 'a metric'} gave no value"
+    if f["metric"] is None:
+        return f["what"]
+    return f"{where}: `{f['what']}` ({quantity(f['value'], f['unit'])})"
 
 
 def _md_stall(s: dict[str, Any], batches: int) -> str:

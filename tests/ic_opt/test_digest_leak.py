@@ -111,9 +111,11 @@ def test_the_files_the_block_writes_carry_none_either(tmp_path):
     store = RunStore(tmp_path)
     for row in advice_of(spec):
         advice_rules.append(store.root, row)
-    path = analyze.digest(spec, leaky_rows(spec), store)
+    path = analyze.digest(spec, leaky_rows(spec), store, points=True)
     for text in (path.read_text(encoding="utf-8"), path.with_suffix(".json").read_text(encoding="utf-8")):
         assert [c for c in HIDDEN if c in text] == [] and ISSUE in text
+    table = path.with_name("points.md").read_text(encoding="utf-8")         # N-97: the per-point table, no issue text
+    assert [c for c in HIDDEN if c in table] == [] and [key for key in SIMULATOR if key in table] == [] and ISSUE not in table
 
 
 def test_a_library_device_s_rows_reach_the_digest_by_part_and_obs_id_never_by_path(tmp_path):

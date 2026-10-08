@@ -193,9 +193,13 @@ def digest(
     step: Annotated[str | None, typer.Option("--step", help="only this step's observations")] = None,
     top: Annotated[int, typer.Option("--top", help="how many of the best feasible points the spans describe")] = 5,
     as_json: Annotated[bool, typer.Option("--json", help="print the JSON instead of the Markdown")] = False,
+    points: Annotated[bool, typer.Option("--points", help="also write reports/points.md: one row per point, every metric "
+                                         "at its worst corner (the newest 500), and print its path")] = False,
 ) -> None:
     """What the run found, computed from its observations: print it and write reports/digest.md and digest.json. Reads
-    the store and takes no lock, so it works while a run holds the project; needs no site.yaml, since nothing runs."""
+    the store and takes no lock, so it works while a run holds the project; needs no site.yaml, since nothing runs.
+    ``--points`` writes reports/points.md too and prints its path after the digest (to stderr with ``--json``, so that
+    the output stays one JSON document)."""
     try:
         spec = load_spec(project / "spec.yaml")
     except ValidationError as exc:
@@ -205,8 +209,10 @@ def digest(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     store = RunStore(project)
-    path = blocks.digest(spec, store.observations(), store, top=top, step=step)
+    path = blocks.digest(spec, store.observations(), store, top=top, step=step, points=points)
     typer.echo((path.with_suffix(".json") if as_json else path).read_text(encoding="utf-8"), nl=False)
+    if points:
+        typer.echo(f"points: {path.with_name('points.md').resolve()}", err=as_json)
 
 
 @app.command()

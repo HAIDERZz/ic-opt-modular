@@ -95,7 +95,8 @@ def test_every_entry_on_a_run_of_known_structure():
     rows = observe(spec, abc_rows(), abc_metrics, op_of=lambda p: OP)
     d = dg.digest(spec, rows)
 
-    assert d["digest_version"] == 4 and d["top"] == 5 and d["library"] is None     # version 4: no library device here
+    assert d["digest_version"] == 5 and d["top"] == 5 and d["library"] is None     # no library device here
+    assert d["recheck"] is None                                  # version 5: no re-check either
     p = d["problem"]
     assert [(v["name"], v["levels"], v["scale"]) for v in p["variables"]] == [("A", 10, "linear"), ("B", 11, "linear"),
                                                                              ("C", 100, "log")]
@@ -685,6 +686,124 @@ def test_the_digest_does_not_depend_on_the_order_of_the_observations():
     assert dg.digest(spec, unpadded)["progress"]["first_feasible"]["index"] == dg.digest(spec, rows)["progress"]["first_feasible"]["index"]
 
 
+# -- N-97: after a re-check (F1), an advice's own step (F3) -------------------------------------------------------------
+
+
+def signoff_store(tmp_path):
+    """The signoff recipe on the fake of ``test_signoff_tighten`` at tt, ss and ff: NF < 9 dB, maximize G = F, NF 0.75 dB
+    worse at ss. The search at tt: the four start rows and two random points, all feasible there; its top three re-checked
+    at every corner: F = 30 and F = 28 miss NF at ss (each stopped there), F = 26 meets it exactly."""
+    from ic_opt.recipes import signoff
+    from tests.ic_opt.test_cli_recipes import fake_run
+    from tests.ic_opt.test_signoff_tighten import gain_project, worse_at_ss
+
+    run = fake_run(gain_project(tmp_path), worse_at_ss)
+    signoff.main(run, corner="tt", budget=6, batch=2, top=3, strategy="random", seed=2, current=False, start="start.json")
+    return run
+
+
+def test_the_digest_reports_the_recheck_and_counts_no_batch_of_it(tmp_path):
+    run = signoff_store(tmp_path)
+    obs = run.store.observations()
+    assert [(o.step, o.origin) for o in obs[6:]] == [("signoff", "from:obs_0001"), ("signoff", "from:obs_0002"),
+                                                    ("signoff", "from:obs_0005")]
+    d = dg.digest(run.spec, obs)
+    assert d["digest_version"] == 5 and d["counts"]["per_step"] == {"search@tt": 6, "signoff": 3}
+    prog = d["progress"]                            # the search's best; the re-check is not a batch (F1's "batch 5")
+    assert prog["best"]["id"] == "obs_0001" and prog["best"]["objective"] == 30.0
+    assert [b["points"] for b in prog["batches"]] == [6]
+    r = d["recheck"]
+    assert r["feasible"] == 1 and [(e["id"], e["search_id"], e["feasible"]) for e in r["points"]] == [
+        ("obs_0007", "obs_0001", False), ("obs_0008", "obs_0002", False), ("obs_0009", "obs_0005", True)]
+    first = r["points"][0]
+    assert (first["search_objective"], first["search_corners"], first["status"]) == (30.0, ["tt"], "constraint_failed")
+    assert (first["objective"], first["objective_corner"]) == (30.0, "tt")     # G is the same at tt and ss: the first
+    assert first["first_failure"] == {"corner": "ss", "child": None, "metric": "NF", "what": "NF < 9 dB", "value": 9.5,
+                                      "unit": "dB"}
+    assert r["points"][2]["first_failure"] is None and r["points"][2]["objective"] == 26.0
+    assert r["best"] == {"id": "obs_0009", "step": "signoff", "search_id": "obs_0005", "objective": 26.0,
+                         "objective_corner": "tt", "constraints": [
+                             {"constraint": "NF < 9 dB", "metric": "NF", "unit": "dB", "value": 9.0, "corner": "ss",
+                              "margin": 0.0},
+                             {"constraint": "G > 10 dB", "metric": "G", "unit": "dB", "value": 26.0, "corner": None,
+                              "margin": 16.0}]} and r["notes"] == {}
+    json.dumps(d, allow_nan=False)
+    md = dg.markdown(d)
+    far = md.split("## How far the run is\n\n")[1].split("\n## ")[0]
+    assert "- best feasible point of the search: #1 `obs_0001` (origin `start`), objective **30** (maximize)" in far
+    assert ("- best point feasible at every corner: `obs_0009` (step `signoff`, the re-check of `obs_0005`), objective at "
+            "its worst corner **26** (tt)") in far
+    assert "- its constraints at their worst corner: `NF < 9 dB` 9 dB (ss), margin 0 dB · `G > 10 dB` 26 dB, margin 16 dB" in far
+    assert far.index("best feasible point of the search") < far.index("best point feasible at every corner")
+    table = md.split("## Re-check at every corner\n\n")[1].split("\n## ")[0]
+    assert "1 of 3 feasible at every corner" in table
+    assert "| `obs_0007` | signoff | `obs_0001` | 30 (tt) | 30 (tt) | no | ss: `NF < 9 dB` (9.5 dB) |" in table
+    assert "| `obs_0009` | signoff | `obs_0005` | 26 (tt) | 26 (tt) | yes | — |" in table
+    # the re-check alone, as `--step signoff` reads it: no search point, and the search points looked up all the same
+    alone = dg.digest(run.spec, obs, step="signoff")
+    assert alone["progress"]["best"] is None and alone["recheck"]["points"][0]["search_objective"] == 30.0
+    assert "- best point feasible at every corner: `obs_0009`" in dg.markdown(alone)
+
+
+def three_corner_point(spec, children, *, status="constraint_failed", not_run=()):
+    return Observation(obs_id="obs_9", params={"A": "5", "B": "0", "C": "1"}, origin="from:obs_1", children=children,
+                       not_run=list(not_run), status=status, spec_fingerprint=spec.fingerprint(), pipeline_fingerprint="p",
+                       step="signoff#2", started_at="t", finished_at="t")
+
+
+def test_where_a_rechecked_point_first_fails():
+    """A device's measurement first (no corner), then each corner in the spec's order: a child that did not run to its
+    end, a metric lost, a constraint violated; no feasible point among the re-checked ones."""
+    spec = spec_abc(corners=[{"id": "tt"}, {"id": "ss"}, {"id": "ff"}])
+    ok = {"m1": 6.0, "m2": 3.0, "spare": 1.0}
+    tb = {cid: ChildResult(unit="tb", corner=cid, status="ok", metrics=ok) for cid in ("tt", "ss", "ff")}
+    failed = three_corner_point(spec, {"dev/nominal": ChildResult(unit="dev", status="failed:pick", issues=["off table"])},
+                                status="failed:pick", not_run=["tb/tt", "tb/ss", "tb/ff"])
+    lost = three_corner_point(spec, {"tb/tt": tb["tt"], "tb/ss": ChildResult(
+        unit="tb", corner="ss", status="metric_failed", metrics={"m1": 6.0}, issues=["metric m2 failed: no_value:nil"])},
+        status="metric_failed", not_run=["tb/ff"])
+    low = three_corner_point(spec, {"tb/tt": tb["tt"], "tb/ss": tb["ss"], "tb/ff": ChildResult(
+        unit="tb", corner="ff", status="ok", metrics={**ok, "m1": 4.5})})
+    crashed = three_corner_point(spec, {"tb/tt": tb["tt"], "tb/ss": ChildResult(unit="tb", corner="ss",
+                                                                                 status="failed:spectre")},
+                                 status="failed:spectre", not_run=["tb/ff"])
+    assert dg._first_failure(spec, failed) == {"corner": None, "child": "dev", "metric": None, "what": "failed:pick",
+                                               "value": None, "unit": ""}
+    assert dg._first_failure(spec, lost) == {"corner": "ss", "child": None, "metric": "m2", "what": "no value",
+                                             "value": None, "unit": ""}
+    assert dg._first_failure(spec, low) == {"corner": "ff", "child": None, "metric": "m1", "what": "m1 ≥ 5 V",
+                                            "value": 4.5, "unit": "V"}
+    assert dg._first_failure(spec, crashed)["corner"] == "ss" and dg._first_failure(spec, crashed)["what"] == "failed:spectre"
+    d = dg.digest(spec, [failed, lost, low, crashed])
+    assert d["recheck"]["best"] is None and d["recheck"]["notes"]["best"] == ("no re-checked point is feasible at every "
+                                                                              "corner (4 re-checked)")
+    assert d["recheck"]["points"][0]["search_id"] == "obs_1" and d["recheck"]["points"][0]["search_objective"] is None
+    md = dg.markdown(d)
+    assert ("- best point feasible at every corner: none -- no re-checked point is feasible at every corner (4 re-checked); "
+            "where each first fails is in \"Re-check at every corner\"") in md
+    assert "| device: dev failed:pick |" in md and "| ss: m2 gave no value |" in md and "| ff: `m1 ≥ 5 V` (4.5 V) |" in md
+    assert dg.is_recheck("signoff") and dg.is_recheck("signoff#12") and not dg.is_recheck("search@tt#2")
+
+
+def test_an_advice_counts_only_its_own_step_s_points():
+    """F3: the re-check's points (and any other step's) proposed in an advice's period are neither under it nor among the
+    others: the share stays the search's (the comparison read 80% fall to 53%). Nor do they make a batch of the search."""
+    spec = spec_abc()
+    rows = verdict_run(spec, 50, 10, 60)
+    advice = [adopt("a1", 20)]
+    plain = dg.digest(spec, rows, advice=advice)
+    later = observe(spec, [(o.params, f"from:{o.obs_id}") for o in rows[21:26]], abc_metrics, step="signoff")
+    later += observe(spec, [({"A": "6", "B": "0", "C": "3"}, "user")], abc_metrics, step="evaluate")
+    later = [o.model_copy(update={"obs_id": f"obs_{40 + i:04d}"}) for i, o in enumerate(later)]
+    d = dg.digest(spec, [*rows, *later], advice=advice)
+    (a1,), (before,) = d["advice"], plain["advice"]
+    assert a1["share_kept"] == before["share_kept"] == {"points": 20, "advised": 0.5, "free": 0.5}
+    assert a1["others"] == before["others"] and a1["under"] == before["under"] and a1["verdict"] == "helped"
+    assert d["progress"]["batches"][:-1] == plain["progress"]["batches"]      # the user point is a batch of its own step
+    assert d["progress"]["batches"][-1]["points"] == 41
+    assert len(d["recheck"]["points"]) == 5
+
+
 # -- 6. the command -----------------------------------------------------------------------------------------------------
 
 
@@ -722,6 +841,39 @@ def test_the_command_writes_both_files_prints_json_and_works_while_the_project_i
         held = runner.invoke(app, ["digest", str(root)])
     assert held.exit_code == 0 and held.output == md
     assert not list(store.reports_dir().glob(".*.tmp"))
+
+
+def test_the_command_writes_the_per_point_table(tmp_path, monkeypatch):
+    """F7: ``--points`` writes ``reports/points.md`` -- one row per point, the newest ``POINTS_LIMIT``, a line when older
+    ones are left out -- prints its path, and ``digest.md`` names it; the JSON does not carry it."""
+    root, store = project_with_run(tmp_path)
+    plain = runner.invoke(app, ["digest", str(root)])
+    assert "- one row per point: `ic-opt digest PROJECT --points` writes `reports/points.md`" in plain.output
+    assert not (store.reports_dir() / "points.md").exists()
+    result = runner.invoke(app, ["digest", str(root), "--points"])
+    path = store.reports_dir() / "points.md"
+    assert result.exit_code == 0 and result.output.endswith(f"points: {path.resolve()}\n")
+    md = (store.reports_dir() / "digest.md").read_text(encoding="utf-8")
+    assert result.output == md + f"points: {path.resolve()}\n"
+    assert "- one row per point: `reports/points.md` (40 rows, written with this digest)" in md
+    table = path.read_text(encoding="utf-8")
+    rows = [line for line in table.splitlines() if line.startswith("| `obs_")]
+    assert table.startswith("# Points — demo\n\n40 points, one row each") and "newest" not in table
+    assert "| obs | step | origin | status | objective | m1 | m2 | spare |" in table and len(rows) == 40
+    for line, o in zip(rows, observe(spec_abc(), abc_rows()[:40], abc_metrics), strict=True):
+        m = o.metrics
+        assert line == (f"| `{o.obs_id}` | optimize | `{o.origin}` | {o.status} | {dg.quantity(o.fom, '')} | "
+                        f"{dg.quantity(m.get('m1'), 'V')} | {dg.quantity(m.get('m2'), 'Hz')} | {dg.quantity(m.get('spare'), '')} |")
+    assert "points" not in json.loads((store.reports_dir() / "digest.json").read_text(encoding="utf-8"))
+    monkeypatch.setattr(dg, "POINTS_LIMIT", 25)
+    cut = runner.invoke(app, ["digest", str(root), "--points", "--json"])
+    assert cut.exit_code == 0 and json.loads(cut.stdout)["counts"]["points"] == 40      # the path goes to stderr
+    assert cut.stderr == f"points: {path.resolve()}\n"
+    table = path.read_text(encoding="utf-8")
+    rows = [line for line in table.splitlines() if line.startswith("| `obs_")]
+    assert "_the newest 25 of 40 points; the 15 older ones are in `observations.jsonl`_" in table
+    assert len(rows) == 25 and rows[0].startswith("| `obs_0015` |") and rows[-1].startswith("| `obs_0039` |")
+    assert "(25 rows, written with this digest)" in (store.reports_dir() / "digest.md").read_text(encoding="utf-8")
 
 
 def test_the_command_refuses_an_invalid_spec(tmp_path):

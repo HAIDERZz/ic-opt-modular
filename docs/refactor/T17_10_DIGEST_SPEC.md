@@ -142,3 +142,16 @@ targeted tests 111 passed, ruff clean. How the specification's open points were 
 - Not done here: the version-3 entries are described in `skills/ic-opt/SKILL.md` step 5 and this section, not in
   `T17_1_5_SPEC.md` 5.2; the digest of a metric at several corners still reads `Observation.metrics` for the
   importance (T17.9 adds `worst_metrics`; switching the importance to it is a later choice).
+
+## 7. Version 5 (N-97, 2026-10-08)
+
+`digest_version: 5` (`docs/refactor/N97_DIGEST_RECHECK_SPEC.md`, findings F1 to F7 of the language-model comparison)
+keeps every entry above and adds `recheck`: `None` without points of a `signoff` re-check (steps `signoff`,
+`signoff#<k>`); else every re-checked point -- the search point it re-checks (`from:<obs id>`), that point's objective
+at the search's corner, its own at its worst corner and that corner, feasible or not, where it first fails -- and the
+best point feasible at every corner with each constraint at its worst corner. A re-check is not a batch of the search:
+`progress` (best, first feasible point, batches, stall) and `advice` are computed without it, so `progress.best` is the
+search's best; the other entries count every point as before. An advice's *others* are the points of its own step.
+`digest.md` names the best point feasible at every corner under the search's best, adds "Re-check at every corner", and
+names `reports/points.md` (`ic-opt digest --points`: one row per point, every metric at its worst corner; not in the
+JSON).

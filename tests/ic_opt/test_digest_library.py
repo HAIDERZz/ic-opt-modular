@@ -54,7 +54,7 @@ def test_the_digest_names_each_table_what_the_run_visited_and_the_rows_the_best_
     facts = link.summary(spec)["xfmr"]
     names = ("xfmr.Lp", "xfmr.Ls", "xfmr.k")
     visited = {tuple(o.params[n] for n in names) for o in obs}
-    assert d["digest_version"] == 4 and d["library"]["notes"] == {}
+    assert d["digest_version"] == 5 and d["library"]["notes"] == {}
     assert d["library"]["devices"] == [{"device": "xfmr", "table": "xfm_demo", "frequency_hz": 2e10, "srf_margin": 1.25,
                                         "prefer": "max:Qmin", "variables": {"Lp": "xfmr.Lp", "Ls": "xfmr.Ls", "k": "xfmr.k"},
                                         "combinations": facts["combinations"], "rows": facts["rows"], "of": 1536,
@@ -98,3 +98,23 @@ def test_a_library_that_cannot_be_read_here_leaves_the_table_s_size_out_and_no_p
     assert d["strategy"]["metric_gp"] is None and "no search region" in d["strategy"]["notes"]["metric_gp"]
     text = json.dumps(d) + dg.markdown(d)
     assert str(root) not in text and str(tmp_path) not in text and ".s4p" not in text
+
+
+def test_the_per_point_table_names_the_row_each_point_took(tmp_path):
+    """N-97 (F7): ``reports/points.md`` gives per library device the row the point took, by part and obs id -- the fake
+    library of ``test_library_device_run`` -- and no path."""
+    root = xfm_library(tmp_path / "lib")
+    run = library_run(root, tmp_path)
+    optimize.main(run, budget=8, batch=4, seed=2)
+    obs = run.store.observations()
+    analyze.digest(run.spec, obs, run.store, points=True)
+    table = (run.store.reports_dir() / "points.md").read_text(encoding="utf-8")
+    assert "| obs | step | origin | status | objective | NF | Lp | k | Qp | xfmr row |" in table
+    assert "Per library device, the row the point took (part/obs id)." in table
+    rows = [line for line in table.splitlines() if line.startswith("| `obs_")]
+    assert len(rows) == len(obs) == 8
+    for line, o in zip(rows, obs, strict=True):
+        row = o.children["xfmr/nominal"].library_row
+        assert line.startswith(f"| `{o.obs_id}` |") and line.endswith(f"| {row['part']}/{row['obs_id']} |")
+    assert str(root) not in table and str(tmp_path) not in table and ".s4p" not in table
+    assert "(8 rows, written with this digest)" in (run.store.reports_dir() / "digest.md").read_text(encoding="utf-8")

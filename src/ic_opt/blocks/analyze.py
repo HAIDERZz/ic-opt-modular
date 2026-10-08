@@ -84,7 +84,8 @@ def report(spec: Spec, observations: Sequence[Observation], store: RunStore, *, 
     return out / "report.md"
 
 
-def digest(spec: Spec, observations: Sequence[Observation], store: RunStore, *, top: int = 5, step: str | None = None) -> Path:
+def digest(spec: Spec, observations: Sequence[Observation], store: RunStore, *, top: int = 5, step: str | None = None,
+           points: bool = False) -> Path:
     """``reports/digest.json`` and ``reports/digest.md``: what the run found, computed from its observations
     (``ic_opt.digest``), with the advice rows of ``.icopt/advice.jsonl`` when there is one. Reads the store and takes no
     lock, so it runs beside a run that holds the project. Each file is replaced whole (written aside, then renamed): a
@@ -92,14 +93,21 @@ def digest(spec: Spec, observations: Sequence[Observation], store: RunStore, *, 
 
     Only this problem's observations and advice are read (the spec's fingerprints, as ``opt.optimize`` tells its rows
     apart): a store that also holds rows of the spec as it was before an edit would otherwise count them, and an advice's
-    period is a stretch of this problem's history."""
+    period is a stretch of this problem's history.
+
+    ``points`` (N-97, F7): also ``reports/points.md``, one row per observation of the problem (of step ``step`` when
+    given; the newest ``digest.POINTS_LIMIT``), which ``digest.md`` then names (``digest.points_markdown``)."""
     same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}
     advice = advice_rules.of_problem(advice_rules.read(store.root), same_problem)
     observations = [o for o in observations if o.spec_fingerprint in same_problem]
     d = digest_module.digest(spec, observations, advice=advice, top=top, step=step)
     out = store.reports_dir()
+    written = None
+    if points:
+        _write_atomic(out / "points.md", digest_module.points_markdown(spec, observations, step=step))
+        written = min(sum(1 for o in observations if step is None or o.step == step), digest_module.POINTS_LIMIT)
     _write_atomic(out / "digest.json", json.dumps(d, indent=2, ensure_ascii=False, allow_nan=False) + "\n")
-    _write_atomic(out / "digest.md", digest_module.markdown(d))
+    _write_atomic(out / "digest.md", digest_module.markdown(d, points=written))
     return out / "digest.md"
 
 
