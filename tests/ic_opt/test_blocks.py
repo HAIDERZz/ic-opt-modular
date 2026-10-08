@@ -134,6 +134,10 @@ def test_report_from_recorded_run(tmp_path):
     assert md.startswith("# IC-Opt report — ") and "## Summary" in md and "## Best observed" in md and "## Constraint margins" in md
     assert "real_066" not in md and analyze.best(spec, obs)[0].params == {"F": "26", "L": "40n", "VB_LO": "310m", "W": "1u"}
     assert "- IIP3 > 0 dBm: pass 64/64" in md
+    # N-97 (F2): a run at one corner prints its metrics as before, no corner named
+    observed = md.split("## Best observed\n\n")[1].split("\n## ")[0]
+    assert "- metrics: " in observed and "at its worst corner" not in md and "(nominal)" not in md
+    assert "Each metric at its worst corner" not in md.split("## Top feasible candidates\n\n")[1].split("\n## ")[0]
     assert (store.reports_dir() / "report.html").stat().st_size > 20_000
     figures = {p.name for p in store.reports_dir().glob("*.png")}
     assert {"feasible_convergence.png", "convergence.png", "constraint_margins.png"} <= figures
@@ -156,6 +160,37 @@ def test_report_with_corners_and_bottleneck_objective(tmp_path):
     md = analyze.report(spec, obs, store).read_text(encoding="utf-8")
     assert "## Corners" in md and "- failures per corner (a point counts at every corner it fails at): tt " in md and "ss " in md
     assert (store.reports_dir() / "bottleneck_weighted_score.png").exists()
+
+
+def test_the_best_points_name_each_metric_s_worst_corner(tmp_path):
+    """N-97 (F2): "Best observed" and "Top feasible candidates" printed a point's own metrics -- one corner's, unnamed --
+    and five agent sessions took them for the worst. Each metric is now its worst over the point's corners, that corner
+    named: NF worse at ss, IIP3 worse at tt, the point's own metrics those of ss (its objective's worst corner)."""
+    d = minimal_spec()
+    d["corners"] = [{"id": "tt"}, {"id": "ss"}]
+    d["metrics"] = [{"name": "NF", "unit": "dB", "expression": "nf()"}, {"name": "IIP3", "unit": "dBm", "expression": "iip3()"},
+                    {"name": "G", "unit": "dB", "expression": "g()"}]
+    d["constraints"] = [{"metric": "NF", "op": "lt", "value": "9"}, {"metric": "IIP3", "op": "gt", "value": "1"}]
+    d["objective"] = {"direction": "minimize", "expression": "NF"}
+    d["budget"] = {"max_simulations": 100}
+    spec = make_spec(**d)
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {
+        "NF": 8.0 + int(p["F"]) / 100 + (0.6 if c == "ss" else 0), "IIP3": 2.5 - int(p["F"]) / 20 - (0.3 if c == "tt" else 0),
+        "G": 10.0})
+    deck = Deck(templates={("tb", c): "parameters F={{F}} W={{W}}\n" for c in ("tt", "ss")})
+    obs = evaluate(spec, points.grid(spec, per_dim=3), ex, store, deck=deck, limits=FAKE_HOST)
+    best = analyze.best(spec, obs)[0]
+    assert best.params["F"] == "20" and best.metrics == pytest.approx({"NF": 8.8, "IIP3": 1.5, "G": 10.0})   # ss's, IIP3 too
+    md = analyze.report(spec, obs, store).read_text(encoding="utf-8")
+    observed = md.split("## Best observed\n\n")[1].split("\n## ")[0]
+    assert ("- metrics at its worst corner over the point's corners, that corner in brackets (none where every corner "
+            "gives the same value): NF=8.8 dB (ss), IIP3=1.2 dBm (tt), G=10 dB") in observed
+    top = md.split("## Top feasible candidates\n\n")[1].split("\n## ")[0]
+    assert top.startswith("Each metric at its worst corner over the point's corners, that corner in brackets")
+    assert f"| {best.obs_id} | 8.8 | 20 | {best.params['W']} | 8.8 dB (ss) | 1.2 dBm (tt) | 10 dB |" in top
+    html_text = (store.reports_dir() / "report.html").read_text(encoding="utf-8")
+    assert "<td>8.8 dB (ss)</td>" in html_text
 
 
 def test_corners_section_scores_each_corner_with_the_device_metrics(tmp_path):

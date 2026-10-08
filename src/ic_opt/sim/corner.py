@@ -277,6 +277,72 @@ def worst_metrics(spec: Spec, o: Observation) -> dict[str, float]:
     return out
 
 
+def worst_values(spec: Spec, o: Observation) -> dict[str, tuple[float, str | None]]:
+    """Each metric of the point at its worst over the corners it was simulated at, and the corner of that value -- what
+    a reader is shown (N-97: the report's best points, the digest's per-point table); :func:`worst_metrics` stays what
+    the models are given.
+
+    - A point evaluated at one corner (a single-condition run, a spec without corners): its own ``metrics`` as they
+      are, in their order, no corner -- printed as before N-97.
+    - A metric the constraints name: its worst value over the scored corners the point ran (:func:`scored_corners`) --
+      the smallest for a lower bound, the largest for an upper one, under bounds of both kinds the smallest margin --
+      the first of equal ones in the spec's corner order.
+    - Any other metric: its value at the corner whose objective is worst (:func:`worst_objective`), as the point's own
+      ``metrics`` hold a feasible point's under ``worst_case``; where no corner has the objective, the point's own value
+      and the corner that holds it.
+    - No corner is named for a metric whose value is the same at every corner the point ran (a device's, measured once).
+
+    In the spec's metric order; a metric with no value at any corner is left out."""
+    ran = [cid for cid in ([c.id for c in spec.corners] or ["nominal"])
+           if any(ch.corner == cid for ch in o.children.values())]
+    if len(o.corners()) < 2 or len(ran) < 2:
+        return {name: (value, None) for name, value in o.metrics.items()}
+    per_corner = {cid: m for cid, m in metrics_per_corner(spec, o).items() if cid in ran}
+    bounds: dict[str, list[Constraint]] = {}
+    for c in spec.constraints:
+        bounds.setdefault(c.metric, []).append(c)
+    _value, objective_corner = worst_objective(spec, o)
+    scored = [cid for cid in scored_corners(spec) if cid in ran] or ran
+    out: dict[str, tuple[float, str | None]] = {}
+    for m in spec.metrics:
+        found = [(per_corner[cid][m.name], cid) for cid in ran
+                 if m.name in per_corner[cid] and math.isfinite(per_corner[cid][m.name])]
+        if not found:
+            if m.name in o.metrics:
+                out[m.name] = (o.metrics[m.name], None)
+            continue
+        if len({v for v, _cid in found}) == 1:
+            out[m.name] = (found[0][0], None)
+            continue
+        if m.name in bounds:
+            judged = [(v, cid) for v, cid in found if cid in scored] or found
+            value = _worst([v for v, _cid in judged], bounds[m.name])
+            out[m.name] = next((v, cid) for v, cid in judged if v == value)
+        elif objective_corner is not None and m.name in per_corner[objective_corner]:
+            out[m.name] = (per_corner[objective_corner][m.name], objective_corner)
+        elif m.name in o.metrics:
+            own = o.metrics[m.name]
+            out[m.name] = (own, next((cid for v, cid in found if v == own), None))
+    return out
+
+
+def worst_objective(spec: Spec, o: Observation) -> tuple[float | None, str | None]:
+    """The point's objective at its worst corner, in the spec's direction (as ``fom``), and that corner: among the corners
+    the objective's policy scores that the point ran with every metric of the objective (:func:`_worst_objective_corner`).
+    A feasible point's ``fom`` under ``worst_case`` is this value. (None, None) without an objective or such a corner;
+    (``fom``, None) for a point evaluated at one corner."""
+    if spec.objective is None:
+        return None, None
+    ran = {ch.corner for ch in o.children.values() if ch.corner is not None}
+    if len(ran) < 2:
+        return o.fom, None
+    per_corner = {cid: m for cid, m in metrics_per_corner(spec, o).items() if cid in ran}
+    corner = _worst_objective_corner(spec, per_corner, _objective_metrics(spec))
+    if corner is None:
+        return None, None
+    return objective_contract.evaluate_expression(spec.objective.expression, per_corner[corner]), corner
+
+
 def _worst(values: list[float], constraints: list[Constraint]) -> float:
     """Of one metric's ``values``, the one its ``constraints`` judge worst (:func:`worst_metrics`)."""
     lower = any(c.op in ("gt", "ge") for c in constraints)

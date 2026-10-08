@@ -2,7 +2,9 @@
 run digest's files.
 
 Sections: summary (feasible count, best point, binding constraints, worst corner) · best observed (with, per library
-device, the row the point took: part and obs id, geometry, footprint -- T18.2B) · top feasible ·
+device, the row the point took: part and obs id, geometry, footprint -- T18.2B) · top feasible (in both, a point at
+several corners prints each metric at its worst corner, that corner named: ``NF_3G=10.27 dB (ss)``,
+``sim.corner.worst_values``, N-97) ·
 constraint margins · parameter importance (SHAP) · corners (policy, best point per corner as a table, failures and
 violations per corner) · where the best points are (the digest's suggested ranges: the span of the best feasible points
 one level wider, T17.1.5; it replaced OpenBox's space compressor, so the report needs no OpenBox). Values carry their
@@ -36,6 +38,7 @@ from ic_opt.digest import metrics_per_corner as _metrics_per_corner
 from ic_opt.digest import quantity as _quantity
 from ic_opt.digest import unit_of as _unit
 from ic_opt.observation import Observation, Observations
+from ic_opt.sim.corner import worst_values
 from ic_opt.spec import Spec
 from ic_opt.store import RunStore
 
@@ -168,7 +171,8 @@ def _best_section(spec: Spec, obs: Observations) -> str:
     lines = [f"- observation: `{o.obs_id}` (step `{o.step}`, origin `{o.origin}`)",
              f"- objective ({spec.objective.direction if spec.objective else 'n/a'}): {_fmt(o.fom)}",
              "- parameters: " + ", ".join(f"{k}={v}" for k, v in o.params.items()),
-             "- metrics: " + ", ".join(f"{k}={_quantity(v, _unit(spec, k))}" for k, v in o.metrics.items())]
+             f"- metrics{_WORST_NOTE if _several(spec, o) else ''}: "
+             + ", ".join(f"{k}={_value(spec, k, v, corner)}" for k, (v, corner) in worst_values(spec, o).items())]
     for device in spec.library_devices:              # T18.2B: the library row the point took, as its device child recorded it
         row = next((c.library_row for c in o.children.values() if c.unit == device.id and c.library_row), None)
         if row is None:
@@ -189,9 +193,25 @@ def _top_section(spec: Spec, obs: Observations, k: int = 5) -> str:
     header = ["obs", "objective", *[v.name for v in spec.variables], *[m.name for m in spec.metrics]]
     table = [header, ["---"] * len(header)]
     for o in rows:
+        values = worst_values(spec, o)
         table.append([o.obs_id, _fmt(o.fom), *[o.params[v.name] for v in spec.variables],
-                      *[_quantity(o.metrics.get(m.name), _unit(spec, m.name)) for m in spec.metrics]])
-    return "\n".join("| " + " | ".join(r) + " |" for r in table)
+                      *[_value(spec, m.name, *values.get(m.name, (None, None))) for m in spec.metrics]])
+    note = [f"Each metric{_WORST_NOTE}.", ""] if any(_several(spec, o) for o in rows) else []
+    return "\n".join([*note, *("| " + " | ".join(r) + " |" for r in table)])
+
+
+_WORST_NOTE = (" at its worst corner over the point's corners, that corner in brackets (none where every corner gives the "
+               "same value)")
+
+
+def _several(spec: Spec, o: Observation) -> bool:
+    """Whether a metric of ``o`` prints with a corner (N-97): the point ran at two corners or more."""
+    return any(corner is not None for _v, corner in worst_values(spec, o).values())
+
+
+def _value(spec: Spec, metric: str, value: float | None, corner: str | None) -> str:
+    """A metric's value with its unit, and its corner in brackets when it has one: ``NF_3G=10.27 dB (ss)``."""
+    return _quantity(value, _unit(spec, metric)) + (f" ({corner})" if corner else "")
 
 
 def _margins_section(spec: Spec, obs: Observations) -> str:
