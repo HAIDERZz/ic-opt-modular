@@ -92,3 +92,60 @@ of `BACKLOG_CN.md` or `src/`. B and C report to the coordinator when their modul
 after the pilot, then again after the full run with the verdict counts, the ceiling tables, the largest differences in
 either direction, the cost per model, every deviation, and anything the specification did not foresee. Numbers only
 from the JSON the script wrote.
+
+## Record (B)
+
+Branch `n107-b-trees` from `main` at 5444ca2; the module `docs/refactor/reports/library_query/regressors_trees.py` in
+171ae9f. Nothing merged, nothing pushed, nothing under `src/` or in `BACKLOG_CN.md` changed, `regressor_base.py`
+untouched. Logs and the side-check scripts in
+`/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-accept/n107_regressor_study/scratch/n107-b-trees/`. The library's
+`.cache` held 1118 files (directory time 17:16:51) before and after every run here; the Library wrote nothing to the
+scratch directory (it read the datasets from the library's own cache).
+
+What the module is: `StratumRF`, `StratumGBM`, `StratumLGBM` on a common `TunedMean(StratumMean)` whose `_fit_joint` runs
+`tune` (3 folds, seed 0) over the class's grid -- the specification's values in its order, the first axis slowest -- and
+refits with the configuration chosen; a per_nt model tunes each turns level on that level's rows. A fitted model gives
+`chosen` (a dict; `{level: dict}` for per_nt), `cv_rmse`, `cv_scores` and `timing` (`tune_s`, `refit_s`). `VARIANTS`:
+`{name: {"model": class, "family": "B", "inputs": "library", "tuned": True, "grid": [...]}}`; `SKIPPED` stays empty
+(lightgbm 4.6.0 imports).
+
+Smoke (`regressors_trees.py ROOT SCRATCH TABLE COLUMN --gp`; seed-0 `gp.split`, 80 / 20; 2 threads, OMP_NUM_THREADS=2,
+Python 3.11.15, numpy 1.26.4, scikit-learn 1.3.2; the two columns ran side by side; `gp` is the library's GP on the same
+split, for reference). Relative errors in %, times in s (fit = inner cross-validation + refit):
+
+| column | variant | median | p90 | max | fit | tune | refit | chosen |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ind_sym_ap Lp_lf (594 rows, 475 / 119, per_nt over 5 turns levels) | gp | 0.088 | 0.642 | 3.686 | 0.86 | | | |
+| | rf | 3.952 | 10.312 | 17.959 | 33.23 | 32.07 | 1.16 | max_features 1.0, min_samples_leaf 1 at every level |
+| | gbm | 7.361 | 29.991 | 57.883 | 30.54 | 30.12 | 0.42 | max_leaf_nodes 7 everywhere; lr 0.03 / 300 iterations at levels 1-3, lr 0.1 / 1000 at 4-5 |
+| | lgbm | 1.484 | 7.842 | 36.913 | 15.32 | 15.11 | 0.20 | lr 0.03, min_child_samples 5 everywhere; num_leaves 7-15, 300 or 1000 trees |
+| xfm_bs_m10 k_lf (2211 rows, 1769 / 442, joint, 5 dimensionless features) | gp | 0.402 | 1.356 | 15.253 | 108.77 | | | |
+| | rf | 1.650 | 5.100 | 17.023 | 13.92 | 13.08 | 0.84 | max_features 1.0, min_samples_leaf 1 |
+| | gbm | 0.869 | 2.706 | 15.819 | 31.55 | 31.00 | 0.55 | lr 0.1, max_leaf_nodes 15, 1000 iterations, l2 0 |
+| | lgbm | 0.964 | 2.541 | 12.278 | 10.88 | 10.78 | 0.10 | lr 0.1, num_leaves 7, 1000 trees, min_child_samples 5 |
+
+Checks: every configuration of the three grids fitted twice on the xfm_bs_m10 k_lf split predicts bitwise the same
+(after the forest change below), and two whole `rf` fits give identical `cv_scores`; a composed column through the
+harness's rebinding (`gp.StratumGP` bound to `StratumLGBM` around `composed.holdout_fold`, xfm_bs_m10 Lp@28,
+resonance, seed 0) fitted its three parts and scored 413 rows (median 0.448 %, p90 1.855 %) in 29.3 s, the class
+restored after it.
+
+Deviations, both in how a fit runs, not in what is fitted: the forest predicts with one thread (`n_jobs=1` set on the
+fitted forest; the fit uses `n_threads`) -- sklearn's threads add the trees' predictions in the order they finish, and
+two runs were not bitwise equal in any of the 9 configurations (2.2e-16 the largest difference in each of the three the
+check printed), enough to flip `tune`'s first-best tie between the two configurations below that grow the same trees; `HistGradientBoostingRegressor` has no `n_jobs`, so its OpenMP
+threads are capped at `n_threads` with `threadpool_limits` around each fit and prediction.
+
+What the specification did not foresee:
+- `gbm` keeps sklearn's `min_samples_leaf=20` (not in its grid; `lgbm`'s `min_child_samples` is, and it chose 5 at
+  every inductor level). On the per_nt inductor models (475 training rows over 5 turns levels, two thirds of a level in
+  each inner fold) that leaves each tree a few leaves: a side check with the same grid at `min_samples_leaf=5`
+  (`t_gbm_leaf.py`, not in the module) gave ind_sym_ap Lp_lf median 1.922 % / p90 7.873 % (against 7.361 / 29.991)
+  and xfm_bs_m10 k_lf 0.979 / 2.656 (against 0.869 / 2.706). As specified, `gbm` measures the default on small strata,
+  not gradient boosting's ceiling there; whether to add `min_samples_leaf` to its grid is the coordinator's call.
+- `max_features` 0.5 and `"sqrt"` resolve to the same number of inputs up to 5 kept inputs (the inductor levels' 3,
+  xfm_bs's 5 features), so 3 of the 9 `rf` configurations repeat 3 others there (identical `cv_scores` on xfm_bs_m10
+  k_lf; the tie goes to 0.5, listed first): a third of `rf`'s inner cross-validation on four of the six tables is spent
+  twice. Left as specified.
+- ruff 0.16.8 (the main tree's) reports BLE001 on `regressor_base.py` line 115 (`except Exception` in `tune`); not
+  changed here (part A's file).
