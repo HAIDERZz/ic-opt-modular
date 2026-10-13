@@ -140,7 +140,7 @@ a line names the previous one (c5e6163, "before the constant-column handling"), 
 
 | | |
 | --- | --- |
-| library | `ic-opt-library/n28_v2`, read only (`cache_dir` = the scratch directory; its `.cache` held 1102 files before and after, directory time 2026-10-09, `find -newer` empty) |
+| library | `ic-opt-library/n28_v2`, read only by this study (`cache_dir` = the scratch directory). Its `.cache` held 1102 files before and after the runs up to 17:08 (directory time 2026-10-09). At 17:14:58-17:16:51 another process wrote 16 files there -- anchors, calibrations, models and locks of ind_sym_ap / ind_sym_m10 Lp@80 / Qp@80, columns this study never asks for (the script names no 80 GHz column; its scratch holds none) -- so it now holds 1118 |
 | tables / columns | 6 / 52 (the specification's lists; 14 inductor, 20 xfm_bs, 18 xfm_ms) |
 | folds (gp) | (i) 260 = 52 x 5 seeds, 60 967 rows scored; (ii) 327 in 48 cells, 29 924 rows scored. Levels per table: ind_sym_ap 6 of 6, ind_sym_m10 7 of 7, xfm_bs 8 of 17 (24, 30, 40, 48, 56, 80, 150, 210), xfm_ms 8 of 11 (32, 36, 44, 52, 100, 120, 180, 210) |
 | jobs | 2935 (table x column x fold x variant): 587 gp, 2348 RBF; 1117 RBF jobs unfit (1303 before the constant-column handling) |
