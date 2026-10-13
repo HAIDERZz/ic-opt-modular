@@ -194,8 +194,10 @@ def optimize(
 
     ``current``: evaluate the design as exported first (the circuit variables' values in the exported netlists behind
     ``deck``; one line says what it is or why there is none); ``start``: further grid parameter rows to evaluate first.
-    Neither is evaluated again once in the history. ``limits`` is the executor host's site.yaml entry (``run.limits``),
-    passed on to every ``sim.evaluate``. ``failure_penalty`` is ignored (see ``suggest``).
+    Neither is evaluated again once in the history. A row of ``start`` that repeats another (the same ``Point.key``) is
+    proposed once, as ``suggest`` always did; since N-103 one line says how many were dropped (``--plan`` too).
+    ``limits`` is the executor host's site.yaml entry (``run.limits``), passed on to every ``sim.evaluate``.
+    ``failure_penalty`` is ignored (see ``suggest``).
 
     ``total``: the budget the run is meant to reach when it is advanced in increments (default ``budget``; below it is
     refused). The initial design of ``metric_gp`` and ``openbox_*`` is sized from it by the step's first call and recorded
@@ -243,11 +245,13 @@ def optimize(
             f"recorded by this step's first call, budget {recorded['budget']}" if recorded else
             f"sized for a budget of {sized_for}" if total is not None else "")
     rows = list(start)
+    n_start = len(rows)                  # the rows handed to the block; the current design is not among them
     if current:
         row, line = current_design(spec, _exports(spec, deck, executor, plan))
         print(f"{'[plan] opt.optimize' if plan else '[optimize]'} step={step!r}: {line}")
         rows = ([row] if row else []) + rows
     starts = space.points_from_params(spec, rows, origin="start")
+    _say_duplicate_starts(starts[len(starts) - n_start:], step, plan=plan)
     history = Observations(list(adopted) + list(mine))
     fresh = len({p.key for p in starts} - history.keys())
     if plan:
@@ -289,6 +293,17 @@ def optimize(
                 step=step, cshrc=cshrc, parallel_jobs=parallel_jobs, limits=limits, initial=adopted,   # the schedule learns from them too
             )
     return Observations(o for o in store.observations() if o.spec_fingerprint in same_problem and o.step == step)
+
+
+def _say_duplicate_starts(given: Sequence[Point], step: str, *, plan: bool) -> None:
+    """N-103: one line when the start rows handed to the block repeat a point. ``suggest`` proposes each distinct point
+    once (``taken`` holds the keys), so a repeated row costs nothing and is never evaluated twice; this says so. Counted by
+    ``Point.key``, as ``suggest`` tells points apart. Nothing for rows that are all distinct, or for none."""
+    distinct = len({p.key for p in given})
+    dropped = len(given) - distinct
+    if dropped:
+        print(f"{'[plan] opt.optimize' if plan else '[optimize]'} step={step!r}: start rows: {len(given)} given, "
+              f"{dropped} duplicate row{'s' if dropped != 1 else ''} dropped ({distinct} distinct)")
 
 
 RUN_LOCK = "run.lock"      # held by opt.optimize for its whole loop; the store's own lock is held per batch (sim.evaluate)

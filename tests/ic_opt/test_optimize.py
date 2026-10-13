@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import inspect
 import itertools
 import json
@@ -383,6 +384,55 @@ def test_a_continued_optimize_does_not_evaluate_its_start_points_again(tmp_path)
     more = optimize(spec, ex, store, deck=deck, strategy="random", budget=6, batch=2, seed=1, start=start, limits=FAKE_HOST)
     assert len(more) == 6 and [o.origin for o in more].count("start") == 2
     assert sum(c.startswith("spectre") for c in ex.commands) == 6
+
+
+def test_a_start_file_s_duplicate_rows_are_said_and_cost_nothing(tmp_path, capsys, monkeypatch):
+    """N-103: rows of ``start`` that share a ``Point.key`` (here one also in another key order) are proposed once, as
+    ``suggest`` always did; one line says how many were given and dropped, ``--plan`` too. No line for distinct rows, none
+    without start rows, none for a row that repeats the current design (the file's rows are counted, not the design)."""
+    a, b, c = {"F": "24", "W": "0.8u"}, {"F": "30", "W": "1.2u"}, {"F": "22", "W": "0.6u"}
+    duplicated = [a, b, {"W": "0.8u", "F": "24"}, c, b]
+
+    def run(where, rows, *, current=False, plan=False, strategy="random", budget=5, **spec_overrides):
+        spec, store, ex, deck = project(tmp_path / where, **spec_overrides)
+        call = planned if plan else (lambda fn, *args, **kwargs: fn(*args, **kwargs))
+        obs = call(optimize, spec, ex, store, deck=deck, strategy=strategy, budget=budget, batch=3, seed=1, start=rows,
+                   current=current, limits=FAKE_HOST)
+        return obs, sum(c.startswith("spectre") for c in ex.commands), capsys.readouterr().out
+
+    obs, sims, out = run("duplicated", duplicated)
+    assert out.count("start rows:") == 1
+    assert "[optimize] step='optimize': start rows: 5 given, 2 duplicate rows dropped (3 distinct)\n" in out
+    assert [o.params for o in obs][:3] == [a, b, c] and [o.origin for o in obs][:3] == ["start"] * 3
+    clean, clean_sims, clean_out = run("distinct", [a, b, c])
+    assert "start rows" not in clean_out and "duplicate" not in clean_out
+    assert [(o.params, o.origin) for o in obs] == [(o.params, o.origin) for o in clean] and sims == clean_sims == 5
+    assert len(obs) == 5 and len({o.key for o in obs}) == 5
+    assert "start rows" not in run("none", [])[2] and "start rows" not in run("none_default", ())[2]
+    # one repeated row: the singular, and the count is of the file's rows given
+    assert ("[optimize] step='optimize': start rows: 3 given, 1 duplicate row dropped (2 distinct)\n"
+            in run("one", [a, b, a])[2])
+    # --plan says it too, once, with the block's other plan lines' prefix, and runs nothing
+    planned_obs, planned_sims, planned_out = run("plan", duplicated, plan=True)
+    assert planned_out.count("start rows:") == 1 and planned_sims == 0 and len(planned_obs) == 0
+    assert "[plan] opt.optimize step='optimize': start rows: 5 given, 2 duplicate rows dropped (3 distinct)\n" in planned_out
+    assert "start rows" not in run("plan_clean", [a, b, c], plan=True)[2]
+    # the design line counts the distinct rows not yet evaluated, as it did: the same line with and without the repeats
+
+    def design_line(where, rows):
+        out = run(where, rows, plan=True, strategy="metric_gp", budget=2, variables=BROAD)[2]
+        return next(line for line in out.splitlines() if line.startswith("[plan] metric_gp initial design"))
+
+    repeated = design_line("design_duplicated", duplicated)
+    assert repeated == design_line("design_distinct", [a, b, c]) and "(3 start points first)" in repeated
+    # the current design is evaluated first and is no file row: a file row equal to it is no duplicate, a repeated one is
+    module = importlib.import_module("ic_opt.blocks.optimize")
+    monkeypatch.setattr(module, "_exports", lambda *args: {})
+    monkeypatch.setattr(module, "current_design", lambda spec, exports: (a, "current design (the exported netlists) first: F=24 W=0.8u"))
+    first, _, out = run("current", [a, b], current=True)
+    assert "start rows" not in out and [o.params for o in first][:2] == [a, b] and len({o.key for o in first}) == 5
+    out = run("current_repeated", [a, b, b], current=True)[2]
+    assert "start rows: 3 given, 1 duplicate row dropped (2 distinct)\n" in out and out.count("start rows:") == 1
 
 
 # -- strategy auto (T17.2) ------------------------------------------------------------------------------------------------
