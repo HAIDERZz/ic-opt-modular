@@ -140,12 +140,13 @@ def test_the_per_point_table_names_the_row_each_point_took(tmp_path):
     obs = run.store.observations()
     analyze.digest(run.spec, obs, run.store, points=True)
     table = (run.store.reports_dir() / "points.md").read_text(encoding="utf-8")
-    assert "| obs | step | origin | status | objective | NF | Lp | k | Qp | xfmr row |" in table
+    assert "| obs | step | origin | status | F | xfmr.Lp | xfmr.Ls | xfmr.k | objective | NF | Lp | k | Qp | xfmr row |" in table
     assert "Per library device, the row the point took (part/obs id)." in table
     rows = [line for line in table.splitlines() if line.startswith("| `obs_")]
     assert len(rows) == len(obs) == 8
     for line, o in zip(rows, obs, strict=True):
         row = o.children["xfmr/nominal"].library_row
         assert line.startswith(f"| `{o.obs_id}` |") and line.endswith(f"| {row['part']}/{row['obs_id']} |")
+        assert [o.params[name] for name in ("F", "xfmr.Lp", "xfmr.Ls", "xfmr.k")] == line.split(" | ")[4:8]      # N-101
     assert str(root) not in table and str(tmp_path) not in table and ".s4p" not in table
     assert "(8 rows, written with this digest)" in (run.store.reports_dir() / "digest.md").read_text(encoding="utf-8")

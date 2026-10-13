@@ -845,7 +845,9 @@ def test_the_command_writes_both_files_prints_json_and_works_while_the_project_i
 
 def test_the_command_writes_the_per_point_table(tmp_path, monkeypatch):
     """F7: ``--points`` writes ``reports/points.md`` -- one row per point, the newest ``POINTS_LIMIT``, a line when older
-    ones are left out -- prints its path, and ``digest.md`` names it; the JSON does not carry it."""
+    ones are left out -- prints its path, and ``digest.md`` names it; the JSON does not carry it. N-101: a column per
+    variable of the spec, in its order, between ``status`` and ``objective``, each cell the point's grid text; ``—`` for a
+    row written without the variable."""
     root, store = project_with_run(tmp_path)
     plain = runner.invoke(app, ["digest", str(root)])
     assert "- one row per point: `ic-opt digest PROJECT --points` writes `reports/points.md`" in plain.output
@@ -859,11 +861,16 @@ def test_the_command_writes_the_per_point_table(tmp_path, monkeypatch):
     table = path.read_text(encoding="utf-8")
     rows = [line for line in table.splitlines() if line.startswith("| `obs_")]
     assert table.startswith("# Points — demo\n\n40 points, one row each") and "newest" not in table
-    assert "| obs | step | origin | status | objective | m1 | m2 | spare |" in table and len(rows) == 40
+    assert "| obs | step | origin | status | A | B | C | objective | m1 | m2 | spare |" in table and len(rows) == 40
+    names = [v.name for v in spec_abc().variables]
+    header = next(line for line in table.splitlines() if line.startswith("| obs |")).strip("| ").split(" | ")
+    assert header[3] == "status" and header[4:4 + len(names)] == names and header[4 + len(names)] == "objective"
+    assert len(header) == 11 and "\n|" + " --- |" * len(header) + "\n" in table          # the rule counts the new columns
     for line, o in zip(rows, observe(spec_abc(), abc_rows()[:40], abc_metrics), strict=True):
         m = o.metrics
-        assert line == (f"| `{o.obs_id}` | optimize | `{o.origin}` | {o.status} | {dg.quantity(o.fom, '')} | "
-                        f"{dg.quantity(m.get('m1'), 'V')} | {dg.quantity(m.get('m2'), 'Hz')} | {dg.quantity(m.get('spare'), '')} |")
+        assert line == (f"| `{o.obs_id}` | optimize | `{o.origin}` | {o.status} | {o.params['A']} | {o.params['B']} | "
+                        f"{o.params['C']} | {dg.quantity(o.fom, '')} | {dg.quantity(m.get('m1'), 'V')} | "
+                        f"{dg.quantity(m.get('m2'), 'Hz')} | {dg.quantity(m.get('spare'), '')} |")
     assert "points" not in json.loads((store.reports_dir() / "digest.json").read_text(encoding="utf-8"))
     monkeypatch.setattr(dg, "POINTS_LIMIT", 25)
     cut = runner.invoke(app, ["digest", str(root), "--points", "--json"])
@@ -874,6 +881,15 @@ def test_the_command_writes_the_per_point_table(tmp_path, monkeypatch):
     assert "_the newest 25 of 40 points; the 15 older ones are in `observations.jsonl`_" in table
     assert len(rows) == 25 and rows[0].startswith("| `obs_0015` |") and rows[-1].startswith("| `obs_0039` |")
     assert "(25 rows, written with this digest)" in (store.reports_dir() / "digest.md").read_text(encoding="utf-8")
+    # a row written without a variable prints a dash for it, the other cells and the other rows as before
+    spec = spec_abc()
+    obs = list(observe(spec, abc_rows()[:3], abc_metrics))
+    obs[1] = obs[1].model_copy(update={"params": {k: v for k, v in obs[1].params.items() if k != "B"}})
+    lines = [line for line in dg.points_markdown(spec, obs).splitlines() if line.startswith("| `obs_")]
+    assert [line.split(" | ")[4:7] for line in lines] == [
+        [obs[0].params["A"], obs[0].params["B"], obs[0].params["C"]],
+        [obs[1].params["A"], "—", obs[1].params["C"]],
+        [obs[2].params["A"], obs[2].params["B"], obs[2].params["C"]]]
 
 
 def test_the_command_refuses_an_invalid_spec(tmp_path):

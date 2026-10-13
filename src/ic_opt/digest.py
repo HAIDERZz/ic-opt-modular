@@ -115,8 +115,8 @@ re-check is not a batch of the search: ``progress`` (the best, the first feasibl
 ``advice`` are computed over the other points, so ``progress.best`` is the search's best; the other entries count every
 point as before. An advice's *others* are the points of its own step (F3). ``markdown`` names the best point feasible at
 every corner under the search's best, adds a section "Re-check at every corner", and names ``reports/points.md``
-(:func:`points_markdown`, ``ic-opt digest --points``: one row per point, every metric at its worst corner; not in the
-JSON).
+(:func:`points_markdown`, ``ic-opt digest --points``: one row per point, its parameters and every metric at its worst
+corner; not in the JSON).
 
 Since N-99 (``docs/refactor/N99_DECK_IDENTITY_SPEC.md``, version 5 unchanged otherwise) ``progress.pipelines`` says when
 the points carry more than one pipeline fingerprint -- the deck (netlist and support files) and the requested exports are
@@ -982,25 +982,28 @@ def _first_failure(spec: Spec, o: Observation) -> dict[str, Any]:
 def points_markdown(spec: Spec, observations: Iterable[Observation], *, step: str | None = None,
                     limit: int | None = None) -> str:
     """``reports/points.md`` (N-97, F7; ``ic-opt digest --points``): one row per observation -- only step ``step``'s when
-    given -- in observation order: obs id, step, origin, status, objective, every metric at its worst corner over the
-    point's corners with that corner (``sim.corner.worst_values``), and per library device the row the point took
-    (``part/obs id``). The newest ``limit`` rows (``POINTS_LIMIT`` unless given); a line says when older ones are left
-    out. Not in the digest's JSON."""
+    given -- in observation order: obs id, step, origin, status, the parameters (N-101: one column per spec variable, in
+    the spec's order, the point's grid text as the store holds it; ``—`` for a row written without the variable),
+    objective, every metric at its worst corner over the point's corners with that corner
+    (``sim.corner.worst_values``), and per library device the row the point took (``part/obs id``). The newest ``limit``
+    rows (``POINTS_LIMIT`` unless given); a line says when older ones are left out. Not in the digest's JSON."""
     limit = POINTS_LIMIT if limit is None else limit
     rows = [o for o in sorted(observations, key=_obs_order) if step is None or o.step == step]
     shown = rows[-limit:] if len(rows) > limit else rows
     devices = spec.library_devices
+    variables = [v.name for v in spec.variables]
     lines = [f"# Points — {spec.project}", "",
-             (f"{len(rows)} points" + (f" of step `{step}`" if step else "") + ", one row each, in observation order. Each "
-              "metric at its worst corner over the point's corners, that corner in brackets (none where the point ran "
+             (f"{len(rows)} points" + (f" of step `{step}`" if step else "") + ", one row each, in observation order. The "
+              "parameters: per variable of the spec the point's grid text, as the store holds it (— for a row written "
+              "without it). Each metric at its worst corner over the point's corners, that corner in brackets (none where the point ran "
               "at one corner or every corner gives the same value); objective: the point's own, as the store holds it "
               "(a feasible point's at its worst corner under `worst_case`; none for a point that gave no value)."
               + (" Per library device, the row the point took (part/obs id)." if devices else ""))]
     if len(shown) < len(rows):
         lines += ["", (f"_the newest {len(shown)} of {len(rows)} points; the {len(rows) - len(shown)} older ones are "
                        "in `observations.jsonl`_")]
-    lines += ["", _row(["obs", "step", "origin", "status", "objective", *(m.name for m in spec.metrics),
-                        *(f"{d.id} row" for d in devices)]), _rule(5 + len(spec.metrics) + len(devices))]
+    lines += ["", _row(["obs", "step", "origin", "status", *variables, "objective", *(m.name for m in spec.metrics),
+                        *(f"{d.id} row" for d in devices)]), _rule(5 + len(variables) + len(spec.metrics) + len(devices))]
     for o in shown:
         values = worst_values(spec, o)
         cells = []
@@ -1011,7 +1014,9 @@ def points_markdown(spec: Spec, observations: Iterable[Observation], *, step: st
         for d in devices:
             r = _library_row(o, d.id)
             library.append(f"{r['part']}/{r['obs_id']}" if r else "—")
-        lines.append(_row([f"`{o.obs_id}`", o.step, f"`{o.origin}`", o.status, quantity(o.fom, ""), *cells, *library]))
+        params = [o.params.get(name, "—") for name in variables]
+        lines.append(_row([f"`{o.obs_id}`", o.step, f"`{o.origin}`", o.status, *params, quantity(o.fom, ""), *cells,
+                           *library]))
     return "\n".join(lines) + "\n"
 
 
