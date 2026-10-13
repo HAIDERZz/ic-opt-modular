@@ -8,12 +8,16 @@ The mean model: ``StratumRBF(gp.StratumGP)`` -- the base class's constructor and
 name), ``degree`` and ``smoothing``; ``fit`` splits per turns level exactly as the base class (``MIN_NT_SAMPLES``,
 ``unavailable_nt``) and fits ``scipy.interpolate.RBFInterpolator`` on ``self._scale(x)`` (min-max on the ranges, or the
 feature map's dimensionless features) against log(y) for a log target; ``_predict`` returns exp(mu_log) and sigma NaN.
-scipy refusing the fit (more polynomial terms than rows, a singular system) raises ``Unfit``: that fold and column are
-recorded ``unfit``; so is a composed column's RBF fold that ``ComposedGP.fit`` refuses because its parts leave R / Res no
-training row (an SRF part whose numerically singular fit -- not flagged by scipy -- predicts no training row above f0).
-A fit scipy accepts is scored as it predicts, a non-finite prediction as an infinite error. Composed columns (the manifest's ``model: resonance`` / ``ratio``) build every part through the module
-attribute ``gp.StratumGP``: a job of an RBF variant rebinds it to ``StratumRBF`` while it runs (and back), so the parts
-L_lf, SRF and R / Res are all the variant's; each job records the classes it fitted.
+Each (sub-)model drops the scaled inputs that are constant on its training rows, at the fit and at the prediction (the
+N-104 follow-up of 2026-10-13: the single-turn inductor level has one spacing value, a zero column of the polynomial block
+that no degree survives); a fit without such an input is unchanged. scipy refusing the fit (more polynomial terms than
+rows, a monomial matrix without full rank) raises ``Unfit``: that fold and column are recorded ``unfit``; so is a
+composed column's RBF fold that ``ComposedGP.fit`` refuses because its parts leave R / Res no training row (an SRF part
+whose numerically singular fit -- not flagged by scipy -- predicts no training row above f0). A fit scipy accepts is
+scored as it predicts, a non-finite prediction as an infinite error. Composed columns (the manifest's ``model:
+resonance`` / ``ratio``) build every part through the module attribute ``gp.StratumGP``: a job of an RBF variant rebinds
+it to ``StratumRBF`` while it runs (and back), so the parts L_lf, SRF and R / Res are all the variant's; each job records
+the classes it fitted.
 
 Variants (``VARIANTS``), every one on the rows, splits and target transform the ``gp`` variant sees:
   gp          the library's: ``Library._fit_inputs`` settings (feature map, per_nt, Matern 5/2, 4 restarts), log target
@@ -95,12 +99,16 @@ class Unfit(Exception):
 
 class StratumRBF(_GP):
     """``gp.StratumGP`` with a scipy ``RBFInterpolator`` as the joint model: same constructor, attributes, scaling and
-    per_nt split; sigma is NaN (no uncertainty); ``kernel`` is accepted and ignored."""
+    per_nt split; sigma is NaN (no uncertainty); ``kernel`` is accepted and ignored. Each (sub-)model drops the scaled
+    inputs that are constant on its training rows, at the fit and again at the prediction: such an input carries nothing
+    to interpolate, and its monomials are a zero column of the polynomial block, which scipy refuses as singular (the
+    single-turn inductor level has one spacing value). A fit without a constant input is unchanged."""
 
     def __init__(self, *, rbf_kernel: str = RBF_KERNEL, degree: int = 1, smoothing: float = SMOOTHING, **settings):
         super().__init__(**settings)
         self.rbf_kernel, self.degree, self.smoothing = rbf_kernel, int(degree), float(smoothing)
         self._rbf: RBFInterpolator | None = None
+        self._keep: np.ndarray | None = None          # the scaled inputs that vary on the training rows (the ones fitted on)
 
     def fit(self, x, y) -> StratumRBF:
         x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
@@ -122,11 +130,16 @@ class StratumRBF(_GP):
                                  kernel=self.kernel, rbf_kernel=self.rbf_kernel, degree=self.degree, smoothing=self.smoothing)
                 self._sub[level] = sub.fit(np.delete(x[mask], self._nt_idx, axis=1), y[mask])
             return self
+        z = self._scale(x)
+        self._keep = np.ptp(z, axis=0) > 0
+        if not self._keep.any():
+            raise Unfit(f"{len(y)} rows, every one of the {z.shape[1]} inputs constant")
         try:
-            self._rbf = RBFInterpolator(self._scale(x), np.log(y) if self.log_target else y, kernel=self.rbf_kernel,
+            self._rbf = RBFInterpolator(z[:, self._keep], np.log(y) if self.log_target else y, kernel=self.rbf_kernel,
                                         degree=self.degree, smoothing=self.smoothing)
         except (ValueError, np.linalg.LinAlgError) as exc:
-            raise Unfit(f"{len(y)} rows, {len(self._scale(x[:1])[0])} inputs, degree {self.degree}: {type(exc).__name__}: {exc}") from exc
+            raise Unfit(f"{len(y)} rows, {int(self._keep.sum())} of {z.shape[1]} inputs varying, degree {self.degree}: "
+                        f"{type(exc).__name__}: {exc}") from exc
         return self
 
     def _predict(self, x) -> tuple[np.ndarray, np.ndarray]:
@@ -137,7 +150,7 @@ class StratumRBF(_GP):
             raise ValueError(f"expected [N, {len(self.dims)}] inputs")
         if self._rbf is None:
             raise RuntimeError("fit() first")
-        m = self._rbf(self._scale(x))
+        m = self._rbf(self._scale(x)[:, self._keep])
         sigma = np.full(len(x), np.nan)
         with np.errstate(over="ignore"):
             return (np.exp(m), sigma) if self.log_target else (m, sigma)
