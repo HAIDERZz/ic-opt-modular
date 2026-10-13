@@ -105,3 +105,57 @@ per table to `export/<table>.npz` (geometry, complex S [rows, freqs, ports, port
   workers): another study uses the other 32 of the user's 64. Pilot first, estimate in `results/run.log`; above 3 hours
   drop P2 first, then `xfm_ms_m10`, then levels to 4, and say so. Long runs detached (`setsid`, a `DONE` file), polled
   with sleeps; never match your own shell with `pgrep -f`. Absolute paths and `git -C` everywhere.
+
+## Record
+
+Done 2026-10-14 outside the repository; no EMX, no product code, the library only read (no file under `n28_v2` newer than
+the start of phase 2; every cache in `pacosyt_eval/cache/`). Full write-up (Chinese), scripts, raw results:
+`/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/pacosyt_eval/RESULT_CN.md`, `scripts/`, `results/`, `export/`.
+
+- **Deployment.** `repo/` at `dee92717b0cb9d8d0668ae59042e298c76250f35`, blob-filtered clone with a sparse checkout of the
+  two zips (work tree untouched). `venv38`: CPython 3.8.20 (uv), numpy 1.22.2, scipy 1.8.0, scikit-learn 1.0.2,
+  pandas 1.4.1, matplotlib 3.5.1, every pin exact; wxPython, tensorflow, ipykernel not installed. Their `src/` ran
+  unchanged (their one unit test passes); notebook cells were executed from the `.ipynb` with logged patches (paths, the
+  ANN removed, the transformer on its 1:1 zip) and one runtime alias (`models.test_it_srf`, defined in
+  `train_test_util.py` but not exported by `models/__init__.py`, which cells 14 / 22 call).
+- **Reproduction.** The notebooks' saved outputs reproduce to the digit with the notebooks' own RBF class. Table 5 is
+  reproduced by the tool's class (`models_scipy.RBFInterpolatorModel`, degree 4): 10 / 10 numbers of the 1:1 transformer
+  row, 19 / 20 of the inductor rows (N=4 Q max error 0.27 % against 0.62 %; 0.61 % without the SRF filter). Their tool
+  on their inductor model: `simulate` 7.0 ms (203 points), one frequency 0.034 ms, `optimize` 0.13 s.
+- **Phase 2 data.** Five tables (527 / 114 / 1576 / 635 / 1400 rows), every row 0-250 GHz by 1 GHz (251 points, 50 ohm, no
+  exception); port order P1 N1 P2 N2 as theirs, the secondary driven (N2, P2) so their k has the opposite sign. Din =
+  OD - 2 N W - 2 (N - 1) S (secondaries likewise) checked on 11 GDS files to the 0.005 um grid. xfm_bs subspaces by their
+  test `douts > dinp - 10` with douts = OD_s: xfm_bs_m10 1308 "balun" / 268 "1:1", every offset row in "balun".
+  Columns: 7 per inductor table, 16 per transformer table; xfm_ms_m10's 112 GHz columns not scored (2 rows hold them).
+- **Degrees.** Starting at 4 (the coordinator's decision for both device kinds), stepped down where the monomial matrix of
+  the standardized inputs is rank-deficient: single-turn inductors 4, multi-turn 2 (spacing has 3 levels), xfm_bs 1:1 3
+  (P2 4), every overlapping xfm_bs subspace and every xfm_ms subspace 1 -- the offset was swept only on identical
+  windings, which makes offset x (W_p - W_s) and offset x (D_p - D_s) exact collinearities.
+- **Verdicts** (N-104's rule on the rows both scored; library better / tie / theirs better): protocol (i) against P1
+  53 / 3 / 0, P2 50 / 4 / 2, P3 30 / 2 / 1; protocol (ii) 43 / 2 / 5, 31 / 12 / 7, 23 / 5 / 1. Their method on our data in
+  their own terms (MAPE at 28 GHz): ind_sym_m10 L 0.84 %, Q 43 %; xfm_bs_m10 Lp 3.4 %, Qp 445 % (Table 5: 0.03-0.05 % /
+  0.05-0.15 %; 1:1 Lp 0.16 %, Qp 1.53 %); the two `_hf` tables come close to the paper. Their side better: Lp_lf / Ls_lf on
+  (ii) (ind_sym_m10, xfm_bs_m10), xfm_bs_m10 Ls@112 on (ii), xfm_bs_m10_hf Qp@28 / Qs@28 (P2), xfm_ms_m10 SRF on (ii).
+  Definitions: their `compute_all_lq` on the true S equals our columns within 0.1 % (k after the sign).
+- **Speed.** Their build of a whole table (every frequency) 0.09-18.2 s; `simulate` 8.9 / 13.8 ms, one frequency 0.035 /
+  0.053 ms, `optimize` 0.22 / 0.65 s. Library: one GP predict 0.094 / 1.0 ms, an in-process query 1.0 / 3.8 ms,
+  `ic-opt call lib.query` 0.58-0.98 s, `lib.suggest` 0.97 / 26.4 s, `lib.region` 0.33 / 23.5 s; a big table's column
+  fit 72-124 s per fold. Compute: 5.6 CPU-h (library + P3) + 0.12 (theirs) on 32 workers x 1 thread, 02:40-02:51.
+- **Synthesis.** (a) 80 GHz inductor: both tools land on single turns, OD 74-81 um, W 8-10 um; L within 1 %, Q 0.1-6 %
+  apart, theirs higher; their optimum (OD 77, W 10) Q 32.6 above both measured neighbours (29.95 / 31.18), ours 30.95.
+  (b) 60 GHz transformer: their tool represents only identical stacked windings without offset and nested ones (1276 of
+  xfm_bs_m10's 1576 rows outside it); its optimum, identical windings OD 51 um, lies outside our measured range (refused
+  by the library) with Qp ~ Qs ~ 35 claimed against 15-17 measured at OD 60; of our 13 proposals it refuses 9 (primary
+  inner diameter below the secondary's) and answers 4 offset ones as offset-free (k 0.64 against 0.19-0.32 measured).
+  Five largest disagreements (unmeasured, both tools): (a)'s Q, 4.0-6.1 %; plus (b)'s out-of-range optimum, for the user.
+- **Deviations.** Degree 4 for transformers too (coordinator); their tool's transformer dict keeps their structure
+  (`_balun` = our identical-winding rows, inputs Dinp, Wp; `""` = nested rows, no offset input) while the study's P1 uses
+  both subspaces with five inputs; an adapter outside their code (`pacosyt_shim.DropConstant`) drops inputs constant in a
+  subspace; SRF "above the sweep" scored at 250 GHz; their tool's SRF filter 1.25 x the design frequency (100 / 75 GHz);
+  our own fold runner rather than N-107's harness (folds per table, not per column; composed parts shared within a fold,
+  the same rows `composed.holdout_fold` uses); our `lib.suggest` objective Qp@60 alone (one quantity).
+- **Not foreseen.** The grid's collinearities above; Q peaks from a predicted sweep spike where the predicted loss nears
+  zero (one row: 20 240 against 19.5); the library's xfm_bs_m10 Lp@112 / Ls@112 on the OD-120 hold-out (median 47 %: the
+  composed resonance model's SRF part runs low between levels and the rise factor saturates); a first launch lost 8
+  their-side jobs to an anchor subspace with no varying input (fixed, relaunched, caches reused); the library's fit
+  processes use about 1.6 cores each with OMP_NUM_THREADS=2.
