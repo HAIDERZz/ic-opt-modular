@@ -373,7 +373,8 @@ def summarise_protocol(results: dict[str, list[dict]], protocol: str) -> dict:
     """Per variant: pooled stats over the protocol's folds, unfit folds, timing; then the best RBF variant and the verdicts."""
     out = {"variants": {}}
     rowsets = {}
-    for v, res in results.items():
+    for v in sorted(results, key=list(VARIANTS).index):  # the variants' order, not the jobs' finishing order: ties go to the first
+        res = results[v]
         res = sorted(res, key=lambda r: (r.get("level") or 0.0, r["key"][3]))
         rel = [x for r in res for x in r["rel"]]
         st = rel_stats(rel)
