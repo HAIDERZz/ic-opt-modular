@@ -21,6 +21,7 @@ from pydantic import (
     ConfigDict,
     Field,
     PositiveFloat,
+    ValidationInfo,
     field_validator,
     model_serializer,
     model_validator,
@@ -388,7 +389,14 @@ class Device(Model):
     (``Lp``, ``Ls``, ``k``, ...) to spec variables of electrical values, the combinations that exist are the ones a row sits
     on (``ic_opt.library.link``), and evaluating a point binds that row's own sNp. A library device's generator, profile,
     fixed fields and plugin are the table's; its ``topology``, when it states none, too (the table's part's, measured as
-    the library measures it)."""
+    the library measures it).
+
+    A pcell device may name ``combinations`` (N-106): a file of the combinations of its generator fields it may take
+    (``ic_opt.library.combinations``; ``lib.region out=`` writes one from its robust grid), absolute or relative to the
+    spec's directory (``load_spec`` resolves it there). ``space.tables`` turns it into a table of allowed combinations over
+    the device's variables, as a library device's rows are. It restricts which points the strategies propose, not what a
+    point evaluates to, so it is part of no identity (``Spec.problem``). A library device's combinations are its table's
+    rows: it takes no file."""
 
     id: str
     generator: str | None = Field(default=None, min_length=1)    # generator id inside the plugin, e.g. clean_port_xfm_bs
@@ -399,14 +407,17 @@ class Device(Model):
     variables: dict[str, str] = Field(default_factory=dict)   # generator field (library: index column) -> spec variable
     topology: Topology | None = None                          # default derived from the port set (library: the table's)
     library: LibrarySource | None = None                      # T18.2B: the device comes from a library table's rows
+    combinations: str | None = Field(default=None, min_length=1)   # N-106: a file of the combinations its fields may take
 
     @model_serializer(mode="wrap")
     def _dump(self, handler):
-        """An unset library stays out of the dump, so every spec written before it existed keeps its dump and both
-        fingerprints."""
+        """An unset library or combinations file stays out of the dump, so every spec written before they existed keeps
+        its dump and both fingerprints."""
         data = handler(self)
         if self.library is None:
             data.pop("library", None)
+        if self.combinations is None:
+            data.pop("combinations", None)
         return data
 
     @field_validator("id")
@@ -422,6 +433,16 @@ class Device(Model):
         _unique(value, "device ports")
         return value
 
+    @field_validator("combinations")
+    @classmethod
+    def _combinations_path(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """A relative path is relative to the spec's directory, which ``load_spec`` passes as the validation context
+        (``{"directory": ...}``); without one (a spec built in code) it stays as written."""
+        directory = (info.context or {}).get("directory")
+        if value is None or directory is None or Path(value).expanduser().is_absolute():
+            return value
+        return str(Path(directory) / value)
+
     @model_validator(mode="after")
     def _source(self) -> Device:
         """Drawn and simulated (generator and profile) or taken from a library table (library), never both."""
@@ -431,6 +452,10 @@ class Device(Model):
                 raise ValueError(f"device {self.id}: {' and '.join(missing)} missing -- give generator and profile (a device "
                                  "the pcell draws and EMX simulates) or library (a device taken from a library table's rows)")
             return self
+        if self.combinations is not None:
+            raise ValueError(f"device {self.id}: combinations and library exclude each other -- a library device's "
+                             f"combinations are the rows of its table ({self.library.stratum}); leave out combinations, "
+                             "or give generator and profile for a device the pcell draws")
         stated = [name for name in ("generator", "profile") if getattr(self, name) is not None]
         stated += ["fixed"] if self.fixed else []
         stated += ["plugin"] if self.plugin != DEFAULT_PLUGIN else []
@@ -698,9 +723,12 @@ class Spec(Model):
     def problem(self) -> dict:
         """The problem this spec states: ``model_dump(mode="json")`` without how it is run -- the simulator's parallel jobs,
         threads per run, timeout, license check, license queue timeout, retention, operating points and stop at the first
-        failure, EMX threads, memory cap, timeout and verbosity, the budget, and where a library device's library sits
-        (``library.root``: the library's content is the pipeline's identity, ``Pick``'s). Unset (None) fields are left out
-        too, so an optional field added to the schema later leaves every existing problem's identity alone."""
+        failure, EMX threads, memory cap, timeout and verbosity, the budget, where a library device's library sits
+        (``library.root``: the library's content is the pipeline's identity, ``Pick``'s), and a pcell device's
+        ``combinations`` file (N-106): it restricts which points the strategies propose, not what a point evaluates to, so
+        the observations of a run keep their meaning whether the file is added, changed or removed, as with ``budget``.
+        Unset (None) fields are left out too, so an optional field added to the schema later leaves every existing
+        problem's identity alone."""
         return self.model_dump(mode="json", exclude=_NOT_PROBLEM, exclude_none=True)
 
     def fingerprint(self) -> str:
@@ -711,8 +739,9 @@ class Spec(Model):
     def _legacy_fingerprint(self) -> str:
         """The identity versions before T15.2 stamped: a hash of the whole spec, resources and budget included. The engine
         still takes it as this problem until ``ic-opt migrate-store`` restamps the observations. Frozen: it must keep
-        reproducing those stamps, so a field added to the schema stays out of the dump while unset (``Topology._dump``)."""
-        return _digest(self.model_dump(mode="json"))
+        reproducing those stamps, so a field added to the schema stays out of the dump while unset (``Topology._dump``).
+        A device's ``combinations`` file is left out when set too: it is part of no identity (``problem``)."""
+        return _digest(self.model_dump(mode="json", exclude={"devices": {"__all__": {"combinations"}}}))
 
 
 def _unique(values: list[str], label: str) -> None:
@@ -759,7 +788,8 @@ _NOT_PROBLEM = {
                   "stop_at_first_failure",     # which children of a point run, not what any of them gives: a stopped point is never reused
                   "strategy_threads"},         # how fast a batch is proposed, on the machine running ic-opt
     "em": {"threads", "memory_gb", "parallel_jobs", "timeout_s", "verbose", "binary"},      # the binary: a path on the host, not physics
-    "devices": {"__all__": {"library": {"root"}}},     # T18.2B: where the library sits, not which problem (its content: the pipeline's)
+    "devices": {"__all__": {"library": {"root"},       # T18.2B: where the library sits, not which problem (its content: the pipeline's)
+                            "combinations": True}},     # N-106: which points are proposed, not what a point evaluates to
     "budget": True,
 }
 
@@ -769,4 +799,6 @@ def _digest(payload: dict) -> str:
 
 
 def load_spec(path: str | Path) -> Spec:
-    return Spec.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
+    """The spec of ``path``; a device's relative ``combinations`` path is taken relative to the file's directory."""
+    path = Path(path)
+    return Spec.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")), context={"directory": path.absolute().parent})

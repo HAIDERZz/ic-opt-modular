@@ -50,6 +50,7 @@ from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
 from ic_opt.eval.stage import Stage
 from ic_opt.executor import Executor, ExecutorError
+from ic_opt.library.combinations import lines as combination_lines
 from ic_opt.library.query import omp_cap
 from ic_opt.localpath import literal
 from ic_opt.observation import Observation, Observations
@@ -207,7 +208,11 @@ def optimize(
     ``strategy="auto"`` (the default) is resolved here, once, before anything runs (``--plan`` too), and one line says to
     what and why; a strategy keyword the resolved strategy does not take is refused there. A named strategy is taken as
     named: ``metric_gp`` on a spec with EM devices simulated in the loop is refused. ``metric_gp`` is handed the rows
-    evaluated at this run's corners, of the store and of ``initial`` alike (``_at_corners``)."""
+    evaluated at this run's corners, of the store and of ``initial`` alike (``_at_corners``).
+
+    ``--plan`` also prints, for a spec whose pcell devices name combinations files (N-106), one line per such device --
+    ``device <id>: <n> allowed combinations of <variables> from <file> (<m> rows dropped by fixed <dim>=<value>)`` -- and
+    the valid points of the search space (``ic_opt.library.combinations.lines``)."""
     from ic_opt.blocks.evaluate import default_pipeline, plan_identity, plan_shape
     from ic_opt.recipe import PLAN_MODE
 
@@ -260,6 +265,8 @@ def optimize(
               f"up to {max(0, budget - done)} more in batches of {batch} × "
               f"{plan_shape(spec, shape, corners, executor, parallel_jobs, limits)} (spec budget {spec.budget.max_simulations})")
         for line in plan_identity(spec, shape, store, executor):         # the deck, and the store's history (N-99)
+            print(f"[plan] opt.optimize step={step!r}: {line}")
+        for line in combination_lines(spec):        # N-106: each device's combinations file, and the valid points
             print(f"[plan] opt.optimize step={step!r}: {line}")
         _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=True, note=note,
                       total=sized_for - done)

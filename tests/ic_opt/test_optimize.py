@@ -754,3 +754,80 @@ def test_the_design_line_with_total_and_when_the_model_proposes_none_of_a_call_s
             current=False, limits=FAKE_HOST)
     assert ("[plan] metric_gp initial design 8 points: the model proposes 0 of the 4 new points -- WARNING: none; this "
             "run is initial design throughout") in capsys.readouterr().out
+
+
+# -- N-106: a pcell device's allowed combinations from a file -------------------------------------------------------------
+
+
+def combinations_spec(tmp_path):
+    """The circuit's F and W beside a pcell device whose file allows 12 of the 42 combinations of its two variables."""
+    from tests.ic_opt.test_combinations import band_file, pcell_spec
+
+    return pcell_spec(band_file(tmp_path))
+
+
+def allowed(spec, params) -> bool:
+    from tests.ic_opt.test_combinations import LEVELS, device_levels
+
+    return device_levels(spec, params) in LEVELS
+
+
+def test_openbox_proposals_on_a_spec_with_a_combinations_file_are_valid_points(tmp_path):
+    """No strategy knows of the file: OpenBox's raw vectors are snapped (space.snap) onto the table, as onto a library
+    device's rows (T18.2A)."""
+    spec = combinations_spec(tmp_path)
+    history = Observations()
+    for _ in range(4):
+        batch = suggest(spec, history, 6, strategy="openbox_gp_eic", seed=2)
+        assert len(batch) == 6 and len({p.key for p in batch}) == 6 and not {p.key for p in batch} & history.keys()
+        assert all(allowed(spec, p.params) for p in batch)
+        history.extend(observed(spec, batch, lambda p: {"NF": 5 + float(p["ind.w"]) + int(p["F"]) / 10}, len(history)))
+    assert any(o.origin.endswith(":acq") for o in history)                    # the surrogate proposed, not only the design
+
+
+def test_metric_gp_still_refuses_a_device_emx_simulates_and_its_candidates_hold_valid_points_only(tmp_path):
+    """A pcell device is simulated in the loop, so metric_gp refuses the spec as it did before (no strategy code changes);
+    what T18.2A taught its coordinates and candidates applies to the file's table unchanged."""
+    from ic_opt import space
+    from ic_opt.suggesters.metric_gp import DEVICES_REFUSAL, candidates
+    from ic_opt.suggesters.metric_gp.coords import Coords
+
+    spec = combinations_spec(tmp_path)
+    with pytest.raises(ValueError, match=re.escape(DEVICES_REFUSAL)):
+        suggest(spec, Observations(), 4, strategy="metric_gp", seed=1)
+    coords = Coords(spec)
+    every = candidates.whole_grid(coords, set())
+    assert coords.size == len(every) == space.grid_size(spec) == 288 and coords.valid(every).all()
+    params = [space.snap(spec, raw) for raw in coords.raw(every).tolist()]
+    assert all(allowed(spec, p) for p in params) and len({space.point_key(p) for p in params}) == 288
+    design = coords.design_raw(unit_design("sobol", 32, coords.d, 5))
+    assert all(allowed(spec, space.snap(spec, raw)) for raw in design)
+
+
+def test_the_plan_names_each_combinations_file_and_the_valid_points_and_the_run_keeps_to_them(tmp_path, capsys):
+    pytest.importorskip("klayout.db")
+    from ic_opt.blocks.netlist import import_netlists
+    from ic_opt.library import combinations
+    from tests.ic_opt.test_em_circuit import em_circuit_spec
+
+    d = em_circuit_spec(tmp_path).model_dump(mode="json")         # ind.od 80-120 step 10, ind.w 3-6 step 0.5, F; one turn
+    rows = [[80.0, 3.0, 2.0, 1], [90.0, 3.5, 2.0, 1], [100.0, 4.0, 2.0, 1], [110.0, 4.5, 2.0, 1], [120.0, 5.0, 2.0, 1],
+            [100.0, 5.0, 2.5, 1]]
+    path = combinations.write(tmp_path / "region.json", ["outer_diameter_um", "width_um", "spacing_um", "turns"], rows, {})
+    d["devices"][0]["combinations"] = str(path)
+    spec = Spec.model_validate(d)
+    store = RunStore(tmp_path / "proj")
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 7.0 + int(p["F"]) / 100})
+    deck = import_netlists(spec, ex, store)
+    planned(optimize, spec, ex, store, deck=deck, budget=4, batch=2, seed=1, limits=FAKE_HOST)
+    out = capsys.readouterr().out
+    assert (f"[plan] opt.optimize step='optimize': device ind: 5 allowed combinations of ind.od, ind.w from {path} "
+            "(1 row dropped by fixed spacing_um=2, turns=1)\n"
+            "[plan] opt.optimize step='optimize': search space: 30 valid points (the variables' grids hold 210)\n") in out
+    assert "[plan] strategy auto: openbox_gp_eic (metric_gp does not take EM devices yet)" in out
+    assert ex.commands == [] and store.observations() == []
+    obs = optimize(spec, ex, store, deck=deck, budget=4, batch=2, seed=1, limits=FAKE_HOST)
+    pairs = {(o.params["ind.od"], o.params["ind.w"]) for o in obs}
+    assert len(obs) == 4 and all(o.status == "ok" for o in obs)
+    assert pairs <= {("80", "3"), ("90", "3.5"), ("100", "4"), ("110", "4.5"), ("120", "5")}
+    assert "allowed combinations" not in capsys.readouterr().out                 # a plan line only

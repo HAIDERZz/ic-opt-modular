@@ -26,6 +26,10 @@ refuses (a frequency no row can give, a ``prefer`` column the index lacks), each
 
 A device that states no topology is measured as the library measures its rows (``Linked.topologies``): each row by its
 part's topology, with the stratum's ``low_freq_max_hz`` when the manifest sets one.
+
+A pcell device may take its allowed combinations from a file instead (N-106, ``Device.combinations``, which ``lib.region
+out=`` writes): ``ic_opt.library.combinations`` turns it into a table over the device's variables, and :func:`tables`
+returns those tables too, so ``space.tables`` stays the one entry point.
 """
 
 from __future__ import annotations
@@ -103,8 +107,11 @@ class LinkError(ValueError):
 def tables(spec: Spec) -> list[space.Table]:
     """The tables of allowed combinations of ``spec``'s variables: one per library device (its variables, in the spec's
     order; the combinations a row of its table sits on, each row at its own electrical values taken onto the variables'
-    grid), none for a spec without library devices. ``ic_opt.space.tables`` returns this and checks it."""
-    return [linked.space_table for linked in resolve(spec).values()]
+    grid) and one per pcell device that names a combinations file (``combinations.tables``, N-106); none for a spec
+    without either. ``ic_opt.space.tables`` returns this and checks it."""
+    from ic_opt.library import combinations  # it imports LinkError from here
+
+    return [linked.space_table for linked in resolve(spec).values()] + combinations.tables(spec)
 
 
 def resolve(spec: Spec) -> dict[str, Linked]:
@@ -162,12 +169,15 @@ def sentence(spec: Spec, device_id: str) -> str:
 
 
 def clear() -> None:
-    """Forget every library, index and table this process resolved (tests)."""
+    """Forget every library, index and table this process resolved, the combinations files' too (tests)."""
+    from ic_opt.library import combinations
+
     with _LOCK:
         _ROOTS.clear()
         _LIBRARIES.clear()
         _CORES.clear()
         _LINKED.clear()
+    combinations.clear()
 
 
 # -- internals ------------------------------------------------------------------------------------------------------------
