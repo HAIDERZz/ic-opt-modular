@@ -92,3 +92,66 @@ of `BACKLOG_CN.md` or `src/`. B and C report to the coordinator when their modul
 after the pilot, then again after the full run with the verdict counts, the ceiling tables, the largest differences in
 either direction, the cost per model, every deviation, and anything the specification did not foresee. Numbers only
 from the JSON the script wrote.
+
+## Record (C)
+
+Branch `n107-c-neural` from `main` at 5444ca2: `regressors_neural.py` in 7283573, this note after it. Nothing merged or
+pushed, nothing under `src/` or in `BACKLOG_CN.md`, `regressor_base.py` untouched. The library was only read (no file under
+`n28_v2` newer than the first run; its `.cache` still 1118 files). Evidence in
+`/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-accept/n107_regressor_study/scratch/n107-c-neural/`: the smoke logs (and
+`*_fullgrid.log` from before the cut), `timing_composed_*.log`, the side checks `side_*.log` and their scripts in
+`side_scripts/`. Python 3.11, numpy 1.26.4, scipy 1.12.0, scikit-learn 1.3.2, `OMP_NUM_THREADS=2`, 2 BLAS threads per fit;
+the machine was shared with A's and B's work (load average 16-53), and the times carry that.
+
+For the harness: `VARIANTS[name]` holds `model` (the class), `family` "C", `inputs` "library", `params` {} (constructor
+keywords beyond the library's settings), `grid` (None for `mlp_paper`) and `grid_cut`; a model is
+`cls(**settings, **params, n_threads=threads)`. A fitted model has `chosen`, `inner_scores` and `fit_info`, JSON-ready; a
+per_nt model answers per turns level (`{"1": ..., "2": ...}`), a composed column's parts each answer for themselves.
+
+Smoke (`gp.split` seed 0, 80 / 20; the GP's fold on the identical rows read from N-104's job cache for reference):
+
+| column | variant | chosen | median | p90 | max | fit |
+| --- | --- | --- | --- | --- | --- | --- |
+| ind_sym_ap Lp_lf (per_nt, 475 / 119 rows) | mlp | turns 1: (128, 128) 1e-5 tanh; 2, 3: (64, 64) 1e-5 tanh; 4, 5: (64, 64) 1e-3 tanh | 0.42 % | 1.31 % | 4.74 % | 14.6 s |
+| | mlp_paper | the paper's | 25.4 % | 102.7 % | 1465 % | 2.4 s |
+| | gp (N-104) | | 0.088 % | 0.64 % | 3.69 % | 1.0 s |
+| xfm_bs_m10 k_lf (joint, feature map, 1769 / 442 rows) | mlp | (128, 128) 1e-3 tanh | 2.04 % | 6.10 % | 12.9 % | 115.8 s |
+| | mlp_paper | the paper's | 9.82 % | 40.6 % | 281 % | 1.3 s |
+| | gp (N-104) | | 0.40 % | 1.36 % | 15.3 % | 209.8 s |
+
+**Fit times and the grid cut.** With the specification's 12 configurations, xfm_bs_m10 k_lf's inner cross-validation
+(three fits on about 1180 rows each) took 6.8-8.9 s per (64, 64) configuration, 15.1-19.4 s per (128, 128) one and 57.0 /
+57.5 / 63.3 / 70.6 s per (256, 256) one -- two over the minute, the four together 248 of the 354 s; the fold job 364 s. A
+composed fold job builds two or three tuned parts: xfm_bs_m10 Lp@28 (resonance; parts on 1798 / 1499 / 1651 rows) took
+651 s, over the 10 minutes. So `mlp` runs without hidden_layer_sizes (256, 256): 8 configurations. Then k_lf's fold job
+took 115.8 s (inner 106.1 s, the final fit 9.7 s at 2000 iterations) and Lp@28's 214.2 s, with the held-out errors of
+all three runs unchanged (Lp@28 0.8278 % / 2.7474 % both times): no model had chosen (256, 256). The cut is for cost; that
+nothing chose it is an observation on three columns, not its reason. `mlp_paper` fits in seconds.
+
+**What the runs showed.**
+- `mlp` stays behind the GP on both columns (median 4.8x / 5.1x, p90 2.0x / 4.5x). tanh won every inner
+  cross-validation (6 models of 6). lbfgs ran all 2000 iterations on k_lf but stopped at 59-105 on the inductor levels
+  (scikit-learn's `tol` 1e-4 is lbfgs's gradient tolerance).
+- `mlp_paper` as specified is far off, and adam never reached 2000 epochs: scikit-learn's default stop (training loss not
+  better by `tol` 1e-4 for 10 epochs) ended it after 221-285 epochs on the inductor levels and 40 on k_lf. Side checks on
+  the same folds, not in the module: with the target standardized, Lp_lf 3.01 % / 13.4 % and k_lf 4.60 % / 50.8 % (max
+  3.0e13 %: degree-5 features of a row outside the training rows' standardized range); with all 2000 epochs and the
+  target as is, Lp_lf 21.1 % / 105 % and k_lf 1.44 % / 8.60 % (fit 64.7 s). On the inductor the unstandardized log
+  target dominates (log henries: mean -20.86, std 1.39 on the training rows), on k_lf (mean -0.88) the early stop.
+  PACOSYT modelled S-parameters, of order 1; whether its Keras notebook ran a fixed number of epochs I could not check
+  (no copy here). The module keeps the specification's call; changing it is the coordinator's decision.
+- Threads: the environment loads two OpenBLAS copies (numpy's, scipy's) and scikit-learn's libgomp. Capped at 2, an lbfgs
+  MLP keeps about 3 cores busy (2.99 measured on a 1769 x 5 synthetic fit; the smoke process showed three threads at 100
+  %) and is not faster than at 1 ((128, 128) 1.60 s at 2 against 1.09 s at 1; (256, 256) 4.38 against 4.48 s). So
+  `--workers 48 --threads 2` would hold about 144 cores while MLP jobs run, above the 96 allowed; and the lbfgs path
+  depends on the thread count (281 / 253 iterations at 2 / 1 threads on the same data), so a fold result repeats only at
+  the same `--threads`. The GP (scipy's L-BFGS-B and BLAS too) was not measured.
+- `torch` 2.12.0+cpu is installed in the environment (section 4 says it is not); nothing here uses it.
+- `regressor_base.py`: ruff 0.16.8 reports BLE001 (blind `except Exception`) in `tune`, line 115 -- the catch-all is
+  deliberate and wants a `# noqa: BLE001`; left to A.
+
+**Deviations.** The grid cut above. In `mlp_paper` the standardization acts on the library's scaled inputs (after the
+feature map or min-max scaling and the dropped constant inputs; standardizing an affine image of a column gives the same
+column), `PolynomialFeatures` keeps scikit-learn's bias column, and scikit-learn's `alpha` (0.5 x alpha x sum W^2 / rows)
+is not Keras's `l2(1e-6)` (1e-6 x sum W^2 per batch) -- the specification's call, noted. `ConvergenceWarning` is silenced;
+the iteration counts are in `fit_info`.
