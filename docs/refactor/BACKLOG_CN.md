@@ -165,7 +165,7 @@ T17 的第 2 步（评估调度与多 corner）、摘要第 3 版、饱和裕量
 
 **N-98 已合入**（2026-10-08，main @ ff7ad49，`signoff total=`）：搜索分批推进（`signoff budget=10 total=40 → … → 40`，最后一次调用做复核，四次调用与一次性运行逐点相同）；`digest.json` 的 `library.combinations` 列出库器件有行的组合；skill 第 4 步加入『代理监督的运行分批推进』，第 7 步改写为五项流程（何时、读什么、怎么决定、命令、汇报），并补入 24 个会话的经验。代理读 skill 即可按批间建议的流程工作，不再需要任务书规定。
 
-**设计者笔记验证**（2026-10-09，`llm_compare/RESULT_CN.md` 补充二）：B2（无笔记）vs B2N（有笔记）× Opus / DeepSeek pro × 3 种子，走 `signoff total=` 产品路径：笔记 − 无笔记 同种子均值 +0.012（Opus）/ +0.003（DeepSeek），3 升 3 降，在噪声内；批间建议 12/12 ≥ 基线。结论：不做产品功能；知识可写进 spec `description`。小项待拍板：`points.md` 带参数列；只含起点行的建议跑完后应撤销（skill 一句）；start.json 重复行提示。种子 0 基线因 lib_refine 采纳行改变索引代表行而偏低（−0.584，10-06 为 −0.702），结论主要看 s1、s2。
+**设计者笔记验证**（2026-10-09，`llm_compare/RESULT_CN.md` 补充二）：B2（无笔记）vs B2N（有笔记）× Opus / DeepSeek pro × 3 种子，走 `signoff total=` 产品路径：笔记 − 无笔记 同种子均值 +0.012（Opus）/ +0.003（DeepSeek），3 升 3 降，在噪声内；批间建议 12/12 ≥ 基线。结论：不做产品功能；知识可写进 spec `description`。小项待拍板：`points.md` 带参数列；只含起点行的建议跑完后应撤销（skill 一句）；start.json 重复行提示。**已做（用户 2026-10-13 拍板；N-101…N-103，规格与记录 `N101_103_ADVISING_SMALL_ITEMS_SPEC.md`）**：N-101 `points.md` 在 status 与 objective 之间按 spec 顺序加每个变量一列（3c72710）；N-102 skill 第 7 步第 3 项加一句“只含起点行的建议在其行跑完后撤销或替换”（5645d71，零代码）；N-103 `opt.optimize` 起点行有重复时打一行`start rows: 5 given, 2 duplicate rows dropped (3 distinct)`（`--plan` 同，1e69c5e；提出与评估的点不变）。定向套件 177 过、ruff 过、录制运行回放不变。子代理记录：同一格点的不同数值写法（`0.80u` 对 `0.8u`）`Point.key` 不同，不算重复、引擎照旧各评估一次，是既有行为，未改；`—` 只在直接调用 `points_markdown` 时出现（`digest()` 对缺变量的行先抛错，而旧 spec 的行本就被指纹过滤掉）。种子 0 基线因 lib_refine 采纳行改变索引代表行而偏低（−0.584，10-06 为 −0.702），结论主要看 s1、s2。
 
 代理一致指出的产品问题（待拍板，均为小修）：
 
@@ -188,7 +188,7 @@ T17 的第 2 步（评估调度与多 corner）、摘要第 3 版、饱和裕量
 | B03 | 长波形 `ocnPrint` 导出极慢 | **已修**（同上）：直接从向量写出；同一 PSF 102 401 点实测 157 s → 2.7 s；导出计时进 ocean.log / ocean_timing.tsv / trace |
 | B04 | OP 读取对非 MOS 实例逐个探测、海量 OCN-6043 | **已修**（c77bb93）：只在含 `gm` 的器件类型上读；同一 PSF 告警 4 045 → 0、表逐字节相同、43.8 → 19.9 s；证据 `ic-opt-accept/n100_accept/` |
 | 第 6 节非 bug 项 | 实验设置 / 许可证 / 物理限制 | 同意归类，不处理 |
-| 留给用户 | `fix_run` 对 deck 已变的旧点是否额外告警；`migrate-store` 是否保留 deck 类 pipeline 的旧印记 | 待拍板 |
+| 留给用户 | `fix_run` 对 deck 已变的旧点是否额外告警；`migrate-store` 是否保留 deck 类 pipeline 的旧印记 | **已拍板，两项关闭**（用户 2026-10-13）：`fix_run` 不加额外告警（`--plan` 的历史行已给出数量，重仿正是用户要的行为）；`migrate-store` 维持现状（重打成无 deck 的流水线指纹，作为历史不复用；保留旧印记结果相同，只差报告文字与测试） |
 
 全量门禁（含录制回放）全绿：非 pcell 1 149 / 12 跳过，pcell 1 118 / 1；main @ 890aa8a。这批改变了所有 Spectre / EM-circuit pipeline 指纹，应随 0.8.1 发布说明一起说明。
 
@@ -202,7 +202,7 @@ T17 的第 2 步（评估调度与多 corner）、摘要第 3 版、饱和裕量
 | RL-4 | 测试与安装 | 已做：12 组门禁全部退出码 0（非 pcell 1 149 通过 / 12 跳过；pcell 有私有工艺文件 1 118 通过 / 1 跳过；无私有工艺文件 484 通过 / 635 跳过）；`ruff check src tests benchmarks docs/refactor/reports` 通过；干净环境（`uv venv` + wheel 的 `[em]`）安装 PASS：`ic-opt 0.8.1`，80 个模块可导入，摘要版本 5、`WAVEFORM_PRECISION %.17g`、`optimize` / `signoff` 的 `total`、`Deck.describe`、`corner.worst_values` 在 |
 | RL-5 | 标签、推送、GitHub Release | 已做（Claude，2026-10-13）：`git push origin main`（5a7a91c → ccf4296）、`git push origin v0.8.1`、`gh release create v0.8.1 -R HAIDERZz/ic-opt-modular --verify-tag`（wheel + sdist + 校验和；第一次调用遇 GitHub API 网络错误未建成，第二次建成）；下载后 `sha256sum -c` 两项成功。页面 https://github.com/HAIDERZz/ic-opt-modular/releases/tag/v0.8.1 。发布记录 `ic-opt-accept/release_v0.8.1/RELEASE_RECORD_CN.md`（不在仓库里） |
 
-0.8.1 = N-96 … N-100（0.14 的两项合入与 0.15 的四项修复）。0.15 留给用户的两项（`fix_run` 对 deck 已变的旧点是否额外告警；`migrate-store` 是否保留 deck 类流水线的旧印记）与 0.14 的三个小项仍待拍板。后续新代码应升 0.8.2 或 0.9.0。
+0.8.1 = N-96 … N-100（0.14 的两项合入与 0.15 的四项修复）。0.15 留给用户的两项已于 2026-10-13 关闭（不改），0.14 的三个小项已做（N-101…N-103，在 0.8.1 之后的 main 上，未发布）。后续新代码应升 0.8.2 或 0.9.0。
 
 ## 1. 已拍板事项（2026-09-25）
 
