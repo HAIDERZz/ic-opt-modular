@@ -25,11 +25,14 @@ Specification: ``docs/refactor/N107_REGRESSOR_STUDY_SPEC.md`` section 2.
             than an inner fold's training rows raises in sklearn and scores inf there.
 
 ``VARIANTS`` (name -> class, family, tuned, grid, note) is this module's registration: ``regressor_study.py`` merges it
-into its own registry when it imports the module. The chosen configuration of a tuned (sub-)model is ``config`` (with
-the inner cross-validation's scores in ``cv_rmse``); the harness records it per job from the ``tune`` calls.
+into its own registry when it imports the module. A fitted tuned (sub-)model gives the configuration chosen as
+``chosen``, the inner cross-validation's RMSE of every configuration as ``cv_scores`` and the chosen one's as
+``cv_rmse`` (B's and C's names); a ``gp_paper`` (sub-)model its fitted kernel as ``kernel_fitted``. The harness records
+them per job, and the ``tune`` calls besides.
 """
 from __future__ import annotations
 
+import json
 from typing import ClassVar
 
 import numpy as np
@@ -87,9 +90,10 @@ class StratumKRR(StratumMean):
     def _fit_joint(self, z: np.ndarray, t: np.ndarray) -> None:
         d = z.shape[1]
         configs = [{"gamma_d": g, "alpha": a} for g in KRR_GAMMA_D for a in KRR_ALPHA]
-        self.config, self.cv_rmse = tune(z, t, configs, lambda cfg, zt, tt, zv: _krr_centred(cfg, d, zt, tt, zv), seed=SEED)
+        self.chosen, self.cv_scores = tune(z, t, configs, lambda cfg, zt, tt, zv: _krr_centred(cfg, d, zt, tt, zv), seed=SEED)
+        self.cv_rmse = self.cv_scores[json.dumps(self.chosen, sort_keys=True)]
         self._mean = float(np.mean(t))
-        self._model = _krr(self.config, d).fit(z, t - self._mean)
+        self._model = _krr(self.chosen, d).fit(z, t - self._mean)
 
     def _predict_joint(self, z: np.ndarray) -> np.ndarray:
         return self._model.predict(z) + self._mean
@@ -105,8 +109,9 @@ class StratumKNN(StratumMean):
 
     def _fit_joint(self, z: np.ndarray, t: np.ndarray) -> None:
         configs = [{"n_neighbors": k} for k in KNN_NEIGHBORS]
-        self.config, self.cv_rmse = tune(z, t, configs, lambda cfg, zt, tt, zv: _knn(cfg).fit(zt, tt).predict(zv), seed=SEED)
-        self._model = _knn(self.config).fit(z, t)
+        self.chosen, self.cv_scores = tune(z, t, configs, lambda cfg, zt, tt, zv: _knn(cfg).fit(zt, tt).predict(zv), seed=SEED)
+        self.cv_rmse = self.cv_scores[json.dumps(self.chosen, sort_keys=True)]
+        self._model = _knn(self.chosen).fit(z, t)
 
     def _predict_joint(self, z: np.ndarray) -> np.ndarray:
         return self._model.predict(z)

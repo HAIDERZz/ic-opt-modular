@@ -11,20 +11,26 @@ and the verdict rule's constants. What is new here:
 - ``VARIANTS``, the registry: ``gp`` (the library's class) plus every variant of the regressor modules beside this file
   -- ``regressors_kernel.py`` (family A), ``regressors_trees.py`` (B), ``regressors_neural.py`` (C) -- each imported if it
   exists (a missing one is skipped with a line). A module registers its variants in a module-level ``VARIANTS`` dict
-  (name -> a ``regressor_base.StratumMean`` subclass, or a dict with ``cls`` and optionally ``family``, ``tuned``,
-  ``grid``, ``params``, ``note``); without one, its ``StratumMean`` subclasses whose ``MODEL`` is not the base's
-  ``"mean"`` are registered under ``MODEL``. A module's ``NOTES`` (a list of strings: a variant skipped, ...) are carried
-  into the report.
+  (name -> a ``regressor_base.StratumMean`` subclass, or a dict with the class under ``cls`` or ``model`` -- N-104's
+  shape -- and optionally ``family``, ``tuned``, ``grid`` (axes or a list of configurations), ``grid_cut``, ``params``,
+  ``note``); without one, its ``StratumMean`` subclasses whose ``MODEL`` is not the base's ``"mean"`` are registered
+  under ``MODEL``. A module's ``NOTES`` (strings) and ``SKIPPED`` ({variant: why}) are carried into the report.
 - A job of a variant rebinds ``gp.StratumGP`` to the variant's class while its fold runs (and back), so a composed
   column builds every part (L_lf, SRF, R / Res) as the variant. The class gets the library's settings of the column plus
   the registry's ``params`` and ``n_threads`` (``--threads``).
 - Every ``regressor_base.tune`` call in a worker is recorded (``tune`` is wrapped in ``regressor_base`` and in every
   regressor module that imported it): the configuration chosen, its inner RMSE, the grid's size and failures, the rows
   and inputs, the seconds. A job keeps the list (one entry per tuned (sub-)model: per turns level, per composed part).
+  The class a job binds records every instance it fits, so the job also keeps each top-level model's own report
+  (``chosen``, ``cv_rmse``, ``cv_scores``, ``inner_scores``, ``timing``, ``fit_info``, ``kernel_fitted`` -- whichever it
+  has; per turns level for per_nt; per part for a composed column); the JSON keeps the configuration chosen per fold,
+  the job cache everything.
 - The ``gp`` jobs' cache key is N-104's, so N-104's 587 GP folds are read from its job cache (``--gp-cache``, read only)
   instead of refitted; a GP job missing there is fitted once and kept in this study's cache. Every other job is keyed by
-  its data, settings, the variant's registration and the source of ``regressor_base``, its module and this harness's
-  fold runner.
+  its data, settings, its thread count (an lbfgs MLP's result depends on it), the variant's registration and the source
+  of ``regressor_base``, its module and this harness's fold runner. ``--variant-threads mlp=1,...`` gives variants their
+  own thread count, so the study can run in passes (the MLPs at one thread on more workers) into one job cache
+  (``--cache``) and be assembled from it at the end (``--cached-only`` refuses to fit anything).
 - Protocol (ii) holds out the levels N-104 selected, read from its JSON (``--n104-json``), so the folds are identical.
 - An exception of a non-GP job other than ``Unfit`` (and a composed column's empty part, as N-104) is recorded as an
   ``error`` with its traceback, not cached (a rerun retries it), and the variant counts as not comparable in that cell;
@@ -38,10 +44,11 @@ tuned regressor beats the GP -- the ceiling question, one number per protocol.
 
 Usage:
   regressor_study.py run LIBRARY_ROOT SCRATCH OUT_JSON [--tables a,b] [--columns a,b] [--variants a,b] [--workers 16]
-                     [--threads 2] [--pilot] [--dry-run] [--gp-cache DIR] [--n104-json FILE]
+                     [--threads 2] [--variant-threads v=n,...] [--cache NAME] [--cached-only] [--pilot] [--dry-run]
+                     [--gp-cache DIR] [--n104-json FILE]
   regressor_study.py report OUT_JSON --md OUT_MD --fig OUT_PNG
 Run with OMP_NUM_THREADS=2, IC_OPT_PROFILE_DIRS set and PYTHONPATH at the source tree. The folds run as jobs in a spawn
-pool, BLAS / OpenMP capped per worker; every finished job is kept in SCRATCH/jobs-<OUT_JSON stem>/. --pilot: ind_sym_ap,
+pool, BLAS / OpenMP capped per worker; every finished job is kept in SCRATCH/<--cache or jobs-<OUT_JSON stem>>/. --pilot: ind_sym_ap,
 seeds 0-1, two of N-104's levels, every registered variant. --dry-run: the plan and the GP cache hits only.
 """
 from __future__ import annotations
@@ -90,21 +97,22 @@ COST_WEIGHT = {"gp": 1.0, "gp_paper": 1.0, "krr": 0.3, "knn": 0.002, "rf": 0.5, 
 
 # -- the registry -------------------------------------------------------------------------------------------------------------
 
-VARIANTS: dict[str, dict] = {"gp": {"cls": _GP, "family": "A", "tuned": False, "grid": None, "params": {}, "module": gp.__name__,
+VARIANTS: dict[str, dict] = {"gp": {"cls": _GP, "family": "A", "tuned": False, "grid": None, "grid_cut": None, "params": {}, "module": gp.__name__,
                                     "note": "the library's GP (Library._fit_inputs settings); N-104's folds, from its job cache"}}
 MODULE_NOTES: list[str] = []
 
 
 def _register(name: str, entry, module) -> None:
     spec = {"cls": entry} if isinstance(entry, type) else dict(entry)
-    cls = spec.get("cls")
+    cls = spec.get("cls", spec.get("model"))             # "model": N-104's shape, as B and C register
     if not (isinstance(cls, type) and issubclass(cls, StratumMean)):
         raise TypeError(f"{module.__name__}: variant {name!r} is not a regressor_base.StratumMean subclass: {cls!r}")
     if name in VARIANTS:
         raise ValueError(f"{module.__name__}: variant {name!r} is registered twice")
     VARIANTS[name] = {"cls": cls, "family": spec.get("family") or getattr(cls, "FAMILY", None) or MODULE_FAMILY.get(module.__name__, "?"),
                       "tuned": bool(spec.get("tuned", name not in UNTUNED)), "grid": spec.get("grid", getattr(cls, "GRID", None)),
-                      "params": dict(spec.get("params") or {}), "module": module.__name__, "note": spec.get("note", "")}
+                      "grid_cut": spec.get("grid_cut") or None, "params": dict(spec.get("params") or {}), "module": module.__name__,
+                      "note": spec.get("note", "")}
 
 
 def _load_modules() -> None:
@@ -127,16 +135,35 @@ def _load_modules() -> None:
             _register(vname, entry, mod)
         MODULE_NOTES.append(f"{name}.py: {', '.join(v for v, _ in entries) or 'no variant'}")
         MODULE_NOTES.extend(f"{name}.py: {note}" for note in getattr(mod, "NOTES", []) or [])
+        MODULE_NOTES.extend(f"{name}.py: {v} skipped -- {why}" for v, why in (getattr(mod, "SKIPPED", {}) or {}).items())
 
 
 _load_modules()
 
 
+def grid_axes(grid) -> dict[str, list]:
+    """A grid as its axes: a dict of axes as it is, a list of configurations as each key's distinct values in order."""
+    if not grid:
+        return {}
+    if isinstance(grid, dict):
+        return {k: list(v) for k, v in grid.items()}
+    axes: dict[str, list] = {}
+    for cfg in grid:
+        for k, val in cfg.items():
+            if val not in axes.setdefault(k, []):
+                axes[k].append(val)
+    return axes
+
+
 def variant_record(v: str) -> dict:
     """A variant's registration as the JSON reports it."""
     e = VARIANTS[v]
+    axes = grid_axes(e["grid"])
+    n_configs = len(e["grid"]) if isinstance(e["grid"], list) else math.prod(len(x) for x in axes.values()) if axes else 0
     return {"family": e["family"], "model": e["cls"].__name__, "module": e["module"], "tuned": e["tuned"],
-            "grid": json.loads(json.dumps(e["grid"], default=str)), "params": e["params"], "note": e["note"]}
+            "grid": json.loads(json.dumps(e["grid"], default=str)), "grid_axes": json.loads(json.dumps(axes, default=str)),
+            "n_configs": n_configs, "grid_cut": json.loads(json.dumps(e["grid_cut"], default=str)), "params": e["params"],
+            "note": e["note"]}
 
 
 # -- every tune call, recorded ------------------------------------------------------------------------------------------------
@@ -198,15 +225,54 @@ def variant_settings(settings: dict | None, variant: str, threads: int) -> dict 
     return {**settings, **VARIANTS[variant]["params"], "n_threads": threads}
 
 
+MODEL_ATTRS = ("chosen", "cv_rmse", "cv_scores", "inner_scores", "timing", "fit_info", "kernel_fitted")
+
+
+def _plain(value):
+    return json.loads(json.dumps(value, default=str))
+
+
+def _attrs(model) -> dict:
+    """What a fitted joint (sub-)model says about itself: the attributes of ``MODEL_ATTRS`` it has."""
+    out = {}
+    for name in MODEL_ATTRS:
+        try:
+            value = getattr(model, name)
+        except (AttributeError, KeyError, TypeError):
+            continue
+        if value is not None:
+            out[name] = _plain(value)
+    return out
+
+
+def model_info(model) -> dict:
+    """A top-level fitted model's report: its own attributes, or per turns level its sub-models' for per_nt."""
+    if model.nt_mode == "per_nt":
+        return {"levels": {str(level): _attrs(sub) for level, sub in sorted(model._sub.items())},
+                "unavailable_nt": {str(k): v for k, v in model.unavailable_nt.items()}}
+    return _attrs(model)
+
+
+def _recording(cls: type, fitted: list) -> type:
+    """``cls`` with every fitted instance appended to ``fitted`` (a per_nt model's sub-models before the model itself)."""
+    def fit(self, x, y):
+        out = cls.fit(self, x, y)
+        fitted.append(self)
+        return out
+    return type(cls.__name__, (cls,), {"fit": fit, "__module__": cls.__module__, "__qualname__": cls.__qualname__})
+
+
 def run_job(job: dict) -> dict:
     """One (table, column, fold, variant) in a spawned worker: BLAS / OpenMP capped, ``gp.StratumGP`` bound to the variant's
-    class while N-104's fold runner runs (and restored after it), the tune calls and the warnings recorded."""
+    class while N-104's fold runner runs (and restored after it), the tune calls, the fitted models' own reports and the
+    warnings recorded."""
     t0 = time.perf_counter()
     variant = job["variant"]
+    fitted: list = []
     with threadpool_limits(limits=job["threads"]), warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         _TUNE["log"] = []
-        gp.StratumGP = VARIANTS[variant]["cls"]
+        gp.StratumGP = VARIANTS[variant]["cls"] if variant == "gp" else _recording(VARIANTS[variant]["cls"], fitted)
         try:
             bound = gp.StratumGP.__name__
             out = n104.direct_fold(job) if job["kind"] == "direct" else n104.composed_fold(job)
@@ -225,8 +291,12 @@ def run_job(job: dict) -> dict:
             tuned, _TUNE["log"] = _TUNE["log"], None
         by_category = Counter(w.category.__name__ for w in caught)
         examples = list(dict.fromkeys(f"{w.category.__name__}: {str(w.message)[:160]}" for w in caught))[:3]
+    subs = {id(sub) for m in fitted if m.nt_mode == "per_nt" for sub in m._sub.values()}
+    tops = [m for m in fitted if id(m) not in subs]   # direct: the model; composed: L_lf, (SRF,) R / Res, in that order
+    labels = ["model"] if job["kind"] == "direct" else ["lf", "srf", "part"] if job["kind"] == "resonance" else ["lf", "part"]
+    models = [{"part": labels[i] if len(tops) == len(labels) else str(i), **model_info(m)} for i, m in enumerate(tops)]
     out.update({"key": job["key"], "mean_model": bound, "wall_s": time.perf_counter() - t0, "pid": os.getpid(), "tuned": tuned,
-                "warnings": {"by_category": dict(by_category), "examples": examples}})
+                "models": models, "threads": job["threads"], "warnings": {"by_category": dict(by_category), "examples": examples}})
     return out
 
 
@@ -242,7 +312,7 @@ def _source_key(v: str) -> str:
     """What a non-GP job's cached result depends on besides its data and settings."""
     mod = sys.modules[VARIANTS[v]["module"]]
     parts = [n104.SOURCE["gp"], inspect.getsource(regressor_base), inspect.getsource(mod),
-             *(inspect.getsource(f) for f in (variant_settings, run_job, _recording_tune)),
+             *(inspect.getsource(f) for f in (variant_settings, run_job, _recording_tune, _recording, model_info, _attrs)),
              json.dumps(variant_record(v), sort_keys=True, default=str), _versions()]
     return hashlib.sha256("".join(parts).encode()).hexdigest()
 
@@ -252,7 +322,7 @@ def job_hash(job: dict, source: dict[str, str]) -> str:
     if job["variant"] == "gp":
         return n104.job_hash(job)
     h = hashlib.sha256(source[job["variant"]].encode())
-    h.update(json.dumps([job["key"], job["kind"], job["settings"]], sort_keys=True, default=str).encode())
+    h.update(json.dumps([job["key"], job["kind"], job["settings"], job["threads"]], sort_keys=True, default=str).encode())
     for name in ("x", "y", "lf_y", "srf_y", "test", "train", "held"):
         a = job.get(name)
         if a is not None:
@@ -319,6 +389,19 @@ def _tune_summary(res: list[dict]) -> dict:
             "chosen": dict(chosen.most_common()), "edge": {k: dict(v) for k, v in edges.items()}}
 
 
+def _brief(m: dict, tuned: bool) -> dict:
+    """A fitted model's report as the JSON keeps it per fold: the configuration chosen (a tuned variant's), its inner RMSE,
+    the fitted kernel, the final fit's iterations (the full inner scores stay in the job cache)."""
+    def one(a: dict) -> dict:
+        out = {k: a[k] for k in (("chosen", "cv_rmse") if tuned else ()) + ("kernel_fitted",) if k in a}
+        if isinstance(a.get("fit_info"), dict) and "n_iter" in a["fit_info"]:
+            out["n_iter"] = a["fit_info"]["n_iter"]
+        return out
+    if "levels" in m:
+        return {"part": m["part"], "levels": {lv: one(a) for lv, a in m["levels"].items()}}
+    return {"part": m["part"], **one(m)}
+
+
 def _best(cands: list[str], variants: dict) -> str | None:
     return min(cands, key=lambda v: variants[v]["p90_rel"]) if cands else None   # ties: the first in the registry's order
 
@@ -340,6 +423,8 @@ def summarise_protocol(results: dict[str, list[dict]], protocol: str) -> dict:
                  "fit_s_per_fold": [round(r["fit_s"], 3) for r in res], "predict_s_per_fold": [round(r["predict_s"], 4) for r in res],
                  "classes": sorted({c for r in res for c in r["classes"]}), "mean_model": sorted({r["mean_model"] for r in res}),
                  "tune": _tune_summary(res),
+                 "models_per_fold": {r["key"][3]: [_brief(m, VARIANTS.get(v, {}).get("tuned", True)) for m in r.get("models") or []] for r in res},
+                 "threads": sorted({r["threads"] for r in res if "threads" in r}),
                  "warnings": dict(sum((Counter((r.get("warnings") or {}).get("by_category", {})) for r in res), Counter()))}
         if protocol == "ii":
             entry["per_level"] = {r["key"][3]: {**n104.rel_stats(r["rel"]), "status": r["status"], "skipped": r["skipped"]} for r in res}
@@ -481,6 +566,9 @@ def run(args) -> None:
     if unknown:
         raise SystemExit(f"unknown tables / variants {unknown}; tables {list(n104.FAMILY)}, variants {list(VARIANTS)}")
     variants = _order(variants)
+    vthreads = {v: int(n) for v, n in (item.split("=") for item in args.variant_threads.split(",") if item)} if args.variant_threads else {}
+    if bad := [v for v in vthreads if v not in VARIANTS]:
+        raise SystemExit(f"--variant-threads names unknown variants {bad}")
     wanted = set(args.columns.split(",")) if args.columns else None
     for line in MODULE_NOTES:
         print(line, flush=True)
@@ -489,7 +577,8 @@ def run(args) -> None:
     report = {"spec": "docs/refactor/N107_REGRESSOR_STUDY_SPEC.md", "date_start": time.strftime("%Y-%m-%d %H:%M:%S"),
               "library": str(args.root), "scratch": str(args.scratch), "argv": [Path(sys.argv[0]).name, *sys.argv[1:]],
               "pilot": bool(args.pilot), "seeds": list(seeds), "levels_from": str(args.n104_json), "gp_cache": str(args.gp_cache),
-              "workers": args.workers, "threads": args.threads, "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
+              "workers": args.workers, "threads": args.threads, "variant_threads": vthreads, "cached_only": bool(args.cached_only),
+              "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
               "source": n104.git_head(), "versions": {"python": sys.version.split()[0], "numpy": np.__version__, "scipy": scipy.__version__,
                                                       "sklearn": sklearn.__version__, "all": _versions()},
               "modules": list(MODULE_NOTES), "variants": {v: variant_record(v) for v in variants},
@@ -524,14 +613,14 @@ def run(args) -> None:
                                                 "lf_settings": {k: s["lf"][k] for k in ("nt_mode", "feature_map", "log_target")},
                                                 "srf_settings": None if s["srf"] is None else {k: s["srf"][k] for k in ("nt_mode", "feature_map", "log_target")}}
             cols[(t, c)] = d
-            jobs += [make_job(t, c, d, f, v, args.threads) for f in folds for v in variants]
+            jobs += [make_job(t, c, d, f, v, vthreads.get(v, args.threads)) for f in folds for v in variants]
         report["tables"][t] = entry
         print(f"{t}: {len(ds.rows)} rows, {len(names)} columns, levels {levels} (N-104's {n104_t}), "
               f"{sum(1 for jb in jobs if jb['key'][0] == t)} jobs", flush=True)
     print(f"{len(jobs)} jobs ({len(variants)} variants: {', '.join(variants)}); seeds {list(seeds)}; plan in {time.time() - t_start:.1f} s",
           flush=True)
     source = {v: _source_key(v) for v in variants if v != "gp"}
-    cache = args.scratch / f"jobs-{args.out.stem}"
+    cache = args.scratch / (args.cache or f"jobs-{args.out.stem}")
     found = {}
     for job in jobs:
         job["hash"] = job_hash(job, source)
@@ -566,10 +655,12 @@ def run(args) -> None:
             from_cache[where] += 1
         else:
             pending.append(job)
+    if pending and args.cached_only:
+        raise SystemExit(f"--cached-only: {len(pending)} jobs are not in the caches, e.g. {[jb['key'] for jb in pending[:5]]}")
     pending.sort(key=lambda jb: -jb["cost"])
     total_cost = sum(jb["cost"] for jb in pending) or 1.0
     print(f"{from_cache['own']} jobs from {cache}, {from_cache['n104']} gp jobs from N-104's cache, {len(pending)} to run on "
-          f"{args.workers} workers x {args.threads} threads", flush=True)
+          f"{args.workers} workers x {args.threads} threads (per variant: {vthreads or 'none'})", flush=True)
     t_pool = time.time()
     done_cost, last, n_done, n_error = 0.0, time.time(), 0, 0
     if pending:
@@ -689,7 +780,7 @@ def figure(report: dict, path: Path) -> None:
                         ax.text(x0, g, "∞", ha="center", va="bottom", fontsize=7, color=MUTED)
                         continue
                     ax.bar(x0, r, width, color=SERIES[fam], edgecolor="white", linewidth=0.8, hatch=hatch, zorder=2)
-                    ax.text(x0, r * 1.08, fb["variant"], ha="center", va="bottom", fontsize=5.2, color=MUTED, rotation=90)
+                    ax.text(x0, r * 1.08, fb["variant"], ha="center", va="bottom", fontsize=6, color=MUTED, rotation=90)
         ax.set_yscale("log")
         lo, hi = ax.get_ylim()
         ax.set_ylim(lo, hi * 3.0)
@@ -755,8 +846,14 @@ def markdown(report: dict, fig_rel: str | None) -> str:
     L.append(f"- 作业 {j['planned']} 个（表 × 列 × 折 × 变体）：GP 作业 {j['gp_planned']} 个中 {j['from_gp_cache']} 个读自 N-104 的作业缓存"
              f"（`{report['gp_cache']}`，只读）、本次拟合 {j['gp_fitted_here']} 个；其余作业 {j['from_cache']} 个取自本研究的作业缓存、"
              f"本次计算 {j['run']} 个；未拟合 {j['unfit']} 个，出错 {j['errors']} 个。")
-    L.append(f"- 并行：{report['workers']} 个 spawn 工作进程 × {report['threads']} 个线程（OMP_NUM_THREADS={report['omp_num_threads']}）；"
-             f"开始 {report['date_start']}，结束 {report['date_end']}，总用时 {report['wall_seconds'] / 60:.1f} 分钟（进程池 {report['pool_seconds'] / 60:.1f} 分钟）。")
+    vt = report.get("variant_threads") or {}
+    threads = f"{report['threads']} 个线程" + (f"（例外：{'，'.join(f'`{k}` {n} 个' for k, n in vt.items())}）" if vt else "")
+    if j["run"] == 0 and report.get("cached_only"):
+        L.append(f"- 本 JSON 由 `--cached-only` 从作业缓存汇总（{report['date_start']}，不拟合任何模型）；拟合发生在此前的各轮运行里，"
+                 f"每个作业的线程数：{threads}；各轮的进程数、起止时间见 `run.log` 与文末的运行记录。")
+    else:
+        L.append(f"- 并行：{report['workers']} 个 spawn 工作进程 × {threads}（OMP_NUM_THREADS={report['omp_num_threads']}）；"
+                 f"开始 {report['date_start']}，结束 {report['date_end']}，总用时 {report['wall_seconds'] / 60:.1f} 分钟（进程池 {report['pool_seconds'] / 60:.1f} 分钟）。")
     v = report["versions"]
     L.append(f"- 版本：源码 `{report['source']}`，Python {v['python']}，numpy {v['numpy']}，scipy {v['scipy']}，scikit-learn {v['sklearn']}（{v['all']}）。")
     L.append(f"- 命令：`{' '.join(report['argv'])}`")
@@ -766,7 +863,12 @@ def markdown(report: dict, fig_rel: str | None) -> str:
     L.append("| 变体 | 族 | 类 | 调参 | 网格 | 说明 |")
     L.append("| --- | --- | --- | --- | --- | --- |")
     for name, e in report["variants"].items():
-        grid = "—" if not e["grid"] else "；".join(f"`{k}` ∈ {{{', '.join(str(x) for x in vals)}}}" for k, vals in e["grid"].items())
+        axes = e.get("grid_axes") or {}
+        grid = "—" if not axes else "；".join(f"`{k}` ∈ {{{', '.join(str(x) for x in vals)}}}" for k, vals in axes.items())
+        if axes:
+            grid += f"（{e.get('n_configs')} 个配置）"
+        if e.get("grid_cut"):
+            grid += f"；规格网格中未跑的 {len(e['grid_cut'])} 个：" + "，".join(f"`{json.dumps(c, sort_keys=True)}`" for c in e["grid_cut"])
         L.append(f"| `{name}` | {e['family']} | `{e['model']}` | {'是' if e['tuned'] else '否'} | {grid} | {e['note']} |")
     L.append("")
     L.append("各表的外径档（N-104 选定的，读自其 JSON）：\n")
@@ -958,6 +1060,9 @@ def main() -> None:
     r.add_argument("--variants", default=None, help=f"comma-separated, default every registered one: {list(VARIANTS)}")
     r.add_argument("--workers", type=int, default=16)
     r.add_argument("--threads", type=int, default=2)
+    r.add_argument("--variant-threads", default=None, help="per-variant thread counts overriding --threads, e.g. mlp=1,mlp_paper=1")
+    r.add_argument("--cache", default=None, help="the job cache's directory name under SCRATCH (default jobs-<OUT_JSON stem>)")
+    r.add_argument("--cached-only", action="store_true", help="assemble the JSON from the caches; refuse to fit anything")
     r.add_argument("--pilot", action="store_true")
     r.add_argument("--dry-run", action="store_true")
     r.add_argument("--gp-cache", type=Path, default=N104_GP_CACHE, help="N-104's job cache, read only")
