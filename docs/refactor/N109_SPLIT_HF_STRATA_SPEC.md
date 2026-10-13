@@ -56,3 +56,14 @@ when it rebuilds -- that is expected. Branch `n109-split-hf-strata` in `/home/zz
 for the Record only (`git -C`, absolute paths; one commit; no merge, no push, no BACKLOG edit); the manifest change
 lives in the library, not in the repository. Commit message in the repository's style ending with
 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`. Report back in Chinese.
+
+## Record
+
+Done 2026-10-14 in the private library only (`/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-library/n28_v2/library.yaml`); no product code, no EMX, no row deleted. Full write-up (Chinese), scripts and raw answers: `/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-accept/n109_split_hf_strata/RESULT_CN.md`.
+
+- Backup `library.yaml.bak_20261013T174256Z` (UTC). Edited as text (comments and anchors kept) by `split_manifest.py`: 8 strata -> 16; each `_hf` part is a stratum `<stratum>_hf` with the base's generator, dims, nt_dim, steps and quantities (checked key by key with a YAML parse; `steps`/`quantities` are aliases of the base anchors where the base had anchors). The `_nt1` parts stay with their base. Base and `_hf` strata carry a `note` naming the two openings (8 um / 2 um). Deviation: the two tapped base notes' stale row counts ("231 rows", "261 rows") were reworded to "when adopted ... now 47 / 78 here and 200 / 183 in the _hf stratum" (the dataset cache key does not include `note`).
+- Rows (`lib.load` and an independent dims scan, duplicate groups 0 in all 16): ind_sym_ap 511 + _hf 83; ind_sym_m10 527 + 114; xfm_bs_ap 1576 + 635; xfm_bs_m10 1576 + 635; xfm_ms_ap 1400 + 225; xfm_ms_m10 1400 + 225; xfm_bs_ap_ct 78 + 183; xfm_bs_m10_ct 47 + 200 -- all as expected.
+- Calibrations before/after for the four base strata (22 columns): median_rel went down or stayed in all 22; 2-sigma coverage moved between -5.2 and +3.2 points (largest drop ind_sym_ap Qp@112, 34 scored rows left); k_scale varies without a pattern. Table in `RESULT_CN.md` section 3.
+- 80 GHz demonstration on the four inductor strata: the base strata's robust regions now rest on opening-8 data only (ind_sym_ap OD 66-88, W 4.2-9.9; ind_sym_m10 OD 60-84), the `_hf` strata answer OD 57-60 / 28-60 on their own (11 / 38 robust points); Qp@80 at OD 60 is 17.7 / 19.7 (_hf) against 23.5 (base) for both tables.
+- Experiment specs naming a split stratum (not edited): 61 specs with `library.stratum: xfm_bs_m10_ct` on `n28_v2` (llm_compare 53, n76_compare 5, n63_accept 2, t19_5_tap/l3_mixer_v2 1) now see 47 instead of 247 rows; list in `spec_users.txt`.
+- Surprise: the first run of `fit_calibrations.py` lacked a `__main__` guard, so spawned workers re-ran it; the orphans were killed by PID, and six of their inductor calibrations were refitted in a fresh cache and found bit-identical.
