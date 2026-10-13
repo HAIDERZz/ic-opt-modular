@@ -357,6 +357,51 @@ fitted in parallel processes sized from `hosts.local` (see
 [Compute](#compute)). `workers` and `threads` cap the fitting processes and
 the BLAS threads; a value above what that entry allows is refused.
 
+### A region as a pcell device's allowed combinations: `out=`
+
+```bash
+ic-opt call lib.region <library root> stratum=<stratum> \
+    'targets={"<quantity>@<f>": {"target": <a>, "tol": <t>}, "<quantity>@<f>": {"min": <c>}}' \
+    out=<file> [level=mean] [device=<id>]
+```
+
+A region is rarely a box: the geometries that meet an inductance window
+form a band (for every width, the outer diameters that give the
+inductance), and a spec states one range per variable. `out=` writes the
+grid points of the `robust` level (`level=mean`: of the mean level) to
+`<file>`, one geometry per row, in the grid's order: an
+`ic-opt-combinations-v1` document with `dims` (the stratum's, generator
+field names), `rows` (in the generator's units) and `source` (the
+library, the stratum, the level, the targets, when it was written). The
+answer gains `combinations` (`path`, `level`, `rows`), `device_block` and
+`variables_block`, and the command line prints the two blocks after the
+answer:
+
+- `device_block`, to paste under `devices:`: `id` (`device=`, else the
+  stratum's name), the stratum's `generator`, the library's `profile`,
+  the parts' port labels as `ports`, `fixed` -- every dim with one value
+  in the level (a band of single-turn designs at one spacing fixes
+  `spacing_um` and `turns`) and every other field the parts' devices fix
+  to one value (the metals, the ground fixture) --, `variables` mapping
+  each other dim to `<id>.<dim>`, and `combinations: <file>` (absolute).
+  A field the parts fix to different values is named in a comment line:
+  state the value the device takes.
+- `variables_block`, to paste under `variables:`: one variable per mapped
+  dim, the level's range on the region's grid step (turns by 1), its unit
+  as a comment.
+
+The blocks are a start, not a guarantee: check the id, the ports and the
+fixed fields (they are the library's parts', not necessarily the device
+the circuit needs), add the circuit's own sections, and read `--plan`:
+`device <id>: <n> allowed combinations of <variables> from <file> (<m>
+rows dropped by fixed <dim>=<value>)` and the valid points of the search
+space. The strategies then propose only the band's geometries, as they
+propose only a library device's rows; a value off its variable's grid, a
+dim the device neither maps nor fixes, or no row left is refused with
+what to change. The file is part of no identity: it says which points are
+proposed, not what a point evaluates to (README, "EM devices"). A level
+without a point writes nothing and is refused.
+
 ## 5c. Where to simulate next: `lib.densify`
 
 ```bash

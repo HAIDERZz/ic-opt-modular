@@ -104,6 +104,7 @@ ic-opt run signoff  PROJECT corner=tt budget=60 [total=N] top=5 [strategy=auto] 
 # total=N: the search advanced in batches (budget=10 total=40, then budget=20 total=40, ...): the design is sized for N,
 # a call whose budget is below total stops after the search, the call with budget=N runs the re-check (step 4)
 ic-opt run lib_refine PROJECT [device=ID] [steps=1] [n=8] [prefer=max:Qmin] [threads=N memory_gb=G] --plan   # after a run whose devices come from library tables: real EMX on the n geometries next to the best point's row the table lacks (predicted inside the run's window, ranked by prefer, preflighted), adopted into the row's part; the last line is the command that continues the run (docs/em/library.md 7c)
+ic-opt call lib.region LIBRARY stratum=S 'targets={...}' out=FILE [level=robust|mean] [device=ID]   # the region's robust (or mean) grid points as a pcell device's allowed combinations, then the devices: / variables: blocks to paste (devices[*].combinations: FILE); --plan says "device ID: N allowed combinations of ... from FILE" (docs/em/library.md 5b)
 ic-opt run my_recipe.py PROJECT key=value          # custom composition
 ic-opt call analyze.best PROJECT k=5               # any block, spec/store/observations filled in
 ic-opt advise PROJECT advice.yaml [--corners tt]   # advice for the next batches (step 7); --list; --revoke ID --reason TEXT

@@ -457,6 +457,33 @@ or none does; no `em` section is needed. `ic-opt doctor` prints `library:<device
 plan says `no EMX runs`, a point's device child records the row it took (`library_row`), and the digest and the report
 name it: [docs/em/library.md](docs/em/library.md), "Library devices in a circuit spec".
 
+A device the pcell draws may be held to the geometries a region of a library meets: `combinations` names a file of the
+combinations of its generator fields it may take, which `lib.region ... out=FILE` writes from the region's robust grid
+points and prints the device and variables blocks to paste ([docs/em/library.md](docs/em/library.md), 5b). A spec states
+one rectangular range per variable, while the geometries that meet an inductance window form a band (for every width,
+the outer diameters that give the inductance); with the file the strategies propose only the band's combinations, as
+they propose only a library device's rows, and EMX in the loop is not spent outside it:
+
+```yaml
+devices:
+  - id: ind
+    generator: clean_port_ind_sym
+    profile: demo_6m
+    ports: [P1, N1]
+    fixed: {spacing_um: 2.0, turns: 1, opening_um: 8.0, lead_length_um: 20.0, metal: "6", ground_fixture: {...}}
+    variables: {outer_diameter_um: ind.outer_diameter_um, width_um: ind.width_um}
+    combinations: region.json           # absolute, or relative to this spec's directory
+```
+
+A dim of the file the device maps in `variables` becomes that spec variable; one it holds in `fixed` keeps the rows at
+the fixed value; a dim that is neither, a variable the file lacks, a value off its variable's grid (the variable's
+`lower + k * step`) or no row left is refused with what to change. `--plan` prints per such device `device <id>: <n>
+allowed combinations of <variables> from <file> (<m> rows dropped by fixed <dim>=<value>)` and the valid points of the
+search space. The file is part of no identity (not of the spec's fingerprint, not of the pipeline's): it restricts which
+points the strategies propose, not what a point evaluates to, so the observations of a run keep their meaning whether the
+file is added, changed or removed, as with `budget`. A run reads it once; a library device takes none (its combinations
+are its table's rows).
+
 Every family's fields, constraints and retired names: [docs/em/devices.md](docs/em/devices.md) (generated from the config models).
 
 A **device library** (a directory of em_only run stores plus `library.yaml`) answers
