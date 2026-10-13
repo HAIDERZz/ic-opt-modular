@@ -28,6 +28,7 @@
 非页面产物：`region_acceptance.py` + `region_acceptance_40g.json` / `region_acceptance_40g_t15.json`（T14.4 与 T15.8 的验收记录）；
 `xfm_bs_region_40g.json`（原型输出，C3 对照基准）；`xfm_srf_jump_fig.py` → `figs/xfm_srf_jump.png`（变压器 SRF_p 跳变配图）。
 `rbf_mean_model_study.py`（N-104：scipy RBF 插值器接在 GP 的接口后作均值模型，与库的 GP 在六张表上用库自己的两种留出比点误差；`run` 拟合，`report` 出 Markdown 与图）→ `rbf_mean_model_study.json` + `figs/RBF_MEAN_MODEL_STUDY_p90.png`（无页面；中文结果 `ic-opt-accept/n104_rbf_study/RESULT_CN.md`，仓库外）。
+`regressor_study.py` + `regressor_base.py`、`regressors_kernel.py`、`regressors_trees.py`、`regressors_neural.py`（N-107：PACOSYT 比较过的其他回归器——它的 GPR 配置、核岭回归、近邻、随机森林、梯度提升（scikit-learn 与 LightGBM）、MLP 与论文的 ANN——各自只在训练行上做内层交叉验证调参，接在库的模型接口后，与库的 GP 在 N-104 的折上比点误差；`run` 拟合（可分轮写同一作业缓存，`--cached-only` 汇总），`report` 出 Markdown 与图）→ `regressor_study.json` + `figs/REGRESSOR_STUDY_p90.png`（无页面；中文结果 `ic-opt-accept/n107_regressor_study/RESULT_CN.md`，仓库外）。
 
 ## pcell_plan/（建库与 pcell）
 
