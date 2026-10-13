@@ -227,7 +227,7 @@ def call(
     """Call one block; spec / executor / store / observations are filled in from the project (a library root fills in the library,
     opened with the call's cache_dir= if any; a process profile directory -- one holding rule.yaml -- the profile, and with
     --ssh-profile that host's executor, through which em.validate_profile reads proc=). A report that failed (``ok`` false)
-    exits 1."""
+    exits 1. ``lib.region ... out=FILE`` prints the device and variables blocks to paste into a spec after the answer."""
     if name not in blocks.REGISTRY:
         typer.echo(f"unknown block {name!r}; run `ic-opt blocks`", err=True)
         raise typer.Exit(code=2)
@@ -254,6 +254,10 @@ def call(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(_render(result))
+    if name == "lib.region" and isinstance(result, dict) and "device_block" in result:     # out= given (N-106)
+        from ic_opt.library.combinations import printed
+
+        typer.echo("\n" + printed(result), nl=False)
     if getattr(result, "ok", True) is False:                        # env.doctor, em.validate_profile: a failed check fails the command
         raise typer.Exit(code=1)
 

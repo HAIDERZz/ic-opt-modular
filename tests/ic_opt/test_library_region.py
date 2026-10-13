@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 import shutil
 
 import numpy as np
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from ic_opt.blocks import library as library_blocks
@@ -308,6 +310,112 @@ def test_relax_widens_the_coarse_pass_and_the_answer_echoes_it(lib, tmp_path, mo
     assert json.loads(out.stdout)["grid"]["relax"] == 0.3
     refused = CliRunner().invoke(app, [*args, "relax=-1"])
     assert refused.exit_code == 2 and "relax is the fraction" in refused.output
+
+
+# -- N-106: out= writes a level's grid points as a pcell device's allowed combinations, and the blocks to paste -----------
+
+SINGLE_TURN = {"Lp_lf": {"min": 0.6e-9, "max": 0.9e-9}}       # met by single-turn designs only: spacing 2 and turns 1 hold
+IND_STEPS = {"outer_diameter_um": 5, "width_um": 0.5, "spacing_um": 0.5}
+
+
+@pytest.fixture(scope="module")
+def ind_lib(tmp_path_factory):
+    return query.Library(build_library(tmp_path_factory.mktemp("indcombinations")), limits=LOCAL)
+
+
+def ind_region(ind_lib, out, **kw):
+    return library_blocks.region(ind_lib, "ind_demo", kw.pop("targets", SINGLE_TURN), steps=IND_STEPS, pool_size=512, workers=1,
+                                 sample_size=10**6, out=None if out is None else str(out), **kw)
+
+
+@pytest.fixture(scope="module")
+def written(ind_lib, tmp_path_factory):
+    out = tmp_path_factory.mktemp("written") / "region.json"
+    return ind_region(ind_lib, out), out
+
+
+def test_out_writes_exactly_the_robust_grid_points_in_the_answer_s_order(written, ind_lib):
+    answer, out = written
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    dims = ind_lib.dataset("ind_demo").dims
+    robust = [tuple(p["params"][d] for d in dims) for p in answer["points_sample"] if p["level"] == "robust"]
+    assert doc["format"] == "ic-opt-combinations-v1" and doc["dims"] == dims
+    assert [tuple(row) for row in doc["rows"]] == robust and len(set(robust)) == len(robust) == answer["levels"]["robust"]["count"] > 10
+    assert all(type(row[dims.index("turns")]) is int for row in doc["rows"])           # turns by level
+    assert {row[dims.index("turns")] for row in doc["rows"]} == {1} and {row[dims.index("spacing_um")] for row in doc["rows"]} == {2.0}
+    assert answer["combinations"] == {"path": str(out), "level": "robust", "rows": len(robust)}
+    assert {k: doc["source"][k] for k in ("library", "stratum", "level", "targets")} == {
+        "library": str(ind_lib.root), "stratum": "ind_demo", "level": "robust", "targets": SINGLE_TURN}
+    assert list(answer) == KEYS + ["combinations", "device_block", "variables_block"] and plain(answer)
+
+
+def test_the_device_block_fixes_the_one_valued_dims_and_the_parts_shared_fields_and_maps_the_others(written):
+    from tests.ic_opt.test_library import FIXTURE
+
+    answer, out = written
+    (block,) = yaml.safe_load(answer["device_block"])
+    assert block == {"id": "ind_demo", "generator": "clean_port_ind_sym", "profile": "demo_6m", "ports": ["P1", "N1"],
+                     "fixed": {"spacing_um": 2.0, "turns": 1, "opening_um": 8.0, "lead_length_um": 20.0, "metal": "6",
+                               "ground_fixture": FIXTURE},
+                     "variables": {"outer_diameter_um": "ind_demo.outer_diameter_um", "width_um": "ind_demo.width_um"},
+                     "combinations": str(out)}
+    ranges = answer["levels"]["robust"]["ranges"]
+    assert yaml.safe_load(answer["variables_block"]) == [
+        {"name": f"ind_demo.{d}", "kind": "continuous_step", "lower": f"{ranges[d][0]:g}", "upper": f"{ranges[d][1]:g}",
+         "step": f"{IND_STEPS[d]:g}"} for d in ("outer_diameter_um", "width_um")]
+    assert all(line.endswith("   # um") for line in answer["variables_block"].splitlines())
+
+
+def test_a_spec_built_from_the_blocks_allows_one_combination_per_robust_point(written):
+    from ic_opt import space
+    from ic_opt.library import combinations, link
+    from ic_opt.spec import Spec
+    from tests.ic_opt.fakes import minimal_spec
+
+    answer, out = written
+    d = minimal_spec()
+    d["devices"] = yaml.safe_load(answer["device_block"])
+    d["variables"] = d["variables"] + yaml.safe_load(answer["variables_block"])
+    spec = Spec.model_validate(d)
+    link.clear()
+    (table,) = space.tables(spec)
+    rows = json.loads(out.read_text(encoding="utf-8"))["rows"]
+    assert table.label == "device ind_demo (combinations region.json)" and len(table.levels) == len(rows)
+    for od, w, _, _ in rows:
+        space.check(spec, {"F": "20", "W": "0.6u", "ind_demo.outer_diameter_um": f"{od:g}", "ind_demo.width_um": f"{w:g}"})
+    assert space.grid_size(spec) == 6 * 4 * len(rows)
+    assert combinations.lines(spec)[0] == (f"device ind_demo: {len(rows)} allowed combinations of ind_demo.outer_diameter_um, "
+                                           f"ind_demo.width_um from {out} (0 rows dropped by fixed spacing_um=2, turns=1)")
+
+
+def test_level_mean_and_device_say_what_out_writes_and_an_empty_level_writes_nothing(ind_lib, tmp_path):
+    answer = ind_region(ind_lib, tmp_path / "mean.json", level="mean", device="L1")
+    (block,) = yaml.safe_load(answer["device_block"])
+    assert answer["combinations"]["level"] == "mean" and answer["combinations"]["rows"] == answer["levels"]["mean"]["count"]
+    assert block["id"] == "L1" and set(block["variables"].values()) == {"L1.outer_diameter_um", "L1.width_um"}
+    assert json.loads((tmp_path / "mean.json").read_text(encoding="utf-8"))["source"]["level"] == "mean"
+    with pytest.raises(ValueError, match=re.escape("level= and device= say what out= writes: give out=<file> too")):
+        ind_region(ind_lib, None, level="mean")
+    with pytest.raises(ValueError, match="level is robust or mean, got 'median'"):
+        ind_region(ind_lib, tmp_path / "x.json", level="median")
+    with pytest.raises(ValueError, match=re.escape("the robust level holds no grid point, so there is no combination to "
+                                                   "write (the mean level holds 0; level=mean, or other targets)")):
+        ind_region(ind_lib, tmp_path / "empty.json", targets={"Lp_lf": {"min": 5e-9, "max": 6e-9}})
+    assert not (tmp_path / "empty.json").exists()
+
+
+def test_call_lib_region_out_prints_the_blocks_after_the_answer(written, ind_lib, tmp_path, monkeypatch):
+    use_site(monkeypatch, tmp_path / "site.yaml", local=LOCAL)
+    args = ["call", "lib.region", str(ind_lib.root), "stratum=ind_demo", f"targets={json.dumps(SINGLE_TURN)}",
+            f"steps={json.dumps(IND_STEPS)}", "pool_size=512", "workers=1"]
+    result = CliRunner().invoke(app, [*args, f"out={tmp_path / 'c.json'}", "device=L1"])
+    assert result.exit_code == 0, result.output
+    head, sep, tail = result.stdout.partition("\n# paste under devices:")
+    body = json.loads(head)
+    assert sep and body["combinations"]["path"] == str(tmp_path / "c.json") and body["combinations"]["rows"] == written[0]["combinations"]["rows"]
+    assert tail == (f" (lib.region out={tmp_path / 'c.json'}; edit the id and the fixed fields)\n{body['device_block']}\n"
+                    f"# paste under variables:\n{body['variables_block']}")
+    assert "# paste under" not in CliRunner().invoke(app, args).stdout                  # without out=: the answer alone
 
 
 # -- T15.3: the work is sized by the library's limits -------------------------------------------------------------------

@@ -63,7 +63,7 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
            pool_size: int = 32768, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, relax: float = RELAX,
            group_by: list[str] | None = None, trend: tuple[str, str] | None = None, n: int = 8, min_spacing: float = 0.05,
            verify_build: bool = False, sample_size: int = 5000, threads: int | None = None,
-           workers: int | None = None) -> dict:
+           workers: int | None = None, level_points: str | None = None) -> dict:
     """The region of ``stratum`` whose predictions meet ``targets`` (see the module docstring), as plain JSON data.
 
     ``steps`` gives grid steps for some or all continuous dims (multiples of the manifest steps); ``group_by`` names
@@ -72,7 +72,12 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     windows of the coarse pass that brackets the grid. ``threads`` (the BLAS threads of fitting and
     prediction) and ``workers`` (the fitting processes) are explicit caps within the library's limits, refused above
     them; by default both follow from the limits (``Library.models``, ``query.blas_threads``), and an explicit
-    OMP_NUM_THREADS, OPENBLAS_NUM_THREADS or MKL_NUM_THREADS lowers the threads (``query.omp_cap``)."""
+    OMP_NUM_THREADS, OPENBLAS_NUM_THREADS or MKL_NUM_THREADS lowers the threads (``query.omp_cap``).
+    ``level_points`` (``robust`` or ``mean``, N-106) adds ``level_points`` at the end of the answer: every grid point of
+    that level, in the grid's order, ``{"level", "dims", "rows"}`` -- what ``lib.region out=`` writes as a pcell device's
+    allowed combinations (``ic_opt.library.combinations``)."""
+    if level_points not in (None, "robust", "mean"):
+        raise ValueError(f"level is robust or mean, got {level_points!r}")
     marks = [time.perf_counter()]
     ds = library.dataset(stratum)
     stated = suggest.parse_targets(targets)
@@ -135,6 +140,9 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
         marks.append(time.perf_counter())
     out["seconds"] = {**dict(zip(STAGES, (round(b - a, 3) for a, b in itertools.pairwise(marks)))), "total": round(marks[-1] - marks[0], 3)}
     out["notes"] = notes
+    if level_points is not None:
+        out["level_points"] = {"level": level_points, "dims": list(ds.dims),
+                               "rows": x[robust if level_points == "robust" else mean].tolist()}
     return out
 
 

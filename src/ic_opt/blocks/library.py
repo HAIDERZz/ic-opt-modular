@@ -25,6 +25,7 @@ import math
 from pathlib import Path
 
 from ic_opt.library import cache as _cache
+from ic_opt.library import combinations as _combinations
 from ic_opt.library import index as _index
 from ic_opt.library import query as _query
 from ic_opt.library import region as _region
@@ -140,7 +141,8 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
            levels_per_dim: int = 20, max_points: int = 2_000_000, pool_size: int = 32768, seed: int = 0, k: float = 2.0,
            group_by: str | list[str] | None = None, trend: str | None = None, n: int = 8, verify_build: bool = False,
            sample_size: int = 5000, threads: int | None = None, workers: int | None = None,
-           rel_sigma_max: float | None = None, relax: float = _region.RELAX, cache_dir: str | None = None) -> dict:
+           rel_sigma_max: float | None = None, relax: float = _region.RELAX, cache_dir: str | None = None,
+           out: str | None = None, level: str = "robust", device: str | None = None) -> dict:
     """The part of the geometry space whose predictions meet ``targets``: sweep ranges, not ``lib.suggest``'s best few points.
 
     Two levels: ``robust`` -- the calibrated k-sigma interval lies inside every window (``lib.suggest``'s test; centre a
@@ -160,15 +162,30 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
     hosts.local (above it they are refused; by default they follow from it). ``cache_dir`` holds the library's cache
     files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name). The answer
     is strict JSON, every non-finite number null: ``targets[].upper`` is null except for windows.
+
+    ``out`` (N-106) writes the grid points of one level -- ``level``, ``robust`` unless ``mean`` -- as a pcell device's
+    allowed combinations (``ic_opt.library.combinations``: a spec's ``devices[*].combinations`` names the file) and adds
+    ``combinations`` (``{path, level, rows}``), ``device_block`` (the device to paste under ``devices:``, id ``device``
+    or the stratum's name; its fixed fields and id are the user's to check) and ``variables_block`` (its variables, the
+    level's ranges on the region's grid steps, to paste under ``variables:``); ``ic-opt call`` prints both after the
+    answer. A level without a point writes nothing and is refused.
     """
     for name, value in (("targets", targets), ("steps", steps)):
         if value is not None and not isinstance(value, dict):
             raise ValueError(f"{name}: expected a JSON object, got {value!r}")
-    return _strict_json(_region.region(
-        _lib(library, cache_dir), stratum, targets, objective, steps=steps, levels_per_dim=int(levels_per_dim), max_points=int(max_points),
+    if not out and (device is not None or level != "robust"):
+        raise ValueError("level= and device= say what out= writes: give out=<file> too")
+    lib = _lib(library, cache_dir)
+    answer = _region.region(
+        lib, stratum, targets, objective, steps=steps, levels_per_dim=int(levels_per_dim), max_points=int(max_points),
         pool_size=int(pool_size), seed=int(seed), k=float(k), rel_sigma_max=_ceiling(rel_sigma_max), relax=float(relax),
         group_by=_names(group_by), trend=_trend(trend), n=int(n), verify_build=bool(verify_build), sample_size=int(sample_size),
-        threads=None if threads is None else int(threads), workers=None if workers is None else int(workers)))
+        threads=None if threads is None else int(threads), workers=None if workers is None else int(workers),
+        level_points=str(level) if out else None)
+    if out:
+        answer.update(_combinations.from_region(lib, stratum, answer, out, targets=targets, device=device))
+        del answer["level_points"]
+    return _strict_json(answer)
 
 
 def densify(library: _query.Library | str | Path, stratum: str, n: int, quantities: str | list[str] | None = None,

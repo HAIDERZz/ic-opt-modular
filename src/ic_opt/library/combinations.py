@@ -31,17 +31,22 @@ from __future__ import annotations
 
 import json
 import math
+import textwrap
 import threading
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
+import yaml
 
 from ic_opt import space
 from ic_opt.library.link import LinkError
 
 if TYPE_CHECKING:
+    from ic_opt.library.query import Library
     from ic_opt.spec import Device, Spec
 
 FORMAT = "ic-opt-combinations-v1"
@@ -134,6 +139,68 @@ def clear() -> None:
     with _LOCK:
         _FILES.clear()
         _RESOLVED.clear()
+
+
+# -- lib.region out= ------------------------------------------------------------------------------------------------------
+
+def from_region(library: Library, stratum: str, answer: dict, out: str | Path, *, targets: dict,
+                device: str | None = None) -> dict:
+    """``lib.region ... out=``: write the grid points of one level (``answer["level_points"]``, ``region``'s) as a
+    combinations file at ``out`` and say how a spec takes it. Returns ``combinations`` (``{path, level, rows}``),
+    ``device_block`` -- the YAML of a pcell device to paste under ``devices:``: ``id`` (``device``, else the stratum's
+    name), the stratum's ``generator``, the library's ``profile``, the parts' port labels as ``ports``, ``fixed`` holding
+    every dim with one value in the level and every other field the parts' devices fix to one value, ``variables`` mapping
+    each other dim to ``<id>.<dim>``, and ``combinations`` -- and ``variables_block``, the YAML of those variables to paste
+    under ``variables:``: the level's range per dim on the region's grid step (turns by 1), each with its unit as a
+    comment. Both are indented as the repository's specs indent a list (``devices:`` then ``  - id: ...``). The blocks are
+    a start, not a guarantee: a field the parts do not share is named in a comment, for the user to state."""
+    from ic_opt.library import dataset
+    from ic_opt.spec import DEFAULT_PLUGIN
+
+    found = answer["level_points"]
+    level, dims, rows = found["level"], list(found["dims"]), found["rows"]
+    if not rows:
+        other = "mean" if level == "robust" else "robust"
+        raise ValueError(f"lib.region out=: the {level} level holds no grid point, so there is no combination to write "
+                         f"(the {other} level holds {answer['levels'][other]['count']}; level={other}, or other targets)")
+    ds = library.dataset(stratum)
+    rows = [[round(float(v)) if d == ds.nt_dim else float(v) for d, v in zip(dims, row, strict=True)] for row in rows]
+    path = write(out, dims, rows, {"library": str(library.root), "stratum": stratum, "level": level, "targets": targets,
+                                   "written": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")})
+    ident = device or stratum
+    columns = {d: [row[j] for row in rows] for j, d in enumerate(dims)}
+    single = {d: values[0] for d, values in columns.items() if max(values) - min(values) <= TOLERANCE}
+    parts = list(dataset.part_devices(library.root, library.manifest.strata[stratum]).values())
+    first = parts[0]
+    shared = {k: v for k, v in first.fixed.items() if k not in dims and all(p.fixed.get(k) == v for p in parts)}
+    unshared = {k: sorted({json.dumps(p.fixed.get(k)) for p in parts}) for p in parts for k in p.fixed
+                if k not in dims and k not in shared}
+    block = {"id": ident, "generator": library.manifest.strata[stratum].generator}
+    if first.plugin != DEFAULT_PLUGIN:
+        block["plugin"] = first.plugin
+    block.update({"profile": library.manifest.process_profile, "ports": list(first.ports), "fixed": {**single, **shared},
+                  "variables": {d: f"{ident}.{d}" for d in dims if d not in single}, "combinations": str(path)})
+    device_block = textwrap.indent(yaml.safe_dump([block], sort_keys=False, default_flow_style=None, width=120), "  ")
+    if unshared:
+        device_block += ("  # not in fixed -- the parts differ, state the value this device takes: "
+                         + "; ".join(f"{k} ({', '.join(values)})" for k, values in unshared.items()) + "\n")
+    variables = []
+    for d in dims:
+        if d in single:
+            continue
+        integer = d == ds.nt_dim
+        step = 1 if integer else answer["grid"]["steps"][d]
+        variables.append(f'  - {{name: {ident}.{d}, kind: {"integer" if integer else "continuous_step"}, '
+                         f'lower: "{_text(min(columns[d]))}", upper: "{_text(max(columns[d]))}", step: "{_text(step)}"}}'
+                         f"   # {'um' if d.endswith('_um') else 'count'}")
+    return {"combinations": {"path": str(path), "level": level, "rows": len(rows)}, "device_block": device_block,
+            "variables_block": "\n".join(variables) + ("\n" if variables else "")}
+
+
+def printed(answer: dict) -> str:
+    """The blocks of ``lib.region out=`` as the command line prints them after the answer."""
+    return (f"# paste under devices: (lib.region out={answer['combinations']['path']}; edit the id and the fixed fields)\n"
+            f"{answer['device_block']}\n# paste under variables:\n{answer['variables_block']}")
 
 
 # -- internals ------------------------------------------------------------------------------------------------------------
@@ -233,5 +300,10 @@ def _plain(value):
     return value if isinstance(value, int) and not isinstance(value, bool) else float(value)
 
 
+def _text(value: float) -> str:
+    """A number as a grid text without exponent or trailing zeros: 52.0 -> "52", 0.4 -> "0.4"."""
+    return format(Decimal(repr(round(float(value), 9))).normalize(), "f")
 
-__all__ = ["FORMAT", "LABEL", "TOLERANCE", "Combined", "clear", "lines", "read", "resolve", "tables", "write"]
+
+__all__ = ["FORMAT", "LABEL", "TOLERANCE", "Combined", "clear", "from_region", "lines", "printed", "read", "resolve",
+           "tables", "write"]
