@@ -220,6 +220,15 @@ T17 的第 2 步（评估调度与多 corner）、摘要第 3 版、饱和裕量
 | N-107 | 八个对手（论文的 GPR 配置、核岭回归、最近邻、随机森林、梯度提升、LightGBM、调参 MLP、论文原样的 ANN）各自在同一输入输出与 N-104 的折上做内层交叉验证调参，比点误差（脚本 `reports/library_query/regressor_study.py` + `regressor_base.py` + 三个族模块；结果 `regressor_study.json`、`figs/REGRESSOR_STUDY_p90.png`；证据 `ic-opt-accept/n107_regressor_study/`；三个 Opus 子代理分工，两轮共 5283 作业，96 线程约 59 分钟） | **已做**。随机留出（库自己的校准协议，52 格）：最好的对手 更好 5 / 持平 20 / GP 更好 27，GP 的 p90 在 34 格最低；5 个胜格全是 mlp，在变压器表的 Q 峰与 SRF 列（GP p90 2–6.5%，mlp 约一半）。整档留出外径（48 格）：17 / 28 / 3，胜者 mlp 14 格、krr 10 格，集中在 GP 整档误差大的列（单圈表 Qp_peak p90 33–37% 对 mlp 2–3%，Qp@28 27–28% 对 3%，Lp_lf 16/9% 对 krr 1.3/1.5%；多圈表 SRF 22–27% 对 mlp 4%）；GP 在 Ls@112 上反而好 2.6–3.3 倍。树模型（rf/gbm/lgbm）一格未胜且整档留出 p90 中位 31%（分段常数）；论文的 GPR 配置全线落败（长度尺度停在下界）；最近邻全败。代价：mlp 单作业中位 101 s（单线程）、gbm 98 s、GP 38 s（最长 747 s）。注意：从八个对手里挑最好对对手有利；MLP 无区间、结果随线程数变、只跑了一个随机种子 |
 | 结论 | GP 作为默认与校准的载体不变：在库的工作协议上它最优或持平 47/52 列，且只有它给校准区间。但 MLP 在 Q 峰、Q@f0、多圈 SRF 这几类列上表现出更高的上限，尤其是格点之间 | 候选 **N-108**（待拍板，零 EMX）：对这几类列试"MLP 均值 + GP 残差"的组合（MLP 作均值函数，GP 拟合残差并照旧给区间与校准），在库的留出与整档留出上看是否同时拿到 MLP 的均值和 GP 的区间；多个随机种子；若成立再考虑作为 `Quantity.model` 的一种 |
 
+## 0.19 N-105 / N-106 / N-108（用户 2026-10-13 "执行下一步，两个小事的都执行"）
+
+| # | 事项 | 状态 |
+| --- | --- | --- |
+| N-105 | `lib.region` 的 `measured` 漏掉扫频内无谐振（SRF 为空）的实测行 | **已做**（3a5c7f9）：SRF 类目标无上端且行的扫频上限不低于下限时算满足，答案加 `above_sweep: {量: 扫频上限}`；`lib.suggest` 本就按 `srf_floors` 这样排，加测试钉住；58→64 测试。真实复跑 80 GHz 演示：ap 表实测命中 0→4、m10 表 0→12（`region_demo_80g/RESULT_CN.md`） |
+| N-106 | region 的稳健格点作为 pcell 器件的允许组合表；输出可粘贴的 spec 器件段与变量段 | **已做**（3400288；规格 `N106_REGION_COMBINATIONS_SPEC.md`）：`Device.combinations: FILE`（不进任何指纹，只限制提点；与 `library` 互斥；相对路径按 spec 目录），`library/combinations.py` 建表并经 `link.tables` 进 `space.tables`，`--plan` 打印 `device <id>: n allowed combinations ... (m rows dropped by fixed ...)` 与 `search space: n valid points (the variables' grids hold N)`；`lib.region out= [level=] [device=]` 写文件并打印 `device_block` / `variables_block`；228→251 测试、录制回放不变；真实检查（`ic-opt-accept/n106_region_combinations/`）：28 个稳健点写出、粘贴后 `--plan` 显示 168/1008 有效点、12 个 OpenBox 提议全落在文件内。注意：环内 EMX 的 spec 仍由 `auto` 取 `openbox_gp_eic`（metric_gp 不接环内 EMX，既有规则） |
+| N-108 | MLP 作均值、库的 GP 拟合其残差（规格 `N108_MLP_GP_HYBRID_SPEC.md`，结果 `mlp_gp_hybrid_study.json` + 两图，证据 `ic-opt-accept/n108_mlp_gp_hybrid/`；64 进程 × 1 线程 95.7 分钟，3228 作业 0 错） | **已做，结论：不采用**。24 列里只有 4 列（xfm_bs_ap 的 Qp_peak / SRF / Qp@28、xfm_bs_m10 的 SRF）同时满足点误差、区间覆盖、种子稳定三条。点误差保住了 MLP 的水平（对 GP：随机留出 11 好 13 平 0 差，整档留出 16/3/3；对 MLP：随机留出 11/13/0，整档 3/19/0），但区间不可用：校准前 2σ 覆盖只有 10/24 列与 GP 相差 ≤0.05（ind / xfm_ms 上 0.54–0.89 对 GP 0.91–0.96），校准后整档覆盖 ≥0.90 只有 12/22 格（GP 20/22），`k_scale` 在 16 列达 1.4–30；整档留出上种子间 p90 极差 ≥1.5 的 9 列。根因判断：残差 GP 只见到 MLP 在训练行上的残差（比留出误差小），σ 偏窄；整档留出时残差 GP 退回均值，混合=MLP。GP 仍是默认 |
+| 候选 N-109 | **库里几何完全相同、数值不同的行**（N-108 发现，`n108_mlp_gp_hybrid/dup_rows.json`）：电感与单圈变压器表每列有 2–8 组，都是 `_hf` 高频段部件与基础部件重叠的几何（如 ind_sym_ap 外径 60 µm 单匝 5 对）；组内差 Lp_lf 6–7%、Qp_peak 16–23%、SRF 7–12%、Qp@28 11–14%、Qp@112 17–31%；xfm_ms 无此情况 | **待拍板**：同一几何两次 EMX 为何不一致（高频段部件与基础部件的 EMX 设置 / 几何代际 / 网格是否不同需查）；库是否去重或把来源作为输入。它直接影响这些列的模型精度上限 |
+
 ## 1. 已拍板事项（2026-09-25）
 
 | # | 事项 | 决定 | 落点 |
