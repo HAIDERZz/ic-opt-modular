@@ -192,6 +192,18 @@ T17 的第 2 步（评估调度与多 corner）、摘要第 3 版、饱和裕量
 
 全量门禁（含录制回放）全绿：非 pcell 1 149 / 12 跳过，pcell 1 118 / 1；main @ 890aa8a。这批改变了所有 Spectre / EM-circuit pipeline 指纹，应随 0.8.1 发布说明一起说明。
 
+## 0.16 发布 0.8.1（用户 2026-10-13 答复"先发 0.8.1"）
+
+| # | 事项 | 状态 |
+| --- | --- | --- |
+| RL-1 | 脱敏复查：自 `v0.8.0` 以来新增的行、wheel、sdist | 已做：`docs/refactor` 之外新增 2 592 行，工艺名 / 私有表名 / 工作站路径 / 层号对的扫描只命中测试里的占位路径 `/site/demo.proc`；wheel 与 sdist 的命中全部在自 0.8.0 起一行未改的 pcell 文件里（`git diff v0.8.0..v0.8.1 -- src/ic_opt/em/pcell` 为空），与 0.8.0 产物逐条相同；wheel 不含 `benchmarks/`、`docs/` |
+| RL-2 | 与 0.8.0 的兼容性 | 已做：0.8.0 记录的 23 个真实工程加 `llm_compare` 的 3 个（N-96…N-98 开发代码写出），发布代码重算 spec 指纹全部相同（26 个，0 个不同；`l3_mixer_v2` 的存储另有 16 行 `lib_refine` 写入的器件部件行，带部件 spec 的指纹，与此无关）。**流水线指纹按 N-99 全部改变**：旧观测作为历史保留、不再被复用，`optimize` / `signoff` 续跑不重仿，`fix_run` 旧点会重仿；0.8.0 的 store 无需迁移，发布说明第 1 条写明 |
+| RL-3 | 版本号（`pyproject` / `__init__` / README）、`RELEASE_NOTES_v0.8.1.md` | 已做（`ccf4296`） |
+| RL-4 | 测试与安装 | 已做：12 组门禁全部退出码 0（非 pcell 1 149 通过 / 12 跳过；pcell 有私有工艺文件 1 118 通过 / 1 跳过；无私有工艺文件 484 通过 / 635 跳过）；`ruff check src tests benchmarks docs/refactor/reports` 通过；干净环境（`uv venv` + wheel 的 `[em]`）安装 PASS：`ic-opt 0.8.1`，80 个模块可导入，摘要版本 5、`WAVEFORM_PRECISION %.17g`、`optimize` / `signoff` 的 `total`、`Deck.describe`、`corner.worst_values` 在 |
+| RL-5 | 标签、推送、GitHub Release | 已做（Claude，2026-10-13）：`git push origin main`（5a7a91c → ccf4296）、`git push origin v0.8.1`、`gh release create v0.8.1 -R HAIDERZz/ic-opt-modular --verify-tag`（wheel + sdist + 校验和；第一次调用遇 GitHub API 网络错误未建成，第二次建成）；下载后 `sha256sum -c` 两项成功。页面 https://github.com/HAIDERZz/ic-opt-modular/releases/tag/v0.8.1 。发布记录 `ic-opt-accept/release_v0.8.1/RELEASE_RECORD_CN.md`（不在仓库里） |
+
+0.8.1 = N-96 … N-100（0.14 的两项合入与 0.15 的四项修复）。0.15 留给用户的两项（`fix_run` 对 deck 已变的旧点是否额外告警；`migrate-store` 是否保留 deck 类流水线的旧印记）与 0.14 的三个小项仍待拍板。后续新代码应升 0.8.2 或 0.9.0。
+
 ## 1. 已拍板事项（2026-09-25）
 
 | # | 事项 | 决定 | 落点 |
