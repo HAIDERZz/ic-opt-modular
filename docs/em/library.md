@@ -345,7 +345,11 @@ no model answers; `group_by`, the counts and the other dims' ranges for
 every combination of the named dims; `trend`, one quantity's min, median
 and max along one dim over the points meeting every other target;
 `candidates` in `lib.suggest`'s shape; the `measured` rows that already
-meet every target; and a `points_sample` to plot. The per-dim ranges are
+meet every target; and a `points_sample` to plot. A `measured` row with no
+resonance in its sweep counts for an SRF minimum that lies at or below its
+sweep's end, as `lib.suggest` ranks it: its SRF value is null and `above_sweep`
+gives the sweep's end that settled it (`{"SRF_p": 250e9}`, in Hz), while a
+maximum, a window or a target on SRF is not met that way. The per-dim ranges are
 projections. The dims are correlated (a width leaves a short stretch of
 diameters), so take a sweep from the `group_by` rows, not from the ranges
 alone. Fitted models are cached (see [Cache](#cache)); the uncached ones are

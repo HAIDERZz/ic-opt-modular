@@ -24,7 +24,9 @@ the real devices inside those windows form a region of the geometry space, and i
 6. summaries: counts and per-dim ranges per level, the count meeting each target alone (the smallest binds),
    whether the region reaches the library's coverage, conditional ranges per ``group_by`` combination, one
    quantity's trend along one dim, diversified candidates, the measured rows that already meet every target, and a
-   seeded sample of points to plot.
+   seeded sample of points to plot. A measured row with no resonance in its sweep meets an SRF minimum the sweep's end
+   reaches (its resonance lies above the sweep, as ``suggest`` treats it): its SRF stays null and ``above_sweep`` gives
+   the stop frequency that settled it.
 
 The answer echoes what its levels mean: ``k``, the interval half-width in sigmas behind ``robust``, and
 ``rel_sigma_max``, the confidence ceiling each quantity was held to (the call's, else the quantity's in
@@ -401,11 +403,25 @@ def _candidates(library: query.Library, stratum: str, x: np.ndarray, pred: dict,
     return out, rejected
 
 
+def _settled_by_sweep_end(row: dataset.Row, t: suggest.Target) -> bool:
+    """Whether the end of ``row``'s sweep settles goal ``t`` (N-105): ``t`` is on an SRF and has no upper end (a minimum, or a
+    window or target reaching +inf), the row shows no resonance in its sweep (its value is missing), and the sweep ends at or
+    above the goal's lower end -- the resonance lies above the sweep, so above the bound. A goal with an upper end is not
+    settled so: a resonance somewhere above the sweep says nothing about an upper bound. ``suggest`` ranks such a row the
+    same way (``srf_floors``' stop for a measured row without a resonance)."""
+    low, high = t.window()
+    return t.quantity.startswith("SRF") and high == np.inf and row.values.get(t.quantity) is None and row.stop_hz >= low
+
+
 def _hits(ds: dataset.Dataset, goals: list[suggest.Target]) -> np.ndarray:
     """Per row, whether its measured values meet every goal (``satisfy`` on the measurements); a row without a value for
-    some goal quantity does not."""
-    values = {t.quantity: ds.values(t.quantity) for t in goals}
-    return np.all([np.isfinite(v) for v in values.values()], axis=0) & suggest.satisfy({q: {"value": v} for q, v in values.items()}, goals, "mean")
+    some goal quantity does not, except for a goal its sweep's end settles (``_settled_by_sweep_end``)."""
+    ok = np.ones(len(ds.rows), dtype=bool)
+    for t in goals:
+        v = ds.values(t.quantity)
+        met = np.isfinite(v) & suggest.satisfy({t.quantity: {"value": v}}, [t], "mean")
+        ok &= met | np.array([_settled_by_sweep_end(r, t) for r in ds.rows], dtype=bool)
+    return ok
 
 
 def _any_measured(ds: dataset.Dataset, goals: list[suggest.Target]) -> bool:
@@ -414,10 +430,18 @@ def _any_measured(ds: dataset.Dataset, goals: list[suggest.Target]) -> bool:
 
 def _measured(ds: dataset.Dataset, goals: list[suggest.Target], names: list[str], footprints: dict) -> list[dict]:
     """The dataset rows whose measured values meet every goal (``_hits``), each with its footprint (``footprints``:
-    ``Library.footprints``, asked for only when some row meets them)."""
-    return [{"part": r.part, "obs_id": r.obs_id, "params": {d: float(r.coords[d]) for d in ds.dims},
-             "values": {q: r.values.get(q) for q in names}, **suggest.footprint_fields(*footprints[(r.part, r.obs_id)])}
-            for r, h in zip(ds.rows, _hits(ds, goals)) if h]
+    ``Library.footprints``, asked for only when some row meets them). A row counted for an SRF minimum because its sweep
+    ends above it keeps that value null and says so: ``above_sweep`` gives the sweep's end (Hz) per such quantity; the
+    other rows have no such key."""
+    out = []
+    for r, h in zip(ds.rows, _hits(ds, goals)):
+        if not h:
+            continue
+        above = {t.quantity: r.stop_hz for t in goals if _settled_by_sweep_end(r, t)}
+        out.append({"part": r.part, "obs_id": r.obs_id, "params": {d: float(r.coords[d]) for d in ds.dims},
+                    "values": {q: r.values.get(q) for q in names}, **({"above_sweep": above} if above else {}),
+                    **suggest.footprint_fields(*footprints[(r.part, r.obs_id)])})
+    return out
 
 
 def _unanswered(library: query.Library, stratum: str, measured: list[dict], models: dict, k: float, rel_sigma_max: float | None,

@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 
 from ic_opt.blocks import library as library_blocks
 from ic_opt.cli import app
-from ic_opt.library import domain, gp, query, region
+from ic_opt.library import dataset, domain, gp, query, region
 from ic_opt.library import suggest as s
 from ic_opt.site import HostLimits
 from tests.ic_opt.fakes import FAKE_HOST
@@ -150,7 +150,10 @@ def test_every_measured_design_on_the_grid_lies_in_the_mean_set(lib, targets):
     if targets is ANCHORED:                                     # the implied resonance, in Hz on both sides of the comparison
         assert {"quantity": "SRF", "kind": "min", "value": 12.5e9, "tol": 0.0, "upper": float("inf")} in r["targets"]
         assert all(1e10 < p["predicted"]["SRF"] < 1e11 for p in r["points_sample"]) and any("SRF >= 12.5 GHz" in note for note in r["notes"])
-        assert all(m["values"]["SRF"] > 12.5e9 for m in r["measured"])
+        resonating = [m for m in r["measured"] if m["values"]["SRF"] is not None]
+        dark = [m for m in r["measured"] if m["values"]["SRF"] is None]               # N-105: no resonance up to the sweep's 60 GHz stop
+        assert resonating and dark and all(m["values"]["SRF"] > 12.5e9 and "above_sweep" not in m for m in resonating)
+        assert all(m["above_sweep"] == {"SRF": 60e9} for m in dark)
 
 
 def test_an_impossible_window_returns_an_empty_region_and_says_why(lib):
@@ -379,3 +382,108 @@ def test_the_command_line_sizes_the_library_from_the_site_files_local_entry(lib,
 def test_the_confidence_ceiling_is_a_block_parameter(block):
     """Left out, each quantity keeps its own ceiling (library.yaml's rel_sigma_max, else the default); given, it holds for all."""
     assert inspect.signature(block).parameters["rel_sigma_max"].default is None
+
+
+# -- N-105: a measured row with no resonance in its sweep meets an SRF minimum below the sweep's end ---------------------------
+
+BASE = {"Lp_lf": {"target": 120e-12, "tol": 0.08}, "Qp_peak": {"min": 12}}      # the demonstration's inductor: 120 pH +-8 %, Q >= 12
+GOOD = {"Lp_lf": 120e-12, "Qp_peak": 19.6}
+COLUMNS = ["Lp_lf", "Qp_peak", "SRF_p"]
+STRATUM_ROWS = (
+    ({**GOOD, "SRF_p": None}, 250e9),                      # 1: no resonance up to 250 GHz (the demonstration's row)
+    ({**GOOD, "SRF_p": 180e9}, 250e9),                     # 2: resonates at 180 GHz
+    ({**GOOD, "SRF_p": 60e9}, 250e9),                      # 3: resonates at 60 GHz
+    ({**GOOD, "Qp_peak": None, "SRF_p": None}, 250e9),     # 4: no Q value, and no resonance
+    ({**GOOD, "Lp_lf": None, "SRF_p": 180e9}, 250e9),      # 5: no inductance value
+    ({**GOOD, "SRF_p": None}, 80e9),                       # 6: no resonance, the sweep ends at 80 GHz
+    ({**GOOD, "SRF_p": None}, 100e9),                      # 7: no resonance, the sweep ends at 100 GHz
+)
+
+
+def fake_stratum(*rows: tuple[dict, float]) -> dataset.Dataset:
+    """A stratum of fake rows, no EMX: each ``(values, stop_hz)`` is a row (one dim, its index); a value of None is missing."""
+    made = [dataset.Row("fake", f"obs_{i:04d}", {"width_um": float(i)}, values, stop, 251, 2, 0.5, True, f"obs_{i:04d}.s2p")
+            for i, (values, stop) in enumerate(rows, 1)]
+    return dataset.Dataset("fake", ["width_um"], None, sorted({c for values, _ in rows for c in values}), made, {})
+
+
+def hits(ds: dataset.Dataset, targets: dict) -> list[bool]:
+    return region._hits(ds, s.parse_targets(targets)).tolist()
+
+
+def test_a_row_with_no_resonance_meets_an_srf_minimum_its_sweeps_end_reaches():
+    ds = fake_stratum(*STRATUM_ROWS)
+    boxes = {(r.part, r.obs_id): (None, None) for r in ds.rows}
+    goals = s.parse_targets({**BASE, "SRF_p": {"min": 100e9}})
+    assert region._hits(ds, goals).tolist() == [True, True, False, False, False, False, True] and region._any_measured(ds, goals)
+    first, second, last = region._measured(ds, goals, COLUMNS, boxes)
+    assert [m["obs_id"] for m in (first, second, last)] == ["obs_0001", "obs_0002", "obs_0007"]
+    assert first["values"]["SRF_p"] is None and first["above_sweep"] == {"SRF_p": 250e9}        # not measured: null, and why it counts
+    assert last["values"]["SRF_p"] is None and last["above_sweep"] == {"SRF_p": 100e9}           # a sweep ending at the minimum is enough
+    assert second["values"]["SRF_p"] == 180e9 and "above_sweep" not in second                    # a measured resonance: nothing to say
+    assert list(first) == ["part", "obs_id", "params", "values", "above_sweep", "footprint"] and list(second) == list(first)[:4] + ["footprint"]
+    # a goal's lower end above the sweep's end: the resonance may lie below the bound
+    assert hits(ds, {**BASE, "SRF_p": {"min": 300e9}}) == [False] * 7
+    assert not region._any_measured(ds, s.parse_targets({**BASE, "SRF_p": {"min": 300e9}}))
+    assert region._measured(ds, s.parse_targets({**BASE, "SRF_p": {"min": 300e9}}), COLUMNS, boxes) == []
+    assert hits(ds, {**BASE, "SRF_p": {"min": 250e9}}) == [True, False, False, False, False, False, False]    # 250 GHz is the sweep's end
+    assert hits(ds, {**BASE, "SRF_p": {"min": 90e9}}) == [True, True, False, False, False, False, True]       # row 6 ends at 80 GHz
+
+
+def test_only_a_goal_without_an_upper_end_is_settled_by_the_sweeps_end():
+    ds = fake_stratum(*STRATUM_ROWS)
+    for srf, expected in (({"max": 400e9}, [False, True, True, False, False, False, False]),                  # a finite upper end: a missing
+                          ({"min": 100e9, "max": 400e9}, [False, True, False, False, False, False, False]),    # value is not met, the
+                          ({"target": 200e9, "tol": 0.5}, [False, True, False, False, False, False, False])):   # measured ones are
+        assert hits(ds, {**BASE, "SRF_p": srf}) == expected, srf
+    open_window = [s.Target("Lp_lf", "target", 120e-12, 0.08), s.Target("Qp_peak", "min", 12), s.Target("SRF_p", "window", 100e9)]
+    assert region._hits(ds, open_window).tolist() == [True, True, False, False, False, False, True]    # a window reaching +inf is a minimum
+    # every other quantity keeps the rule: a missing value is not met, whatever the sweep's end (rows 4 and 5 lack Q and Lp)
+    assert hits(ds, BASE) == [True, True, True, False, False, True, True]
+    assert hits(ds, {"Qp_peak": {"min": 12}, "SRF_p": {"min": 100e9}}) == [True, True, False, False, True, False, True]
+    assert hits(ds, {"Lp_lf": {"min": 100e-12}, "SRF_p": {"min": 100e9}}) == [True, True, False, True, False, False, True]
+
+
+def test_the_system_srf_and_each_srf_goal_the_sweeps_end_settled_are_named():
+    ds = fake_stratum(({"SRF_p": None, "SRF": 150e9}, 250e9), ({"SRF_p": None, "SRF": None}, 250e9), ({"SRF_p": None, "SRF": 50e9}, 250e9),
+                      ({"SRF_p": 150e9, "SRF": 150e9}, 250e9), ({"SRF_p": None, "SRF": None}, 120e9))
+    boxes = {(r.part, r.obs_id): (None, None) for r in ds.rows}
+    goals = s.parse_targets({"SRF_p": {"min": 100e9}, "SRF": {"min": 100e9}})
+    got = region._measured(ds, goals, ["SRF_p", "SRF"], boxes)
+    assert [m["obs_id"] for m in got] == ["obs_0001", "obs_0002", "obs_0004", "obs_0005"]
+    assert [m.get("above_sweep") for m in got] == [{"SRF_p": 250e9}, {"SRF_p": 250e9, "SRF": 250e9}, None, {"SRF_p": 120e9, "SRF": 120e9}]
+    assert got[0]["values"] == {"SRF_p": None, "SRF": 150e9}
+    only = region._measured(ds, s.parse_targets({"SRF": {"min": 100e9}}), ["SRF"], boxes)             # one goal: only its quantity is named
+    assert [m.get("above_sweep") for m in only] == [None, {"SRF": 250e9}, None, {"SRF": 120e9}]
+
+
+@pytest.fixture(scope="module")
+def ind(tmp_path_factory):
+    return query.Library(build_library(tmp_path_factory.mktemp("indabove")), limits=LOCAL)
+
+
+def test_region_lists_the_measured_designs_lib_suggest_ranks_for_an_srf_minimum_the_sweep_reaches(ind):
+    """The inductor library: every single-turn row shows no resonance up to the 60 GHz stop of its sweep. A minimum of 40 GHz
+    is met by them and by the two-turn rows that resonate above it; 70 GHz, beyond every sweep's end, by none. ``lib.suggest``
+    ranks those rows as measured (its floor for them is the stop); ``lib.region`` lists the same ones."""
+    ds = ind.dataset("ind_demo")
+    dark = {(r.part, r.obs_id) for r in ds.rows if r.values["SRF_p"] is None}
+    assert len(dark) == 29 and {r.stop_hz for r in ds.rows} == {60e9}
+    window = {"min": 0.25e-9, "max": 0.95e-9}
+    resonating = {(r.part, r.obs_id) for r in ds.rows if r.values["SRF_p"] is not None and r.values["SRF_p"] >= 40e9
+                  and window["min"] <= r.values["Lp_lf"] <= window["max"]}
+    assert resonating
+    targets = {"Lp_lf": window, "SRF_p": {"min": 40e9}}
+    r = region.region(ind, "ind_demo", targets, pool_size=512, workers=1)
+    got = {(m["part"], m["obs_id"]): m for m in r["measured"]}
+    assert set(got) == dark | resonating
+    for ident, m in got.items():
+        if ident in dark:
+            assert m["values"]["SRF_p"] is None and m["above_sweep"] == {"SRF_p": 60e9}
+        else:
+            assert m["values"]["SRF_p"] >= 40e9 and "above_sweep" not in m
+    listed = s.suggest(ind, "ind_demo", targets, None, n=100, pool_size=512, min_spacing=0.0, verify_build=False)
+    assert {(m["measured"]["part"], m["measured"]["obs_id"]) for m in listed["measured"]} == set(got)
+    beyond = {"Lp_lf": window, "SRF_p": {"min": 70e9}}
+    assert region.region(ind, "ind_demo", beyond, pool_size=512, workers=1)["measured"] == []
+    assert s.suggest(ind, "ind_demo", beyond, None, n=100, pool_size=512, verify_build=False)["measured"] == []

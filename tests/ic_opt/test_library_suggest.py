@@ -59,6 +59,37 @@ def test_score_takes_measured_values_and_srf_floors_as_settled(library):
     assert strict["ok"].tolist() == [True, False]                                     # above the sweep cannot satisfy a maximum
 
 
+def test_a_settled_srf_meets_a_minimum_its_floor_reaches_and_nothing_with_an_upper_end(library):
+    """N-105: a measured row with no resonance in a 250 GHz sweep has the floor 250 GHz and no value (``suggest``'s own
+    line for measured rows): it meets a minimum of 100 GHz, not one of 300 GHz, and no maximum, window or target."""
+    lib = q.Library(library, limits=LOCAL)
+    models = {"SRF_p": lib.model("ind_demo", "SRF_p")}
+    x, floors, exact = np.array([[150.0, 5.0, 3.0, 2]]), {"SRF_p": np.array([250e9])}, {"SRF_p": np.array([np.nan])}
+    for spec, expected in (({"min": 100e9}, True), ({"min": 250e9}, True), ({"min": 300e9}, False), ({"max": 400e9}, False),
+                           ({"min": 100e9, "max": 400e9}, False), ({"target": 200e9, "tol": 0.5}, False)):
+        out = s.score(x, models, s.parse_targets({"SRF_p": spec}), None, srf_floor=floors, exact=exact)
+        assert out["ok"].tolist() == [expected], spec
+
+
+def test_suggest_lists_a_measured_row_with_no_resonance_when_its_sweeps_end_reaches_the_minimum(library):
+    """N-105: ``lib.region`` counts such a row among the measured designs meeting the targets, as ``lib.suggest`` always
+    ranked it. Every single-turn row of the inductor library shows no resonance up to 60 GHz; one of them is given a 250 GHz
+    sweep (in memory)."""
+    lib = q.Library(library, limits=LOCAL)
+    dark = [r for r in lib.dataset("ind_demo").rows if r.values["SRF_p"] is None]
+    assert len(dark) == 29
+    dark[0].stop_hz = 250e9                                  # this Library's dataset only: a new Library reads its rows again
+    ids, long_sweep = {(r.part, r.obs_id) for r in dark}, (dark[0].part, dark[0].obs_id)
+    for minimum, expected in ((40e9, ids), (100e9, {long_sweep}), (300e9, set())):
+        r = s.suggest(lib, "ind_demo", {"Lp_lf": {"min": 0.25e-9, "max": 0.95e-9}, "SRF_p": {"min": minimum}}, None, n=100, pool_size=256,
+                      min_spacing=0.0, verify_build=False)
+        listed = {(m["measured"]["part"], m["measured"]["obs_id"]): m for m in r["measured"]}
+        assert set(listed) & ids == expected, minimum
+        if long_sweep in expected:                           # the floor is the row's own sweep end, no value and no upper bound
+            assert listed[long_sweep]["predicted"]["SRF_p"] == {"value": 250e9, "lo": 250e9, "hi": np.inf, "rel_sigma": 0.0}
+        assert {m["predicted"]["SRF_p"]["lo"] for i, m in listed.items() if i in expected - {long_sweep}} <= {60e9}
+
+
 def test_suggest_lists_measured_designs_then_built_predictions(library):
     lib = q.Library(library, limits=LOCAL)
     target = lib.dataset("ind_demo").find(params(150, 5, 3, 2)).values["Lp_lf"]           # a measured design sits inside the window
