@@ -7,14 +7,18 @@ training rows with the configuration chosen. Nothing of the held-out rows enters
 
   rf    sklearn RandomForestRegressor, n_estimators 500, random_state 0, n_jobs n_threads (the fit; a prediction adds
         the trees in one thread, in their order, so that it is bitwise reproducible);
-        grid min_samples_leaf {1, 2, 4} x max_features {1.0, 0.5, "sqrt"}  (9 configurations)
+        grid min_samples_leaf {1, 2, 4} x max_features {1.0, 0.67, 0.33}  (9 configurations; the coordinator's change of
+        2026-10-13 from {1.0, 0.5, "sqrt"}, which give the same feature count up to 5 inputs: 1.0 / 0.67 / 0.33 are
+        3 / 2 / 1 features on 3 inputs, 5 / 3 / 1 on 5, 7 / 4 / 2 on 7 -- they meet only at 2 inputs, 1 and 1)
   gbm   sklearn HistGradientBoostingRegressor, early_stopping False, random_state 0 (it has no n_jobs: its OpenMP
         threads are capped at n_threads around every fit and prediction);
-        grid learning_rate {0.03, 0.1} x max_leaf_nodes {7, 15, 31} x max_iter {300, 1000} x l2_regularization {0, 1} (24)
+        grid learning_rate {0.03, 0.1} x max_leaf_nodes {7, 15, 31} x max_iter {300, 1000} x l2_regularization {0, 1}
+        x min_samples_leaf {5, 20} (48; the last axis is the coordinator's addition of 2026-10-13: sklearn's default 20
+        leaves a per-turns inductor model a few leaves per tree)
   lgbm  LightGBM LGBMRegressor, random_state 0, n_jobs n_threads, verbose -1;
         grid learning_rate {0.03, 0.1} x num_leaves {7, 15, 31} x n_estimators {300, 1000} x min_child_samples {5, 20} (24)
         -- not registered when lightgbm does not import; ``SKIPPED`` then says why.
-The grids run in the order the specification lists the values (the first axis slowest), which decides a tie. Every other
+The grids run in the order listed here (the first axis slowest), which decides a tie. Every other
 estimator parameter is the library default of sklearn 1.3.2 / LightGBM 4.6.0.
 
 Each class sees what the library's GP sees, through ``StratumMean``: the settings of ``query.Library._fit_inputs``
@@ -137,22 +141,23 @@ class TunedMean(StratumMean):
 
 class StratumRF(TunedMean):
     MODEL = "rf"
-    GRID = grid(min_samples_leaf=[1, 2, 4], max_features=[1.0, 0.5, "sqrt"])
+    GRID = grid(min_samples_leaf=[1, 2, 4], max_features=[1.0, 0.67, 0.33])
 
     def _estimator(self, config: dict) -> RandomForestRegressor:
         return RandomForestRegressor(n_estimators=500, random_state=0, n_jobs=self.n_threads, **config)
 
     def _predict_model(self, model: RandomForestRegressor, z: np.ndarray) -> np.ndarray:
         # sklearn's threads add the trees' predictions into one array in the order they finish: two runs differ in the last
-        # bit, enough to flip tune's first-best tie between two configurations that grow the same trees (max_features 0.5
-        # and "sqrt" resolve to the same number of inputs for up to 5 inputs). One thread adds them in the trees' order.
+        # bit, enough to flip tune's first-best tie between two configurations that grow the same trees (max_features 0.67
+        # and 0.33 are both one input at 2 inputs). One thread adds them in the trees' order: bitwise reproducible.
         model.n_jobs = 1
         return model.predict(z)
 
 
 class StratumGBM(TunedMean):
     MODEL = "gbm"
-    GRID = grid(learning_rate=[0.03, 0.1], max_leaf_nodes=[7, 15, 31], max_iter=[300, 1000], l2_regularization=[0, 1])
+    GRID = grid(learning_rate=[0.03, 0.1], max_leaf_nodes=[7, 15, 31], max_iter=[300, 1000], l2_regularization=[0, 1],
+                min_samples_leaf=[5, 20])
 
     def _estimator(self, config: dict) -> HistGradientBoostingRegressor:
         return HistGradientBoostingRegressor(early_stopping=False, random_state=0, **config)
