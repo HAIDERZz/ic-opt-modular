@@ -112,7 +112,7 @@ def tune(z: np.ndarray, t: np.ndarray, configs: list[dict],
                 pred = np.asarray(fit_predict(cfg, z[tr], t[tr], z[te]), dtype=float).reshape(-1)
                 err.append(np.mean((pred - t[te]) ** 2))
             scores[key] = float(np.sqrt(np.mean(err)))
-        except Exception:                           # a singular fit, too few rows for this configuration, ...
+        except Exception:  # noqa: BLE001 -- a singular fit, too few rows for this configuration, ...: the config scores inf
             scores[key] = float("inf")
         if not np.isfinite(scores[key]):
             scores[key] = float("inf")
