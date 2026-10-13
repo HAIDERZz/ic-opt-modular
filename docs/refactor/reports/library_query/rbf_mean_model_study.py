@@ -694,7 +694,7 @@ def figure(report: dict, path: Path) -> None:
                Patch(facecolor=RBF_COLOR, edgecolor="white", label="最好的 RBF 变体（柱上标 d1 / d3 / d5 / raw）"),
                Patch(facecolor="#9a9994", edgecolor="white", label="(i) 随机留出 5×20%"),
                Patch(facecolor="#9a9994", edgecolor="white", hatch="////", label="(ii) 整档留出外径"),
-               Line2D([], [], color=MUTED, marker="x", linestyle="none", label="× 没有可比的 RBF 变体（未拟合）")]
+               Line2D([], [], color=MUTED, marker="x", linestyle="none", label="没有可比的 RBF 变体（未拟合）")]
     fig.legend(handles=handles, loc="upper center", ncol=5, fontsize=8.5, frameon=False)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.45 / fig.get_figheight()))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -844,9 +844,11 @@ def markdown(report: dict, fig_rel: str | None) -> str:
         L.append(f"| {t} | " + " | ".join(f"{s['cost'][x]['per_table'][t]['fit_s']:.0f}" for x in s["cost"]) + " |")
     L.append("")
     L.append("## 核对：GP 变体的协议 (i) 与库自己缓存的校准\n")
-    L.append("库的校准就是同一协议（`gp.holdout` / `composed.holdout`，种子 0–4）；GP 变体在 (i) 上的合并中位数应与库缓存里的 `median_rel` 相同。\n")
-    L.append("| 表 | 结果列 | 本研究 GP (i) 中位 / 打分行 | 库缓存的中位 / 打分行 | 一致 |")
-    L.append("| --- | --- | --- | --- | --- |")
+    L.append("库的校准就是同一协议（`gp.holdout` / `composed.holdout`，种子 0–4）；GP 变体在 (i) 上的合并中位数应与库缓存里的 `median_rel` 相同"
+             "（打分行数相等、中位数的相对差不超过 1e-4 记“一致”：GP 的超参数优化经 BLAS 求和，线程数和求和顺序不同时优化路径有浮点级的差，"
+             "同一数据两次拟合的留出误差可差 1e-8 到 1e-5 的相对量）。\n")
+    L.append("| 表 | 结果列 | 本研究 GP (i) 中位 / 打分行 | 库缓存的中位 / 打分行 | 中位的相对差 | 一致 |")
+    L.append("| --- | --- | --- | --- | ---: | --- |")
     for t, te in tabs.items():
         for c, ce in te["columns"].items():
             cal = ce.get("library_calibration")
@@ -855,11 +857,12 @@ def markdown(report: dict, fig_rel: str | None) -> str:
                 continue
             g = pe["variants"]["gp"]
             if cal is None or cal.get("median_rel") is None:
-                L.append(f"| {t} | {c} | {_pct(g['median_rel'])} / {g['n_scored']} | 缓存里没有 | — |")
+                L.append(f"| {t} | {c} | {_pct(g['median_rel'])} / {g['n_scored']} | 缓存里没有 | — | — |")
                 continue
-            same = abs(cal["median_rel"] - g["median_rel"]) <= 1e-9 * max(1.0, abs(cal["median_rel"])) and cal["n_scored"] == g["n_scored"]
+            rel_diff = abs(cal["median_rel"] - g["median_rel"]) / abs(cal["median_rel"])
+            same = rel_diff <= 1e-4 and cal["n_scored"] == g["n_scored"]
             L.append(f"| {t} | {c} | {g['median_rel'] * 100:.4f}% / {g['n_scored']} | {cal['median_rel'] * 100:.4f}% / {cal['n_scored']} | "
-                     f"{'是' if same else '否'} |")
+                     f"{rel_diff:.1e} | {'是' if same else '否'} |")
     L.append("")
     return "\n".join(L) + "\n"
 
