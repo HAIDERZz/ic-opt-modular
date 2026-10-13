@@ -5,19 +5,24 @@ Every class is a ``regressor_base.StratumMean``: the library's inputs (min-max o
 positive column); the joint model on the kept, scaled inputs ``z`` and the fitted-space target ``t`` is the subclass's.
 Specification: ``docs/refactor/N107_REGRESSOR_STUDY_SPEC.md`` section 2.
 
-  gp_paper  sklearn ``GaussianProcessRegressor`` as PACOSYT configured it: kernel
+  gp_paper  sklearn ``GaussianProcessRegressor`` with PACOSYT's configuration: kernel
             ``0.1**2 * RationalQuadratic(length_scale=1e-8, alpha=1e-8) + 1**2 * RBF(length_scale=5)``, ``alpha=1e-8``,
             no optimiser restarts, ``random_state=0``; the inputs standardized on the training rows (their
             ``PreProcess(standardize=True)``). Nothing tuned: the paper tuned nothing, so this shows what the kernel
-            configuration costs. The target is the library's (log y) as it is: the specification standardizes the inputs
-            only, so ``normalize_y`` keeps sklearn's default (False). A fit sklearn refuses (a kernel matrix that is not
-            positive definite) is ``Unfit``.
-  krr       sklearn ``KernelRidge(kernel="rbf")``, ``gamma`` = g / d with g in {0.25, 0.5, 1, 2, 4, 8, 16} and d the
-            kept inputs, ``alpha`` in {1e-8, 1e-6, 1e-4, 1e-2}; tuned by ``regressor_base.tune`` (28 configurations).
-            As the table says: no intercept, the target not centred.
-  knn       sklearn ``KNeighborsRegressor(weights="distance")``, ``n_neighbors`` in {1, 2, 3, 5, 8} (1 is the paper's
-            nearest neighbour); tuned. A configuration with more neighbours than an inner fold's training rows raises in
-            sklearn and scores inf there.
+            configuration costs. The target (log y) is standardized inside the model (``normalize_y=True``, the
+            coordinator's decision of 2026-10-13): without it the zero-mean prior meets log y near -20 (inductance in H)
+            and the variant measures the library's units, not the kernel (the side check before the decision: p90 up to
+            ~1e12 % on the inductance columns). A fit sklearn refuses (a kernel matrix that is not positive definite) is
+            ``Unfit``.
+  krr       sklearn ``KernelRidge(kernel="rbf")`` on the centred target (each fit, the inner ones included, subtracts
+            its training rows' mean and adds it back at prediction: KernelRidge has no intercept), ``gamma`` = g / d with
+            g in {1/16, 1/8, 1/4, 1/2, 1, 2, 4, 8, 16, 32, 64} and d the kept inputs, ``alpha`` in {1e-10, 1e-8, 1e-6,
+            1e-4, 1e-2}; tuned by ``regressor_base.tune`` (55 configurations). Centring and the widened grid are the
+            coordinator's decisions of 2026-10-13 (the specification's grid, g 1/4 ... 16 x alpha 1e-8 ... 1e-2, put the
+            chosen value on an edge in about half of the transformer tables' fits).
+  knn       sklearn ``KNeighborsRegressor(weights="distance")``, ``n_neighbors`` in {1, 2, 3, 5, 8, 12, 16} (1 is the
+            paper's nearest neighbour; 12 and 16 added on the same decision); tuned. A configuration with more neighbours
+            than an inner fold's training rows raises in sklearn and scores inf there.
 
 ``VARIANTS`` (name -> class, family, tuned, grid, note) is this module's registration: ``regressor_study.py`` merges it
 into its own registry when it imports the module. The chosen configuration of a tuned (sub-)model is ``config`` (with
@@ -36,9 +41,9 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.preprocessing import StandardScaler
 
 SEED = 0
-KRR_GAMMA_D = (0.25, 0.5, 1, 2, 4, 8, 16)            # gamma = g / d, d = the kept inputs
-KRR_ALPHA = (1e-8, 1e-6, 1e-4, 1e-2)
-KNN_NEIGHBORS = (1, 2, 3, 5, 8)
+KRR_GAMMA_D = (1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8, 16, 32, 64)   # gamma = g / d, d = the kept inputs
+KRR_ALPHA = (1e-10, 1e-8, 1e-6, 1e-4, 1e-2)
+KNN_NEIGHBORS = (1, 2, 3, 5, 8, 12, 16)
 
 
 def paper_kernel():
@@ -52,7 +57,8 @@ class StratumGPPaper(StratumMean):
 
     def _fit_joint(self, z: np.ndarray, t: np.ndarray) -> None:
         self._scaler = StandardScaler().fit(z)
-        self._gpr = GaussianProcessRegressor(kernel=paper_kernel(), alpha=1e-8, n_restarts_optimizer=0, random_state=SEED)
+        self._gpr = GaussianProcessRegressor(kernel=paper_kernel(), alpha=1e-8, n_restarts_optimizer=0, normalize_y=True,
+                                             random_state=SEED)
         try:
             self._gpr.fit(self._scaler.transform(z), t)
         except (np.linalg.LinAlgError, ValueError) as exc:
@@ -68,6 +74,12 @@ def _krr(cfg: dict, d: int) -> KernelRidge:
     return KernelRidge(kernel="rbf", gamma=cfg["gamma_d"] / d, alpha=cfg["alpha"])
 
 
+def _krr_centred(cfg: dict, d: int, zt: np.ndarray, tt: np.ndarray, zv: np.ndarray) -> np.ndarray:
+    """One inner fit of the centred KernelRidge: its own training rows' mean out, back in at the prediction."""
+    mean = float(np.mean(tt))
+    return _krr(cfg, d).fit(zt, tt - mean).predict(zv) + mean
+
+
 class StratumKRR(StratumMean):
     MODEL = "krr"
     GRID: ClassVar[dict] = {"gamma_d": KRR_GAMMA_D, "alpha": KRR_ALPHA}
@@ -75,11 +87,12 @@ class StratumKRR(StratumMean):
     def _fit_joint(self, z: np.ndarray, t: np.ndarray) -> None:
         d = z.shape[1]
         configs = [{"gamma_d": g, "alpha": a} for g in KRR_GAMMA_D for a in KRR_ALPHA]
-        self.config, self.cv_rmse = tune(z, t, configs, lambda cfg, zt, tt, zv: _krr(cfg, d).fit(zt, tt).predict(zv), seed=SEED)
-        self._model = _krr(self.config, d).fit(z, t)
+        self.config, self.cv_rmse = tune(z, t, configs, lambda cfg, zt, tt, zv: _krr_centred(cfg, d, zt, tt, zv), seed=SEED)
+        self._mean = float(np.mean(t))
+        self._model = _krr(self.config, d).fit(z, t - self._mean)
 
     def _predict_joint(self, z: np.ndarray) -> np.ndarray:
-        return self._model.predict(z)
+        return self._model.predict(z) + self._mean
 
 
 def _knn(cfg: dict) -> KNeighborsRegressor:
@@ -102,9 +115,9 @@ class StratumKNN(StratumMean):
 VARIANTS = {
     "gp_paper": {"cls": StratumGPPaper, "family": "A", "tuned": False, "grid": None,
                  "note": "sklearn GaussianProcessRegressor, PACOSYT's kernel 0.1**2 * RationalQuadratic(1e-8, alpha 1e-8) + "
-                         "1**2 * RBF(5), alpha 1e-8, no restarts, inputs standardized; untuned"},
+                         "1**2 * RBF(5), alpha 1e-8, no restarts, inputs standardized, target standardized (normalize_y); untuned"},
     "krr": {"cls": StratumKRR, "family": "A", "tuned": True, "grid": StratumKRR.GRID,
-            "note": "sklearn KernelRidge(kernel='rbf'), gamma = g / d, alpha; inner 3-fold CV"},
+            "note": "sklearn KernelRidge(kernel='rbf') on the centred target, gamma = g / d, alpha; inner 3-fold CV"},
     "knn": {"cls": StratumKNN, "family": "A", "tuned": True, "grid": StratumKNN.GRID,
             "note": "sklearn KNeighborsRegressor(weights='distance'); inner 3-fold CV (1 neighbour is the paper's NN)"},
 }
