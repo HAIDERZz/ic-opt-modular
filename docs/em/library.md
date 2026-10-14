@@ -229,7 +229,7 @@ Each quantity comes back with a `status`:
 | `measured` | the point is a library row: the measured value |
 | `predicted` | GP mean `value` with calibrated bounds `lo` / `hi`, plus the three nearest measured rows as evidence |
 | `uncertain` | predicted, but sigma / mu exceeds the quantity's ceiling (criterion 4 below; the answer gives it as `rel_sigma_max`): reported with its numbers, never used silently |
-| `out_of_domain` | the domain guard refused: `criterion`, `reason`, the nearest measured rows |
+| `out_of_domain` | the domain guard refused: `criterion`, `reason` (for a point outside the measured range: the dim, how far, and along an outer diameter the allowance), the nearest measured rows |
 | `above_sweep` | SRF only: most nearest rows did not resonate inside their sweep; `lower_bound` is that sweep's stop |
 | `above_resonance` | curves only: the resonance predicted at the point is at or below the curve's `srf_margin` x f, so a measured row there would have no value and there is none; `srf` gives the resonance (`column`, `value`, `lo`, `hi`), with `threshold_hz`, `frequency_hz`, `srf_margin`, `reason` and the curve model's nearest rows |
 
@@ -251,8 +251,9 @@ resonance left the column out. A curve's answers need its resonance's model,
 so asking for a curve loads that model too, or fits it when it is not cached.
 A stratum that declares none of these SRF columns has no such rule.
 
-The domain guard's criteria: (1) inside the achieved box, and a dim that is
-fixed within a turns level must match it; (2) a model exists for this turns
+The domain guard's criteria: (1) inside the achieved box -- along the outer
+diameters, within the allowance of [Beyond the measured range](#beyond-the-measured-range-extrapolate)
+--, and a dim that is fixed within a turns level must match it; (2) a model exists for this turns
 level (at least 25 usable rows); (3) inside the level's convex hull over the
 dims that vary there; (4) sigma / mu at most the quantity's ceiling: the
 call's `rel_sigma_max` (a parameter of `lib.query`, `lib.suggest`,
@@ -275,6 +276,79 @@ low-frequency value such as `Lp_lf`, or for `Qp` / `Qs` the peak `Qp_peak` /
 `quantities` may name a declared curve at any frequency inside the parts'
 sweeps, `Lp@<f>` ([Asking at any frequency](#asking-at-any-frequency)); the
 answer names each column in its canonical spelling.
+
+### Beyond the measured range: `extrapolate`
+
+The models also answer a little beyond the range their rows reach, along
+the outer diameters only: `outer_diameter_um`, `primary_outer_diameter_um`
+and `secondary_outer_diameter_um`, whichever the stratum has. A study held
+the outermost one or two levels of every dim out of each table, refitted the
+models on the rest and compared their answers with the held-out
+measurements (N-115, 16 tables): along the outer diameters the errors and
+the calibrated intervals held one to two level steps out; along the widths
+the intervals came out too narrow, and along the spacing and the low side of
+the centre offset the errors were large. Every other dim therefore refuses
+as before.
+
+How far, per side and per model: `extrapolate` x min(range, boundary), where
+`range` is the model's rows' max - min along that dim and `boundary` their
+min (below) or max (above); `extrapolate` is 0.15 unless the call gives
+another fraction. A table measured from 50 to 240 um answers down to
+42.5 um and up to 268.5 um; one measured from 20 to 60 um, down to 17 and up
+to 66 um. The relative bound keeps the small end conservative. A model whose
+own rows stop short of the table's edge -- a curve at a high frequency, an
+SRF -- has its own range and its own, shorter allowance.
+
+Criterion 3 judges such a point with those dims clamped back onto the
+measured range: the device must be a scaled version of one the data
+surround. A transformer whose secondary, at the clamped primary diameter,
+would lie outside every row's hull is still refused, its reason saying which
+dims were clamped. Criteria 2 and 4 are unchanged.
+
+An extrapolated answer keeps its status (`predicted` or `uncertain`) and
+adds what was extrapolated and by how much:
+
+```json
+"extrapolated": {"primary_outer_diameter_um": {"side": "below", "beyond": 5.0, "allowance": 9.0, "measured_range": [60.0, 240.0]}},
+"widening": 2.7166
+```
+
+`widening` is the factor its calibrated interval (`lo`, `hi`) is widened by,
+1 + a x d / allowance -- d how far the point lies beyond the range, the
+allowance at 0.15 (with a larger `extrapolate` the factor keeps growing past
+that allowance's end), the farthest dim when there are two -- with `a` per
+column class. `a` was fitted on N-115's hold-outs along the outer diameters,
+the rows the guard answers with `extrapolate=0.15`: the smallest `a` whose
+widened intervals hold 95 % of the measurements of the class; 0 where the
+calibrated intervals already did. `rel_sigma` and the status stay the
+model's own.
+
+| column class | columns | hold-out rows | inside today's interval | `a` | widening at the allowance's end |
+| --- | --- | --- | --- | --- | --- |
+| low-frequency inductance | `Lp_lf`, `Ls_lf` (and `Lp_res`, `Ls_res`) | 895 | 96.4 % | 0 | 1 |
+| low-frequency coupling | `k_lf` | 425 | 87.8 % | 0.75 | 1.75 |
+| resonance | `SRF`, `SRF_p`, `SRF_s` | 390 | 89.0 % | 2.64 | 3.64 |
+| Q peak | `Qp_peak`, `Qs_peak` | 895 | 91.6 % | 3.09 | 4.09 |
+| inductance curve | `Lp@<f>`, `Ls@<f>` | 1334 | 98.7 % | 0 | 1 |
+| Q curve | `Qp@<f>`, `Qs@<f>` | 1278 | 99.8 % | 0 | 1 |
+| coupling curve | `k@<f>` | 594 | 89.6 % | 0.36 | 1.36 |
+
+Answers inside the range are computed exactly as before. A point beyond the
+allowance, or beyond the range along any other dim, is `out_of_domain` as
+before; its reason says which dim, how far and, along an outer diameter, the
+allowance (`outer_diameter_um=40 outside the measured range [60, 120]: 20
+below it, beyond the allowance of 9 there (extrapolate=0.15 x min(range,
+boundary))`), and its second fill point is the query clamped onto the box
+the guard accepts. A curve's resonance may be extrapolated too: the N-113
+rule reads its value and lower bound as any other answer's, and the `srf` of
+an `above_resonance` curve carries its `extrapolated`.
+
+`extrapolate=0` -- a parameter of `lib.query`, `lib.suggest`, `lib.region`,
+`lib.densify` and `lib_design` -- answers exactly as before. There is no
+manifest field for it: a stratum's definition is part of its dataset key,
+so editing `library.yaml` would refit every model. Report an extrapolated
+answer as such, with its label: it is a model's answer where no row is
+near.
 
 ### Footprint
 
@@ -342,6 +416,15 @@ brackets -- and `satisfying`, its points meeting every target) and a note
 says so, while `pool` and `satisfying` stay the first pool's. The second pool
 costs about what a `lib.region` call costs.
 
+Both pools reach the allowance beyond the table's measured range along the
+outer diameters (`extrapolate`, section 4; 0.15 unless given), so a design
+just outside that range can be proposed. Such a candidate carries
+`extrapolated` -- per dim the farthest of its quantities' labels -- and each
+of its predicted quantities that was extrapolated its `widening`; a note
+counts them. Their wider intervals rank them behind interpolated designs
+whose bounds are as good, and the measured designs still come first.
+`extrapolate=0` keeps both pools inside the measured box.
+
 ### Every table of a device kind: `family=`
 
 ```bash
@@ -383,7 +466,11 @@ by side:
     the library's own rules, an anchored column only below its resonance
     margin; `outside` lists each such target with its `window`, the `range`
     and the `side` (`below` or `above`): "Lp@<f> window <a>-<b> pH lies
-    below this table's measured <c>-<d> pH";
+    below this table's measured <c>-<d> pH"; with extrapolation on, the
+    sentence ends "even with up to 15% extrapolation of the outer diameter":
+    the designs beyond the measured range did not reach the window either
+    (a table that reaches a target only there has designs, marked
+    `extrapolated`, and no entry here);
   - `not_met_together`: every target lies inside its range, but no measured
     row meets them together -- with the resonance anchored targets imply,
     which the sentence then names -- and no predicted design meets them with
@@ -434,6 +521,16 @@ library's coverage there, the bracket may have cut it off: raise `relax`.
 of the manifest `steps`, about 20 values per dim (turns by level), every
 step multiplied until the grid fits in `max_points` (2 million);
 `steps={...}` sets steps by hand, and `grid` says what was used.
+
+The coarse pool and the grid's bracket reach the allowance beyond the
+table's measured range along the outer diameters (`extrapolate`, section 4;
+0.15 unless given), as far as the models answer, and `edge` measures against
+that reach. A level holding points with extrapolated answers adds
+`extrapolated`: their `count` and `beyond_measured`, per outer diameter the
+table's `measured` range and the stretches of the level's range `below` or
+`above` it -- the part of a sweep range no row backs. Its candidates carry
+`extrapolated` as `lib.suggest`'s do, a sample point `extrapolated: true`.
+`extrapolate=0` keeps the region inside the measured box.
 
 The answer states what its levels mean: `k`, the number of sigmas in the
 calibrated interval behind `robust` (`k=2` unless given), and
@@ -585,6 +682,14 @@ column where the resonance predicted there lies at or below its
 give it no value, so it neither scores nor counts there, a pick there shows no
 prediction of it, and a note says how many candidates that is.
 
+The pool stays inside the table's achieved box: where to measure next is a
+question about the table's own domain. With `extrapolate` (0.15 unless
+given, section 4) a model whose own rows stop short of the box's edge along
+an outer diameter -- a curve at a high frequency, an SRF -- answers up to its
+allowance beyond them, as `lib.query` does, so the pool points there count
+for it; a pick whose answers are extrapolated carries `extrapolated` and,
+per predicted quantity, `widening`.
+
 `out=` writes the answer to a file that `lib_signoff` takes as its
 `candidates` (section 7). `--plan` lists the EMX runs and is the approval
 point; the same command without it simulates, compares each measurement
@@ -657,7 +762,13 @@ The pipeline is `pcell -> predict`: every point is still built by the
 generator, and each device metric comes from the library (a metric such as
 `{quantity: Lp, frequency_hz: 28e9}` reads the `Lp@28` column; at a
 frequency the stratum does not anchor, its extension column). A point the
-library cannot vouch for fails as `failed:predict` with the reason.
+library cannot vouch for fails as `failed:predict` with the reason. A point
+beyond a model's measured range along the outer diameters, within
+`extrapolate` (0.15 unless given; section 4), is scored like the others, its
+answers labelled `extrapolated` in the point's `predictions.json` and in the
+leaders' `library`; farther, it fails. The stage's identity names the
+fraction and the widening slopes, so predictions made with extrapolation are
+a generation of their own; `extrapolate=0` keeps the identity of before.
 Predictions spend none of the spec's simulation budget and get their own
 pipeline fingerprint, so they never pass for EMX measurements. The leaders,
 their intervals and their footprints (from the GDS each one's pcell drew)
@@ -674,7 +785,11 @@ ic-opt run lib_signoff <project> library=<library root> candidates=<project>/.ic
 answer or a list of parameter dicts. Each candidate is simulated with the EMX settings of the part
 that holds its turns level. The predictions are recorded before EMX runs, and
 the report (`.icopt/reports/lib_signoff.json`) gives, per quantity, the
-predicted value, bounds, measurement, z score and whether it fell inside.
+predicted value, bounds, measurement, z score and whether it fell inside. A
+candidate just beyond the measured range along the outer diameters
+(section 4) is predicted and scored like the others; its quantities carry
+the answer's `extrapolated` and `widening`, and its z is taken against the
+model's own sigma, not the widened one.
 `adopt=true` copies the ok observations, sNp included, into the part store
 under fresh ids. The next dataset build includes them, and the content key
 of every cache and every `predict` stage changes with it.
@@ -826,7 +941,10 @@ column and for the system `SRF`. A neighbour is kept when
 - every variable's column is `predicted`: otherwise it is dropped as
   `out_of_domain`, or as `uncertain` (too uncertain, or no value); the SRF
   likewise. A curve column answered `above_resonance` (section 4) is dropped
-  by the last rule instead, `srf_margin`;
+  by the last rule instead, `srf_margin`. A neighbour of a row at the table's
+  edge may lie beyond its measured range along an outer diameter: within the
+  allowance (section 4) it is answered, labelled, and the report keeps the
+  label;
 - each predicted value lies inside its variable's range as the table takes a
   row onto the grid (the end levels reach half an end interval beyond the
   bounds): otherwise `outside_range`. A row adopted inside it is a candidate
