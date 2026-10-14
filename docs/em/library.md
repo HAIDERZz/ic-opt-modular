@@ -834,6 +834,17 @@ frequency, the rule, the combinations on the grid and how many the run
 visited, and for the best points the row each one took; the report's "Best
 observed" names the row, its geometry and its footprint.
 
+A device metric on the SRF (`quantity: SRF`, `SRF_p` or `SRF_s`) of a row whose
+sweep shows no resonance is that sweep's last frequency, a lower bound (N-94):
+the device's child stays `ok` and says so in an `issues` line (`metric SRF: no
+resonance inside the sweep up to 60 GHz; reported as 60 GHz, a lower bound`),
+where it used to fail the point as `failed:measure`. A row that resonates inside
+its sweep gives its own value and no line. A constraint on such a metric judges
+the row on the bound; `srf_margin` keeps the row among the candidates (it drops
+only rows whose known SRF is at or below the margin), so the margin and the
+constraint work together: the margin drops the rows that resonate low before any
+point is made, the constraint judges the rest.
+
 `ic-opt doctor` (and every recipe's `--plan`) prints `library:<device>` with
 `<stratum> at <f> GHz: <n> rows on the grid in <m> of <total> combinations,
 prefer <rule>`, and the plan's point line says `no EMX runs`. It fails with

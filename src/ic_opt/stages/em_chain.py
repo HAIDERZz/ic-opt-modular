@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 from pydantic import ValidationError
 
 from ic_opt import space
@@ -325,6 +326,12 @@ class Measure:
     ``measure.Quantities.at`` reads them, or scalars). A metric it cannot produce fails the child (``failed:measure``); a
     coupled pair measured with k_lf < 0 does not, but its issues -- and so the point's -- carry ``polarity_issue``.
 
+    An SRF scalar (``SRF_p``, ``SRF_s``, ``SRF``) of a sweep with no resonance in it does not fail the child either (N-94):
+    the reactance stays inductive up to the sweep's last frequency, so the SRF lies above it, and the metric takes that
+    frequency as its value, a lower bound; the child's issues say so (``srf_above_sweep``, ``bound_issue``). A pcell
+    device and a library row alike. Any other missing value fails the child as before, an SRF too when the sweep starts
+    past the resonance or holds fewer than two samples to tell it from.
+
     A library device (T18.2B): the S-parameters are the row ``pick`` took, measured by the topology the library measures
     that row with unless the device states its own (``DeviceSParams.topology``), and the child records the row
     (``ChildResult.library_row``: stratum, part, obs id, geometry, electrical values, footprint; no path). Its pipelines
@@ -354,13 +361,16 @@ class Measure:
             q = measure_kernel.quantities(ts.freqs, ts.s, topo, z0=ts.z0)
         except (touchstone.TouchstoneError, measure_kernel.MeasureError, KeyError) as exc:
             raise StageFailure(f"device {ctx.unit}: {exc}") from exc
-        metrics, issues = {}, []
+        metrics, issues, bounds = {}, [], []
         for metric in ctx.spec.metrics_for_device(ctx.unit):
             try:
                 value = q.at(metric.quantity, metric.frequency_hz) if metric.frequency_hz is not None else q.scalars[metric.quantity]
             except (KeyError, measure_kernel.MeasureError) as exc:
                 issues.append(f"metric {metric.name}: {exc}")
                 continue
+            if value is None and metric.frequency_hz is None and srf_above_sweep(q, metric.quantity):
+                value = float(ts.freqs[-1])                          # N-94: the SRF lies above the sweep, at least its last frequency
+                bounds.append(bound_issue(metric.name, value))
             if value is None or not math.isfinite(value):
                 issues.append(f"metric {metric.name}: {metric.quantity} is {value}")
             else:
@@ -368,12 +378,37 @@ class Measure:
         (ctx.workdir / "quantities.json").write_text(json.dumps({k: v for k, v in q.scalars.items()}, indent=1), encoding="utf-8")
         warning = polarity_issue(device, q.scalars.get("k_lf"), topology)
         picked = geometry.picks.get(ctx.unit)
-        return ChildResult(unit=ctx.unit, corner=None, metrics=metrics, issues=issues + ([warning] if warning else []),
+        return ChildResult(unit=ctx.unit, corner=None, metrics=metrics, issues=issues + bounds + ([warning] if warning else []),
                            status="ok" if not issues else "failed:measure",
                            library_row=None if picked is None else {key: picked[key] for key in LIBRARY_ROW})
 
 
 LIBRARY_ROW = ("stratum", "part", "obs_id", "geometry", "values", "footprint")    # what a child records of its library row
+
+SRF_DRIVES = {"SRF_p": ("p",), "SRF_s": ("s",), "SRF": measure_kernel.DRIVE_NAMES}    # the drives whose reactance an SRF scalar reads
+
+
+def srf_above_sweep(q: measure_kernel.Quantities, quantity: str) -> bool:
+    """N-94: whether ``quantity``, an SRF scalar of ``q`` that is None, means a resonance above the sweep. The kernel leaves
+    an SRF None when the reactance has no flip from positive to non-positive inside the sweep, and that says where the
+    resonance is only if the reactance is inductive (L > 0, the sign of Im Z) at every usable sample above 0 Hz, at
+    least two of them, for each drive the scalar reads (the system ``SRF`` reads every drive, and is None only when
+    each of theirs is): then the first zero lies past the sweep's last frequency, which is a lower bound. A first usable
+    sample already at or below zero -- the sweep starts past the resonance, it lies below the sweep -- and fewer than two
+    usable samples -- nothing to tell it from -- give no bound: False, and the metric fails like any other missing value."""
+    drives = [d for d in SRF_DRIVES.get(quantity, ()) if f"L{d}" in q.curves]
+    for drive in drives:
+        curve = q.curves[f"L{drive}"]
+        usable = curve[(q.freqs > 0) & np.isfinite(curve)]
+        if len(usable) < 2 or not np.all(usable > 0):
+            return False
+    return bool(drives)
+
+
+def bound_issue(metric: str, stop_hz: float) -> str:
+    """N-94: the child's issue for a metric reported as the sweep's last frequency (its warning: it does not fail the child)."""
+    top = f"{stop_hz / 1e9:g}"
+    return f"metric {metric}: no resonance inside the sweep up to {top} GHz; reported as {top} GHz, a lower bound"
 
 
 def polarity_issue(device: Device, k_lf: float | None, topology: Topology | None = None) -> str | None:

@@ -11,6 +11,7 @@ from ic_opt import migrate_store
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
 from ic_opt.eval.engine import BudgetExceeded
+from ic_opt.eval.stage import TRACE_FILE, StageContext
 from ic_opt.executor import CommandResult, process_group
 from ic_opt.observation import ChildResult
 from ic_opt.sim.corner import aggregate
@@ -429,3 +430,30 @@ def test_evaluate_names_the_constraints_a_batch_violated(tmp_path, capsys):
     evaluate_block(spec, [Point({"F": "20", "W": "0.6u"}, "user"), Point({"F": "22", "W": "0.6u"}, "user")], ex, store,
                    deck=deck_for(spec), limits=FAKE_HOST)
     assert "[evaluate] step='evaluate': constraints violated -- NF lt 9 on 1 of 2 points" in capsys.readouterr().out
+
+
+def test_a_childs_commands_are_kept_in_its_trace_json_failed_ones_too(tmp_path):
+    """N-53: ``StageContext.trace`` -- the commands a child ran -- was written and lost. As a child finishes it is a JSON list in
+    ``trace.json`` in the child's sim_dir: label, argv, returncode and seconds of each command (Spectre, then OCEAN), and for
+    a child that failed at Spectre the failed command, without the OCEAN run that never came. The observation, and the files
+    the stages wrote, are as they were."""
+    spec = make_spec(**three_by_three())
+    store = RunStore(tmp_path)
+    ex = FakeSpectreExecutor(store.root / "sims", metrics_by_corner, fail_spectre=lambda tb, c: (tb, c) == ("cg", "ss"))
+    (o,) = evaluate(spec, [Point({"F": "20", "W": "0.6u"}, "user")], ex, store, deck=deck_for(spec), limits=FAKE_HOST,
+                    stop_at_first_failure=False)
+    assert len(o.children) == 6 and o.children["cg/ss"].status == "failed:spectre"
+    for key, child in o.children.items():
+        trace = json.loads((store.project_dir / child.sim_dir / TRACE_FILE).read_text(encoding="utf-8"))
+        assert [r["label"] for r in trace] == (["spectre#1"] if key == "cg/ss" else ["spectre#1", "ocean#1"]), key
+        assert all(set(r) == {"label", "argv", "returncode", "seconds"} for r in trace) and trace[0]["argv"][0] == "spectre"
+        assert (trace[0]["returncode"] != 0) == (key == "cg/ss") and "trace" not in child.model_dump(), key
+        assert (store.project_dir / child.sim_dir / "spectre.stderr").exists()
+
+
+def test_the_trace_is_a_json_list_in_utf8_whatever_a_stage_put_in_it(tmp_path):
+    """An empty trace is the list ``[]``; a value JSON has no type for (a path) is written as its text; non-ASCII text reads back."""
+    ctx = StageContext(spec=None, executor=None, store=None, obs_id="obs_0001", workdir=tmp_path, remote_dir="r")
+    assert ctx.write_trace() == tmp_path / TRACE_FILE == tmp_path / "trace.json" and (tmp_path / TRACE_FILE).read_bytes() == b"[]"
+    ctx.trace.append({"label": "bind:Ñ", "replaced": Path("/old/ü.s2p"), "seconds": 0.25})
+    assert json.loads(ctx.write_trace().read_text(encoding="utf-8")) == [{"label": "bind:Ñ", "replaced": "/old/ü.s2p", "seconds": 0.25}]

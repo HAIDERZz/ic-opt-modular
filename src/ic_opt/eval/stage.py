@@ -23,6 +23,7 @@ the simulation host (EMX: the process file's content) also has
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
@@ -31,6 +32,9 @@ if TYPE_CHECKING:
     from ic_opt.executor import Executor
     from ic_opt.spec import Spec
     from ic_opt.store import RunStore
+
+
+TRACE_FILE = "trace.json"          # a finished child's trace, in its sim_dir (``StageContext.write_trace``, N-53)
 
 
 class StageFailure(Exception):
@@ -53,12 +57,23 @@ class StageContext:
     point: Any = None                # the Point being evaluated (child stages of EM pipelines render the circuit from it)
     cache: dict[str, str] = field(default_factory=dict)         # point-level stage name -> "hit" | "miss"
     cshrc: str | None = None
-    trace: list[dict[str, Any]] = field(default_factory=list)   # command records for the child
+    trace: list[dict[str, Any]] = field(default_factory=list)   # the child's records; written to trace.json when it finishes
 
     def record(self, label: str, result: Any) -> None:
         self.trace.append(
             {"label": label, "argv": result.argv, "returncode": result.returncode, "seconds": round(result.seconds, 3)}
         )
+
+    def write_trace(self) -> Path:
+        """N-53: ``trace`` as a JSON list (UTF-8) in ``workdir`` / ``TRACE_FILE``: the commands the child ran
+        (``record``: label, argv, returncode, seconds), the nport binding's rewrite of the netlist (``bind:<instance>``: the
+        signal nodes, the dropped ports, the file replaced), the OCEAN timing rows. The engine writes it as a child finishes,
+        ok or failed, and always -- an empty list for a child that recorded nothing, such as a device's measurement. It is
+        no observation field: no fingerprint, digest or report reads it. A child that never ran (its point failed in a
+        point-level stage) has no context and no directory, and so no file."""
+        path = self.workdir / TRACE_FILE
+        path.write_text(json.dumps(self.trace, indent=1, default=str), encoding="utf-8")
+        return path
 
 
 @dataclass(frozen=True)

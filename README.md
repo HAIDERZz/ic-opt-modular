@@ -431,6 +431,17 @@ because the built-in families wind it that way and so measure a positive `k`; `C
 generator of your own whose secondary winds the other way measures `k < 0`: the point's `issues` say so,
 and the device needs `topology: {drives: [[P1, N1], [P2, N2]]}` (every port exactly once, taps under `grounded`).
 
+A device metric on an SRF (`SRF_p`, `SRF_s`; `SRF` is the lowest over the drives) is the first frequency at which a drive's
+reactance turns from inductive to capacitive. When the sweep shows no such turn -- the reactance is inductive up to the
+sweep's last frequency -- the metric is that last frequency, **a lower bound**, and the device's child says so in an issue
+that does not fail it (`metric SRF_p: no resonance inside the sweep up to 60 GHz; reported as 60 GHz, a lower bound`): the
+point stays `ok`, and `quantities.json` keeps what was measured (null). A pcell device and a library row alike, a row with
+the sweep it was measured with. Read the value as "at least this": a minimum such as `SRF_p > 40e9 Hz` is judged against it,
+so a bound below the minimum fails the constraint although the device may resonate above it (sweep further, or take a row
+swept further), and a maximum on the SRF of such a device says nothing about it. A sweep that starts past the resonance has
+no SRF and no bound, and any other metric the sweep cannot give still fails the point (`failed:measure`): `Lp_lf` of a
+sweep that starts above 3 GHz, a curve outside the sweep.
+
 Beside the generator form, a device may come from a **library table** (a stratum of a device library, below): its
 variables are electrical values -- columns of the table's index at a working frequency (`Lp`, `Ls`, `k`, `Qmin`, ...)
 -- on ordinary grids, the combinations that exist are the ones a row of the table sits on, and a point binds that
@@ -616,6 +627,18 @@ point lies at a bound of the advice's range that is not the spec's; for library
 devices, each table on its grid, how many of its combinations the run visited
 and the rows the best points took -- every number computed from the
 observations).
+
+A child's directory, `sims/<obs>/<tb>/<corner>/` (a device's: `sims/<obs>/<device>/nominal/`), holds what its stages wrote --
+the rendered netlist, `spectre.stdout` / `spectre.stderr`, `metrics/` (`ocean.log`, `ocean_timing.tsv`, the waveforms), a
+device's `quantities.json` -- and, once the child has finished, ok or failed, `trace.json`: a JSON list (UTF-8) of the records
+it kept as it went. A command is `{label, argv, returncode, seconds}` (`spectre#1`, `ocean#1`; a retried one `#2`); the
+nport binding of a testbench child is `bind:<instance>` with the `device`, the `terminals` kept, the instance's `signal_nodes`,
+the `dropped_ports` (positions among the instance's terminals, counted from 1) and `replaced`, the file the netlist named
+before; an OCEAN timing row is `ocean:<part>` with `seconds` and `outcome`. A device's measurement records nothing: `[]`.
+The file is no part of `observations.jsonl`, of any fingerprint, of the digest or of the report. A child that never ran --
+its point failed in a point-level stage (`pcell`, `emx:<device>`, `pick`), so its `sim_dir` is null -- has no directory and
+no trace; a point's EMX runs are in `sims/<obs>/em/<device>/` (`emx.cmd`, `emx.log`), not in a child's trace. Children
+recorded by an earlier version have no `trace.json`.
 
 Waveforms asked for with `waveforms=` (`fix_run`, `sim.evaluate`) land in the
 child's `sims/<obs>/<tb>/<corner>/metrics/waveforms/`: one real CSV per waveform,
