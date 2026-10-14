@@ -54,6 +54,7 @@ the process file's content, so a re-run only simulates new points.
 # <library root>/library.yaml
 schema_version: ic-opt-library-v1
 process_profile: demo_6m
+frequency_grid: {from_ghz: 1, ratio: 1.1, until_ghz: 50, step_ghz: 5}   # optional: where every curve has a model too (lib.prefit)
 strata:
   ind_sym_top:                                   # one device family on one metal body
     generator: clean_port_ind_sym
@@ -195,6 +196,75 @@ value, is refused with the parts' sweeps (it is not an empty answer).
 `lib.coverage` keeps listing the declared columns and adds one line,
 `any_frequency`, naming the curves that answer anywhere and the parts'
 sweeps.
+
+### A frequency grid, fitted ahead: `lib.prefit`
+
+A column whose model the cache does not hold is fitted at its first
+request: seconds to minutes on an inductor table, about an hour for the two
+largest transformer tables at ten new frequencies (N-122). To answer any frequency
+at once, the models have to cover the frequency axis ahead. The library
+says where with one optional entry, before `strata:` (the example above):
+
+```text
+frequency_grid: {from_ghz: 1, ratio: 1.1, until_ghz: 50, step_ghz: 5}
+```
+
+Its frequencies, in whole GHz: below `until_ghz` the distinct values
+round(`from_ghz` x `ratio`^n), n = 0, 1, ..., each about `ratio` above the
+previous; then `until_ghz`, `until_ghz` + `step_ghz`, ... -- each inside a
+part's sweep. Over a 0-250 GHz sweep: 1-14, 16, 17, 19, 21, 23, 26, 28, 31,
+34, 37, 41, 45 and 50, 55, ..., 250, 67 frequencies. `ratio` must exceed 1,
+`step_ghz` 0, and `from_ghz` must lie between 0 and `until_ghz`. Why these:
+on a 16-table inductor and transformer library whose rows are swept 0-250 GHz
+every 1 GHz, each row's measured curve, interpolated between these
+frequencies with PCHIP, stays within 1.7 % of the measured value at 99 % of
+the frequencies where the library gives the curve a value, on every table
+and curve (the worst: the Q curves of the multi-turn secondaries with 2 um
+port openings, 1.2 and 1.7 %; half of the 68 tables and curves at or below
+0.03 %). A uniform
+grid every 5 GHz misses the large multi-turn devices (9-24 %), one every
+2 GHz (125 frequencies) does no better: a device's curves change at a rate
+set by its own resonance, so the large devices, which resonate low, need the
+low band dense, and the small ones, used high, need no more than every
+5 GHz.
+
+A curve's *knots* are the frequencies at which its column has, or will
+have, a model: its anchors and the grid's frequencies inside the parts'
+sweeps, less those where the column can have none -- no row with a value
+there (outside every row's sweep, or past every row's resonance margin) or
+too few rows for a model (`no_model`, section 4). Finding them measures the
+grid's columns as extension columns, all of a stratum's in one pass over its
+rows (about 12 s for a 1,736-row transformer table on one thread; nothing is
+fitted). `lib.prefit` fits them:
+
+```bash
+ic-opt call lib.prefit <library root> strata=ind_sym_top curves=Lp,Qp threads=16 workers=8   # every knot column not cached yet
+```
+
+Stratum after stratum -- every stratum and every curve it declares unless
+`strata=` / `curves=` (comma lists) say otherwise -- it measures the knots
+and fits every knot column whose model the cache does not hold, with the
+models those need (the resonance's, a composed curve's parts), each stratum
+with the whole `hosts.local` entry, as `lib_signoff` fits (`threads=` and
+`workers=` cap it, [Compute](#compute)). It prints per stratum, on stderr,
+the knot columns cached, to fit and skipped with why, its progress and the
+minutes, and answers per stratum `knots` (per curve, in GHz), `fitted`,
+`cached`, `skipped` (column: why) and `seconds`. It is resumable: what is
+cached is not fitted again, so a run that was interrupted continues when
+started again. It hands the columns to the fitting two per worker at a time,
+so an interruption loses at most those fits (a composed curve's calibration
+is written when its five folds are done), and keeps none of the fitted
+models in memory. `lib.coverage` and `lib.load` add to `cached`, per curve,
+`grid <n>/<m>`: n of its m knots have their model cached ([Cache](#cache)).
+Without a grid a curve's knots are its anchors, and `lib.prefit` fits those.
+
+The entry belongs to the library, not to a stratum's definition: declaring
+it changes no dataset key and no cache file name, and nothing is measured or
+fitted for it until `lib.prefit`, `lib.coverage` or `lib.load` asks (the
+latter two measure the grid's columns to count the knots). Between the knots
+a curve still answers as any extension column. ic-opt 0.9.0 and earlier
+refuse a library.yaml that holds the entry (extra fields are forbidden):
+add it once every user of the library runs a version that knows it.
 
 ## 3. Check it
 
@@ -1177,6 +1247,18 @@ the whole entry. A second command on the same machine, such as a local EMX
 sweep, needs its own share: lower `hosts.local` or set `OMP_NUM_THREADS`
 (or `OPENBLAS_NUM_THREADS` / `MKL_NUM_THREADS`) for one of them.
 
+`lib.prefit` ([A frequency grid](#a-frequency-grid-fitted-ahead-libprefit))
+fits this way, one stratum at a time, with `threads=16 workers=8` for
+instance. From an empty cache, a 114-row inductor table (two direct curves,
+a model per turns level) took 30 s on the reference host at 16 threads (8
+workers of 2): its dataset, the grid's measurement (one pass over the rows),
+its 136 knot columns and the resonance's model. A large transformer table
+takes hours: on the two largest stacked-transformer tables (1,576 and 1,736
+rows, composed L and Q curves) N-122 measured about an hour for ten new
+frequencies each at 16 threads, and their grids hold 69 knots per curve.
+Measuring the knots of every table of a 16-table library, the datasets
+included, took 22 s at most per table, one thread each.
+
 ## Cache
 
 Datasets, calibrations and fitted models are cached as files named after
@@ -1217,6 +1299,13 @@ query needs no fit), `calibration` (the hold-out fits are cached; the first quer
 nothing will be fitted and a query answers it `no_model`, section 4). Read it before a query on a library you copied:
 the cache is keyed by content, so one copy is as good as another, but it only holds what was fitted where it came
 from -- the first query of a quantity nobody asked for yet fits it, on the copy as on the original.
+
+With a `frequency_grid` in library.yaml ([A frequency grid](#a-frequency-grid-fitted-ahead-libprefit)), `cached` adds
+one entry per declared curve under the curve's own name, `grid <n>/<m>`: n of its m knots have their model cached (a
+query there needs no fit), and `lib.prefit` fits the other m - n. Counting the knots measures the grid's columns, kept as
+`anchors-*` files like any extension column's, one per stratum and grid frequency. A knot's model takes as much room as
+its table's other columns: the 137 models of the 114-row inductor table above take 9 MB, a large transformer table's
+3-40 MB each, a few GB for its grid.
 
 ## A new process
 

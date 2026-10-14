@@ -82,6 +82,12 @@ allowance (``domain.DomainGuard.check``). Such an answer keeps its status (``pre
 ``extrapolated`` -- per dim beyond the range, ``side``, ``beyond``, ``allowance`` and ``measured_range`` -- and
 ``widening``, the factor its calibrated interval is widened by (``widening``: 1 + a x depth, ``a`` per column class from
 N-115's edge hold-outs, ``WIDENING``). An answer inside the range is computed exactly as before.
+
+A frequency grid (N-126): when library.yaml declares ``frequency_grid`` (``manifest.FrequencyGrid``), ``Library.grid`` is its
+frequencies inside a stratum's sweeps and ``Library.knots`` a curve's -- its anchors and the grid's frequencies, less the
+columns that can have no model -- whose columns ``ic_opt.library.prefit`` (``lib.prefit``) fits ahead; ``cached`` adds per
+curve how many of its knots are cached. The grid's columns are extension columns like any other, measured in one pass over
+the rows (``dataset.anchors_at``).
 """
 
 from __future__ import annotations
@@ -365,6 +371,49 @@ class Library:
         facts = self.anchors(stratum, ghz)
         with self._rows_lock:
             self.dataset(stratum).extend(ghz, facts["curves"])
+
+    # -- the frequency grid and each curve's knots (N-126) ------------------------------------------------------------------
+
+    def grid(self, stratum: str) -> list[float]:
+        """The library's frequency grid (library.yaml's ``frequency_grid``, ``manifest.FrequencyGrid``) inside the stratum's
+        parts' sweeps (``sweeps``), in GHz, ascending; none when library.yaml declares no grid or no part states its sweep."""
+        rule = self.manifest.frequency_grid
+        return [] if rule is None else rule.frequencies(self.sweeps(stratum).values())
+
+    def knots(self, stratum: str, curve: str) -> list[float]:
+        """The frequencies, in GHz and ascending, at which the declared ``curve``'s column has or will have a model: the
+        curve's anchors and the grid's frequencies inside the stratum's sweeps (``grid``), less those where the column can
+        have none (``no_model``: no row with a value there -- each row answers only inside its sweep and below its
+        resonance's srf_margin x f -- or too few rows for a model). Without a grid, the anchors that can have a model. The
+        grid's columns are measured from the rows' sNp files first, as extension columns (``_extend_at``: the frequencies
+        not cached yet in one pass, seconds); nothing is fitted. ValueError for a stratum or curve library.yaml does not
+        declare."""
+        self.dataset(stratum)                            # refuses a stratum library.yaml does not declare, naming those it does
+        declared = dataset.curves(self.manifest.strata[stratum])
+        if curve not in declared:
+            raise ValueError(f"{stratum} declares no curve {curve!r}; its curves: {declared or 'none'}")
+        return [f for f in self._knot_candidates(stratum, curve) if self.no_model(stratum, f"{curve}@{f:g}") is None]
+
+    def _knot_candidates(self, stratum: str, curve: str) -> list[float]:
+        """``knots`` before ``no_model``: the curve's anchors and the grid's frequencies, ascending, each column among the
+        dataset's rows (the grid's measured where the curve has no anchor)."""
+        anchors = self.manifest.strata[stratum].quantities[curve].anchors_ghz
+        grid = self.grid(stratum)
+        self._extend_at(stratum, [f for f in grid if f not in anchors])
+        return sorted(set(anchors) | set(grid))
+
+    def _extend_at(self, stratum: str, ghzs: list[float]) -> None:
+        """``_extend`` at each of ``ghzs``, frequencies inside the parts' sweeps: every declared curve there into the dataset's
+        rows, the frequencies this library has not measured yet read from their cache files or measured together, in one
+        pass over the rows (``dataset.anchors_at``)."""
+        with self._rows_lock:
+            todo = [ghz for ghz in dict.fromkeys(float(f) for f in ghzs) if (stratum, ghz) not in self._anchors]
+            if todo:
+                found = dataset.anchors_at(self.root, self.dataset(stratum), self.manifest.strata[stratum], todo, cache=self.cache)
+                self._anchors.update({(stratum, ghz): facts for ghz, facts in found.items()})
+            ds = self.dataset(stratum)
+            for f in ghzs:
+                ds.extend(float(f), self._anchors[(stratum, float(f))]["curves"])
 
     def _ensure(self, stratum: str, quantity: str) -> dataset.Dataset:
         """The dataset with ``quantity`` among its rows' values: a declared column, or an extension column extended here
@@ -807,7 +856,9 @@ class Library:
         ``"none"`` (calibration and model both to come: the five folds and the fit) or ``"too few rows (<n>)"`` (a column that
         can have no model, ``no_model``: none is fitted, and a query answers it ``no_model``). File presence only: nothing
         is loaded or fitted. ``lib.coverage`` and ``lib.load`` answer with it, so a user sees what a query will wait for
-        before asking (N-33, 2026-09-27: a first query fitted three 60 GHz curves in silence for half an hour)."""
+        before asking (N-33, 2026-09-27: a first query fitted three 60 GHz curves in silence for half an hour). When
+        library.yaml declares a frequency grid (N-126), each declared curve adds ``"grid <n>/<m>"`` under its own name: n of
+        its m ``knots`` have their model cached (``lib.prefit`` fits the others) -- which measures the grid's columns first."""
         ds = self.dataset(stratum)
         out: dict[str, str] = {}
         for q in ds.columns:
@@ -821,6 +872,11 @@ class Library:
                 out[q] = "calibration" if self._calibration(ds, q, x, y, settings, compute=False) is not None else "none"
             else:
                 out[q] = "calibration" if self._composed_calibration(stratum, q, compute=False) is not None else "none"
+        if self.manifest.frequency_grid is not None:
+            for curve in dataset.curves(self.manifest.strata[stratum]):
+                knots = self.knots(stratum, curve)
+                have = sum(self._model_file(stratum, f"{curve}@{f:g}") is not None for f in knots)
+                out[curve] = f"grid {have}/{len(knots)}"
         return out
 
     def _model_file(self, stratum: str, quantity: str) -> Path | None:

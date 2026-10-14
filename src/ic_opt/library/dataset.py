@@ -23,8 +23,10 @@ A declared curve answers at any frequency, not only at its anchors (T18.1): ``<c
 row's sNp -- one pass, the rule of a declared anchor (``_anchor_value``), so the column equals what a manifest declaring
 that anchor gives -- and caches it beside the dataset as ``anchors-<stratum>-<dataset key>-<f>.json``; ``Dataset.extend``
 puts the values into the rows. The dataset itself, its key and its file do not change: a library that never asks for an
-extension column never reads or writes such a file. ``footprints`` measures, once per stratum, each row's footprint
-from the GDS kept beside its sNp (``ic_opt.em.pcell.footprint``), cached as ``footprint-<stratum>-<dataset key>.json``.
+extension column never reads or writes such a file. ``anchors_at`` measures several frequencies in one pass over the rows
+and writes each one's file as ``anchors`` would (a frequency grid's columns, N-126). ``footprints`` measures, once per
+stratum, each row's footprint from the GDS kept beside its sNp (``ic_opt.em.pcell.footprint``), cached as
+``footprint-<stratum>-<dataset key>.json``.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ import json
 import os
 import re
 import tempfile
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -43,7 +46,7 @@ import numpy as np
 
 from ic_opt.em import measure, touchstone
 from ic_opt.library import manifest
-from ic_opt.library.cache import Cache, computed, locate
+from ic_opt.library.cache import Cache, computed, held, locate, read_json, write_json
 from ic_opt.observation import Observation
 from ic_opt.spec import Device, Spec, Topology
 
@@ -311,32 +314,67 @@ def anchors(root: str | Path, ds: Dataset, stratum: manifest.Stratum, ghz: float
     measured as the dataset measured them (``_measure``), cached as ``anchors_file`` (``cache.computed``: one process
     computes it at a time, the lock discipline of the model cache). A row whose sNp can no longer be read is refused:
     the dataset was built from it."""
+    return computed(cache, anchors_file(ds, ghz), lambda: _anchor_passes(root, ds, stratum, [ghz])[ghz],
+                    lambda data: _anchors_valid(data, ds, stratum, ghz))
+
+
+def anchors_at(root: str | Path, ds: Dataset, stratum: manifest.Stratum, ghzs: list[float], *, cache: Cache | None) -> dict[float, dict]:
+    """``anchors`` at each of ``ghzs`` (N-126: a frequency grid's columns), keyed by the frequency: each read from its cache
+    file where that holds it, the others measured together in one pass over the rows' sNp files instead of one pass each --
+    holding the lock file of every one of them meanwhile, taken in the order of their names (so that two processes never
+    wait on each other), and re-read once held (another process may have written them) -- and written each to its own
+    ``anchors_file``, exactly as ``anchors`` writes it. ``cache`` None: measured, nothing read or written."""
+    ghzs = list(dict.fromkeys(ghzs))
+    if cache is None:
+        return _anchor_passes(root, ds, stratum, ghzs)
+
+    def cached(ghz: float) -> dict | None:
+        data = read_json(cache.find(anchors_file(ds, ghz)))
+        return data if isinstance(data, dict) and _anchors_valid(data, ds, stratum, ghz) else None
+
+    out = {ghz: data for ghz in ghzs if (data := cached(ghz)) is not None}
+    todo = [ghz for ghz in ghzs if ghz not in out]
+    if todo:
+        with ExitStack() as stack:
+            for name in sorted(anchors_file(ds, ghz) for ghz in todo):
+                stack.enter_context(held(cache, name))
+            out.update({ghz: data for ghz in todo if (data := cached(ghz)) is not None})
+            todo = [ghz for ghz in todo if ghz not in out]
+            measured = _anchor_passes(root, ds, stratum, todo) if todo else {}
+            for ghz in todo:
+                write_json(cache.target(anchors_file(ds, ghz)), measured[ghz])
+            out.update(measured)
+    return {ghz: out[ghz] for ghz in ghzs}
+
+
+def _anchors_valid(data: dict, ds: Dataset, stratum: manifest.Stratum, ghz: float) -> bool:
+    """Whether a cached anchors file holds ``ds``'s rows at ``ghz`` GHz, every declared curve, in this layout."""
+    return (data.get("version") == ANCHORS_VERSION and data.get("frequency_ghz") == ghz
+            and data.get("rows") == [[r.part, r.obs_id] for r in ds.rows] and set(data.get("curves", {})) == set(curves(stratum)))
+
+
+def _anchor_passes(root: str | Path, ds: Dataset, stratum: manifest.Stratum, ghzs: list[float]) -> dict[float, dict]:
+    """``anchors``'s content at each of ``ghzs``, from one pass over the rows' sNp files: each row is measured once and its
+    curves read at every frequency."""
     root = Path(root)
     names = curves(stratum)
     ids = [[r.part, r.obs_id] for r in ds.rows]
-
-    def compute() -> dict:
-        devices = part_devices(root, stratum)
-        out = {"version": ANCHORS_VERSION, "frequency_ghz": ghz, "rows": ids, "curves": {c: [] for c in names},
-               "srf_hz": [], "start_hz": [], "stop_hz": []}
-        for r in ds.rows:
-            try:
-                m = _measure((root / r.snp).parent, devices[r.part], stratum)
-            except (measure.MeasureError, touchstone.TouchstoneError, OSError) as exc:
-                raise DatasetError(f"{ds.stratum}: {r.part}/{r.obs_id}: its sNp {r.snp} cannot be measured again "
-                                   f"({type(exc).__name__}: {exc}); the dataset was built from it") from exc
+    devices = part_devices(root, stratum)
+    out = {ghz: {"version": ANCHORS_VERSION, "frequency_ghz": ghz, "rows": ids, "curves": {c: [] for c in names},
+                 "srf_hz": [], "start_hz": [], "stop_hz": []} for ghz in ghzs}
+    for r in ds.rows:
+        try:
+            m = _measure((root / r.snp).parent, devices[r.part], stratum)
+        except (measure.MeasureError, touchstone.TouchstoneError, OSError) as exc:
+            raise DatasetError(f"{ds.stratum}: {r.part}/{r.obs_id}: its sNp {r.snp} cannot be measured again "
+                               f"({type(exc).__name__}: {exc}); the dataset was built from it") from exc
+        for ghz, data in out.items():
             for c in names:
-                out["curves"][c].append(_anchor_value(m.q, c, stratum.quantities[c], ghz * 1e9, m.start, m.stop))
-            out["srf_hz"].append(m.q.scalars.get("SRF"))
-            out["start_hz"].append(m.start)
-            out["stop_hz"].append(m.stop)
-        return out
-
-    def valid(data: dict) -> bool:
-        return (data.get("version") == ANCHORS_VERSION and data.get("frequency_ghz") == ghz and data.get("rows") == ids
-                and set(data.get("curves", {})) == set(names))
-
-    return computed(cache, anchors_file(ds, ghz), compute, valid)
+                data["curves"][c].append(_anchor_value(m.q, c, stratum.quantities[c], ghz * 1e9, m.start, m.stop))
+            data["srf_hz"].append(m.q.scalars.get("SRF"))
+            data["start_hz"].append(m.start)
+            data["stop_hz"].append(m.stop)
+    return out
 
 
 def footprints_file(ds: Dataset) -> str:

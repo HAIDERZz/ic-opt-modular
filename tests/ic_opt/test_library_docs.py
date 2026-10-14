@@ -30,6 +30,10 @@ def test_the_manifest_example_is_a_valid_library_yaml():
     lib = manifest.Library.model_validate(yaml.safe_load(example))
     stratum = lib.strata["ind_sym_top"]
     assert stratum.columns() == ["Lp_lf", "Lp_res", "Qp_peak", "SRF_p", "Lp@10", "Lp@28", "Qp@10", "Qp@28"]
+    grid = lib.frequency_grid.frequencies([(0.0, 250e9)])                 # N-126: the 67 frequencies the text lists
+    assert len(grid) == 67 and grid[:16] == [*map(float, range(1, 15)), 16.0, 17.0] and grid[25:28] == [45.0, 50.0, 55.0]
+    (entry,) = [b for b in blocks_of("text") if b.startswith("frequency_grid:")]
+    assert manifest.FrequencyGrid.model_validate(yaml.safe_load(entry)["frequency_grid"]) == lib.frequency_grid
 
 
 def test_the_sweep_recipe_runs(tmp_path):
