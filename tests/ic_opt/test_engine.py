@@ -130,6 +130,23 @@ def test_child_failure_marks_observation_and_keeps_going(tmp_path):
     assert obs.issues[0].startswith("cg/ss: spectre exited 1")
 
 
+def test_a_failed_spectre_runs_own_error_reaches_the_observation(tmp_path):
+    """N-119 (N-118's check t4): the corner whose model section does not exist fails its point as failed:spectre, and the
+    stored observation says why -- the first ERROR entry of Spectre's log, in front of the exit code -- for that child and
+    for the point; the other corner is not touched by it."""
+    spec = make_spec(simulator={**minimal_spec()["simulator"], "stop_at_first_failure": False}, corners=TWO_CORNERS)
+    store = RunStore(tmp_path)
+    log = ("Error found by spectre during circuit read-in.\n    ERROR: \"input.scs\" 2: Spectre cannot find the `section\n"
+           "        ss_missing' library defined in it.\n\nspectre completes with 1 error.\n")
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 8.0}, fail_spectre=lambda tb, c: log if c == "ss" else False)
+    evaluate(spec, [Point({"F": "20", "W": "0.6u"}, "user")], ex, store, deck=deck_for(spec), limits=FAKE_HOST)
+    stored = RunStore(tmp_path).observations()[0]
+    cause = "ERROR: \"input.scs\" 2: Spectre cannot find the `section ss_missing' library defined in it."
+    assert stored.status == "failed:spectre" and stored.children["tb/tt"].status == "ok"
+    assert stored.children["tb/ss"].issues == [cause, "spectre exited 2", "spectre terminated prematurely due to fatal error."]
+    assert stored.issues[:2] == [f"tb/ss: {cause}", "tb/ss: spectre exited 2"]
+
+
 def test_a_command_past_its_deadline_fails_its_point_and_the_run_goes_on(tmp_path):
     """N-10: the second point's Spectre hangs -- a real sleep on the fake host -- past simulator.timeout_s. The executor
     kills its process group and raises CommandTimeout; the engine records that point as failed:spectre, the timeout and

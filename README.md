@@ -640,6 +640,15 @@ its point failed in a point-level stage (`pcell`, `emx:<device>`, `pick`), so it
 no trace; a point's EMX runs are in `sims/<obs>/em/<device>/` (`emx.cmd`, `emx.log`), not in a child's trace. Children
 recorded by an earlier version have no `trace.json`.
 
+A child whose Spectre run exits non-zero is `failed:spectre`, and its `issues` say why: first the first `ERROR` entry of
+Spectre's log, `psf/spectre.out` (fetched from an SSH host; Spectre's own output when there is no log) -- the line that
+starts it and its continuation lines on one line, at most 300 characters, e.g. `ERROR: "input.scs" 12: ... Spectre
+cannot find the 'section tt_x' library defined in it ...` for a corner whose model section the model file lacks --,
+then `spectre exited <code>` and the end of its standard error. A log without an `ERROR` entry leaves the first line
+out. An OCEAN run that wrote no scalars (`failed:ocean`) puts the first error of `metrics/ocean.log` in front of its
+lines the same way: a line of its error stream (`\e`) starting with `ERROR (<code>)` -- a license refused --
+or with SKILL's `*Error*`. A job past its deadline reads `timed out after <s>s: ...` as before.
+
 Waveforms asked for with `waveforms=` (`fix_run`, `sim.evaluate`) land in the
 child's `sims/<obs>/<tb>/<corner>/metrics/waveforms/`: one real CSV per waveform,
 `<name>.csv` (comma separated, a header row, `x,y` or `x,re,im` for a complex
