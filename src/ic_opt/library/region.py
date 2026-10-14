@@ -87,8 +87,10 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     OMP_NUM_THREADS, OPENBLAS_NUM_THREADS or MKL_NUM_THREADS lowers the threads (``query.omp_cap``).
     ``level_points`` (``robust`` or ``mean``, N-106) adds ``level_points`` at the end of the answer: every grid point of
     that level, in the grid's order, ``{"level", "dims", "rows"}`` -- what ``lib.region out=`` writes as a pcell device's
-    allowed combinations (``ic_opt.library.combinations``). ``extrapolate`` (N-116): how far beyond the measured range along
-    the outer diameters the pool, the grid and the models reach (module docstring)."""
+    allowed combinations (``ic_opt.library.combinations``). A target, the objective or the trend on a column whose usable
+    rows are too few for a model is refused with the reason before anything is fitted (``Library.require_models``, N-120).
+    ``extrapolate`` (N-116): how far beyond the measured range along the outer diameters the pool, the grid and the models
+    reach (module docstring)."""
     if level_points not in (None, "robust", "mean"):
         raise ValueError(f"level is robust or mean, got {level_points!r}")
     extrapolate = query.check_extrapolate(extrapolate)
@@ -106,6 +108,7 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     goals = stated + suggest.implied_srf(stated, obj, margin, ds.columns)
     names = sorted({t.quantity for t in goals} | ({obj[1]} if obj else set()) | ({trend[0]} if trend else set()))
     _check(ds, stated, names, by + ([trend[1]] if trend else []), levels_per_dim, max_points, relax)
+    library.require_models(stratum, names)               # N-120: refused before any fit where a column's rows are too few
     explicit = _explicit_steps(library, stratum, steps)
     notes = library.notes + [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
                              for t in goals if t not in stated]

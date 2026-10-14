@@ -232,6 +232,7 @@ Each quantity comes back with a `status`:
 | `out_of_domain` | the domain guard refused: `criterion`, `reason` (for a point outside the measured range: the dim, how far, and along an outer diameter the allowance), the nearest measured rows |
 | `above_sweep` | SRF only: most nearest rows did not resonate inside their sweep; `lower_bound` is that sweep's stop |
 | `above_resonance` | curves only: the resonance predicted at the point is at or below the curve's `srf_margin` x f, so a measured row there would have no value and there is none; `srf` gives the resonance (`column`, `value`, `lo`, `hi`), with `threshold_hz`, `frequency_hz`, `srf_margin`, `reason` and the curve model's nearest rows |
+| `no_model` | the column's usable rows are too few for a model of it (below): `rows` gives their number and `reason` says so (`2 usable rows: too few for a model of this column`); no model is fitted |
 
 A curve column `<curve>@<f>`, declared or at any other frequency, is answered
 only below the device's own resonance. A measured row has a value for it only
@@ -250,6 +251,28 @@ A library row still answers with its measured values, empty where its own
 resonance left the column out. A curve's answers need its resonance's model,
 so asking for a curve loads that model too, or fits it when it is not cached.
 A stratum that declares none of these SRF columns has no such rule.
+
+A column has no model where its usable rows cannot carry one. The library
+decides it from the rows alone, before anything is fitted, exactly where the
+fit or its calibration (five hold-outs of 20 % of the rows) would fail. A
+column without a usable row has none. A column modelled as one whole --
+on the dimensionless features, or in a stratum without a turns dim -- needs
+a held-out row in each of the five hold-outs: at least 3 rows, since 20 % of
+1 or 2 rows rounds to none. A column modelled per turns level needs one row:
+a level with fewer than 25 rows gets no model of its own, and there the
+column answers `out_of_domain` (criterion 2 below). A curve built with
+`model: ratio` or `resonance` needs a row with a positive value and a
+positive base value, such a row outside each hold-out, and -- where one of
+its models is fitted as one whole -- a held-out row that each of its models
+can answer; its base value (and SRF) must have a model too. `lib.query`
+answers such a column `no_model` and the others as before; `cached` lists it
+as `too few rows (<n>)` ([Cache](#cache)). `lib.suggest`, `lib.region` and
+`lib.densify` refuse a target, the objective, a trend or a named quantity on
+it with the same reason before anything is fitted (with `family=`, that is
+the table's `cannot_take`, section 5); `lib.densify` without `quantities=`
+leaves it out with a note, `lib_signoff` leaves it out of its report, and
+`lib_design` fails a metric on it as `failed:predict` with the reason. A
+resonance column that has no model limits no curve, as one without rows.
 
 The domain guard's criteria: (1) inside the achieved box -- along the outer
 diameters, within the allowance of [Beyond the measured range](#beyond-the-measured-range-extrapolate)
@@ -631,7 +654,8 @@ ic-opt run lib_signoff <project> library=<library root> candidates=<file> top=<n
 can depends on where the library has rows. `lib.densify` asks where new
 rows would help the models most, whatever the targets. It proposes `n`
 geometries whose simulation lowers the uncertainty of the named quantities
-(default: every column) the most over the whole sampled domain. The whole
+(default: every column that can have a model, section 4; a note names the
+others) the most over the whole sampled domain. The whole
 domain counts: where most rows hold a dim at one value and a few rows
 reach further, the models know little of the region those few rows open,
 and the picks go there first.
@@ -786,6 +810,8 @@ answer or a list of parameter dicts. Each candidate is simulated with the EMX se
 that holds its turns level. The predictions are recorded before EMX runs, and
 the report (`.icopt/reports/lib_signoff.json`) gives, per quantity, the
 predicted value, bounds, measurement, z score and whether it fell inside. A
+column with too few usable rows for a model (`no_model`, section 4) has no
+prediction to compare with: a line names it, and the report leaves it out. A
 candidate just beyond the measured range along the outer diameters
 (section 4) is predicted and scored like the others; its quantities carry
 the answer's `extrapolated` and `widening`, and its z is taken against the
@@ -1187,9 +1213,10 @@ finish writes the file. The lock files are empty.
 
 `lib.coverage` and `lib.load` answer with `cached`, one entry per quantity of the stratum's current dataset: `model` (a
 query needs no fit), `calibration` (the hold-out fits are cached; the first query fits the model, minutes), `none`
-(both to come) or `no rows`. Read it before a query on a library you copied: the cache is keyed by content, so one
-copy is as good as another, but it only holds what was fitted where it came from -- the first query of a quantity
-nobody asked for yet fits it, on the copy as on the original.
+(both to come) or `too few rows (<n>)` (its `n` usable rows -- none at all included -- are too few for a model, so
+nothing will be fitted and a query answers it `no_model`, section 4). Read it before a query on a library you copied:
+the cache is keyed by content, so one copy is as good as another, but it only holds what was fitted where it came
+from -- the first query of a quantity nobody asked for yet fits it, on the copy as on the original.
 
 ## A new process
 

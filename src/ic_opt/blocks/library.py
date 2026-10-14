@@ -104,7 +104,8 @@ def query(library: _query.Library | str | Path, stratum: str, params: dict, quan
     prediction with sigma / mu above its ceiling -- ``rel_sigma_max`` when given, else the quantity's in library.yaml, else
     0.15; each prediction reports the one it was held to -- is ``uncertain``. A curve column where the resonance predicted
     at the point is at or below the curve's srf_margin x f is ``above_resonance``, without a value (a measured row there has
-    none); one whose resonance's lower bound only reaches that threshold adds ``near_resonance``. ``footprint`` is the box around the drawn
+    none); one whose resonance's lower bound only reaches that threshold adds ``near_resonance``. A column whose usable rows
+    are too few for a model is ``no_model``, with its ``rows`` and the ``reason``. ``footprint`` is the box around the drawn
     device without its ground fixture: a library point's row's; elsewhere null unless ``footprint=true``, which draws the
     geometry with the stratum's generator (no EMX); ``footprint_why`` says why a footprint is null. ``cache_dir`` holds the
     library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).

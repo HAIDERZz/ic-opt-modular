@@ -5,8 +5,8 @@ unbuildable geometry fails as ``failed:pcell``, exactly as in the EM pipeline), 
 device metric from the library -- the measured value at an exact library point, else the model's mean --
 where the EM pipeline would run EMX and the measure kernel. A metric the library cannot vouch for (out of
 domain, too uncertain, resonance above the sweep, a curve at or above the device's own resonance -- ``above_resonance``,
-N-113 --, no such column) fails the child as ``failed:predict`` with the reason, so optimizers treat it like any failed
-simulation. Every answer, bounds included, is
+N-113 --, a column whose usable rows are too few for a model -- ``no_model``, N-120 --, no such column) fails the child
+as ``failed:predict`` with the reason, so optimizers treat it like any failed simulation. Every answer, bounds included, is
 written to the child's ``predictions.json``. A metric at a frequency (``{quantity: Lp, frequency_hz: 33e9}``) reads the
 column ``Lp@33``: a declared anchor, or else the extension column of a declared curve (``Library.columns``: measured from
 the rows' sNp, then modelled like a declared column).

@@ -9,11 +9,13 @@ list of parameter dicts. Each candidate is simulated with the spec of the stratu
 sweep), so a signed-off point is a measurement of the same generation as the library.
 The predictions are taken before anything runs; after EMX the quantities are measured with the library's
 own definitions (band, anchors, margin) and reported per candidate: predicted mu and calibrated bounds,
-measured value, z in the model's space, inside or not. A candidate beyond the measured range along the outer diameters
-(N-116, within ``lib.query``'s default allowance) is predicted and scored like the others; its quantities carry the
-answer's ``extrapolated`` label and ``widening``, and z is taken against the model's sigma (the widened interval's
-half-width over k x k_scale x widening). ``adopt=true`` copies every ok observation, sims
-directory included, into the part store it was simulated for, under fresh obs ids and an ``origin`` naming
+measured value, z in the model's space, inside or not. A column whose usable rows are too few for a model
+(``Library.no_model``, N-120) has no prediction to compare with: it is left out of the report, and a line
+names it. A candidate beyond the measured range along the outer diameters (N-116, within ``lib.query``'s
+default allowance) is predicted and scored like the others; its quantities carry the answer's ``extrapolated``
+label and ``widening``, and z is taken against the model's sigma (the widened interval's half-width over
+k x k_scale x widening). ``adopt=true`` copies every ok observation, sims directory included, into the part
+store it was simulated for, under fresh obs ids and an ``origin`` naming
 the sign-off run, so the next dataset build includes it. Real EMX: run with ``--plan`` first; it is the
 approval point. ``threads`` / ``memory_gb`` replace the part's EMX thread count and memory cap (EMX's cap is
 soft: give the candidates' real peak); they are not physics, so the generation stays the library's.
@@ -98,7 +100,11 @@ def main(run: Run, *, library: str, candidates: str, stratum: str | None = None,
         groups.setdefault(_part_for(ds, parts, params), []).append(_point(params))
     run.note(f"lib_signoff: {len(wanted)} candidates of {name} through em_only with the EMX settings of "
              + ", ".join(f"{part} ({len(pts)})" for part, pts in groups.items()))
-    missing = [q for q in ds.columns if lib._model_file(name, q) is None]
+    skipped = {q: short for q in ds.columns if (short := lib.no_model(name, q)) is not None}     # N-120: no model to compare with
+    if skipped:
+        run.note(f"lib_signoff: {len(skipped)} of {name}'s columns have too few usable rows for a model and are left out of the "
+                 "report: " + ", ".join(f"{q} ({short['rows']})" for q, short in skipped.items()))
+    missing = [q for q in ds.columns if q not in skipped and lib._model_file(name, q) is None]
     if missing:
         run.note(f"lib_signoff: fitting {len(missing)} of {name}'s {len(ds.columns)} models in parallel "
                  "(first use; minutes per round on the reference host)")
@@ -121,6 +127,8 @@ def main(run: Run, *, library: str, candidates: str, stratum: str | None = None,
             device = dataset._spec(lib.root / part).devices[0]
             row = dataset._row(run.store.project_dir, run.store.project_dir, part, device, o, stratum_def)
             for q, pred in before[o.key]["quantities"].items():
+                if q in skipped:
+                    continue
                 y = row.values.get(q)
                 e = {"measured": y, "predicted": pred.get("value"), "lo": pred.get("lo"), "hi": pred.get("hi"), "status": pred["status"]}
                 if "extrapolated" in pred:                       # N-116: beyond the measured range, the interval widened

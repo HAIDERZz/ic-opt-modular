@@ -481,7 +481,9 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
     no predicted point of that pool meets every target (a target region too small for 8192 points over the whole achieved
     box, N-50), a second pool: the grid ``lib.region`` searches for the same targets (``region.grid_pool``: its coarse pass
     with the stated windows ``region.RELAX`` wider, its grid over the survivors), scored the same way. The answer then
-    describes that grid in ``region_grid`` and says so in a note; ``pool`` and ``satisfying`` stay the first pool's.
+    describes that grid in ``region_grid`` and says so in a note; ``pool`` and ``satisfying`` stay the first pool's. A
+    target or the objective on a column whose usable rows are too few for a model -- or the resonance an anchored target
+    implies, if that one's are -- is refused with the reason before anything is fitted (``Library.require_models``, N-120).
     ``extrapolate`` (N-116): both pools reach that far beyond the measured range along the outer diameters, and a candidate
     there carries ``extrapolated`` (module docstring)."""
     extrapolate = query.check_extrapolate(extrapolate)
@@ -490,6 +492,7 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
     margin = min((r.srf_margin for r in library.manifest.strata[stratum].quantities.values()), default=1.25)
     goals = stated + implied_srf(stated, obj, margin, ds.columns)
     names = library.columns(stratum, sorted({t.quantity for t in goals} | ({obj[1]} if obj else set())))
+    library.require_models(stratum, names)
     models = {q: library.model(stratum, q) for q in names}
     measured_x = ds.matrix()
     x = np.unique(np.round(np.vstack([measured_x, pool(library, stratum, pool_size, seed, extrapolate=extrapolate)]), 9), axis=0)

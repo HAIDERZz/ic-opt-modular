@@ -33,7 +33,8 @@ variable's search scale), so that a row adopted at that value is a candidate of 
 the index's margin x the frequency (the margin every row of the device's table satisfies: the largest of the manifest's
 curves', or the device's ``srf_margin`` when that is larger; an SRF above the sweep is above it). The first rule a
 neighbour fails drops it, in this order: ``out_of_domain`` (a variable's column or the SRF), ``uncertain`` (a variable's
-column or the SRF not ``predicted`` otherwise: too uncertain, no value), ``outside_range``, ``srf_margin`` (also a
+column or the SRF not ``predicted`` otherwise: too uncertain, no value, ``no_model`` -- N-120: too few usable rows for a
+model, never fitted), ``outside_range``, ``srf_margin`` (also a
 variable's curve column that ``lib.query`` answers ``above_resonance``, N-113: the resonance predicted there at or below
 the curve's own margin x the frequency, so it has no value). A stratum that declares no ``SRF`` cannot have the SRF's
 margin rule applied, and a line says so. ``area`` is drawn only for the neighbours the models leave in the window (a pcell
@@ -233,7 +234,7 @@ def model_columns(lib: query.Library, stratum: str, columns: list[str], ghz: flo
 
 
 def _worse(statuses: list[str]) -> str:
-    for status in ("out_of_domain", "above_resonance", "uncertain", "above_sweep"):
+    for status in ("out_of_domain", "no_model", "above_resonance", "uncertain", "above_sweep"):
         if status in statuses:
             return status
     return statuses[0]
@@ -437,7 +438,7 @@ def plan_device(run: Run, device: Device, lib: query.Library, best: Observation,
     has_srf = "SRF" in rule.quantities
     asked = list(dict.fromkeys([q for c in wanted for q in columns[c]] + (["SRF"] if has_srf else [])))
     margin_hz = linked.index.srf_margin * f_hz
-    missing = [q for q in asked if lib._model_file(stratum, q) is None]
+    missing = [q for q in asked if lib.no_model(stratum, q) is None and lib._model_file(stratum, q) is None]   # N-120: none fitted
     if missing:
         run.note(f"lib_refine: {device.id}: fitting {len(missing)} model(s) of {stratum} ({', '.join(missing)}) in parallel "
                  "(first use; minutes per column on a large stratum)")
