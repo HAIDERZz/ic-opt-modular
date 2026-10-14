@@ -18,10 +18,10 @@ from ic_opt.blocks.netlist import import_netlists
 from ic_opt.em import measure, touchstone
 from ic_opt.space import Point
 from ic_opt.spec import Device, Spec, Topology
-from ic_opt.stages.em_chain import polarity_issue
+from ic_opt.stages.em_chain import bound_issue, polarity_issue, srf_above_sweep
 from ic_opt.store import RunStore
 from tests.ic_opt.fakes import FAKE_HOST, FakeSpectreExecutor, minimal_spec, synthetic_snp
-from tests.ic_opt.library_fixtures import rlc_touchstone, xfm_touchstone
+from tests.ic_opt.library_fixtures import coupled_touchstone, rlc_touchstone, xfm_touchstone
 from tests.ic_opt.test_em_circuit import em_circuit_spec
 from tests.ic_opt.test_em_emx import EM, em_only_spec
 from tests.ic_opt.test_em_pcell import XFM_FIXED
@@ -65,13 +65,15 @@ def test_measure_reads_the_quantities_the_spec_asks_for(tmp_path):
     assert [s.name for s in pipeline] == ["pcell", "emx:ind", "measure"]
     obs = evaluate(spec, [Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")], ex, store, limits=FAKE_HOST)
     o = obs[0]
-    assert o.status == "failed:measure" and o.issues == ["ind/nominal: metric SRF: SRF_p is None"]      # no resonance in a 3-point sweep
+    # no resonance in a 3-point sweep (1, 5, 10 GHz): the SRF is its last frequency, a lower bound, said in an issue (N-94; before, failed:measure)
+    assert o.status == "ok" and o.metrics["SRF"] == 10e9
+    assert o.issues == ["ind/nominal: metric SRF: no resonance inside the sweep up to 10 GHz; reported as 10 GHz, a lower bound"]
     assert o.children["ind/nominal"].metrics["Lp_5g"] == pytest.approx(2 * L * (1 - K), rel=1e-9)
 
-    d["metrics"].pop()                                        # without SRF the point is fine
+    d["metrics"].pop()                                        # without SRF the point has no such line
     spec = Spec.model_validate(d)
     obs = evaluate(spec, [Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")], ex, store, limits=FAKE_HOST)
-    assert obs[0].status == "ok" and obs[0].fom == pytest.approx(obs[0].metrics["Qpk"]) and obs[0].feasible
+    assert obs[0].status == "ok" and obs[0].fom == pytest.approx(obs[0].metrics["Qpk"]) and obs[0].feasible and obs[0].issues == []
     assert json.loads((store.root / "sims" / "obs_0002" / "ind" / "nominal" / "quantities.json").read_text())["Lp_lf"] > 0
 
 
@@ -432,3 +434,106 @@ def test_a_pair_measured_with_negative_k_keeps_its_point_and_says_which_topology
     assert stated == {"drives": [["P1", "N1"], ["P2", "N2"]]}
     fixed = run(xfm_only_spec(stated), "stated")
     assert fixed.status == "ok" and fixed.issues == [] and fixed.metrics["k"] == pytest.approx(-o.metrics["k"], rel=1e-9)
+
+
+# -- N-94: an SRF with no resonance inside the sweep is a lower bound, not a failure ------------------------------------------
+
+POINT = Point({"outer_diameter_um": "100", "width_um": "5", "F": "1"}, "user")
+PAIR_POINT = Point({"xfm.primary_width_um": "6", "xfm.secondary_width_um": "5"}, "user")
+PAIR = {"Lp": 0.3e-9, "Ls": 0.3e-9, "k": 0.05, "Rp": 1.0, "Rs": 1.0, "Cp": 60e-15, "Cs": 1e-15}    # primary resonates at 75 GHz, secondary far above
+
+
+def srf_metric(name: str, quantity: str, device: str = "ind") -> dict:
+    return {"name": name, "unit": "Hz", "device": device, "quantity": quantity}
+
+
+def bound(name: str, top_ghz: int) -> str:
+    return f"metric {name}: no resonance inside the sweep up to {top_ghz} GHz; reported as {top_ghz} GHz, a lower bound"
+
+
+def measure_point(tmp_path: Path, where: str, snp: str, metrics: list[dict], *, constraints: list[dict] = (), spec: Spec | None = None,
+                  point: Point = POINT):
+    """One point of ``spec`` (default: the synthetic inductor, ``em_only_spec``) through pcell, the fake EMX answering ``snp`` and
+    measure, with ``metrics`` for the device (the first is the objective); its observation and the store."""
+    d = (spec or em_only_spec()).model_dump(mode="json")
+    d["metrics"], d["constraints"] = metrics, list(constraints)
+    d["objective"] = {"direction": "maximize", "expression": metrics[0]["name"]}
+    store = RunStore(tmp_path / where)
+    ex = FakeSpectreExecutor(store.root / "sims", snp_fn=lambda argv, n_ports, z0: "! EMX was run on fake as: emx\n" + snp)
+    (o,) = evaluate(Spec.model_validate(d), [point], ex, store, limits=FAKE_HOST)
+    return o, store
+
+
+def test_an_srf_with_no_resonance_in_the_sweep_is_the_sweeps_last_frequency_a_lower_bound(tmp_path):
+    """N-94: the synthetic inductor resonates at 26.7 GHz; swept to 20 GHz it shows no resonance. Its SRF metrics -- the
+    drive's and the system's -- take the sweep's last frequency, the child and the point stay ok, and the child says it is
+    a lower bound in an issue that does not fail it; quantities.json keeps what the kernel measured (nothing). Swept to
+    60 GHz the resonance is in the sweep: its value, no issue. A constraint is judged on the bound as on any value."""
+    metrics = [srf_metric("SRF_p", "SRF_p"), srf_metric("SRF", "SRF"), {"name": "Lp_5g", "unit": "H", "device": "ind", "quantity": "Lp", "frequency_hz": 5e9}]
+    none = rlc_touchstone(150, 5, 2, 2, stop_ghz=20)
+    o, store = measure_point(tmp_path, "bound", none, metrics)
+    child = o.children["ind/nominal"]
+    assert o.status == "ok" and o.feasible and child.status == "ok"
+    assert child.metrics["SRF_p"] == child.metrics["SRF"] == o.metrics["SRF_p"] == 20e9 and child.metrics["Lp_5g"] > 0
+    assert child.issues == [bound("SRF_p", 20), bound("SRF", 20)]
+    assert o.issues == [f"ind/nominal: {issue}" for issue in child.issues]
+    stored = json.loads((store.root / "sims" / o.obs_id / "ind" / "nominal" / "quantities.json").read_text())
+    assert stored["SRF_p"] is None and stored["SRF"] is None                                    # what the kernel measured stays
+    assert bound_issue("SRF", 250e9) == bound("SRF", 250) and bound_issue("x", 12.5e9).endswith("up to 12.5 GHz; reported as 12.5 GHz, a lower bound")
+
+    full = rlc_touchstone(150, 5, 2, 2, stop_ghz=60)
+    inside, _ = measure_point(tmp_path, "inside", full, metrics)
+    srf = measured(full, tmp_path / "x.s2p", IND).scalars["SRF"]
+    assert 20e9 < srf < 60e9 and inside.status == "ok" and inside.issues == []
+    assert inside.metrics["SRF_p"] == inside.metrics["SRF"] == srf
+
+    for limit, status in (("15e9 Hz", "ok"), ("25e9 Hz", "constraint_failed")):             # 20 GHz is at least 15 GHz, not 25
+        judged, _ = measure_point(tmp_path, f"gt {limit}", none, metrics, constraints=[{"metric": "SRF_p", "op": "gt", "value": limit}])
+        assert judged.status == status and judged.feasible == (status == "ok")
+
+
+def test_every_other_missing_value_still_fails_the_child_and_a_sweep_past_the_resonance_gives_no_bound(tmp_path):
+    """The bound is for one case: the reactance inductive up to the sweep's last frequency. A sweep from 5 GHz has no
+    sample in the low-frequency band, so Lp_lf stays a failed metric (the SRF's bound is still said, after the failure).
+    A sweep from 40 to 80 GHz starts past the inductor's resonance (26.7 GHz), where the reactance is already capacitive:
+    its SRF is None because it lies below the sweep, and fails as before. So do a single sample above 0 Hz, and a 0 Hz
+    sample with one more, which cannot tell where a resonance is."""
+    srf = srf_metric("SRF_p", "SRF_p")
+    o, _ = measure_point(tmp_path, "from5", rlc_touchstone(150, 5, 2, 2, stop_ghz=20, start_ghz=5),
+                         [srf, {"name": "Llf", "unit": "H", "device": "ind", "quantity": "Lp_lf"}])
+    assert o.status == "failed:measure" and o.children["ind/nominal"].metrics == {"SRF_p": 20e9}
+    assert o.issues == ["ind/nominal: metric Llf: Lp_lf is None", f"ind/nominal: {bound('SRF_p', 20)}"]
+    for where, snp in (("past", rlc_touchstone(150, 5, 2, 2, stop_ghz=80, start_ghz=40)),
+                       ("one", rlc_touchstone(150, 5, 2, 2, freqs_ghz=[5])), ("zero and one", rlc_touchstone(150, 5, 2, 2, freqs_ghz=[0, 5]))):
+        o, _ = measure_point(tmp_path, where, snp, [srf])
+        assert o.status == "failed:measure" and o.issues == ["ind/nominal: metric SRF_p: SRF_p is None"], where
+        assert o.children["ind/nominal"].metrics == {}
+    three = measured(rlc_touchstone(150, 5, 2, 2, freqs_ghz=[0, 5, 10]), tmp_path / "three.s2p", IND)
+    assert three.scalars["SRF_p"] is None and srf_above_sweep(three, "SRF_p")                 # two samples above 0 Hz: enough
+
+
+def test_each_drive_of_a_pair_is_bounded_by_its_own_reactance_and_the_system_srf_by_all_of_them(tmp_path):
+    """A coupled pair with a 60 fF primary and a 1 fF secondary (k 0.05). Swept to 100 GHz the primary resonates at 75 GHz
+    and the secondary does not: SRF_s is a bound (100 GHz) beside an SRF_p and a system SRF that are measured and do not
+    change. Swept from 80 to 120 GHz the primary starts past its resonance: SRF_p is no bound, SRF_s still is, and the
+    system SRF -- None for the primary's reason as well -- is none either. With 2 fF on both nothing resonates up to
+    60 GHz and all three are bounds."""
+    metrics = [srf_metric(name, name, "xfm") for name in ("SRF_p", "SRF_s", "SRF")]
+    whole = measured(coupled_touchstone(PAIR, 100), tmp_path / "a.s4p", XFM)
+    assert 70e9 < whole.scalars["SRF_p"] < 80e9 and whole.scalars["SRF_s"] is None and whole.scalars["SRF"] == whole.scalars["SRF_p"]
+    assert srf_above_sweep(whole, "SRF_s") and not any(srf_above_sweep(whole, name) for name in ("Lp_lf", "Qp_peak", "k_lf", "SRF_x"))
+    o, _ = measure_point(tmp_path, "whole", coupled_touchstone(PAIR, 100), metrics, spec=xfm_only_spec(), point=PAIR_POINT)
+    assert o.status == "ok" and o.metrics == {"SRF_p": whole.scalars["SRF_p"], "SRF_s": 100e9, "SRF": whole.scalars["SRF"]}
+    assert o.issues == [f"xfm/nominal: {bound('SRF_s', 100)}"]
+
+    late = measured(coupled_touchstone(PAIR, 120, 80), tmp_path / "b.s4p", XFM)
+    assert [late.scalars[name] for name in ("SRF_p", "SRF_s", "SRF")] == [None, None, None]
+    assert [srf_above_sweep(late, name) for name in ("SRF_p", "SRF_s", "SRF")] == [False, True, False]
+    o, _ = measure_point(tmp_path, "late", coupled_touchstone(PAIR, 120, 80), metrics, spec=xfm_only_spec(), point=PAIR_POINT)
+    assert o.status == "failed:measure" and o.children["xfm/nominal"].metrics == {"SRF_s": 120e9}
+    assert o.issues == ["xfm/nominal: metric SRF_p: SRF_p is None", "xfm/nominal: metric SRF: SRF is None", f"xfm/nominal: {bound('SRF_s', 120)}"]
+
+    small = {**PAIR, "Cp": 2e-15, "Cs": 2e-15}
+    o, _ = measure_point(tmp_path, "small", coupled_touchstone(small, 60), metrics, spec=xfm_only_spec(), point=PAIR_POINT)
+    assert o.status == "ok" and o.metrics == {"SRF_p": 60e9, "SRF_s": 60e9, "SRF": 60e9}
+    assert o.issues == [f"xfm/nominal: {bound(name, 60)}" for name in ("SRF_p", "SRF_s", "SRF")]
