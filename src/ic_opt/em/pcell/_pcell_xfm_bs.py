@@ -4,14 +4,22 @@
 # provenance and the KNOWN_DEVIATIONS record.
 from __future__ import annotations
 
+import math
+
+import klayout.db as kdb
+
 from ic_opt.em.pcell._pcell_core import (
     _EPS,
+    DBU_UM,
     Cell,
     PortError,
     ProcessRuleContext,
+    _metal,
     _metal_index,
     _metal_name,
+    _nm,
     _pin,
+    _required_parallel_spacing,
     _xfm_order_ports,
     finalize_emx_ports,
     vias,
@@ -94,6 +102,9 @@ def _bs_center_tap(cell, center_x, radius, W, LEAD, WINDING_ME, CT_ME, side,
 
     * CT_ME below WINDING_ME, a via-stack tap: a W x W via stack at the
       closed column drops to CT_ME and the lead runs on CT_ME, W wide.
+      The stack draws its W x W pad on every metal it passes; when one of
+      them is the other winding's, xfm_bs measures that pad against the
+      other winding (``_bs_tap_stack_gap``, N-93).
     * CT_ME equal to WINDING_ME, a same-metal tap: no via stack; the lead
       runs on the winding's own metal over the same x span (the column plus
       LEAD outward), so it overlaps the column and merges with the winding,
@@ -206,6 +217,104 @@ def _bs_tap_guard(label: str, ct_me, width, winding_i: int, winding: str,
                 f"{min_width} of profile {process.profile_id}")
 
 
+_WINDINGS = {"P": "primary", "S": "secondary"}
+
+
+def _drawn_on(cell: Cell, layer: tuple[int, int]) -> kdb.Region:
+    """Everything ``cell`` draws on ``layer``, its instances flattened, merged."""
+    region = kdb.Region()
+    for drawn, points in cell.flat_shapes():
+        if drawn == layer and points:
+            region.insert(kdb.Polygon([kdb.Point(x, y) for x, y in points]))
+    return region.merged()
+
+
+def _run_side_by_side_um(a: kdb.Edge, b: kdb.Edge) -> float:
+    """How far two edges run side by side: ``b`` projected onto ``a`` and
+    clipped to it when the two are parallel, else 0 -- the parallel run
+    length the DRC audit's wide-line rules measure (KLayout's projection)."""
+    length = math.hypot(a.dx(), a.dy())
+    if not length or a.dx() * b.dy() != a.dy() * b.dx():
+        return 0.0
+    ux, uy = a.dx() / length, a.dy() / length
+    t0, t1 = sorted((p.x - a.p1.x) * ux + (p.y - a.p1.y) * uy for p in (b.p1, b.p2))
+    return max(0.0, min(length, t1) - max(0.0, t0)) * DBU_UM
+
+
+def _bs_tap_stack_gap(tapped: Cell, other: Cell, ct_me, *, side: str,
+                      host_i: int, other_i: int, W: float, W_other: float,
+                      OPENING_other: float,
+                      process: ProcessRuleContext | None) -> None:
+    """N-93: a via-stack tap must keep the process's spacing from the other
+    winding on that winding's metal.
+
+    The tap of winding ``side`` ("P" / "S", drawn in ``tapped``) drops from
+    its winding's metal (``host_i``) to ``ct_me`` through a W x W stack at
+    the closed column, which points at the other winding's lead side. When
+    the other winding's metal (``other_i``) lies on the way down, the stack
+    draws its W x W pad there -- and, when ``ct_me`` is that metal, the tap
+    lead too, between the other winding's two leads. Their gap to the other
+    winding is not a short (``_xfm_net_short`` refuses contact), but below
+    the metal's spacing it fails the product DRC gate after the build.
+
+    The gap is measured on the two windings as drawn (``tapped`` and
+    ``other``, after the straight extension): every pair of facing edges of
+    the tap's shapes and the other winding's on that metal closer than the
+    widest spacing those widths can need, each against
+    ``_required_parallel_spacing`` -- the metal's min space, raised by every
+    wide-line rule of the profile whose width threshold both lines exceed
+    (``min(W, W_other)``, as the gate reads the rule) and whose parallel-run
+    threshold the pair's run exceeds (0 for edges that are not parallel).
+    So the concentric case (the pad +-W/2 against the leads at
+    +-OPENING_other) and every other placement -- centre spacing, unequal
+    ODs, port-spacing jogs, the other winding's closed column -- are judged
+    as the gate judges them. Below the rule: ``PortError`` with the gap,
+    the run, the rule value, the widths and the opening.
+
+    Reference mode (no profile) has no rules: skipped, as in
+    ``_check_trace_rules``. Same-metal taps, untapped windings and stacks
+    that stop above the other winding's metal draw nothing there:
+    unchanged."""
+    if process is None or ct_me is None:
+        return
+    ct_i = _metal_index(ct_me)
+    if not ct_i <= other_i < host_i:
+        return
+    layer = _metal(other_i, process)
+    tap, beside = _drawn_on(tapped, layer), _drawn_on(other, layer)
+    if tap.is_empty() or beside.is_empty():
+        return
+    width = min(W, W_other)
+    reach = _required_parallel_spacing(other_i, width, math.inf, process)
+    worst = None                                         # (rule, gap, run) of the largest shortfall
+    for pair in tap.separation_check(beside, _nm(reach) + 1, False,
+                                     kdb.Metrics.Euclidian).each():
+        gap = pair.to_dtype(DBU_UM).distance()
+        run = _run_side_by_side_um(pair.first, pair.second)
+        need = _required_parallel_spacing(other_i, width, run, process)
+        if gap < need - _EPS and (worst is None or need - gap > worst[0] - worst[1]):
+            worst = (need, gap, run)
+    if worst is None:
+        return
+    need, gap, run = worst
+    o = "S" if side == "P" else "P"
+    winding, facing = _WINDINGS[side], _WINDINGS[o]
+    name = _metal_name(other_i)
+    drawn, shape = ((f"its {W:g} um wide lead", "lead") if ct_i == other_i
+                    else (f"a {W:g} x {W:g} um pad", "pad"))
+    along = f" over a {run:.3f} um parallel run" if run > 0 else " at a corner"
+    raise PortError(
+        f"xfm_bs: the {winding}'s via-stack tap (CT_{side}_ME={_metal_name(ct_i)}) "
+        f"draws {drawn} on {name}, the {facing}'s metal, {gap:.3f} um from "
+        f"the {facing}'s own {name} metal{along}, below the {need:g} um "
+        f"profile {process.profile_id} asks between {name} lines W_{side}={W:g} "
+        f"and W_{o}={W_other:g} um wide{' over that run' if run > 0 else ''}; "
+        f"the {facing}'s leads lie OPENING_{o}={OPENING_other:g} um off the "
+        f"centre line (a wider OPENING_{o} or a narrower W_{side} moves the "
+        f"{shape} away from them; a tap on the {winding}'s own metal draws "
+        f"nothing on {name})")
+
+
 @builds_on_profile_stack
 def xfm_bs(
     OD_P: float = 90.0,
@@ -246,6 +355,14 @@ def xfm_bs(
     layer-complete net gate (_xfm_net_short, shared with xfm_balun) fails
     closed on ANY overlap between the two nets — tap leads and winding
     leads included (M13 ticket 05; replaces the old box-only clearance).
+    A via-stack tap whose stack reaches the other winding's metal draws its
+    W x W pad there (and its lead, when the tap metal is that metal), on
+    the other winding's lead side: below the spacing the process gives
+    lines of those widths over that parallel run, the build is refused
+    with the gap, the rule value, the widths and the other winding's
+    opening (_bs_tap_stack_gap, N-93; with the pad alongside the leads the
+    gap is OPENING_other - W/2, elsewhere it is measured as drawn;
+    reference mode has no rules).
     Clean-room composition of ported primitives; replaces the gdsfactory
     placeholder."""
     pri_i, sec_i = _metal_index(PRI_ME), _metal_index(SEC_ME)
@@ -299,6 +416,13 @@ def xfm_bs(
         cell.params["STRAIGHT_EXTENSION"] = pri.params["STRAIGHT_EXTENSION"]
         cell.name += f"_SX{pri.params['STRAIGHT_EXTENSION']:g}"
     _xfm_net_short("xfm_bs", pri, sec)
+    # N-93: a via-stack tap through (or down to) the other winding's metal
+    # keeps that metal's spacing from the other winding -- after the short
+    # gate, so a contact is still reported as a short
+    _bs_tap_stack_gap(pri, sec, CT_P_ME, side="P", host_i=pri_i, other_i=sec_i,
+                      W=W_P, W_other=W_S, OPENING_other=OPENING_S, process=process)
+    _bs_tap_stack_gap(sec, pri, CT_S_ME, side="S", host_i=sec_i, other_i=pri_i,
+                      W=W_S, W_other=W_P, OPENING_other=OPENING_P, process=process)
     cell.inst(pri, (0.0, 0.0), "R0")
     cell.inst(sec, (0.0, 0.0), "R0")
     # (port contract 2026-09-21) walks the cell.inst() chain down to both
