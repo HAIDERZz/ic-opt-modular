@@ -68,6 +68,12 @@ answers the curve ``above_resonance``, without a value, where the resonance pred
 with it and attaches them (``Model.resonance``), so that ``suggest.predict_all`` holds every anchored column it predicts to the
 same rule.
 
+A column whose usable rows are too few for a model has none (N-120). ``Library.no_model`` decides it from the rows alone,
+before anything is fitted: exactly where the model's fit or its 5 x 20 % calibration would raise (``fits``,
+``composed_fits``). ``models`` fits no such column, ``query`` answers it ``no_model`` with its row count, ``cached`` lists it
+as ``too few rows (<n>)``, ``require_models`` refuses a request that names it, and a resonance column without a model limits
+no curve (``Library.resonance``), as one without rows never did.
+
 ``Library.footprints`` reads each row's footprint once per stratum (``dataset.footprints``), only when an answer needs it.
 """
 
@@ -105,6 +111,7 @@ WINDOWS_MAX_WORKERS = 61                             # ProcessPoolExecutor refus
 THREAD_CAP_VARIABLES = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")   # explicit caps: omp_cap
 DRIVE_SRF = {"Lp": ("SRF_p",), "Qp": ("SRF_p",), "Ls": ("SRF_s",), "Qs": ("SRF_s",), "k": ("SRF_p", "SRF_s")}   # a curve's resonance
                                                      # per drive, where the stratum has no system SRF (Resonance, suggest.implied_srf)
+TOO_FEW = "{rows} usable rows: too few for a model of this column"     # a no_model answer's reason (Library.no_model)
 
 
 def unit(quantity: str) -> str:
@@ -156,6 +163,71 @@ def fit_rows(model: Model) -> int:
     return max(len(model.rows), getattr(model.gp, "n_train", 0))
 
 
+# -- whether a column can have a model (N-120) ----------------------------------------------------------------------------
+
+def _answered(per_nt: bool, fitted: np.ndarray, asked: np.ndarray) -> np.ndarray:
+    """Which rows at the turns levels ``asked`` a ``gp.StratumGP`` fitted on rows at the levels ``fitted`` answers
+    (``StratumGP.available``): a joint model every row, once it has a row to fit; a per_nt one a row at an integer level
+    that holds MIN_NT_SAMPLES of the fitted rows (the fit rounds the levels it splits by)."""
+    if not per_nt:
+        return np.full(len(asked), len(fitted) > 0)
+    levels, counts = np.unique(np.round(fitted).astype(int), return_counts=True)
+    whole = np.abs(asked - np.round(asked)) <= 1e-9
+    return whole & np.isin(np.round(asked).astype(int), levels[counts >= gp.StratumGP.MIN_NT_SAMPLES])
+
+
+def fits(rows: int, *, per_nt: bool, calibrate: bool = True) -> bool:
+    """Whether a direct column's model fits on ``rows`` usable rows and, when ``calibrate``, its 5 x 20 % hold-out completes
+    (``gp.holdout``) -- exactly where neither raises. The fit needs a row (``StratumGP.fit`` takes [N, d] inputs; the domain
+    guard needs a row too). A per_nt model needs nothing more: its fit leaves out a turns level below MIN_NT_SAMPLES rows
+    and its hold-out predicts level by level, so a fold whose held-out rows no sub-model answers -- or a model with no
+    sub-model at all, whose every answer is then out of domain (the guard's criterion 2) -- completes. A joint model
+    predicts every fold's held-out rows through scikit-learn, which refuses an empty set: every fold of ``gp.split`` must
+    hold out a row, round(0.2 n) >= 1, so n >= 3."""
+    if rows < 1:
+        return False
+    return per_nt or not calibrate or all(len(gp.split(rows, seed)[0]) for seed in gp.SEEDS)
+
+
+def composed_fits(levels: np.ndarray, curve: np.ndarray, base: np.ndarray, srf: np.ndarray | None, per_nt: dict[str, bool], *,
+                  calibrate: bool = True) -> bool:
+    """Whether a composed curve's own part fits and, when ``calibrate``, its calibration completes (``composed.holdout``)
+    -- exactly where neither raises, as far as rows can tell. ``curve``, ``base`` and ``srf`` hold per row of the stratum
+    the curve, its base scalar and (``resonance``; None for ``ratio``) the SRF, NaN where a row has no usable value;
+    ``levels`` the rows' turns levels; ``per_nt`` per model -- ``part`` (the curve's own), ``lf`` (the base's), ``srf`` --
+    whether it splits by level. ``ComposedGP.fit`` needs a row with a positive curve and a positive base value. Each fold
+    (``composed.holdout_fold``) holds out ``gp.split``'s share of the positive curve rows; fits the part on the others with a
+    positive base value (none: refused), the base and SRF models on their own rows less the held-out ones (a joint one on
+    no row: refused by scikit-learn); then predicts the held-out rows every fold model answers (``ComposedGP.available``),
+    and an empty set reaches scikit-learn -- and is refused -- when any of the models is joint. Not counted: for
+    ``resonance`` the part is fitted only where the fold's SRF model puts the resonance above f0, which a fit decides; a
+    row has an anchored value only where its measured resonance lies above srf_margin x f0."""
+    with np.errstate(invalid="ignore"):
+        positive = np.isfinite(curve) & (curve > 0)
+        trains = positive & np.isfinite(base) & (base > 0)
+    if not trains.any():
+        return False
+    if not calibrate:
+        return True
+    rows = np.flatnonzero(positive)
+    joint = not all(per_nt.values())
+    for seed in gp.SEEDS:
+        held = np.zeros(len(curve), dtype=bool)
+        held[rows[gp.split(len(rows), seed)[0]]] = True
+        fitted = {"part": trains & ~held, "lf": np.isfinite(base) & ~held}
+        if srf is not None:
+            fitted["srf"] = np.isfinite(srf) & ~held
+        if not fitted["part"].any() or any(not per_nt[m] and not mask.any() for m, mask in fitted.items()):
+            return False
+        if joint:
+            answered = np.ones(int(held.sum()), dtype=bool)
+            for m, mask in fitted.items():
+                answered &= _answered(per_nt[m], levels[mask], levels[held])
+            if not answered.any():
+                return False
+    return True
+
+
 class Library:
     def __init__(self, root: str | Path, *, calibrate: bool = True, limits: site.HostLimits | None = None,
                  cache_dir: str | Path | None = None):
@@ -168,6 +240,7 @@ class Library:
         self._models: dict[tuple[str, str], Model] = {}
         self._anchors: dict[tuple[str, float], dict] = {}
         self._footprints: dict[str, dict] = {}
+        self._no_model: dict[tuple[str, str], dict | None] = {}   # no_model's verdicts: a column's rows do not change
         self._rows_lock = threading.Lock()           # extension columns and footprints: one thread measures, the others wait
 
     @property
@@ -303,13 +376,52 @@ class Library:
 
     def model(self, stratum: str, quantity: str) -> Model:
         """One quantity's model: in memory, else loaded from its cache files, else fitted within ``limits`` (``models``). An
-        extension column (``columns``) has one like a declared column."""
+        extension column (``columns``) has one like a declared column; a column that can have none (``no_model``) is
+        refused (ValueError) with the reason."""
         key = (stratum, quantity)
         if key not in self._models:
             key = (stratum, self.column(stratum, quantity))
             if key not in self._models:
+                self.require_models(stratum, [key[1]])
                 self.models(stratum, [key[1]])
         return self._models[key]
+
+    def no_model(self, stratum: str, column: str) -> dict | None:
+        """Why ``column`` (canonical, as ``columns`` names it) can have no model -- ``{"rows": n, "reason": "<n> usable rows:
+        too few for a model of this column"}``, n its usable rows -- or None when it can. The one place that decides it, from
+        the rows alone and before anything is fitted: a column can have a model exactly when its fit and, in a library that
+        calibrates (the default), its 5 x 20 % hold-out complete on its usable rows -- ``fits`` for a direct column,
+        ``composed_fits`` for a composed curve, whose parts must have a model too (the reason then names the part). Where
+        they would raise, ``models`` fits no such column, ``query`` answers it ``no_model``, ``cached`` lists it as ``too few
+        rows (<n>)`` and ``require_models`` refuses a request that names it."""
+        key = (stratum, column)
+        if key not in self._no_model:
+            self._no_model[key] = self._why_no_model(stratum, column)
+        return self._no_model[key]
+
+    def _why_no_model(self, stratum: str, column: str) -> dict | None:
+        ds = self._ensure(stratum, column)
+        rows = len(ds.usable(column))
+        if self._plan(stratum, column) is None:
+            ok = fits(rows, per_nt=self._fit_inputs(stratum, column)[4]["nt_mode"] == "per_nt", calibrate=self.calibrate)
+        else:
+            for part in self._parts(stratum, column):
+                short = self.no_model(stratum, part)
+                if short is not None:
+                    return {"rows": rows, "reason": f"built on {part}, whose {short['rows']} usable rows are too few for a model"}
+            s = self._composed_settings(stratum, column)
+            x, y, base, srf = self._composed_data(stratum, column)
+            levels = x[:, ds.dims.index(ds.nt_dim)] if ds.nt_dim else np.zeros(len(x))
+            per_nt = {m: s[m]["nt_mode"] == "per_nt" for m in ("part", "lf", "srf") if s[m] is not None}
+            ok = composed_fits(levels, y, base, srf, per_nt, calibrate=self.calibrate)
+        return None if ok else {"rows": rows, "reason": TOO_FEW.format(rows=rows)}
+
+    def require_models(self, stratum: str, columns: Iterable[str]) -> None:
+        """Refuse (ValueError) a request that names a column which can have no model (``no_model``), each such column with its
+        reason -- before anything is fitted. ``columns`` are canonical (``columns``)."""
+        short = {c: why for c in dict.fromkeys(columns) if (why := self.no_model(stratum, c)) is not None}
+        if short:
+            raise ValueError(f"{stratum} has no model of " + "; ".join(f"{c} ({why['reason']})" for c, why in short.items()))
 
     def models(self, stratum: str, quantities: list[str], *, workers: int | None = None, threads: int | None = None) -> dict[str, Model]:
         """``model`` for several quantities, in the order asked. The ones whose cache files do not load are fitted first, sized
@@ -336,8 +448,9 @@ class Library:
         models (``_fit_in_worker``). Last, each curve's model gets its resonance with those models attached (``_limit``).
 
         The names go through ``columns`` first: an extension column is measured (and cached) before any worker starts, so a
-        worker reads it from the cache file; the answer is keyed by the canonical names."""
-        quantities = self.columns(stratum, quantities)
+        worker reads it from the cache file; the answer is keyed by the canonical names. A column that can have no model
+        (``no_model``) is skipped -- no fit, no worker, nothing it would need -- and left out of the answer (N-120)."""
+        quantities = [q for q in self.columns(stratum, quantities) if self.no_model(stratum, q) is None]
         order = self._with_needs(stratum, list(dict.fromkeys(quantities)))
         missing = [q for q in order if not self._load(stratum, q)]
         direct = [q for q in missing if self._plan(stratum, q) is None]
@@ -461,15 +574,15 @@ class Library:
     def resonance(self, stratum: str, column: str) -> Resonance | None:
         """What limits the answers of ``column`` (``Resonance``, without models): for a curve column ``<curve>@<f>``, the
         resonance columns -- the stratum's system ``SRF`` when it declares one, else ``DRIVE_SRF``'s per drive, those it
-        declares -- that have usable rows, f in Hz and the curve's ``srf_margin``. None for any other column, and for a curve
-        with no such column: the stratum declares none (the rule cannot be applied), or no row resonates inside its sweep
-        (then the margin cuts no row either)."""
+        declares -- that can have a model (``no_model``; a column without usable rows cannot), f in Hz and the curve's
+        ``srf_margin``. None for any other column, and for a curve with no such column: the stratum declares none (the rule
+        cannot be applied), or no row resonates inside its sweep (then the margin cuts no row either), or too few do for a
+        model of the resonance (then it cuts at most those)."""
         base, at, ghz = column.partition("@")
         rules = self.manifest.strata[stratum].quantities
         if not at or base not in manifest.CURVES or base not in rules:
             return None
-        ds = self.dataset(stratum)
-        columns = tuple(c for c in (("SRF",) if "SRF" in rules else DRIVE_SRF[base]) if c in rules and ds.usable(c))
+        columns = tuple(c for c in (("SRF",) if "SRF" in rules else DRIVE_SRF[base]) if c in rules and self.no_model(stratum, c) is None)
         return Resonance(columns, float(ghz) * 1e9, rules[base].srf_margin) if columns else None
 
     def _limit(self, stratum: str, quantity: str) -> None:
@@ -668,14 +781,16 @@ class Library:
     def cached(self, stratum: str) -> dict[str, str]:
         """What the cache already holds for each column of the stratum's current dataset: ``"model"`` (a query needs no fit),
         ``"calibration"`` (the five hold-out fits are cached; the model itself is fitted at the first query, one fit),
-        ``"none"`` (calibration and model both to come: the five folds and the fit) or ``"no rows"``. File presence only:
-        nothing is loaded or fitted. ``lib.coverage`` and ``lib.load`` answer with it, so a user sees what a query will
-        wait for before asking (N-33, 2026-09-27: a first query fitted three 60 GHz curves in silence for half an hour)."""
+        ``"none"`` (calibration and model both to come: the five folds and the fit) or ``"too few rows (<n>)"`` (a column that
+        can have no model, ``no_model``: none is fitted, and a query answers it ``no_model``). File presence only: nothing
+        is loaded or fitted. ``lib.coverage`` and ``lib.load`` answer with it, so a user sees what a query will wait for
+        before asking (N-33, 2026-09-27: a first query fitted three 60 GHz curves in silence for half an hour)."""
         ds = self.dataset(stratum)
         out: dict[str, str] = {}
         for q in ds.columns:
-            if not ds.usable(q):
-                out[q] = "no rows"
+            short = self.no_model(stratum, q)
+            if short is not None:
+                out[q] = f"too few rows ({short['rows']})"
             elif self._model_file(stratum, q) is not None:
                 out[q] = "model"
             elif self._plan(stratum, q) is None:
@@ -876,7 +991,8 @@ def query(library: Library, stratum: str, params: dict, quantities: list[str] | 
     ``notes`` carries the library's (``Library.notes``). ``rel_sigma_max`` is the confidence ceiling for every quantity; None:
     each quantity's own (``Library.rel_sigma_max``), which a prediction reports with its ``rel_sigma``. ``quantities`` may
     name extension columns (``Library.columns``: a declared curve at any frequency); the answer names them canonically. A
-    curve column is answered only below its resonance (``_predict``, N-113)."""
+    curve column is answered only below its resonance (``_predict``, N-113); a column whose usable rows are too few for a
+    model is ``no_model`` there, the others answering as they would without it (``Library.no_model``, N-120)."""
     ds = library.dataset(stratum)
     missing = [d for d in ds.dims if d not in params]
     if missing:
@@ -900,7 +1016,8 @@ def query(library: Library, stratum: str, params: dict, quantities: list[str] | 
 def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None,
              found: dict[str, dict] | None = None) -> dict:
     """Column ``q``'s answer at a point that is no library row, kept in ``found`` (the answers given so far in this call). A
-    column without a resonance (``Library.resonance``) answers from its own model (``_answer``). A curve column first takes
+    column that can have no model (``Library.no_model``, N-120) is ``no_model``, with its usable ``rows`` and the ``reason``.
+    A column without a resonance (``Library.resonance``) answers from its own model (``_answer``). A curve column first takes
     its resonance's answer at the point, through this same path (above the sweep and the domain guard work as for any SRF
     column), and then (N-113), with the threshold srf_margin x f:
 
@@ -918,6 +1035,10 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
     reaches lowest is the one ``near_resonance`` names."""
     found = {} if found is None else found
     if q in found:
+        return found[q]
+    short = library.no_model(stratum, q)
+    if short is not None:
+        found[q] = {"status": "no_model", "rows": short["rows"], "reason": short["reason"], "unit": unit(q)}
         return found[q]
     limit = library.resonance(stratum, q)
     if limit is None:
