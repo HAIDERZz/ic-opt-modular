@@ -61,6 +61,7 @@
 | 波形导出（fix_run `waveforms=`） | **测试** | 无真机 waveforms.json |
 | `license_queue_timeout_s` | **测试** | 无真机 spec 用过 |
 | `keep_failed_runs: false`（保留策略） | **测试** | 真机全是默认值 |
+| `saturation_margin` 指标（T17.11 / N-90） | **真机** | `ic-opt-accept/n118_failure_paths/`（2026-10-14）：MixerCS 共源跨导管 M1、M2，6 点 0.73–0.79 V，逐点等于工作点表 min(|vds| − |vdsat|)；3 点处于亚阈值区（vgs < vth）时指标照样很大，见 N-118 记录第 4 条 |
 | `budget` 超限（BudgetExceeded） | 真机 | N-27（改 spec 后旧观测计数） |
 
 ## 执行路径与失败路径
@@ -72,10 +73,10 @@
 | 同批同几何并发重复 EMX（N-24 / N-54） | 真机观察，**修复后只有测试** | N-23、N-51（55 个几何跑了 61 次）；2026-09-28 已修（`06087ae`），修复后尚未在真机上跑过 |
 | `metric_failed`（表达式 nil / 非标量） | 真机 | N-35 首轮；N-51（P1dB 为 nil，6 点）；新消息 `no_value:nil` 与带回退的 P1dB 表达式已用产品生成的脚本在服务器真实结果上验证 |
 | `failed:extract`（旧语义） | 真机 | N-23 A 12 点（BW nil） |
-| `failed:spectre` / `failed:ocean`（许可证、崩溃） | **未验证** | 真机从未出现 |
-| 超时杀进程组（`timeout_s`） | **未验证** | 真机从未触发 |
-| Ctrl-C 中断与续跑（`interrupted`） | **未验证** | N-35 中止首轮但 steps 里没有 interrupted 行（agent 用别的方式停的） |
-| 工程锁（第二个运行被拒） | **测试** | 真机未试 |
+| `failed:spectre` / `failed:ocean`（许可证、崩溃） | **真机**（`failed:spectre`） | `ic-opt-accept/n118_failure_paths/`（N-118，2026-10-14）：模型段名写错，点记 `failed:spectre`（退出码 2、致命错误），运行正常结束、无残留进程；记录里没有 `spectre.out` 的 ERROR 行（候选 N-119）。许可证失败与 `failed:ocean` 仍未出现 |
+| 超时杀进程组（`timeout_s`） | **真机** | `ic-opt-accept/n118_failure_paths/`（N-118，2026-10-14）：`timeout_s: 5`，2 点都记 `failed:spectre`（`timed out after 5s ... its process group was killed`），无残留进程 |
+| Ctrl-C 中断与续跑（`interrupted`） | **真机** | `ic-opt-accept/n118_failure_paths/`（N-118，2026-10-14）：对进程组发 SIGINT，退出码 130，steps 记 recorded 2 / interrupted 2 / not_started 2，无残留进程；同一命令续跑只补 4 点、不重算；终端上不打印任何中断信息（候选 N-119） |
+| 工程锁（第二个运行被拒） | **真机** | `ic-opt-accept/n118_failure_paths/`（N-118，2026-10-14）：续跑中再起一个运行，1 秒内退出码 1 被拒、续跑不受影响；但锁在 doctor 与网表导入之后才取，报错是整段堆栈（候选 N-119） |
 | 尾点文件名（Windows 长路径） | 真机 | N-15 / N-23 / N-35（plan 临时目录） |
 | 报告全部段落 + 视觉审查 | 真机 | N-42 报告 + 本次渲染复核（桌面 / 手机） |
 | 库 `cached` 盘点 | **测试** | 新功能，真机未用 |

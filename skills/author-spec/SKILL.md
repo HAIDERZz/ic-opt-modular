@@ -167,8 +167,15 @@ points`: the expression works, and the digest's "no value" split says where the 
 lie (it may be the design: a P1dB that does not compress at a low bias). Device metric: `name`,
 `unit`, `device`, `quantity` (a curve `Lp / Qp / Ls / Qs / k` needs
 `frequency_hz`; scalars `Lp_lf / Lp_res / Qp_peak / SRF_p / Ls_lf / Ls_res /
-Qs_peak / SRF_s / k_lf / SRF` do not). A metric whose expression returns nil or
-a waveform makes the point `metric_failed` (its other metrics are kept).
+Qs_peak / SRF_s / k_lf / SRF` do not). An SRF scalar of a sweep that shows no
+resonance (the reactance inductive up to the sweep's last frequency) is that last
+frequency, a lower bound: the point stays `ok` and the child's `issues` say `metric
+SRF_p: no resonance inside the sweep up to 60 GHz; reported as 60 GHz, a lower
+bound`. A minimum on it (`SRF_p > 40e9 Hz`) is judged against the bound, a maximum
+says nothing about such a device, and a sweep that starts past the resonance has no
+SRF (`failed:measure`, as for any scalar the sweep cannot give). A metric whose
+expression returns nil or a waveform makes the point `metric_failed` (its other
+metrics are kept).
 Saturation-margin metric: `name`, `unit: V`, `testbench` (always, also in a
 spec of one testbench), `saturation_margin: {instances: [...]}` -- below.
 
@@ -258,10 +265,17 @@ machine running ic-opt, an absolute path; `stratum` one table of it
 (`ic-opt call lib.coverage <root> stratum=<stratum>` shows what a table
 holds); `frequency_hz` the working frequency the electrical values are
 taken at; `srf_margin` (>= 1) to leave out rows that resonate at or below
-margin x frequency; `prefer` (`max:<column>` / `min:<column>`, default
+margin x frequency (a row whose sweep shows no resonance stays: it resonates
+highest of all); `prefer` (`max:<column>` / `min:<column>`, default
 `max:Qmin`, else `max:Qp`) which row a combination of several gives a
-point. `ports`: the table's port labels (a table without centre taps
-cannot take a tapped instance). `variables`: index column -> spec variable,
+point. An SRF metric of the device (`SRF`, `SRF_p`, `SRF_s`) works beside the
+margin, or instead of it: a row with no resonance inside its sweep gives its
+sweep's end as the value, a lower bound that the child's `issues` say, so a
+constraint `SRF > <limit>` judges the row on that bound (it passes when the sweep
+ends above the limit) and no point is lost as `failed:measure`; the margin
+drops the rows that resonate low before any point is made. `ports`: the table's
+port labels (a table without centre taps cannot take a tapped instance).
+`variables`: index column -> spec variable,
 required (`{Lp: xfmr.Lp, Ls: xfmr.Ls, k: xfmr.k}`; the columns are the
 curves `Lp Qp Ls Qs k` at the frequency, the scalars, `Qmin`, `area`), each
 spec variable an ordinary `continuous_step` grid of electrical values whose

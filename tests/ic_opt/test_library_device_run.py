@@ -224,3 +224,31 @@ def test_the_library_device_runs_first_and_a_point_that_fails_its_constraint_sim
     assert stopped.corners() == {"tt", "ss"} and any(f"Qp gt {limit!r} violated by" in i for i in stopped.issues)
     assert "1 of 1 points stopped early (1 at the device), 2 simulations not run" in capsys.readouterr().out   # N-63
     assert not list((store.root / "sims" / stopped.obs_id).glob("tb"))                 # no simulation ran for it
+
+
+# -- N-94: a row with no resonance inside its sweep ---------------------------------------------------------------------------
+
+def test_a_library_row_with_no_resonance_in_its_sweep_gives_the_sweeps_end_as_its_srf(root, tmp_path):
+    """N-94, on the kind of run the backlog found it in (a mixer platform whose transformer comes from a library table): a row
+    whose sweep shows no resonance used to fail an SRF metric -- failed:measure, the point lost -- though such rows resonate
+    highest of all. The device child is ok with the sweep's end (60 GHz) as the metric and an issue that says it is a lower
+    bound; a row that resonates inside its sweep gives its own SRF and no issue; either way the child records its row."""
+    srf = {"name": "SRF", "unit": "Hz", "device": "xfmr", "quantity": "SRF"}
+    spec = spec_at(root, tmp_path, metrics=[*library_spec_dict(root)["metrics"], srf])
+    picks = {}                                                  # the first point whose row has no SRF, the first whose row has one
+    for params in space.valid_points(spec):
+        row = link.row_for(spec, "xfmr", params)
+        picks.setdefault("none" if row.values.get("SRF") is None else "found", (params, row))
+        if len(picks) == 2:
+            break
+    store = RunStore(tmp_path / "proj")
+    ex = FakeSpectreExecutor(store.root / "sims", nf)
+    deck = import_netlists(spec, ex, store)
+    none, found = evaluate(spec, [Point(picks[kind][0], "user") for kind in ("none", "found")], ex, store, deck=deck, limits=FAKE_HOST)
+    for o, kind in ((none, "none"), (found, "found")):
+        child = o.children["xfmr/nominal"]
+        assert o.status == "ok" and child.status == "ok" and child.library_row["obs_id"] == picks[kind][1].obs_id
+    said = "metric SRF: no resonance inside the sweep up to 60 GHz; reported as 60 GHz, a lower bound"
+    assert none.metrics["SRF"] == 60e9 and none.children["xfmr/nominal"].issues == [said] and none.issues == [f"xfmr/nominal: {said}"]
+    assert found.metrics["SRF"] == pytest.approx(picks["found"][1].values["SRF"], rel=1e-9) and found.metrics["SRF"] < 60e9
+    assert found.issues == [] and found.children["xfmr/nominal"].issues == []
