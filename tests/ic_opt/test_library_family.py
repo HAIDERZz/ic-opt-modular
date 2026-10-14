@@ -132,6 +132,24 @@ def test_a_column_no_row_of_a_table_has_is_that_tables_refusal(lib):
     assert o2["closest"]["distance"] == pytest.approx((62.5 - 60) / 62.5)        # its sweep's end, 2.5 GHz short of the bound
 
 
+def test_a_table_whose_own_answer_fails_is_its_refusal_and_the_others_still_answer(lib, monkeypatch):
+    """A fit that fails inside one table -- N-120: a column with a handful of usable rows makes scikit-learn raise a
+    ValueError during the calibration -- is that table's cannot_take; the other tables answer as before."""
+    real = suggest.suggest
+    failure = "Found array with 0 sample(s) (shape=(0, 4)) while a minimum of 1 is required by GaussianProcessRegressor."
+
+    def failing(library, stratum, *args, **kw):
+        if stratum == "ind_o8":
+            raise ValueError(failure)
+        return real(library, stratum, *args, **kw)
+
+    monkeypatch.setattr(suggest, "suggest", failing)
+    answer = ask(lib, family="ind_sym", targets=NEAR_O2)
+    assert answer["strata"]["ind_o8"] == {"error": failure} and answer["unreachable"]["ind_o8"]["kind"] == "cannot_take"
+    assert answer["leaders"] and {e["stratum"] for e in answer["leaders"]} == {"ind_o2"}
+    assert answer["notes"] == ["Lp_lf window 1.425-1.575 nH: designs in ind_o2; ind_o8 cannot take the request"]
+
+
 @pytest.mark.parametrize("kw, message", [
     ({}, "give exactly one of stratum= .* got none"),
     ({"stratum": "ind_o8", "family": "ind_sym"}, "give exactly one of stratum= .* got stratum, family"),
