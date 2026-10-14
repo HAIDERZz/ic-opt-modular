@@ -121,7 +121,7 @@ def main(run, *, n=12):
     run.note(f"report: {b.report(run.spec, obs, run.store)}")
 ```
 
-Point-level status: `ok`, `constraint_failed`, `metric_failed` (a metric's OCEAN expression returned nil / a non-scalar / nothing, or a requested waveform nil: the child keeps the metrics that did extract and the point keeps the nominal corner's, so a wrong expression costs that metric, not the point), `failed:<stage>` (render / spectre / ocean / pcell / emx / pick / bind_nport / measure) — the child's `issues` and `sim_dir` (`spectre.stderr`, `metrics/ocean.log`) say why.
+Point-level status: `ok`, `constraint_failed`, `metric_failed` (a metric's OCEAN expression returned nil / a non-scalar / nothing, or a requested waveform nil: the child keeps the metrics that did extract and the point keeps the nominal corner's, so a wrong expression costs that metric, not the point), `failed:<stage>` (render / spectre / ocean / pcell / emx / pick / bind_nport / measure) — the child's `issues` and `sim_dir` (`spectre.stderr`, `metrics/ocean.log`, `trace.json`: the commands it ran, the nport binding's rewrite of the netlist, the OCEAN timing) say why.
 
 ## Reading failures
 

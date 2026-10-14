@@ -628,6 +628,18 @@ devices, each table on its grid, how many of its combinations the run visited
 and the rows the best points took -- every number computed from the
 observations).
 
+A child's directory, `sims/<obs>/<tb>/<corner>/` (a device's: `sims/<obs>/<device>/nominal/`), holds what its stages wrote --
+the rendered netlist, `spectre.stdout` / `spectre.stderr`, `metrics/` (`ocean.log`, `ocean_timing.tsv`, the waveforms), a
+device's `quantities.json` -- and, once the child has finished, ok or failed, `trace.json`: a JSON list (UTF-8) of the records
+it kept as it went. A command is `{label, argv, returncode, seconds}` (`spectre#1`, `ocean#1`; a retried one `#2`); the
+nport binding of a testbench child is `bind:<instance>` with the `device`, the `terminals` kept, the instance's `signal_nodes`,
+the `dropped_ports` (positions among the instance's terminals, counted from 1) and `replaced`, the file the netlist named
+before; an OCEAN timing row is `ocean:<part>` with `seconds` and `outcome`. A device's measurement records nothing: `[]`.
+The file is no part of `observations.jsonl`, of any fingerprint, of the digest or of the report. A child that never ran --
+its point failed in a point-level stage (`pcell`, `emx:<device>`, `pick`), so its `sim_dir` is null -- has no directory and
+no trace; a point's EMX runs are in `sims/<obs>/em/<device>/` (`emx.cmd`, `emx.log`), not in a child's trace. Children
+recorded by an earlier version have no `trace.json`.
+
 Waveforms asked for with `waveforms=` (`fix_run`, `sim.evaluate`) land in the
 child's `sims/<obs>/<tb>/<corner>/metrics/waveforms/`: one real CSV per waveform,
 `<name>.csv` (comma separated, a header row, `x,y` or `x,re,im` for a complex

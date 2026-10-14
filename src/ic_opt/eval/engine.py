@@ -13,7 +13,10 @@ more than its Spectre threads (N-78); a stage or job bigger than the whole
 entry is refused before anything starts. A point's children run serially, like the
 legacy flow. A stage that fails -- a ``StageFailure``, or a command past its
 deadline (``CommandTimeout``) -- fails its child, or every child of the point
-for a point-level stage, as ``failed:<stage>``; the other points run on.
+for a point-level stage, as ``failed:<stage>``; the other points run on. A child
+that finishes, ok or failed, leaves its ``StageContext.trace`` as ``trace.json``
+in its sim_dir (N-53); the children of a point that failed at a point-level stage
+never ran: no directory (``sim_dir`` null), no trace.
 
 Schedule (T17.8). Given a ``Schedule`` (``ic_opt.eval.schedule``; ``sim.evaluate``
 builds one per batch unless the run turns it off), a point's children run in
@@ -408,6 +411,7 @@ def _run_point(spec, point_stages, child_stages, job: Job, children: list[Child]
             result = ChildResult(unit=child.unit, corner=child.corner, status=f"failed:{failure.stage}", issues=failure.issues)
         result.seconds = round(time.monotonic() - started, 3)
         result.sim_dir = store.relative(workdir)
+        cctx.write_trace()                                          # N-53: ok or failed, what the child recorded stays with it
         ran[child.key] = result
         if schedule is None or reason is not None or place + 1 == len(order):
             continue

@@ -229,3 +229,51 @@ def test_a_spec_with_devices_has_no_current_design(tmp_path):
     spec = em_circuit_spec(tmp_path)
     assert current_design(spec, {"tb": NETLIST}) == (None, ("no current design: the spec has EM devices, whose variables have "
                                                             "no exported value (stage 1 of T17 covers circuit-only specs)"))
+
+
+# -- N-53: a child's trace is kept ------------------------------------------------------------------------------------------
+
+def test_a_childs_trace_is_kept_in_its_sim_dir_the_binding_rewrite_with_it_ok_or_failed(tmp_path):
+    """N-53: the EM circuit's testbench children record the nport binding (``bind:NPORT0``: the signal nodes it kept, the ports
+    it dropped, the file it replaced) and their commands; the trace was lost with the child's context. It is now a JSON list
+    in ``trace.json`` beside the child's other files, written when the child finishes -- ok, or failed at Spectre, with the
+    binding's rewrite and the failed command in it. The instance here has a third port the device does not take. A device's
+    measurement records nothing: an empty list. The observation is what it was."""
+    spec = em_circuit_spec(tmp_path, corners=("tt", "ss"))
+    d = spec.model_dump(mode="json")
+    d["metrics"].append({"name": "Qpk", "unit": "ratio", "device": "ind", "quantity": "Qp_peak"})         # a device child beside the testbenches
+    d["bindings"][0]["terminals"] = ["P1", "N1", None]
+    spec = Spec.model_validate(d)
+    (Path(spec.testbenches[0].maestro_point_root) / "netlist" / "input.scs").write_text(
+        NETLIST.replace("net3 0 )", "net3 0 spare 0 )").replace("ind.s2p", "ind.s3p"))
+    store = RunStore(tmp_path / "proj")
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 7.0}, fail_spectre=lambda tb, c: c == "ss")
+    deck = import_netlists(spec, ex, store)
+    (o,) = evaluate(spec, [Point({"ind.od": "100", "ind.w": "5", "F": "20"}, "user")], ex, store, deck=deck, limits=FAKE_HOST,
+                    stop_at_first_failure=False)
+    ok, failed, device = (o.children[key] for key in ("tb/tt", "tb/ss", "ind/nominal"))
+    assert (ok.status, failed.status, device.status) == ("ok", "failed:spectre", "ok")
+
+    def trace_of(child) -> list[dict]:
+        return json.loads((store.project_dir / child.sim_dir / "trace.json").read_text(encoding="utf-8"))
+
+    bind = {"label": "bind:NPORT0", "device": "ind", "signal_nodes": ["net4", "net3"], "terminals": ["P1", "N1"], "dropped_ports": [3],
+            "replaced": "/old/ind.s3p"}
+    tt, ss = trace_of(ok), trace_of(failed)
+    assert tt[0] == ss[0] == bind
+    assert [r["label"] for r in tt] == ["bind:NPORT0", "spectre#1", "ocean#1"] and [r["label"] for r in ss] == ["bind:NPORT0", "spectre#1"]
+    assert tt[1]["argv"][0] == "spectre" and tt[1]["returncode"] == 0 and tt[2]["argv"][0] == "ocean" and ss[1]["returncode"] != 0
+    assert all(isinstance(r["seconds"], float) for r in (*tt[1:], *ss[1:]))
+    assert trace_of(device) == [] and "trace" not in ok.model_dump()
+
+
+def test_a_child_that_never_ran_has_no_sim_dir_and_so_no_trace(tmp_path):
+    """N-53: a point whose point-level stage failed (EMX here) gives each of its children the failure without running it: no
+    context of its own, no directory, ``sim_dir`` null -- and no trace.json anywhere under the point's directory."""
+    spec = em_circuit_spec(tmp_path, corners=("tt", "ss"))
+    store = RunStore(tmp_path / "proj")
+    ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 7.0}, fail_emx=lambda device: True)
+    deck = import_netlists(spec, ex, store)
+    (o,) = evaluate(spec, [Point({"ind.od": "100", "ind.w": "5", "F": "20"}, "user")], ex, store, deck=deck, limits=FAKE_HOST)
+    assert o.status.startswith("failed:emx") and set(o.children) == {"tb/tt", "tb/ss"}
+    assert all(c.sim_dir is None for c in o.children.values()) and not list((store.root / "sims" / o.obs_id).rglob("trace.json"))
