@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ic_opt import migrate_store, recipe
+from ic_opt import migrate_store
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
 from ic_opt.eval import engine
@@ -279,8 +279,7 @@ def test_ctrl_c_ends_ic_opt_run_with_one_line_and_exit_code_130(tmp_path, monkey
     from typer.testing import CliRunner
 
     from ic_opt.cli import app
-    from ic_opt.spec import load_spec
-    from tests.ic_opt.test_cli_recipes import SITE, project
+    from tests.ic_opt.test_cli_recipes import fake_cli, project
 
     root = project(tmp_path)
     d = yaml.safe_load((root / "spec.yaml").read_text(encoding="utf-8"))
@@ -288,17 +287,7 @@ def test_ctrl_c_ends_ic_opt_run_with_one_line_and_exit_code_130(tmp_path, monkey
     (root / "spec.yaml").write_text(yaml.safe_dump(d, sort_keys=False), encoding="utf-8")
     (root / "points.json").write_text(json.dumps([{"F": f, "W": "0.6u"} for f in ("20", "22", "24", "26")]))
     hang = {"on": True}
-    executors = []
-
-    def fake_load_run(project_dir, *, ssh_profile=None, cshrc=None):
-        store = RunStore(project_dir)
-        ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 5.0 + int(p["F"]) / 10},
-                                 hang=lambda tool, cwd: hang["on"] and tool == "spectre" and hung in cwd.parts)
-        executors.append(ex)
-        return recipe.Run(Path(project_dir).resolve(), load_spec(Path(project_dir) / "spec.yaml"), store, ex, None, SITE,
-                          SITE.host("local"))
-
-    monkeypatch.setattr(recipe, "load_run", fake_load_run)
+    executors = fake_cli(monkeypatch, hang=lambda tool, cwd: hang["on"] and tool == "spectre" and hung in cwd.parts)
     params = ["points=points.json"] if recipe_name == "fix_run" else ["budget=4", "batch=2", "strategy=random", "seed=1"]
     main = threading.main_thread().ident
 

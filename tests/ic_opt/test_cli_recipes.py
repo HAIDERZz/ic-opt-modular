@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from ic_opt import __version__, blocks, cli, recipe
 from ic_opt import site as site_module
+from ic_opt._lock import exclusive_lock
 from ic_opt.cli import app
 from ic_opt.deck import Deck
 from ic_opt.recipes import coarse_to_fine, fix_run, optimize, signoff
@@ -59,6 +60,20 @@ def fake_run(root: Path, metric_fn=lambda p, tb, c: {"NF": 5.0 + int(p["F"]) / 1
     spec = load_spec(root / "spec.yaml")
     store = RunStore(root)
     return recipe.Run(root, spec, store, FakeSpectreExecutor(store.root / "sims", metric_fn, **fake_kwargs), None, SITE, SITE.host("local"))
+
+
+def fake_cli(monkeypatch, **fake_kwargs) -> list[FakeSpectreExecutor]:
+    """``ic-opt run`` on the fake Cadence host: every Run the command line loads is ``fake_run``'s (the project's spec
+    and store, a FakeSpectreExecutor with ``fake_kwargs``, SITE's local entry). Returns the executors made, in order."""
+    made: list[FakeSpectreExecutor] = []
+
+    def load_run(project_dir, *, ssh_profile=None, cshrc=None, site=None):
+        run = fake_run(Path(project_dir).resolve(), **fake_kwargs)
+        made.append(run.executor)
+        return run
+
+    monkeypatch.setattr(recipe, "load_run", load_run)
+    return made
 
 
 # -- CLI ----------------------------------------------------------------------------
@@ -360,6 +375,110 @@ def test_the_recipes_default_strategy_resolves_per_run_under_plan(tmp_path):
         assert not (root / ".icopt" / "observations.jsonl").exists()
     named = runner.invoke(app, ["run", "optimize", str(one), "--plan", "strategy=turbo"]).output
     assert "strategy auto" not in named and "step='optimize' strategy=turbo:" in named          # a named strategy: as named
+
+
+# -- N-119: the project lock, taken by ic-opt run before anything writes to the store -------------------------------------
+
+HOLD_THE_PROJECT = ("import sys\nfrom ic_opt._lock import exclusive_lock\n"
+                    "with exclusive_lock(sys.argv[1], what='project', holder=True):\n"
+                    "    print('held', flush=True)\n    sys.stdin.read()\n")
+
+
+def store_files(root: Path) -> dict[str, bytes]:
+    icopt = root / ".icopt"
+    return {p.relative_to(icopt).as_posix(): (p.read_bytes() if p.is_file() else b"<dir>") for p in sorted(icopt.rglob("*"))}
+
+
+def test_a_run_on_a_project_another_process_runs_is_refused_in_one_line_and_writes_nothing(tmp_path, monkeypatch):
+    """N-118's check t3: the second run did the doctor and the netlist import -- the decks went into the store -- before
+    the optimize block's lock refused it with a 70-line traceback. Now the command takes the project lock first: while
+    another process holds it, one line naming that process, exit code 2, no file written under .icopt; --plan, which
+    writes nothing, is not refused. Once the holder is gone the same command runs."""
+    import ic_opt
+
+    root = project(tmp_path)
+    RunStore(root)
+    lock = root.resolve() / ".icopt" / "run.lock"
+    env = {**os.environ, "PYTHONPATH": str(Path(ic_opt.__file__).parents[1])}
+    holder = subprocess.Popen([sys.executable, "-c", HOLD_THE_PROJECT, str(lock)], stdin=subprocess.PIPE,
+                              stdout=subprocess.PIPE, text=True, env=env)
+    try:
+        assert holder.stdout.readline().strip() == "held"
+        made = fake_cli(monkeypatch)
+        before = store_files(root)
+        refused = runner.invoke(app, ["run", "optimize", str(root), "budget=2", "batch=2", "strategy=random"])
+        assert refused.exit_code == 2 and "Traceback" not in refused.output
+        assert refused.output == f"error: project is locked by another run: {lock} (pid {holder.pid})\n"
+        assert store_files(root) == before and not any(list((root / ".icopt" / d).iterdir()) for d in ("decks", "sims"))
+        assert made[0].commands == []                                    # nothing ran on the host: no doctor, no import
+        plan = runner.invoke(app, ["run", "optimize", str(root), "--plan", "budget=2", "batch=2", "strategy=random"])
+        assert plan.exit_code == 0, plan.output
+        assert "[plan] opt.optimize step='optimize' strategy=random: 0/2 points done" in plan.output
+        assert store_files(root) == before                               # --plan wrote nothing, the doctor's row neither
+    finally:
+        holder.stdin.close()
+        holder.wait(timeout=60)
+    done = runner.invoke(app, ["run", "optimize", str(root), "budget=2", "batch=2", "strategy=random"])
+    assert done.exit_code == 0, done.output
+    assert len(RunStore(root).observations()) == 2 and lock.read_bytes() == b""
+
+
+def test_a_second_run_while_the_first_goes_is_refused_and_the_first_goes_on(tmp_path, monkeypatch):
+    """Both in this process: the first ``ic-opt run`` holds the project; between its batches (where the strategy proposes)
+    a second ``ic-opt run`` on the same project is refused in one line with exit code 2 and changes no file of the store,
+    a ``--plan`` is answered; the first run then finishes as if nothing had happened."""
+    from ic_opt.suggesters.random import RandomSuggester
+
+    root = project(tmp_path)
+    fake_cli(monkeypatch)
+    command = ["run", "optimize", str(root), "budget=4", "batch=2", "strategy=random", "seed=1"]
+    propose, seen = RandomSuggester.propose, {}
+
+    def meanwhile(self, spec, history, n, **kw):
+        if len(history) == 2 and not seen:                     # the first batch is recorded, the second not yet proposed
+            before = store_files(root)
+            seen["second"] = runner.invoke(app, command)
+            seen["plan"] = runner.invoke(app, [*command, "--plan"])
+            seen["unchanged"] = store_files(root) == before
+        return propose(self, spec, history, n, **kw)
+
+    monkeypatch.setattr(RandomSuggester, "propose", meanwhile)
+    first = runner.invoke(app, command)
+    assert first.exit_code == 0, first.output
+    lock = root.resolve() / ".icopt" / "run.lock"
+    assert seen["second"].exit_code == 2
+    assert seen["second"].output == f"error: project is locked by another run: {lock} (pid {os.getpid()})\n"
+    assert seen["plan"].exit_code == 0 and "[plan] opt.optimize step='optimize' strategy=random: 2/4 points done" in seen["plan"].output
+    assert seen["unchanged"]
+    obs = RunStore(root).observations()
+    assert [o.obs_id for o in obs] == ["obs_0001", "obs_0002", "obs_0003", "obs_0004"] and all(o.status == "ok" for o in obs)
+    assert sum(json.loads(line)["step"] == "doctor" for line in (root / ".icopt" / "steps.jsonl").read_text().splitlines()) == 1
+
+
+def test_a_recipe_that_advises_between_its_steps_is_not_refused_by_its_own_run(tmp_path, monkeypatch):
+    """The blocks that take the project lock themselves -- opt.optimize, opt.advise -- take nothing more inside the run
+    that holds it: a recipe file that searches, adopts an advice and searches on runs through (it did before N-119, when
+    each block took the lock for itself); afterwards the lock is free and names nobody."""
+    root = project(tmp_path)
+    fake_cli(monkeypatch)
+    recipe_file = tmp_path / "advised.py"
+    recipe_file.write_text(
+        "from ic_opt import blocks as b\n"
+        "def main(run):\n"
+        "    deck = b.import_netlists(run.spec, run.executor, run.store)\n"
+        "    kw = dict(deck=deck, strategy='random', batch=2, step='search', limits=run.limits, parallel_jobs=run.jobs)\n"
+        "    b.optimize(run.spec, run.executor, run.store, budget=2, **kw)\n"
+        "    b.advise(run.spec, run.store, {'author': 'the recipe', 'reason': 'try F 24 first', 'start': [{'F': '24', 'W': '0.8u'}]})\n"
+        "    b.optimize(run.spec, run.executor, run.store, budget=4, **kw)\n")
+    result = runner.invoke(app, ["run", str(recipe_file), str(root)])
+    assert result.exit_code == 0, result.output
+    assert "[advise] adopted a1 (since 2; in effect from the next batch)" in result.output
+    obs = RunStore(root).observations()
+    assert len(obs) == 4 and obs[2].origin == "advice:a1" and obs[2].params == {"F": "24", "W": "0.8u"}
+    lock = root.resolve() / ".icopt" / "run.lock"
+    assert lock.read_bytes() == b""
+    with exclusive_lock(lock):                                         # free: taken at once
+        pass
 
 
 def test_user_recipe_file_composes_blocks(tmp_path):

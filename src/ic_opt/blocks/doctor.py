@@ -72,7 +72,10 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
     Library devices (T18.2B) run no EMX: no generator, profile or EMX check, no EMX job in the envelope, and an ``em``
     section beside them is unused (a note says so). Each gets ``library:<device>`` instead, the resolution of its table
     on the machine running ic-opt (``ic_opt.library.link``): ``<stratum> at <f> GHz: <n> rows on the grid in <m> of
-    <total> combinations, prefer <rule>``, or the refusal's message."""
+    <total> combinations, prefer <rule>``, or the refusal's message.
+
+    With ``store`` the checks are logged as a ``doctor`` row of ``steps.jsonl`` -- not under ``--plan``, which writes
+    nothing to the store and so takes no project lock (N-119)."""
     report = DoctorReport()
     add = report.checks.append
 
@@ -111,10 +114,12 @@ def doctor(spec: Spec, executor: Executor, *, cshrc: str | None = None, store: R
 
     if store is not None:
         from ic_opt.eval.engine import simulations
+        from ic_opt.recipe import PLAN_MODE
 
         used = sum(simulations(o) for o in store.observations())
         add(Check("budget", used < spec.budget.max_simulations, f"{used}/{spec.budget.max_simulations} simulations used"))
-        store.log_step("doctor", "ok" if report.ok else "fail", checks=[(c.name, c.ok) for c in report.checks])
+        if not PLAN_MODE.get():         # --plan writes nothing to the store: it takes no project lock (N-119)
+            store.log_step("doctor", "ok" if report.ok else "fail", checks=[(c.name, c.ok) for c in report.checks])
     return report
 
 

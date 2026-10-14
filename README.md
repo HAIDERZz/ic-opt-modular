@@ -95,6 +95,19 @@ the same command continues the run` -- the points the run recorded (its earlier
 batches' too), the ones the interrupt stopped while they ran, the ones it kept
 from starting.
 
+One run per project: `ic-opt run` takes the project lock, `.icopt/run.lock`,
+before anything writes to the store -- before the doctor's step row and the
+netlist import -- and holds it to its end, the file naming its process id
+meanwhile. A second `ic-opt run` on that project is refused like the command's
+other refusals: one line, `error: project is locked by another run:
+<project>/.icopt/run.lock (pid 12345)`, exit code 2, nothing written. `--plan`
+writes nothing and takes no lock, so it answers while a run goes, as `ic-opt
+digest` and `ic-opt call` on a library do; `ic-opt advise` is refused until the
+run ends. The blocks that take the lock themselves (`opt.optimize` for its loop,
+`opt.advise` in a recipe's own code) take nothing more inside the run that holds
+it. The lock is the operating system's: it ends with its process, so a killed
+run leaves none behind (never delete the file).
+
 ## Use
 
 ```bash
