@@ -150,4 +150,7 @@ def test_the_prediction_budget_is_a_share_of_the_machines_memory(library, monkey
     s.suggest(q.Library(library, limits=small), "ind_demo", targets, None, n=1, pool_size=256, verify_build=False)
     monkeypatch.setenv("OMP_NUM_THREADS", "1")
     s.suggest(q.Library(library, limits=small), "ind_demo", targets, None, n=1, pool_size=256, verify_build=False)
-    assert budgets == [s.predict_budget(small)] * 2 and blas == [(3, "blas"), (1, "blas")]
+    # 1.2 nH lies between the one-turn rows (up to 1.02 nH) and the two-turn ones (from 1.50 nH): no point of the Sobol pool
+    # meets it, so each call also predicts N-50's second pool (region's coarse pass, then its grid) -- in the same budget,
+    # under the same BLAS limit
+    assert budgets == [s.predict_budget(small)] * 6 and blas == [(3, "blas"), (1, "blas")]

@@ -55,12 +55,15 @@ from threadpoolctl import threadpool_limits
 from ic_opt.library import dataset, query, suggest
 
 RELAX = 0.10                                         # the coarse pass widens every stated window by this fraction unless told otherwise
+POOL_SIZE = 32768                                    # the coarse pass's Sobol points (besides the library's rows) unless told otherwise
+LEVELS_PER_DIM = 20                                  # automatic grid steps: about this many values per dim
+MAX_POINTS = 2_000_000                               # every step is multiplied until the grid fits in this many points
 STAGES = ("models", "coarse", "grid", "predict", "summarize")
 
 
 def region(library: query.Library, stratum: str, targets: dict, objective: str | None = None, *,
-           steps: dict[str, float] | None = None, levels_per_dim: int = 20, max_points: int = 2_000_000,
-           pool_size: int = 32768, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, relax: float = RELAX,
+           steps: dict[str, float] | None = None, levels_per_dim: int = LEVELS_PER_DIM, max_points: int = MAX_POINTS,
+           pool_size: int = POOL_SIZE, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, relax: float = RELAX,
            group_by: list[str] | None = None, trend: tuple[str, str] | None = None, n: int = 8, min_spacing: float = 0.05,
            verify_build: bool = False, sample_size: int = 5000, threads: int | None = None,
            workers: int | None = None, level_points: str | None = None) -> dict:
@@ -210,6 +213,24 @@ def _coarse(library: query.Library, stratum: str, models: dict, stated: list[sug
     loose = [_relaxed(t, relax) if t in stated else t for t in goals]
     alone = {t.quantity: int((ok & suggest.satisfy(pred, [t], "mean")).sum()) for t in loose}
     return x[ok & suggest.satisfy(pred, loose, "mean")], len(x), int(ok.sum()), alone
+
+
+def grid_pool(library: query.Library, stratum: str, models: dict, stated: list[suggest.Target], goals: list[suggest.Target], *,
+              seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, relax: float = RELAX, pool_size: int = POOL_SIZE,
+              levels_per_dim: int = LEVELS_PER_DIM, max_points: int = MAX_POINTS,
+              budget: int) -> tuple[np.ndarray, dict[str, np.ndarray], dict]:
+    """The grid ``region`` predicts for these goals, by the same steps (the coarse pass, the grid over its survivors'
+    bracket, the points inside every model's domain): with the defaults, the grid of a ``lib.region`` call left at its
+    defaults. ``suggest`` draws its second pool here (N-50). Returns the points, their SRF floors (``_inside``) and the
+    grid as ``region``'s answer describes it (``steps``, ``bracket``, ``points``, ``coarsened``) with ``relax``,
+    ``in_domain`` and ``survivors`` (the coarse candidates it brackets); no survivor, no point."""
+    survivors = _coarse(library, stratum, models, stated, goals, pool_size, seed, k, rel_sigma_max, relax, budget)[0]
+    if not len(survivors):
+        return (np.empty((0, len(library.dataset(stratum).dims))), {},
+                {"steps": {}, "bracket": {}, "points": 0, "coarsened": 1, "relax": relax, "in_domain": 0, "survivors": 0})
+    x, grid, _notes = _grid(library, stratum, survivors, {}, levels_per_dim, max_points)
+    x, floors = _inside(library, stratum, x, models)
+    return x, floors, {**grid, "relax": relax, "in_domain": len(x), "survivors": len(survivors)}
 
 
 def _empty_note(pooled: int, confident: int, alone: dict[str, int], relax: float) -> str:

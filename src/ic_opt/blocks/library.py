@@ -119,30 +119,58 @@ def _flag(value: bool | str | None) -> bool:
     raise ValueError(f"expected true or false, got {value!r}")
 
 
-def suggest(library: _query.Library | str | Path, stratum: str, targets: dict, objective: str | None = None, n: int = 5,
-            pool_size: int = 8192, seed: int = 0, k: float = 2.0, verify_build: bool = True,
-            rel_sigma_max: float | None = None, cache_dir: str | None = None) -> dict:
+def _targets(value: dict | None) -> dict:
+    """``targets`` as the blocks take it: a JSON object, required (a string: the shell ate the quotes)."""
+    if value is None or not isinstance(value, dict):
+        raise ValueError('targets: expected a JSON object {"<quantity>": {"min": v} | {"max": v} | {"min": a, "max": b} | '
+                         f'{{"target": v, "tol": rel}}, ...}}, got {value!r}')
+    return value
+
+
+def suggest(library: _query.Library | str | Path, stratum: str | None = None, targets: dict | None = None, objective: str | None = None,
+            n: int = 5, pool_size: int = 8192, seed: int = 0, k: float = 2.0, verify_build: bool = True,
+            rel_sigma_max: float | None = None, cache_dir: str | None = None, family: str | None = None, taps: str | None = None,
+            strata: str | list[str] | None = None) -> dict:
     """Designs that meet ``targets`` with margin: measured ones first (exact), then predicted candidates built and audited.
 
     ``targets`` maps quantities to ``{"min": v}``, ``{"max": v}`` or ``{"target": v, "tol": rel}`` (JSON on the command
     line); ``objective`` is ``max:<quantity>`` or ``min:<quantity>``. Anchored targets add SRF >= srf_margin x f0
     (library.yaml; 1.25 unless set) unless SRF is already constrained. A candidate with sigma / mu above the ceiling of
-    any quantity (``rel_sigma_max`` when given, else the quantity's in library.yaml, else 0.15) is dropped.
-    ``cache_dir`` holds the library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which
-    the answer's ``notes`` name).
+    any quantity (``rel_sigma_max`` when given, else the quantity's in library.yaml, else 0.15) is dropped. Each candidate's
+    ``pool`` says where it was drawn: ``sobol`` (``pool_size`` points over the table), or ``region_grid`` when no point of
+    that pool met the targets and a second pool was drawn on the grid ``lib.region`` searches (the answer's ``region_grid``
+    describes it). ``cache_dir`` holds the library's cache files (default: its own ``.cache``, else
+    ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).
+
+    One table (``stratum``), or several (``ic_opt.library.family``): ``family`` -- every table whose generator draws that
+    device kind (``ind_sym``, ``xfm_bs``, ``xfm_ms``, ...) -- with ``taps`` (``none``, the default: the tables without
+    centre taps; ``any``; ``only``), or ``strata``, a comma list of tables; exactly one of the three. The answer is then
+    ``family``, ``taps``, ``strata`` (each table's own answer, or ``{"error": text}``), ``facts`` (each table's
+    generator, fixed fields -- port openings, metals, ground fixture metal, taps -- and rows), ``leaders`` (at most ``n``
+    measured designs, then at most ``n`` predicted ones, merged across the tables by the objective or by closeness to the
+    targets, each with its ``stratum`` and ``fixed``), ``unreachable`` (per table without a design, why: ``reason``, the
+    sentence, and ``kind`` -- ``outside_range`` with the measured ranges, ``not_met_together`` with the closest measured
+    row, or ``cannot_take``) and ``notes``.
     """
+    from ic_opt.library import family as _family
     from ic_opt.library import suggest as _suggest
 
-    return _strict_json(_suggest.suggest(_lib(library, cache_dir), stratum, targets, objective, n=int(n), pool_size=int(pool_size),
-                                         seed=int(seed), k=float(k), rel_sigma_max=_ceiling(rel_sigma_max), verify_build=bool(verify_build)))
+    lib = _lib(library, cache_dir)
+    names, kind, kept = _family.request(lib, stratum=stratum, family=family, taps=taps, strata=_names(strata))
+    options = {"n": int(n), "pool_size": int(pool_size), "seed": int(seed), "k": float(k), "rel_sigma_max": _ceiling(rel_sigma_max),
+               "verify_build": bool(verify_build)}
+    if stratum is not None:
+        return _strict_json(_suggest.suggest(lib, stratum, _targets(targets), objective, **options))
+    return _strict_json(_family.suggest(lib, names, _targets(targets), objective, family=kind, taps=kept, **options))
 
 
-def region(library: _query.Library | str | Path, stratum: str, targets: dict, objective: str | None = None, steps: dict | None = None,
-           levels_per_dim: int = 20, max_points: int = 2_000_000, pool_size: int = 32768, seed: int = 0, k: float = 2.0,
-           group_by: str | list[str] | None = None, trend: str | None = None, n: int = 8, verify_build: bool = False,
+def region(library: _query.Library | str | Path, stratum: str | None = None, targets: dict | None = None, objective: str | None = None,
+           steps: dict | None = None, levels_per_dim: int = 20, max_points: int = 2_000_000, pool_size: int = 32768, seed: int = 0,
+           k: float = 2.0, group_by: str | list[str] | None = None, trend: str | None = None, n: int = 8, verify_build: bool = False,
            sample_size: int = 5000, threads: int | None = None, workers: int | None = None,
            rel_sigma_max: float | None = None, relax: float = _region.RELAX, cache_dir: str | None = None,
-           out: str | None = None, level: str = "robust", device: str | None = None) -> dict:
+           out: str | None = None, level: str = "robust", device: str | None = None, family: str | None = None,
+           taps: str | None = None, strata: str | list[str] | None = None) -> dict:
     """The part of the geometry space whose predictions meet ``targets``: sweep ranges, not ``lib.suggest``'s best few points.
 
     Two levels: ``robust`` -- the calibrated k-sigma interval lies inside every window (``lib.suggest``'s test; centre a
@@ -169,19 +197,32 @@ def region(library: _query.Library | str | Path, stratum: str, targets: dict, ob
     or the stratum's name; its fixed fields and id are the user's to check) and ``variables_block`` (its variables, the
     level's ranges on the region's grid steps, to paste under ``variables:``); ``ic-opt call`` prints both after the
     answer. A level without a point writes nothing and is refused.
+
+    One table (``stratum``), or several (``ic_opt.library.family``): ``family`` with ``taps``, or ``strata``, exactly one of
+    the three, as in ``lib.suggest``. The answer is then ``family``, ``taps``, ``strata`` (each table's own answer, or
+    ``{"error": text}``), ``facts``, ``leaders`` (per table its robust and mean counts and ranges and the measured designs
+    meeting every target, the tables with points first), ``unreachable`` (per table without a robust point or a measured
+    design, why) and ``notes``. ``out`` writes one table's combinations: refused unless exactly one table holds points at
+    ``level`` -- the message names the tables that do: rerun with ``stratum=`` --, and then that table's.
     """
+    from ic_opt.library import family as _family
+
     for name, value in (("targets", targets), ("steps", steps)):
         if value is not None and not isinstance(value, dict):
             raise ValueError(f"{name}: expected a JSON object, got {value!r}")
     if not out and (device is not None or level != "robust"):
         raise ValueError("level= and device= say what out= writes: give out=<file> too")
     lib = _lib(library, cache_dir)
-    answer = _region.region(
-        lib, stratum, targets, objective, steps=steps, levels_per_dim=int(levels_per_dim), max_points=int(max_points),
-        pool_size=int(pool_size), seed=int(seed), k=float(k), rel_sigma_max=_ceiling(rel_sigma_max), relax=float(relax),
-        group_by=_names(group_by), trend=_trend(trend), n=int(n), verify_build=bool(verify_build), sample_size=int(sample_size),
-        threads=None if threads is None else int(threads), workers=None if workers is None else int(workers),
-        level_points=str(level) if out else None)
+    names, kind, kept = _family.request(lib, stratum=stratum, family=family, taps=taps, strata=_names(strata))
+    options = {"steps": steps, "levels_per_dim": int(levels_per_dim), "max_points": int(max_points), "pool_size": int(pool_size),
+               "seed": int(seed), "k": float(k), "rel_sigma_max": _ceiling(rel_sigma_max), "relax": float(relax),
+               "group_by": _names(group_by), "trend": _trend(trend), "n": int(n), "verify_build": bool(verify_build),
+               "sample_size": int(sample_size), "threads": None if threads is None else int(threads),
+               "workers": None if workers is None else int(workers)}
+    if stratum is None:
+        return _strict_json(_family.region(lib, names, _targets(targets), objective, family=kind, taps=kept, out=out, level=str(level),
+                                           device=device, **options))
+    answer = _region.region(lib, stratum, _targets(targets), objective, **options, level_points=str(level) if out else None)
     if out:
         answer.update(_combinations.from_region(lib, stratum, answer, out, targets=targets, device=device))
         del answer["level_points"]

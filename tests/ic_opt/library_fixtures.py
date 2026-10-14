@@ -272,3 +272,70 @@ def build_resonance_library(root: Path, *, ops=RES_OPS, **manifest) -> Path:
         lines.append(o.model_dump_json())
     (project / ".icopt" / "observations.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return res_manifest(root, **manifest)
+
+
+# -- N-114: three inductor tables of one family -- two that differ only in the port opening, a third with a centre tap -------
+
+FAMILY_QUANTITIES = {"Lp_lf": {}, "Qp_peak": {"band_ghz": STOP_GHZ}, "SRF_p": {}, "Lp": {"anchors_ghz": [10, 50]}}
+FAMILY_STEPS = {"outer_diameter_um": 1, "width_um": 0.1, "spacing_um": 0.1, "turns": 1}
+
+
+def family_points(ods) -> list[tuple[float, float, float, int]]:
+    """Two-turn inductors: every outer diameter of ``ods``, widths 4-6 um, spacings 2 and 3 um."""
+    return [(float(od), w, s, 2) for od in ods for w in (4.0, 5.0, 6.0) for s in (2.0, 3.0)]
+
+
+def tapped_touchstone(od: float, w: float, s: float, nt: int, stop_ghz: float = STOP_GHZ) -> str:
+    """``rlc_touchstone``'s two-port with a third port, the centre tap CT, matched and decoupled: grounded (the default
+    topology grounds the CT ports), it leaves the two-port's quantities as they are."""
+    lines = ["! Touchstone from a synthetic RLC library, a decoupled centre tap added", "# Hz S RI R 50"]
+    for line in rlc_touchstone(od, w, s, nt, stop_ghz).splitlines()[2:]:
+        f, *v = line.split()
+        s11, s21, s12, s22 = (complex(float(v[i]), float(v[i + 1])) for i in range(0, 8, 2))
+        sp = np.array([[s11, s12, 0], [s21, s22, 0], [0, 0, 0]])
+        lines.append(f"{f} " + " ".join(f"{z.real:.12e} {z.imag:.12e}" for z in sp.reshape(-1)))
+    return "\n".join(lines) + "\n"
+
+
+def write_family_store(root: Path, name: str, points: list[tuple[float, float, float, int]], *, opening: float,
+                       tapped: bool = False) -> None:
+    """A part like ``write_store``'s, its device's port opening ``opening``; ``tapped``: ports P1 N1 CT and ``ct_metal``."""
+    project = root / name
+    (project / ".icopt").mkdir(parents=True)
+    spec = part_spec(name, STOP_GHZ, frequencies={"start_hz": 0.0, "stop_hz": STOP_GHZ * 1e9, "step_hz": 1e9}).model_dump(mode="json")
+    device = spec["devices"][0]
+    device["fixed"]["opening_um"] = opening
+    if tapped:
+        device["ports"], device["fixed"]["ct_metal"] = ["P1", "N1", "CT"], "5"
+        device["topology"] = {"drives": [["P1", "N1"]], "grounded": ["CT"]}
+    (project / "spec.yaml").write_text(yaml.safe_dump(Spec.model_validate(spec).model_dump(mode="json")), encoding="utf-8")
+    lines = []
+    for i, (od, w, s, nt) in enumerate(points, 1):
+        obs = f"obs_{i:04d}"
+        em = project / ".icopt" / "sims" / obs / "em" / "ind"
+        em.mkdir(parents=True)
+        text, suffix = (tapped_touchstone(od, w, s, nt), "s3p") if tapped else (rlc_touchstone(od, w, s, nt), "s2p")
+        (em / f"ind.{suffix}").write_text(text, encoding="utf-8")
+        params = {"outer_diameter_um": f"{od:g}", "width_um": f"{w:g}", "spacing_um": f"{s:g}", "turns": str(nt)}
+        o = Observation(obs_id=obs, params=params, origin="grid", status="ok", spec_fingerprint="spec", pipeline_fingerprint="gen1",
+                        started_at="", finished_at="")
+        lines.append(o.model_dump_json())
+    (project / ".icopt" / "observations.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def build_family_library(root: Path) -> Path:
+    """Family ind_sym, three tables: ind_o8 (port opening 8 um, outer diameters 140-200 um, 42 rows), ind_o2 (opening 2 um,
+    80-130 um, 36 rows) and ind_ct (opening 8 um, 80-130 um, a centre tap CT, no Qp_peak column). Lp_lf: about 2.3-4.1 nH
+    in ind_o8, 1.1-2.3 nH in ind_o2 and ind_ct; every row resonates inside its 60 GHz sweep, so no row has Lp@50 (its
+    resonance would have to lie above 1.25 x 50 GHz)."""
+    write_family_store(root, "o8", family_points(range(140, 201, 10)), opening=8.0)
+    write_family_store(root, "o2", family_points(range(80, 131, 10)), opening=2.0)
+    write_family_store(root, "ct", family_points(range(80, 131, 10)), opening=8.0, tapped=True)
+    tapless = {k: v for k, v in FAMILY_QUANTITIES.items() if k != "Qp_peak"}
+    strata = {name: {"generator": "clean_port_ind_sym", "dims": DIMS, "nt_dim": "turns", "parts": [{"store": store}],
+                     "steps": FAMILY_STEPS, "quantities": quantities}
+              for name, store, quantities in (("ind_o8", "o8", FAMILY_QUANTITIES), ("ind_o2", "o2", FAMILY_QUANTITIES),
+                                              ("ind_ct", "ct", tapless))}
+    doc = {"schema_version": "ic-opt-library-v1", "process_profile": "demo_6m", "strata": strata}
+    (root / "library.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
+    return root
