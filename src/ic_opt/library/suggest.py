@@ -8,7 +8,10 @@ formerly em-opt's ``inverse.suggest``):
 1. candidate pool: the measured rows themselves (exact values, zero-width intervals) plus scrambled Sobol over
    the achieved box, snapped to the manifest's ``steps``, one integer turns level per candidate, dims fixed
    within a level kept at their value. Measured designs that meet the targets are reported on their own list
-   (certain, already simulated); the predicted candidates are the interpolated alternatives to sign off;
+   (certain, already simulated); the predicted candidates are the interpolated alternatives to sign off. When no
+   predicted point of that pool meets the targets -- a target region too small for a pool spread over the whole box
+   (N-50) -- a second pool takes its place: the grid ``lib.region`` searches for the same targets
+   (``region.grid_pool``), each candidate marked with the pool it came from;
 2. domain: every model involved must accept the candidate (guard criteria 1-3) and have a model there;
 3. predict every quantity; criterion 4 (sigma / mu) drops candidates the model is unsure about, against each
    quantity's ceiling (the call's ``rel_sigma_max``, else the quantity's in library.yaml, else the default);
@@ -422,6 +425,12 @@ def footprint_fields(box: dict | None, why: str | None) -> dict:
 def suggest(library: query.Library, stratum: str, targets: dict, objective: str | None = None, *, n: int = 5, pool_size: int = 8192,
             seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, verify_build: bool = True,
             min_spacing: float = 0.05) -> dict:
+    """The measured designs meeting ``targets`` and the predicted candidates that meet them with margin and build (module
+    docstring). Each candidate's ``pool`` says where it was drawn: ``sobol``, the pool of step 1, or ``region_grid`` -- when
+    no predicted point of that pool meets every target (a target region too small for 8192 points over the whole achieved
+    box, N-50), a second pool: the grid ``lib.region`` searches for the same targets (``region.grid_pool``: its coarse pass
+    with the stated windows ``region.RELAX`` wider, its grid over the survivors), scored the same way. The answer then
+    describes that grid in ``region_grid`` and says so in a note; ``pool`` and ``satisfying`` stay the first pool's."""
     ds = library.dataset(stratum)
     stated, obj, _ = resolve(library, stratum, parse_targets(targets), parse_objective(objective))
     margin = min((r.srf_margin for r in library.manifest.strata[stratum].quantities.values()), default=1.25)
@@ -438,38 +447,75 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
         for j, i in enumerate(row_of):
             if i >= 0 and ds.rows[i].values.get(q) is None:
                 floor[j] = ds.rows[i].stop_hz
-    with threadpool_limits(limits=query.blas_threads(library.limits), user_api="blas"):   # the pool's prediction, like a region's
-        s = score(x, models, goals, obj, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, exact=exact,
-                  chunk_bytes=predict_budget(library.limits))
+    budget = predict_budget(library.limits)
+    with threadpool_limits(limits=query.blas_threads(library.limits), user_api="blas"):   # the pools' predictions, like a region's
+        s = score(x, models, goals, obj, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, exact=exact, chunk_bytes=budget)
+        measured_ranked = [i for i in s["ranked"] if row_of[i] >= 0]
+        predicted_ranked = [i for i in s["ranked"] if row_of[i] < 0]
+        second = None if predicted_ranked else _grid_pool(library, stratum, models, stated, goals, obj, set(index), seed=seed, k=k,
+                                                          rel_sigma_max=rel_sigma_max, budget=budget)
     ranges = library.ranges(stratum)
-    measured_ranked = [i for i in s["ranked"] if row_of[i] >= 0]
-    predicted_ranked = [i for i in s["ranked"] if row_of[i] < 0]
     notes = library.notes + [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
                              for t in goals[len(stated):]]
 
-    def entry(i: int, **extra) -> dict:
-        params = dict(zip(ds.dims, (float(v) for v in x[i])))
+    def entry(xs: np.ndarray, pred: dict, i: int, **extra) -> dict:
+        params = dict(zip(ds.dims, (float(v) for v in xs[i])))
         return {"params": params, **extra,
-                "predicted": {q: {k2: float(s["pred"][q][k2][i]) for k2 in ("value", "lo", "hi", "rel_sigma")} for q in names},
+                "predicted": {q: {k2: float(pred[q][k2][i]) for k2 in ("value", "lo", "hi", "rel_sigma")} for q in names},
                 "nearest": [query._evidence(r, names[0], ds.dims) for r in query._nearest_rows(library, stratum, params, 3)]}
 
     shown = diversify(x, measured_ranked, ranges, ds.dims, keep=n, min_spacing=min_spacing)
     rows = [ds.rows[row_of[i]] for i in shown]
     boxes = library.footprints(stratum) if rows else {}
-    measured = [entry(i, measured={"part": r.part, "obs_id": r.obs_id}, **footprint_fields(*boxes[(r.part, r.obs_id)]))
+    measured = [entry(x, s["pred"], i, measured={"part": r.part, "obs_id": r.obs_id}, **footprint_fields(*boxes[(r.part, r.obs_id)]))
                 for i, r in zip(shown, rows)]
+    origin, cx, cs = ("sobol", x, s) if second is None else ("region_grid", second[0], second[1])
+    ranked = predicted_ranked if second is None else second[1]["ranked"]
     candidates, rejected = [], 0
-    for i in diversify(x, predicted_ranked, ranges, ds.dims, keep=max(4 * n, 8), min_spacing=min_spacing):
-        build = build_check(library, stratum, dict(zip(ds.dims, (float(v) for v in x[i])))) if verify_build else {"built": None}
+    for i in diversify(cx, ranked, ranges, ds.dims, keep=max(4 * n, 8), min_spacing=min_spacing):
+        build = build_check(library, stratum, dict(zip(ds.dims, (float(v) for v in cx[i])))) if verify_build else {"built": None}
         if verify_build and not build["built"]:
             rejected += 1
             continue
         build, box = drawn(build) if verify_build else (build, {})       # a footprint only for a geometry the generator drew
-        candidates.append(entry(i, build=build, **box))
+        candidates.append(entry(cx, cs["pred"], i, pool=origin, build=build, **box))
         if len(candidates) == n:
             break
+    if second is not None:
+        notes.append(_second_pool_note(len(x) - len(measured_x), second[2]))
     if rejected:
         notes.append(f"{rejected} leading candidates failed the real build and were skipped")
-    return {"stratum": stratum, "targets": [t.__dict__ for t in goals], "objective": objective, "pool": len(x),
-            "satisfying": int(s["ok"].sum()), "satisfying_measured": len(measured_ranked), "measured": measured,
-            "candidates": candidates, "notes": notes}
+    out = {"stratum": stratum, "targets": [t.__dict__ for t in goals], "objective": objective, "pool": len(x),
+           "satisfying": int(s["ok"].sum()), "satisfying_measured": len(measured_ranked), "measured": measured,
+           "candidates": candidates, "notes": notes}
+    if second is not None:
+        out["region_grid"] = second[2]
+    return out
+
+
+def _grid_pool(library: query.Library, stratum: str, models: dict[str, query.Model], stated: list[Target], goals: list[Target],
+               obj: tuple[str, str] | None, rows: set[tuple], *, seed: int, k: float, rel_sigma_max: float | None,
+               budget: int) -> tuple[np.ndarray, dict, dict]:
+    """N-50: the second pool -- ``region.grid_pool``, the grid ``lib.region`` searches for these goals, without the points
+    that are library rows (``rows``: their coordinates rounded to 1e-9; a row is a measured design, never a candidate) --
+    scored as the first pool is (``score``; every point is inside every model's domain already). Returns the points, their
+    score and the grid's description for the answer's ``region_grid`` (``satisfying``: the points meeting every target)."""
+    from ic_opt.library import region  # region builds on this module
+
+    gx, floors, grid = region.grid_pool(library, stratum, models, stated, goals, seed=seed, k=k, rel_sigma_max=rel_sigma_max,
+                                        budget=budget)
+    new = np.array([tuple(np.round(r, 9)) not in rows for r in gx], dtype=bool)
+    gx, floors = gx[new], {q: f[new] for q, f in floors.items()}
+    s = score(gx, models, goals, obj, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, check_domain=False, chunk_bytes=budget)
+    return gx, s, {**grid, "satisfying": int(s["ok"].sum())}
+
+
+def _second_pool_note(sobol: int, grid: dict) -> str:
+    """What the second pool was and what it found (``suggest``'s notes)."""
+    head = f"no predicted point of the Sobol pool ({sobol} points) meets every target, so a second pool was drawn: the grid lib.region "
+    wider = f"the stated windows {100 * grid['relax']:.4g}% wider"
+    if not grid["survivors"]:
+        return head + f"searches, whose coarse pass kept no candidate even with {wider}"
+    found = (f"{grid['satisfying']} of them meet every target" if grid["satisfying"] else "none of them meets every target")
+    return head + (f"searches over its coarse pass with {wider} ({grid['points']} grid points, {grid['in_domain']} inside every "
+                   f"model's domain): {found}")

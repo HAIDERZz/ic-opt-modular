@@ -78,7 +78,7 @@ below.
 | "at tt / ss / ff", "at 125 degrees" | `corners`: `model_section` per corner (the PDK's section names); the temperature through `options: { temp: "125" }` (the `simulatorOptions` statement); `variables` only for names on the `parameters` line the netlist uses; `corner_policy` says how corners score |
 | "the input transformer is a real EM device", "let EMX size the primary width" | `devices` (+ `em`, + a `bindings` entry per nport it feeds) and `variables` named `<device>.<field>` |
 | "take the transformer from our library", "Lp between 150 and 600 pH, k at least 0.5 at 28 GHz" | a library device: `devices[*].library` (root, stratum, `frequency_hz`), its `variables` mapping index columns (`Lp`, `Ls`, `k`) to spec variables of electrical values, a `bindings` entry per nport it feeds (`### devices`) |
-| "the pre-simulation wants Lp 120 pH +-8 % and Q at least 12 at 80 GHz; size the inductor with EMX" | `ic-opt call lib.region ... out=<file>` with those targets, then its two blocks pasted: a pcell device with `combinations: <file>` and its variables (`### devices`, "A device held to a region") |
+| "the pre-simulation wants Lp 120 pH +-8 % and Q at least 12 at 80 GHz; size the inductor with EMX" | `ic-opt call lib.region ... family=<kind>` with those targets to see which tables hold the region, then `lib.region ... stratum=<the table> out=<file>`, then its two blocks pasted: a pcell device with `combinations: <file>` and its variables (`### devices`, "A device held to a region") |
 | "what are L, Q and k of the transformer at 60 GHz" | device `metrics`: `quantity` (`Lp / Qp / Ls / Qs / k` with `frequency_hz`, or the scalars `Lp_lf / Lp_res / Qp_peak / SRF_p / k_lf` and their `s` / system `SRF` forms) |
 | "M1 to M4 must stay in saturation", "50 mV of headroom" | a `saturation_margin` metric on a DC testbench + a constraint `ge 0.05 V` (`#### A DC-only testbench as the first gate`) |
 | "12 points", "no more than 300 simulations" | `budget.max_simulations` (every simulation the project's store holds counts, also the ones a later spec edit stops reusing); the point count is the recipe's `budget=` |
@@ -299,14 +299,23 @@ grid tells more of them apart; it creates none).
 flow from a pre-simulation with ideal devices to a joint optimization with
 EMX in the loop. (1) The pre-simulation gives the device's targets at the
 working frequency (an inductance window, a minimum Q). (2) `ic-opt call
-lib.region <root> stratum=<stratum> 'targets={"Lp@<f>": {"target": <L>,
-"tol": <t>}, "Qp@<f>": {"min": <Q>}}' out=<project>/region.json
+lib.region <root> family=<kind> 'targets={"Lp@<f>": {"target": <L>, "tol":
+<t>}, "Qp@<f>": {"min": <Q>}}'` asks every table of the device kind
+(`ind_sym`, `xfm_bs`, `xfm_ms`; `taps=any` to include the tapped tables):
+`leaders` gives per table its robust count and ranges, the tables with
+points first, `facts` each table's port opening, metals and taps, and
+`unreachable` why a table holds none (the target outside its measured
+range, the targets not met together, or a table that cannot take them).
+Choose the table whose fixed fields fit the circuit. (3) `ic-opt call
+lib.region <root> stratum=<that table> 'targets=...' out=<project>/region.json
 [device=<id>]` writes the robust grid points of the region that meets them
 as the device's allowed combinations and prints, after the answer, the
 device block (to paste under `devices:`) and the variables block (under
-`variables:`). (3) Paste both; check the id, the ports and every `fixed`
-field (a comment line names the fields the library's parts disagree on:
-state them), add the bindings and `em` as for any EM device. (4) `--plan`
+`variables:`); with `family=`, `out=` writes only when one table holds
+points and is refused, naming them, otherwise. (4) Paste both; check the
+id, the ports and every `fixed` field (a comment line names the fields the
+library's parts disagree on: state them), add the bindings and `em` as for
+any EM device. (5) `--plan`
 prints `device <id>: <n> allowed combinations of <variables> from <file>
 (<m> rows dropped by fixed <dim>=<value>)` and the valid points of the
 search space; the strategies propose only those combinations. The path is
