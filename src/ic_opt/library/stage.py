@@ -19,7 +19,11 @@ manifest's ceilings when they apply, so changing one is a new generation too. An
 ``domain.EXTRAPOLATE_FRACTION`` unless given): a point beyond a model's measured range along the outer diameters, within
 that fraction, is answered (labelled, its interval widened) instead of failing; the identity names the fraction and the
 widening slopes (``query.WIDENING``) when it is not 0, so the predictions of a stage that extrapolates are a generation
-of their own, and those of ``extrapolate=0`` keep the identity they had before N-116.
+of their own, and those of ``extrapolate=0`` keep the identity they had before N-116. A metric at a frequency between two
+knots of the library's frequency grid is answered from the knots' models (N-127, ``ic_opt.library.between``) unless the
+stage is ``exact``; with a grid and not exact the identity names the grid and the interpolation's method
+(``between_identity``), so those predictions are a generation of their own too, and an exact stage -- or any stage on a
+library without a grid -- keeps the identity of before.
 
 A device only maps onto a stratum built with the same generator and the same fixed fields (metal, fixture,
 leads ...): ``match_stratum`` finds it, and ``Predict`` refuses a device whose fixed fields differ.
@@ -44,7 +48,7 @@ from pathlib import Path
 
 from ic_opt.em import touchstone
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
-from ic_opt.library import dataset, domain, link, query
+from ic_opt.library import between, dataset, domain, link, query
 from ic_opt.observation import ChildResult
 from ic_opt.sim.ocean import WaveformExport
 from ic_opt.space import Point
@@ -81,9 +85,10 @@ class Predict:
     resources = Resources()
 
     def __init__(self, library: query.Library, strata: dict[str, str], *, k: float = 2.0, rel_sigma_max: float | None = None,
-                 extrapolate: float = domain.EXTRAPOLATE_FRACTION):
+                 extrapolate: float = domain.EXTRAPOLATE_FRACTION, exact: bool = False):
         self.library, self.strata, self.k, self.rel_sigma_max = library, dict(strata), k, rel_sigma_max
         self.extrapolate = query.check_extrapolate(extrapolate)
+        self.exact = bool(exact)
         identity = {"k": k, "rel_sigma_max": domain.DEFAULT_SIGMA_REL_MAX if rel_sigma_max is None else rel_sigma_max,
                     "calibrate": library.calibrate, "strata": {d: [s, library.dataset(s).key] for d, s in sorted(self.strata.items())}}
         if rel_sigma_max is None:                      # the manifest's ceilings apply: part of what the predictions are
@@ -93,6 +98,8 @@ class Predict:
                 identity["rel_sigma_max_by_quantity"] = {s: c for s, c in ceilings.items() if c}
         if self.extrapolate:                           # N-116: answers beyond the measured range are other predictions
             identity["extrapolate"] = {"fraction": self.extrapolate, "widening": query.WIDENING}
+        if not self.exact and library.manifest.frequency_grid is not None:   # N-127: answers between the knots are other predictions
+            identity["between"] = between_identity(library)
         self.identity = json.dumps(identity, separators=(",", ":"))
         self._lock = threading.Lock()
         self._ready: dict[str, list[str]] | None = None
@@ -113,7 +120,7 @@ class Predict:
                     wanted.setdefault(stratum, {}).update(dict.fromkeys(columns))
                 for stratum, columns in wanted.items():
                     if columns:
-                        self.library.models(stratum, list(columns))
+                        self.library.models(stratum, list(columns), exact=self.exact)
                 self._ready = {stratum: list(columns) for stratum, columns in wanted.items()}
             return self._ready
 
@@ -135,7 +142,8 @@ class Predict:
         if wanted:
             self.prefit(ctx.spec)                        # a no-op once done: the models are in memory before any query
         answer = query.query(self.library, stratum, {d: config[d] for d in ds.dims}, sorted(set(wanted.values())) or None,
-                             k=self.k, rel_sigma_max=self.rel_sigma_max, extrapolate=self.extrapolate) if wanted else {"quantities": {}}
+                             k=self.k, rel_sigma_max=self.rel_sigma_max, extrapolate=self.extrapolate,
+                             exact=self.exact) if wanted else {"quantities": {}}
         metrics = {}
         for name, column in wanted.items():
             a = answer["quantities"][column]
@@ -145,6 +153,13 @@ class Predict:
                 issues.append(f"metric {name}: {a['status']}" + (f" ({a['reason']})" if a.get("reason") else ""))
         (ctx.workdir / "predictions.json").write_text(json.dumps(answer, indent=1, default=float), encoding="utf-8")
         return ChildResult(unit=ctx.unit, corner=None, metrics=metrics, issues=issues, status="ok" if not issues else "failed:predict")
+
+
+def between_identity(library: query.Library) -> dict:
+    """What a prediction between the knots depends on besides the data (N-127): the library's frequency grid and the
+    interpolation's method (``between``)."""
+    return {"grid": library.manifest.frequency_grid.model_dump(), "version": between.VERSION, "probes": list(between.PROBES),
+            "quantile": between.QUANTILE, "edges": list(between.EDGES), "n_min": between.N_MIN, "cap": between.CAP}
 
 
 def _columns(spec: Spec, device: str, library: query.Library, stratum: str) -> tuple[dict[str, str], list[str]]:
@@ -163,7 +178,8 @@ def _columns(spec: Spec, device: str, library: query.Library, stratum: str) -> t
 
 def surrogate_pipeline(spec: Spec, library: query.Library, strata: dict[str, str] | None = None, **predict) -> list:
     """pcell -> library prediction per device (the em_only pipeline with EMX + measure replaced by the library); ``predict``
-    goes to ``Predict`` (``k``, ``rel_sigma_max``: every column's ceiling, None for each quantity's own; ``extrapolate``)."""
+    goes to ``Predict`` (``k``, ``rel_sigma_max``: every column's ceiling, None for each quantity's own; ``extrapolate``;
+    ``exact``)."""
     strata = strata or {d.id: match_stratum(library, d) for d in spec.devices}
     return [Pcell(spec), Predict(library, strata, **predict)]
 

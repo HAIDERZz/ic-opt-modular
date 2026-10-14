@@ -23,7 +23,13 @@ answer there is labelled ``extrapolated`` (per dim: ``side``, ``beyond``, ``allo
 interval widened by ``widening``.
 ``lib.index`` and ``lib.pick`` show a stratum's rows by their electrical values at one frequency
 (``ic_opt.library.index``). ``lib.prefit`` fits ahead every curve's knots -- its anchors and the frequencies of
-library.yaml's ``frequency_grid`` (N-126, ``ic_opt.library.prefit``)."""
+library.yaml's ``frequency_grid`` (N-126, ``ic_opt.library.prefit``).
+
+``exact`` (N-127; ``lib.query``, ``lib.suggest``, ``lib.region``, ``lib.densify``): with a ``frequency_grid``, a curve
+column between two of its knots is answered from the knots' models -- interpolated in frequency, its interval widened by the
+interpolation's allowance, labelled ``interpolated`` (the knots, the allowance), refused next to the resonance with a reason
+naming ``exact=true`` (``ic_opt.library.between``); ``exact=true`` fits and asks that frequency's own model instead, as
+before. Without a grid both are the same."""
 
 from __future__ import annotations
 
@@ -121,7 +127,7 @@ def prefit(library: _query.Library | str | Path, strata: str | list[str] | None 
 
 def query(library: _query.Library | str | Path, stratum: str, params: dict, quantities: str | list[str] | None = None, k: float = 2.0,
           rel_sigma_max: float | None = None, footprint: bool = False, cache_dir: str | None = None,
-          extrapolate: float = _domain.EXTRAPOLATE_FRACTION) -> dict:
+          extrapolate: float = _domain.EXTRAPOLATE_FRACTION, exact: bool = False) -> dict:
     """Measured values at an exact library point; elsewhere mu with calibrated k-sigma bounds, the domain verdict and nearest measured rows.
 
     ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns),
@@ -137,13 +143,16 @@ def query(library: _query.Library | str | Path, stratum: str, params: dict, quan
     ``extrapolate`` (default 0.15; 0: none) lets a model answer beyond its measured range along the outer diameters, up to
     that fraction of min(range, boundary) per side: such an answer keeps its status and adds ``extrapolated`` and
     ``widening`` (the factor its interval was widened by); farther, or beyond the range along any other dim, the point is
-    ``out_of_domain`` with the dim, how far and the allowance in the reason.
+    ``out_of_domain`` with the dim, how far and the allowance in the reason. With library.yaml's ``frequency_grid``, a curve
+    at a frequency between two of its knots is answered from the knots' models, its answer adding ``interpolated``
+    (``knots``, ``allowance``: the fraction its interval was widened by), and next to the resonance ``out_of_domain`` with
+    the reason; ``exact=true`` asks that frequency's own model instead (fitted when not cached).
     """
     from ic_opt.library import suggest as _suggest
 
     lib = _lib(library, cache_dir)
     answer = _query.query(lib, stratum, params, _names(quantities), k=float(k), rel_sigma_max=_ceiling(rel_sigma_max),
-                          extrapolate=_extrapolate(extrapolate))
+                          extrapolate=_extrapolate(extrapolate), exact=_flag(exact))
     answer.update(_suggest.footprint_fields(*_query.footprint_at(lib, stratum, answer["params"], build=_flag(footprint))))
     return _strict_json(answer)
 
@@ -183,7 +192,7 @@ def _targets(value: dict | None) -> dict:
 def suggest(library: _query.Library | str | Path, stratum: str | None = None, targets: dict | None = None, objective: str | None = None,
             n: int = 5, pool_size: int = 8192, seed: int = 0, k: float = 2.0, verify_build: bool = True,
             rel_sigma_max: float | None = None, cache_dir: str | None = None, family: str | None = None, taps: str | None = None,
-            strata: str | list[str] | None = None, extrapolate: float = _domain.EXTRAPOLATE_FRACTION) -> dict:
+            strata: str | list[str] | None = None, extrapolate: float = _domain.EXTRAPOLATE_FRACTION, exact: bool = False) -> dict:
     """Designs that meet ``targets`` with margin: measured ones first (exact), then predicted candidates built and audited.
 
     ``targets`` maps quantities to ``{"min": v}``, ``{"max": v}`` or ``{"target": v, "tol": rel}`` (JSON on the command
@@ -196,6 +205,9 @@ def suggest(library: _query.Library | str | Path, stratum: str | None = None, ta
     ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name). ``extrapolate`` (default 0.15; 0: none) extends both
     pools that fraction beyond the measured range along the outer diameters, as far as ``lib.query`` answers there: a
     candidate there carries ``extrapolated`` and, per predicted quantity, ``widening``; the measured designs still come first.
+    With library.yaml's ``frequency_grid``, a target or objective between two knots of its curve is predicted from the knots'
+    models (a candidate's quantity then carries ``interpolated``, a note names the column); ``exact=true`` fits and asks
+    that frequency's own model instead.
 
     One table (``stratum``), or several (``ic_opt.library.family``): ``family`` -- every table whose generator draws that
     device kind (``ind_sym``, ``xfm_bs``, ``xfm_ms``, ...) -- with ``taps`` (``none``, the default: the tables without
@@ -213,7 +225,7 @@ def suggest(library: _query.Library | str | Path, stratum: str | None = None, ta
     lib = _lib(library, cache_dir)
     names, kind, kept = _family.request(lib, stratum=stratum, family=family, taps=taps, strata=_names(strata))
     options = {"n": int(n), "pool_size": int(pool_size), "seed": int(seed), "k": float(k), "rel_sigma_max": _ceiling(rel_sigma_max),
-               "verify_build": bool(verify_build), "extrapolate": _extrapolate(extrapolate)}
+               "verify_build": bool(verify_build), "extrapolate": _extrapolate(extrapolate), "exact": _flag(exact)}
     if stratum is not None:
         return _strict_json(_suggest.suggest(lib, stratum, _targets(targets), objective, **options))
     return _strict_json(_family.suggest(lib, names, _targets(targets), objective, family=kind, taps=kept, **options))
@@ -225,7 +237,8 @@ def region(library: _query.Library | str | Path, stratum: str | None = None, tar
            sample_size: int = 5000, threads: int | None = None, workers: int | None = None,
            rel_sigma_max: float | None = None, relax: float = _region.RELAX, cache_dir: str | None = None,
            out: str | None = None, level: str = "robust", device: str | None = None, family: str | None = None,
-           taps: str | None = None, strata: str | list[str] | None = None, extrapolate: float = _domain.EXTRAPOLATE_FRACTION) -> dict:
+           taps: str | None = None, strata: str | list[str] | None = None, extrapolate: float = _domain.EXTRAPOLATE_FRACTION,
+           exact: bool = False) -> dict:
     """The part of the geometry space whose predictions meet ``targets``: sweep ranges, not ``lib.suggest``'s best few points.
 
     Two levels: ``robust`` -- the calibrated k-sigma interval lies inside every window (``lib.suggest``'s test; centre a
@@ -247,7 +260,9 @@ def region(library: _query.Library | str | Path, stratum: str | None = None, tar
     is strict JSON, every non-finite number null: ``targets[].upper`` is null except for windows. ``extrapolate`` (default
     0.15; 0: none) extends the coarse pool and the grid that fraction beyond the measured range along the outer diameters,
     as far as ``lib.query`` answers there: a level holding such points says so in ``extrapolated`` (how many, and per outer
-    diameter the part of its range beyond the table's measured one), a candidate carries ``extrapolated``.
+    diameter the part of its range beyond the table's measured one), a candidate carries ``extrapolated``. With
+    library.yaml's ``frequency_grid``, a target, objective or trend between two knots of its curve is predicted from the
+    knots' models (a note names the column); ``exact=true`` fits and asks that frequency's own model instead.
 
     ``out`` (N-106) writes the grid points of one level -- ``level``, ``robust`` unless ``mean`` -- as a pcell device's
     allowed combinations (``ic_opt.library.combinations``: a spec's ``devices[*].combinations`` names the file) and adds
@@ -276,7 +291,7 @@ def region(library: _query.Library | str | Path, stratum: str | None = None, tar
                "seed": int(seed), "k": float(k), "rel_sigma_max": _ceiling(rel_sigma_max), "relax": float(relax),
                "group_by": _names(group_by), "trend": _trend(trend), "n": int(n), "verify_build": bool(verify_build),
                "sample_size": int(sample_size), "threads": None if threads is None else int(threads),
-               "workers": None if workers is None else int(workers), "extrapolate": _extrapolate(extrapolate)}
+               "workers": None if workers is None else int(workers), "extrapolate": _extrapolate(extrapolate), "exact": _flag(exact)}
     if stratum is None:
         return _strict_json(_family.region(lib, names, _targets(targets), objective, family=kind, taps=kept, out=out, level=str(level),
                                            device=device, **options))
@@ -290,7 +305,8 @@ def region(library: _query.Library | str | Path, stratum: str | None = None, tar
 def densify(library: _query.Library | str | Path, stratum: str, n: int, quantities: str | list[str] | None = None,
             bounds: dict | None = None, score: str = "ceiling", pool_size: int = 65536, top: int = 4000, seed: int = 0,
             k: float = 2.0, threads: int | None = None, workers: int | None = None, out: str | None = None,
-            rel_sigma_max: float | None = None, cache_dir: str | None = None, extrapolate: float = _domain.EXTRAPOLATE_FRACTION) -> dict:
+            rel_sigma_max: float | None = None, cache_dir: str | None = None, extrapolate: float = _domain.EXTRAPOLATE_FRACTION,
+            exact: bool = False) -> dict:
     """Where to simulate next: ``n`` new geometries whose simulation lowers the models' uncertainty the most over the
     sampled domain, whatever the targets.
 
@@ -315,7 +331,9 @@ def densify(library: _query.Library | str | Path, stratum: str, n: int, quantiti
     holds the library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's
     ``notes`` name). The answer is strict JSON, every non-finite number null. ``extrapolate`` (default 0.15; 0: none): the
     pool stays inside the table's achieved box, but each model answers that fraction beyond its own measured range along
-    the outer diameters, as ``lib.query`` does; a pick whose answers are extrapolated carries ``extrapolated``.
+    the outer diameters, as ``lib.query`` does; a pick whose answers are extrapolated carries ``extrapolated``. With
+    library.yaml's ``frequency_grid``, a quantity between two knots of its curve is the knots' models (a pick there would
+    inform them); ``exact=true`` fits and asks that frequency's own model instead.
     """
     from ic_opt.library import densify as _densify
 
@@ -324,7 +342,7 @@ def densify(library: _query.Library | str | Path, stratum: str, n: int, quantiti
     answer = _strict_json(_densify.densify(
         _lib(library, cache_dir), stratum, _names(quantities), n=int(n), pool_size=int(pool_size), top=int(top), seed=int(seed), k=float(k),
         rel_sigma_max=_ceiling(rel_sigma_max), score=str(score), bounds=bounds, threads=None if threads is None else int(threads),
-        workers=None if workers is None else int(workers), extrapolate=_extrapolate(extrapolate)))
+        workers=None if workers is None else int(workers), extrapolate=_extrapolate(extrapolate), exact=_flag(exact)))
     if out:
         path = Path(out)
         path.parent.mkdir(parents=True, exist_ok=True)

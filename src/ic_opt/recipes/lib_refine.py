@@ -438,7 +438,10 @@ def plan_device(run: Run, device: Device, lib: query.Library, best: Observation,
     has_srf = "SRF" in rule.quantities
     asked = list(dict.fromkeys([q for c in wanted for q in columns[c]] + (["SRF"] if has_srf else [])))
     margin_hz = linked.index.srf_margin * f_hz
-    missing = [q for q in asked if lib.no_model(stratum, q) is None and lib._model_file(stratum, q) is None]   # N-120: none fitted
+    spans = {q: lib._between(stratum, q) for q in asked}                     # N-127: between knots, the knots' models answer
+    needed = list(dict.fromkeys([q for q in asked if spans[q] is None]
+                                + [f"{q.partition('@')[0]}@{f:g}" for q in asked if spans[q] is not None for f in spans[q]]))
+    missing = [q for q in needed if lib.no_model(stratum, q) is None and lib._model_file(stratum, q) is None]   # N-120: none fitted
     if missing:
         run.note(f"lib_refine: {device.id}: fitting {len(missing)} model(s) of {stratum} ({', '.join(missing)}) in parallel "
                  "(first use; minutes per column on a large stratum)")

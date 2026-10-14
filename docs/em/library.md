@@ -200,6 +200,13 @@ value, is refused with the parts' sweeps (it is not an empty answer).
 `any_frequency`, naming the curves that answer anywhere and the parts'
 sweeps.
 
+With a `frequency_grid` (below), a curve at a frequency that lies between
+two of its knots is not fitted at all: the knots' models answer it
+([Between the knots](#between-the-knots-answers-from-the-knots-models)).
+`exact=true` -- a parameter of `lib.query`, `lib.suggest`, `lib.region`,
+`lib.densify` and `lib_design` -- asks the frequency's own column instead,
+measured and modelled as this section says.
+
 ### A frequency grid, fitted ahead: `lib.prefit`
 
 A column whose model the cache does not hold is fitted at its first
@@ -265,9 +272,88 @@ The entry belongs to the library, not to a stratum's definition: declaring
 it changes no dataset key and no cache file name, and nothing is measured or
 fitted for it until `lib.prefit`, `lib.coverage` or `lib.load` asks (the
 latter two measure the grid's columns to count the knots). Between the knots
-a curve still answers as any extension column. ic-opt 0.9.0 and earlier
+a curve answers from the knots' models (next section). ic-opt 0.9.0 and earlier
 refuse a library.yaml that holds the entry (extra fields are forbidden):
 add it once every user of the library runs a version that knows it.
+
+### Between the knots: answers from the knots' models
+
+With a `frequency_grid`, a curve asked at a frequency f that is none of its
+knots but lies between two of them (an extension column; a declared anchor
+always answers from its own model) is answered from the knots' models, and
+nothing is fitted for it. Its value is the knots' predictions at the point,
+interpolated in frequency with PCHIP (a piecewise cubic that never
+overshoots the values it joins) over the two knots below f (one where there
+is no second), the knot above f and, where it applies, the second knot
+above. Its bounds are the knots' own calibrated bounds interpolated the same
+way and then widened by the interpolation's *allowance* `a`: the lower
+bound divided by 1 + a, the upper by 1 - a. Its `rel_sigma`, which the
+confidence ceiling judges, comes from the two knots around f (their squared
+relative sigmas, interpolated linearly in f). The answer adds
+
+```json
+"interpolated": {"knots": [45.0, 50.0, 55.0, 60.0], "allowance": 0.0012}
+```
+
+and gives the column's own rows as evidence (`nearest`); a library row
+still answers with its measured value at f.
+
+The domain. Every knot of the stencil but the second one above must accept
+the point (its refusal is the answer's, the reason starting with
+`knot <column>:`), and the curve's resonance rule at f holds as for any
+curve (section 4: `above_resonance`). A measured row has a value at a knot
+only where its resonance lies above `srf_margin` x that knot, so the knot
+above f must pass that rule too: where the resonance predicted at the point
+is at or below `srf_margin` x that knot, the curve is `out_of_domain`
+(`criterion: interpolation`), "between the knots 60 and 65 GHz and next to
+its resonance (77.2 GHz, at or below srf_margin x 65 GHz = 81.25 GHz);
+exact=true fits this frequency's own model". The second knot above joins
+only where the point's resonance lies above `srf_margin` x that knot too,
+and its model answers there.
+
+The allowance is measured on the table's own rows, because how far a
+row's curve departs from its PCHIP between the knots depends on how close
+the row is to its resonance. N-126 found the 99th percentile within 1.7 %
+on every table and curve, single points up to 49 % off; N-127 measured
+where (every row, 7 points inside every knot interval, the 16 tables of a
+0-250 GHz library): the error grows as the knot above f approaches the
+row's resonance limit (its resonance / `srf_margin`) -- on the large
+inductor and multi-turn transformer tables from 0.2-0.5 % where that knot
+lies below 0.7 of the limit to 1-2 % within its last 5 %, on the Q curves
+of the multi-turn secondaries with 2 um port openings to 6.5 % --, a row
+whose resonance lies just above its 250 GHz sweep errs by up to 25 %
+between 240 and 250 GHz, and a stencil without its second knot above, which
+a row next to its resonance gets, errs 1.5-2.2 times as much as a full one.
+So the allowance is the 99th percentile of |PCHIP / measured - 1| at seven
+points inside the knot interval around f, over the rows whose *proximity*
+-- u = `srf_margin` x (the knot above f) / resonance -- falls in the
+point's band: below 0.8, 0.8-0.9, 0.9-0.95, 0.95-1, and from 1 up for rows
+resonating above their sweep (whose sweep's end stands for their
+resonance), each row interpolated over the knots a point of its resonance
+would use. A band with fewer than 20 rows takes in the bands nearer the
+resonance until it has them. A point takes the band of its resonance's
+calibrated lower bound (the sweep's end above the sweep). Allowances
+measured on half of each table's rows held 95.7-99.6 % of the other half's
+points. Where a band has fewer than 20 rows even so, or its allowance
+exceeds 5 % -- more than the interpolation should add to the knots' own
+error --, the curve is `out_of_domain` with the reason, naming `exact=true`.
+
+The allowances are measured at the first answer between a table's knots,
+for every curve the table declares in one pass over its rows' sNp files
+(9 s for a 1,736-row transformer table on one thread), and cached per
+dataset, curve and knots ([Cache](#cache)). A table that declares no
+resonance column takes the interval's allowance over all its rows.
+
+`lib.suggest`, `lib.region`, `lib.densify` and `lib_design` use the same
+columns: their pools and grids are predicted through them, a design or a
+pick carries `interpolated` per such quantity, and the answer's `notes`
+name each column answered between knots. `lib.densify` scores such a column
+by the two knots around f, whose models a measurement there would inform.
+`lib_design`'s prediction stage names the grid and the interpolation's
+method in its identity when it is not `exact`, so such predictions are a
+generation of their own. `exact=true` gives each of them the frequency's
+own column, fitted at the first request, as before; without a grid there
+are no knots to interpolate between and nothing changes.
 
 ## 3. Check it
 
@@ -306,6 +392,13 @@ Each quantity comes back with a `status`:
 | `above_sweep` | SRF only: most nearest rows did not resonate inside their sweep; `lower_bound` is that sweep's stop |
 | `above_resonance` | curves only: the resonance predicted at the point is at or below the curve's `srf_margin` x f, so a measured row there would have no value and there is none; `srf` gives the resonance (`column`, `value`, `lo`, `hi`), with `threshold_hz`, `frequency_hz`, `srf_margin`, `reason` and the curve model's nearest rows |
 | `no_model` | the column's usable rows are too few for a model of it (below): `rows` gives their number and `reason` says so (`2 usable rows: too few for a model of this column`); no model is fitted |
+
+A curve answered between two knots of a frequency grid (section 2) adds
+`interpolated` -- the `knots` its value was interpolated over and the
+`allowance` its interval was widened by -- and is `out_of_domain` with
+`criterion: interpolation` where the interpolation cannot answer (next to
+the resonance, or where the table's rows cannot tell how far it errs); the
+reason names `exact=true`, which asks the frequency's own model.
 
 A curve column `<curve>@<f>`, declared or at any other frequency, is answered
 only below the device's own resonance. A measured row has a value for it only
@@ -866,6 +959,11 @@ answers labelled `extrapolated` in the point's `predictions.json` and in the
 leaders' `library`; farther, it fails. The stage's identity names the
 fraction and the widening slopes, so predictions made with extrapolation are
 a generation of their own; `extrapolate=0` keeps the identity of before.
+A metric at a frequency between two knots of the library's frequency grid
+is answered from the knots' models (section 2) and labelled `interpolated`
+in `predictions.json`; the stage's identity then names the grid and the
+interpolation's method, and `exact=true` fits and asks that frequency's own
+model, under the identity of before.
 Predictions spend none of the spec's simulation budget and get their own
 pipeline fingerprint, so they never pass for EMX measurements. The leaders,
 their intervals and their footprints (from the GDS each one's pcell drew)
@@ -1286,6 +1384,17 @@ less with more workers.
 Measuring the knots of every table of a 16-table library, the datasets
 included, took 22 s at most per table, one thread each.
 
+Answering between the knots ([Between the knots](#between-the-knots-answers-from-the-knots-models))
+fits nothing. The first such answer of a table measures its allowances, one
+pass over its rows for every curve: 0.3-9 s per table of that library on one
+thread. Each such answer then predicts three or four knots' models instead
+of one column's model (a composed curve's parts once for all its knots): on
+the 1,576-row stacked-transformer table, at 4 threads, `lib.region` for an
+inductance and coupling window at 52 GHz took 67-74 s between the knots
+against 30-31 s from that frequency's own cached columns, and `lib.suggest`
+without its builds 72-74 s against 34-35 s -- where a frequency without its
+own models costs those models' fits first (minutes to an hour, above).
+
 ## Cache
 
 Datasets, calibrations and fitted models are cached as files named after
@@ -1346,6 +1455,10 @@ query there needs no fit), and `lib.prefit` fits the other m - n. Counting the k
 `anchors-*` files like any extension column's, one per stratum and grid frequency. A knot's model takes as much room as
 its table's other columns: the 137 models of the 114-row inductor table above take 9 MB, a large transformer table's
 3-40 MB each, a few GB for its grid.
+
+The allowances of the answers between knots are files too, one per stratum and declared curve:
+`between-<stratum>-<curve>-<dataset key>-<digest>.json`, keyed by the dataset, the curve's knots and the method, a few
+tens of kB each. Their measuring holds a lock next to each file as an extension column's does.
 
 ## A new process
 

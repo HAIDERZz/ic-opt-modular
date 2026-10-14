@@ -52,6 +52,12 @@ fraction every model answers beyond its measured range along the outer diameters
 along those dims by the table's allowance, so a design just outside the measured range can be drawn; each design whose
 answers are extrapolated carries ``extrapolated`` (``extrapolation``: per dim the farthest of its models' labels) and, per
 predicted quantity, ``widening``. The measured designs still come first.
+
+Between the knots (N-127): a curve column between two knots of the library's frequency grid comes as a model built on the
+knots' (``query.Library.models``, ``between``), and ``predict_all`` asks it for its answer with the resonance it predicts at
+the rows anyway (``Between.answer``): a row it refuses (the knot above f at or past its resonance margin, an allowance it
+cannot measure or above ``between.CAP``) is not ok, as one out of the domain is; a design carries per such column
+``interpolated`` (the knots used, the allowance). ``exact=True`` (``suggest``) takes the column's own model as before.
 """
 
 from __future__ import annotations
@@ -69,7 +75,7 @@ from threadpoolctl import threadpool_limits
 
 from ic_opt.eval.stage import StageContext, StageFailure
 from ic_opt.executor.local import LocalExecutor
-from ic_opt.library import dataset, domain, gp, query
+from ic_opt.library import between, dataset, domain, gp, query
 from ic_opt.site import HostLimits
 from ic_opt.space import Point
 from ic_opt.stages.em_chain import Pcell
@@ -196,7 +202,7 @@ def below_resonance(x: np.ndarray, models: dict[str, query.Model], pred: dict | 
                     value = np.where(known, measured[c], mu) if known.any() else mu
                 resonances[c] = (above, value)
             above, value = resonances[c]
-            allowed &= above | (value > limit.threshold_hz)
+            allowed &= above | (value > limit.gate_hz)                  # N-127: between knots, the knot above f's rule too
         if q in measured:                                            # a measured value of the column itself: the row has it
             allowed |= np.isfinite(measured[q])
         out[q] = allowed
@@ -270,6 +276,8 @@ def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0
     ok = in_domain(x, models, srf_floor=srf_floor, exact=exact, extrapolate=extrapolate) if check_domain else np.ones(n, dtype=bool)
     pred: dict[str, dict[str, np.ndarray]] = {}
     for q, m in models.items():
+        if isinstance(m.gp, between.Between):                   # N-127: after the others (its resonance may be among them)
+            continue
         mu, sigma = _gp_predict(m.gp, x, None if chunk_bytes is None else rows_per_call(chunk_bytes, query.fit_rows(m)))
         lo, hi = gp.prediction_bounds(mu, sigma, log_target=m.gp.log_target, k=k * m.gp.k_scale)
         depth = m.guard.depth(x) if extrapolate > 0 and m.guard is not None and n else np.zeros(n)
@@ -292,9 +300,63 @@ def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0
         ok &= (np.isfinite(mu) | above) & (settled | domain.sigma_ok(mu, sigma, ceiling))
         pred[q] = {"value": mu, "lo": lo, "hi": hi, "rel_sigma": np.where(settled, 0.0, sigma / np.maximum(np.abs(mu), 1e-300)),
                    "sigma": sigma, "depth": np.where(settled, 0.0, depth), "widening": np.where(settled, 1.0, wide)}
-    for allowed in below_resonance(x, models, pred, srf_floor=srf_floor, exact=exact, chunk_bytes=chunk_bytes).values():
+    resonances = _between_all(x, models, pred, ok, k=k, rel_sigma_max=rel_sigma_max, srf_floor=srf_floor, exact=exact,
+                              chunk_bytes=chunk_bytes, extrapolate=extrapolate)
+    for allowed in below_resonance(x, models, {**resonances, **pred}, srf_floor=srf_floor, exact=exact, chunk_bytes=chunk_bytes).values():
         ok &= allowed
     return ok, pred
+
+
+def _between_all(x: np.ndarray, models: dict[str, query.Model], pred: dict, ok: np.ndarray, *, k: float, rel_sigma_max: float | None,
+                 srf_floor: dict[str, np.ndarray] | None, exact: dict[str, np.ndarray] | None, chunk_bytes: int | None,
+                 extrapolate: float) -> dict[str, dict]:
+    """``predict_all``'s part for the columns answered between knots (N-127): each one's ``Between.answer`` at the rows of
+    ``x`` with the resonance predicted there -- its resonance columns' ``pred`` entries, or predicted here as ``predict_all``
+    predicts any column (the settled rows applied) --, its interval widened beyond the measured range as a model's is
+    (``query.widening`` by the farthest of its knots' depths), measured values of the column itself as zero-width intervals;
+    ``ok`` (updated in place) drops the rows it refuses or is unsure of. ``pred`` gains each column's entry, with
+    ``interpolated``: the ``core`` knots, the ``second_knot`` above, per row whether it was used (``second``), the
+    ``allowance`` (NaN for a measured value) and ``Between.answer``'s ``verdict``. Returns the resonance columns predicted
+    here (``below_resonance`` reads them)."""
+    inner = {q: m for q, m in models.items() if isinstance(m.gp, between.Between)}
+    if not inner:
+        return {}
+    n = len(x)
+    wanted = {c: m.resonance.models[c] for m in inner.values() if m.resonance is not None for c in m.resonance.columns if c not in pred}
+    extra = predict_all(x, wanted, k=k, srf_floor=srf_floor, exact=exact, check_domain=False, chunk_bytes=chunk_bytes,
+                        extrapolate=extrapolate)[1] if wanted else {}
+    known_res = {**extra, **pred}
+    for q, m in inner.items():
+        g: between.Between = m.gp
+        value = low = settled = None
+        if m.resonance is not None:
+            floors = srf_floor or {}
+            above = [np.isfinite(floors[c]) if c in floors else np.zeros(n, dtype=bool) for c in m.resonance.columns]
+            value = np.min([np.where(a, np.inf, known_res[c]["value"]) for c, a in zip(m.resonance.columns, above)], axis=0)
+            low = np.min([np.where(a, known_res[c]["value"], known_res[c]["lo"]) for c, a in zip(m.resonance.columns, above)], axis=0)
+            settled = np.all(above, axis=0)
+        depth = m.guard.depth(x) if extrapolate > 0 and n else np.zeros(n)
+        wide = np.ones(n)
+        far = depth > 0
+        if far.any():
+            wide[far] = query.widening(q, depth[far])
+        got = g.answer(x, k * wide, resonance_hz=value, resonance_lo_hz=low, above=settled, extrapolate=extrapolate, chunk_bytes=chunk_bytes)
+        mu, sigma, lo, hi = got["value"], got["sigma"], got["lo"], got["hi"]
+        measured = (exact or {}).get(q)
+        _above, known = _settled(n, None, measured)
+        if known.any():                                           # measured: the value itself, zero-width interval
+            mu, sigma, lo, hi = mu.copy(), sigma.copy(), lo.copy(), hi.copy()
+            mu[known] = lo[known] = hi[known] = measured[known]
+            sigma[known] = 0.0
+        ceiling = m.rel_sigma_max if rel_sigma_max is None else rel_sigma_max
+        with np.errstate(invalid="ignore"):
+            ok &= known | (np.isfinite(mu) & (got["verdict"] == between.OK) & domain.sigma_ok(mu, sigma, ceiling))
+        pred[q] = {"value": mu, "lo": lo, "hi": hi, "rel_sigma": np.where(known, 0.0, sigma / np.maximum(np.abs(mu), 1e-300)),
+                   "sigma": sigma, "depth": np.where(known, 0.0, depth), "widening": np.where(known, 1.0, wide),
+                   "interpolated": {"core": g.used(False), "second_knot": None if g.second is None else g.knots[g.second],
+                                    "second": got["second"] & ~known, "allowance": np.where(known, np.nan, got["allowance"]),
+                                    "verdict": np.where(known, between.OK, got["verdict"])}}
+    return extra
 
 
 def satisfy(pred: dict, targets: list[Target], level: str = "robust") -> np.ndarray:
@@ -462,20 +524,33 @@ def extrapolation(models: dict[str, query.Model], pred: dict, i: int, params: di
 
 
 def predicted_entry(pred: dict, i: int, names: list[str]) -> dict:
-    """A design's ``predicted``: value, lo, hi, rel_sigma per quantity, and ``widening`` where its interval was widened
-    beyond the measured range (N-116)."""
+    """A design's ``predicted``: value, lo, hi, rel_sigma per quantity, ``widening`` where its interval was widened beyond the
+    measured range (N-116), and ``interpolated`` (the knots used, the allowance) where the column was answered between knots
+    (N-127)."""
     out = {}
     for q in names:
         e = {key: float(pred[q][key][i]) for key in ("value", "lo", "hi", "rel_sigma")}
         if "depth" in pred[q] and pred[q]["depth"][i] > 0:
             e["widening"] = float(pred[q]["widening"][i])
+        label = interpolated(pred[q], i)
+        if label:
+            e["interpolated"] = label
         out[q] = e
     return out
 
 
+def interpolated(entry: dict, i: int) -> dict | None:
+    """Row ``i``'s ``interpolated`` label of a ``predict_all`` entry -- the knots its value was interpolated over and the
+    allowance its interval was widened by (N-127) -- or None: a column with its own model, or a measured value."""
+    label = entry.get("interpolated")
+    if label is None or not np.isfinite(label["allowance"][i]):
+        return None
+    return {"knots": label["core"] + ([label["second_knot"]] if label["second"][i] else []), "allowance": float(label["allowance"][i])}
+
+
 def suggest(library: query.Library, stratum: str, targets: dict, objective: str | None = None, *, n: int = 5, pool_size: int = 8192,
             seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, verify_build: bool = True,
-            min_spacing: float = 0.05, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
+            min_spacing: float = 0.05, extrapolate: float = domain.EXTRAPOLATE_FRACTION, exact: bool = False) -> dict:
     """The measured designs meeting ``targets`` and the predicted candidates that meet them with margin and build (module
     docstring). Each candidate's ``pool`` says where it was drawn: ``sobol``, the pool of step 1, or ``region_grid`` -- when
     no predicted point of that pool meets every target (a target region too small for 8192 points over the whole achieved
@@ -485,7 +560,8 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
     target or the objective on a column whose usable rows are too few for a model -- or the resonance an anchored target
     implies, if that one's are -- is refused with the reason before anything is fitted (``Library.require_models``, N-120).
     ``extrapolate`` (N-116): both pools reach that far beyond the measured range along the outer diameters, and a candidate
-    there carries ``extrapolated`` (module docstring)."""
+    there carries ``extrapolated`` (module docstring). A curve column between two knots of the library's frequency grid is
+    answered from the knots' models (N-127) unless ``exact``; a note names each such column."""
     extrapolate = query.check_extrapolate(extrapolate)
     ds = library.dataset(stratum)
     stated, obj, _ = resolve(library, stratum, parse_targets(targets), parse_objective(objective))
@@ -493,7 +569,7 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
     goals = stated + implied_srf(stated, obj, margin, ds.columns)
     names = library.columns(stratum, sorted({t.quantity for t in goals} | ({obj[1]} if obj else set())))
     library.require_models(stratum, names)
-    models = {q: library.model(stratum, q) for q in names}
+    models = library.models(stratum, names, exact=exact)
     measured_x = ds.matrix()
     x = np.unique(np.round(np.vstack([measured_x, pool(library, stratum, pool_size, seed, extrapolate=extrapolate)]), 9), axis=0)
     index = {tuple(np.round(r, 9)): i for i, r in enumerate(measured_x)}
@@ -514,7 +590,7 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
                                                           rel_sigma_max=rel_sigma_max, budget=budget, extrapolate=extrapolate)
     ranges = library.ranges(stratum)
     notes = library.notes + [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
-                             for t in goals[len(stated):]]
+                             for t in goals[len(stated):]] + between.notes(models)
 
     def entry(xs: np.ndarray, pred: dict, i: int, **extra) -> dict:
         params = dict(zip(ds.dims, (float(v) for v in xs[i])))

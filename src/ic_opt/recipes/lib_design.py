@@ -1,6 +1,6 @@
 """Built-in recipe: lib_design -- optimize a device on library predictions (no EMX), report the leaders with their bounds.
 
-``ic-opt run lib_design PROJECT library=<library root> [stratum=...] budget=200 strategy=turbo top=5 [rel_sigma_max=R] [extrapolate=F] [cache_dir=DIR]``
+``ic-opt run lib_design PROJECT library=<library root> [stratum=...] budget=200 strategy=turbo top=5 [rel_sigma_max=R] [extrapolate=F] [exact=true] [cache_dir=DIR]``
 
 The project's spec is an em_only spec (one pcell device, its variables, device metrics, constraints,
 objective). Every candidate is built by the pcell (real generator, product DRC) and scored from the
@@ -10,7 +10,10 @@ A prediction whose sigma / mu exceeds its ceiling -- ``rel_sigma_max`` when give
 library.yaml, else 0.15 -- fails the point as ``failed:predict``. ``extrapolate`` (N-116; 0.15 unless given, 0: none) is
 the fraction of a model's measured range it answers beyond it along the outer diameters, as ``lib.query`` does: a
 point there is scored (its answers labelled ``extrapolated``, their intervals widened), farther it fails as out of domain;
-the stage's identity names it, so its predictions are a generation of their own. Each leader carries its ``footprint``, the box around
+the stage's identity names it, so its predictions are a generation of their own. A metric at a frequency between two knots
+of the library's frequency grid is answered from the knots' models (N-127) -- no model is fitted for it -- unless
+``exact=true``, which fits that frequency's own model as before; with a grid and not exact the stage's identity names the
+interpolation. Each leader carries its ``footprint``, the box around
 the device its pcell drew (its GDS under the point's sims directory) without the ground fixture
 (``ic_opt.em.pcell.footprint``; null with ``footprint_why`` when it cannot be measured).
 
@@ -25,23 +28,26 @@ from __future__ import annotations
 import json
 
 from ic_opt import blocks as b
-from ic_opt.library import domain, query, stage
+from ic_opt.library import between, domain, query, stage
 from ic_opt.recipe import Run
 
 
 def main(run: Run, *, library: str, stratum: str | None = None, budget: int = 200, batch: int = 20, strategy: str = "turbo",
          top: int = 5, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, cache_dir: str | None = None,
-         extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> None:
+         extrapolate: float = domain.EXTRAPOLATE_FRACTION, exact: bool | str = False) -> None:
     lib = query.Library(library, limits=run.site.host("local"), cache_dir=cache_dir)     # the controller's entry, not the executor host's
     strata = {d.id: stratum or stage.match_stratum(lib, d) for d in run.spec.devices}
     pipeline = stage.surrogate_pipeline(run.spec, lib, strata, k=float(k), rel_sigma_max=None if rel_sigma_max is None else float(rel_sigma_max),
-                                        extrapolate=float(extrapolate))
+                                        extrapolate=float(extrapolate), exact=_flag(exact))
     run.note(f"lib_design: {', '.join(f'{d} -> {s}' for d, s in strata.items())} ({library})")
     for note in lib.notes:
         run.note(f"lib_design: {note}")
     if not run.plan:                                    # every model before the evaluation threads start (pipeline[-1] is Predict)
         ready = pipeline[-1].prefit(run.spec)
         run.note("lib_design: models ready: " + "; ".join(f"{s} {', '.join(columns)}" for s, columns in ready.items()))
+        for s, columns in ready.items():                # N-127: the metrics answered between the knots of the library's grid
+            for note in between.notes({c: lib.model(s, c, exact=pipeline[-1].exact) for c in columns}):
+                run.note(f"lib_design: {s}: {note}")
     found = b.optimize(run.spec, run.executor, run.store, budget=int(budget), batch=int(batch), strategy=strategy, pipeline=pipeline,
                        step="lib_design", seed=int(seed), parallel_jobs=run.jobs, limits=run.limits)
     if run.plan:
@@ -58,6 +64,18 @@ def main(run: Run, *, library: str, stratum: str | None = None, budget: int = 20
     out.write_text(json.dumps({"strata": strata, "library": str(library), "evaluated": len(found), "leaders": rows}, indent=1, default=float),
                    encoding="utf-8")
     run.note(f"lib_design: {len(found)} candidates scored, {sum(o.status == 'ok' for o in found)} in the library's domain; leaders -> {out}")
+
+
+def _flag(value: bool | str) -> bool:
+    """A yes/no parameter: a bool, or its command-line spelling (``true`` / ``false``, ``1`` / ``0``)."""
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ("true", "1", "yes"):
+        return True
+    if text in ("false", "0", "no", ""):
+        return False
+    raise ValueError(f"exact: expected true or false, got {value!r}")
 
 
 def _footprint(run: Run, obs_id: str, unit: str) -> dict:
