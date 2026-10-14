@@ -305,7 +305,12 @@ lib.region <root> family=<kind> 'targets={"Lp@<f>": {"target": <L>, "tol":
 `leaders` gives per table its robust count and ranges, the tables with
 points first, `facts` each table's port opening, metals and taps, and
 `unreachable` why a table holds none (the target outside its measured
-range, the targets not met together, or a table that cannot take them).
+range -- even with the default 15 % extrapolation of the outer diameter,
+which the sentence then says --, the targets not met together, or a table
+that cannot take them). A level's `extrapolated` counts its points whose
+answers lie beyond the measured outer diameters and says which part of its
+range that is (`beyond_measured`): EMX will measure them like any other, but
+no row backs them yet (`extrapolate=0` keeps the region inside).
 Choose the table whose fixed fields fit the circuit. (3) `ic-opt call
 lib.region <root> stratum=<that table> 'targets=...' out=<project>/region.json
 [device=<id>]` writes the robust grid points of the region that meets them

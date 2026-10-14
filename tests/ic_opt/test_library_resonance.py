@@ -40,7 +40,7 @@ MARGIN = 1.9
 THRESHOLD = MARGIN * RES_F0_GHZ * 1e9                         # 38 GHz
 LOW = dict(zip(XFM_DIMS, (150.0, 150.0, 6.5, 6.5, 0.0)))       # between the 140 and 160 um windings: about 33 GHz
 HIGH = dict(zip(XFM_DIMS, (110.0, 104.0, 6.0, 7.0, 0.0)))      # about 65 GHz
-BEYOND = dict(zip(XFM_DIMS, (170.0, 170.0, 6.0, 6.0, 0.0)))    # past the measured diameters: the SRF model refuses it
+BEYOND = dict(zip(XFM_DIMS, (190.0, 190.0, 6.0, 6.0, 0.0)))    # past the diameters' allowance (172 um): the SRF model refuses it
 STEPS = {XFM_DIMS[0]: 2, XFM_DIMS[1]: 2, XFM_DIMS[2]: 0.5, XFM_DIMS[3]: 0.5}
 ANSWER = q._answer                                             # a column's answer from its own model, as the library has it
 

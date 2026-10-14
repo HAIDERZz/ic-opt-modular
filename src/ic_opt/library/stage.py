@@ -15,7 +15,11 @@ The stage's identity names each device's stratum and dataset content key, so sur
 their own pipeline fingerprint: they never pass for EMX measurements, and a library that grows is a new
 generation of predictions. Each column is asked with its confidence ceiling: the stage's ``rel_sigma_max`` when
 given, else the quantity's in library.yaml, else ``domain.DEFAULT_SIGMA_REL_MAX``; the identity names the
-manifest's ceilings when they apply, so changing one is a new generation too.
+manifest's ceilings when they apply, so changing one is a new generation too. And with its ``extrapolate`` (N-116,
+``domain.EXTRAPOLATE_FRACTION`` unless given): a point beyond a model's measured range along the outer diameters, within
+that fraction, is answered (labelled, its interval widened) instead of failing; the identity names the fraction and the
+widening slopes (``query.WIDENING``) when it is not 0, so the predictions of a stage that extrapolates are a generation
+of their own, and those of ``extrapolate=0`` keep the identity they had before N-116.
 
 A device only maps onto a stratum built with the same generator and the same fixed fields (metal, fixture,
 leads ...): ``match_stratum`` finds it, and ``Predict`` refuses a device whose fixed fields differ.
@@ -76,8 +80,10 @@ class Predict:
     simulates = False                                  # a prediction is not a simulation: it spends none of the spec's budget
     resources = Resources()
 
-    def __init__(self, library: query.Library, strata: dict[str, str], *, k: float = 2.0, rel_sigma_max: float | None = None):
+    def __init__(self, library: query.Library, strata: dict[str, str], *, k: float = 2.0, rel_sigma_max: float | None = None,
+                 extrapolate: float = domain.EXTRAPOLATE_FRACTION):
         self.library, self.strata, self.k, self.rel_sigma_max = library, dict(strata), k, rel_sigma_max
+        self.extrapolate = query.check_extrapolate(extrapolate)
         identity = {"k": k, "rel_sigma_max": domain.DEFAULT_SIGMA_REL_MAX if rel_sigma_max is None else rel_sigma_max,
                     "calibrate": library.calibrate, "strata": {d: [s, library.dataset(s).key] for d, s in sorted(self.strata.items())}}
         if rel_sigma_max is None:                      # the manifest's ceilings apply: part of what the predictions are
@@ -85,6 +91,8 @@ class Predict:
                         for s in sorted(set(self.strata.values()))}
             if any(ceilings.values()):                 # none set: the identity (and the fingerprint) of a library without them
                 identity["rel_sigma_max_by_quantity"] = {s: c for s, c in ceilings.items() if c}
+        if self.extrapolate:                           # N-116: answers beyond the measured range are other predictions
+            identity["extrapolate"] = {"fraction": self.extrapolate, "widening": query.WIDENING}
         self.identity = json.dumps(identity, separators=(",", ":"))
         self._lock = threading.Lock()
         self._ready: dict[str, list[str]] | None = None
@@ -127,7 +135,7 @@ class Predict:
         if wanted:
             self.prefit(ctx.spec)                        # a no-op once done: the models are in memory before any query
         answer = query.query(self.library, stratum, {d: config[d] for d in ds.dims}, sorted(set(wanted.values())) or None,
-                             k=self.k, rel_sigma_max=self.rel_sigma_max) if wanted else {"quantities": {}}
+                             k=self.k, rel_sigma_max=self.rel_sigma_max, extrapolate=self.extrapolate) if wanted else {"quantities": {}}
         metrics = {}
         for name, column in wanted.items():
             a = answer["quantities"][column]
@@ -155,7 +163,7 @@ def _columns(spec: Spec, device: str, library: query.Library, stratum: str) -> t
 
 def surrogate_pipeline(spec: Spec, library: query.Library, strata: dict[str, str] | None = None, **predict) -> list:
     """pcell -> library prediction per device (the em_only pipeline with EMX + measure replaced by the library); ``predict``
-    goes to ``Predict`` (``k``, ``rel_sigma_max``: every column's ceiling, None for each quantity's own)."""
+    goes to ``Predict`` (``k``, ``rel_sigma_max``: every column's ceiling, None for each quantity's own; ``extrapolate``)."""
     strata = strata or {d.id: match_stratum(library, d) for d in spec.devices}
     return [Pcell(spec), Predict(library, strata, **predict)]
 
