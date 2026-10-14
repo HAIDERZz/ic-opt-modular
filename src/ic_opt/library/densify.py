@@ -210,8 +210,10 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
             score: str = DEFAULT_SCORE, bounds: dict | None = None, threads: int | None = None, workers: int | None = None) -> dict:
     """``n`` new geometries of ``stratum`` whose simulation lowers the uncertainty of ``quantities`` (default: every
     column) the most over the sampled domain, with the pool's sigma before and after (see the module docstring), as
-    plain JSON data. ``score`` is ``ceiling`` (sigma_rel over the quantity's confidence ceiling, the default) or
-    ``typical`` (over the held-out median relative error); ``bounds`` keeps part of the box: per dim a window
+    plain JSON data. A column whose usable rows are too few for a model (``Library.no_model``, N-120) is refused with the
+    reason when ``quantities`` names it, and left out of the default with a note. ``score`` is ``ceiling`` (sigma_rel
+    over the quantity's confidence ceiling, the default) or ``typical`` (over the held-out median relative error);
+    ``bounds`` keeps part of the box: per dim a window
     ``{"min": a, "max": b}`` or a fixed value. ``k`` sets each candidate's predicted interval (calibrated, as
     ``lib.query`` reports it). ``rel_sigma_max`` is every quantity's confidence ceiling (None: each quantity's own,
     ``Library.rel_sigma_max``), the one the statistics count against too; ``method`` echoes them. ``threads`` (BLAS
@@ -229,6 +231,12 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
         raise ValueError(f"score {score!r}: expected one of {sorted(SCORES)}")
     if rel_sigma_max is not None and not (math.isfinite(rel_sigma_max) and rel_sigma_max > 0):
         raise ValueError(f"rel_sigma_max must be a positive number, got {rel_sigma_max!r}")
+    if quantities:                                          # N-120: a column named whose rows are too few for a model: refused
+        library.require_models(stratum, names)
+    left = {q: short for q in names if (short := library.no_model(stratum, q)) is not None}   # every column: those left out
+    names = [q for q in names if q not in left]
+    if not names:
+        raise ValueError(f"{stratum}: no column can have a model: " + "; ".join(f"{q} ({s['reason']})" for q, s in left.items()))
     effective, box = _bounds(library, stratum, bounds)
     blas, budget = query.blas_threads(library.limits, threads), suggest.predict_budget(library.limits)
     with threadpool_limits(limits=blas, user_api="blas"):
@@ -248,6 +256,9 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
         candidates = _candidates(library, stratum, models, names, x, sel, floors, resonant, k, rel_sigma_max, budget)
         marks.append(time.perf_counter())
     notes = _notes(library, names, info, sel, n, top, budget, swept, resonant, models)
+    if left:
+        notes.append(f"{len(left)} column(s) left out, their usable rows too few for a model (lib.query answers them no_model): "
+                     + ", ".join(f"{q} ({short['rows']} rows)" for q, short in left.items()))
     seconds = {"models": marks[1] - marks[0], "pool": marks[2] - marks[1], **sel.seconds, "report": marks[3] - mark,
                "total": marks[3] - marks[0]}
     return {"stratum": stratum, "quantities": names, "n": n, "bounds": effective, "pool": info,
