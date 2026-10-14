@@ -139,7 +139,7 @@ def test_a_failed_spectre_run_puts_the_first_error_of_its_log_before_the_other_l
     assert len(cut) == spectre_chain.ERROR_LIMIT == 300 and cut.endswith("...") and "`section tt_no_such_section'" in cut
 
 
-PDK_PATH = ("/nas/pdk/vendor_process_design_kit/PROCESS_1P10M_5X2Y2R/iPDK_PROCESS_v1.0_2p2a_1p10m/"
+PDK_PATH = ("/nas/pdk/vendor_process_design_kit/PROCESS_METAL_STACK_OPTION/iPDK_PROCESS_release_X/"
             "vendor_kit_models_and_corners/../models/spectre/toplevel.scs")          # 145 characters, as deep as a real PDK's
 
 
