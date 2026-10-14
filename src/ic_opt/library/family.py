@@ -2,10 +2,9 @@
 ``family=`` or ``strata=`` instead of one ``stratum=``.
 
 A table (stratum) is one device: one generator with one set of fixed fields -- the port opening, the metals, the ground
-fixture, the taps. A target outside one table may lie inside another (N-109 made the parts built with a 2 um port
-opening tables of their own), so asking one table answers "nothing" where the library has designs (2026-10-14: 60 pH at
-60 GHz, no design in xfm_bs_m10, 50 in xfm_bs_m10_hf). A family request asks each of its tables exactly as ``stratum=``
-does and puts the answers side by side:
+fixture, the taps. A target outside one table may lie inside another of the same kind (two tables that differ only in
+their port opening cover different inductances), so asking one table answers "nothing" where the library has designs.
+A family request asks each of its tables exactly as ``stratum=`` does and puts the answers side by side:
 
 - ``strata``: each table's own answer, unchanged, or ``{"error": text}`` when the table cannot take the request;
 - ``facts``: each table's generator, the fixed fields that tell the tables apart (``fixed``: the port openings, the
@@ -332,8 +331,10 @@ def unreachable(library: query.Library, stratum: str, answer: dict, stated: int,
         return ({"kind": "outside_range", "reason": "; ".join(texts), "ranges": ranges, "outside": outside, "closest": None},
                 f"{stratum} reaches {first['quantity']} {shown(end)}{shown.unit} at the {'least' if first['side'] == 'below' else 'most'}")
     closest = _closest(ds, goals)
-    sentence = ("every target lies inside this table's measured range, but no measured row meets them together, nor a predicted "
-                "design with its whole calibrated interval inside every window")
+    implied = [f"{t.quantity} >= {_value(t.quantity, t.value)}" for t in goals[stated:]]
+    sentence = ("every target lies inside this table's measured range, but no measured row meets them together"
+                + (f" with {', '.join(implied)} (the resonance the anchored targets imply)" if implied else "")
+                + ", nor does a predicted design with its whole calibrated interval inside every window")
     if kind == "region" and answer["levels"]["mean"]["count"]:
         sentence += (f" ({answer['levels']['mean']['count']} grid points do at the mean level, their predicted values inside "
                      "every window)")
@@ -341,7 +342,7 @@ def unreachable(library: query.Library, stratum: str, answer: dict, stated: int,
         values = "; ".join(f"{q} {_value(q, v)}" for q, v in closest["values"].items())
         sentence += f"; the closest measured row is {closest['part']}/{closest['obs_id']}: {values}"
     return ({"kind": "not_met_together", "reason": sentence, "ranges": ranges, "outside": [], "closest": closest},
-            f"{stratum} meets each target alone, not all together")
+            f"{stratum} has every target inside its measured range but no design meeting them together")
 
 
 def _beyond_sweep(row: dataset.Row, t: _suggest.Target) -> float:

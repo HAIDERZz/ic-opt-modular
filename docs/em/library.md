@@ -326,8 +326,8 @@ ic-opt call lib.suggest <library root> family=xfm_bs \
 A table (stratum) is one device: one generator with one set of fixed
 fields -- the port opening, the metals the windings and the ground fixture
 sit on, the centre taps. A target outside one table may lie inside another
-of the same kind: the tables built with a 2 µm port opening reach smaller
-inductances than those built with 8 µm. Instead of `stratum=`, a request may
+of the same kind: two tables that differ only in their port opening cover
+different inductances. Instead of `stratum=`, a request may
 name `family=`, every table whose generator draws that kind -- `ind_sym`,
 `xfm_bs`, `xfm_ms` (the generator `clean_port_<family>`; membership is read
 from the tables' generators, not from their names) -- or `strata=<a>,<b>`,
@@ -356,11 +356,12 @@ by side:
     measured range of its quantity -- the rows that have the quantity under
     the library's own rules, an anchored column only below its resonance
     margin; `outside` lists each such target with its `window`, the `range`
-    and the `side` (`below` or `above`): "Lp@60 window 55.2-64.8 pH lies
-    below this table's measured 75-1001 pH";
+    and the `side` (`below` or `above`): "Lp@<f> window <a>-<b> pH lies
+    below this table's measured <c>-<d> pH";
   - `not_met_together`: every target lies inside its range, but no measured
-    row meets them together and no predicted design meets them with its
-    whole calibrated interval; `closest` is the measured row nearest to
+    row meets them together -- with the resonance anchored targets imply,
+    which the sentence then names -- and no predicted design meets them with
+    its whole calibrated interval; `closest` is the measured row nearest to
     meeting them all (its distance outside each window over the window's
     width, a one-sided bound's over its own size; a row without a resonance
     in its sweep counts its sweep's end for an SRF minimum) with its values;
@@ -372,8 +373,8 @@ by side:
   quantity;
 - `notes`: the library's notes, then, when some tables have no design, one
   line naming the tables that have designs and what each other one reaches
-  ("...: designs in xfm_bs_m10_hf; xfm_bs_m10 reaches Lp@60 75 pH at the
-  least; ...").
+  ("<targets>: designs in <table>; <table> reaches Lp@<f> <c> pH at the
+  least; <table> cannot take the request").
 
 ## 5b. Region questions: `lib.region`
 

@@ -93,7 +93,7 @@ def test_targets_each_inside_its_range_but_not_together_name_the_closest_measure
     assert o2["kind"] == "outside_range" and [(o["quantity"], o["side"]) for o in o2["outside"]] == [("Lp_lf", "above")]
     (note,) = answer["notes"]
     assert ": no table has a design; ind_o2 reaches Lp_lf " in note and note.endswith(
-        "nH at the most; ind_o8 meets each target alone, not all together")
+        "nH at the most; ind_o8 has every target inside its measured range but no design meeting them together")
 
 
 def test_taps_choose_the_tables_and_strata_lists_them_as_given(lib):
@@ -118,11 +118,18 @@ def test_taps_choose_the_tables_and_strata_lists_them_as_given(lib):
 
 
 def test_a_column_no_row_of_a_table_has_is_that_tables_refusal(lib):
-    """Every ind_o8 row resonates below 1.25 x 50 GHz, so none has Lp@50: that table is refused before any model is fitted."""
+    """Every ind_o8 row resonates below 1.25 x 50 GHz, so none has Lp@50: that table is refused before any model is fitted.
+    ind_o2's rows that have it show no resonance in their 60 GHz sweep, short of the 62.5 GHz the anchored target implies:
+    the target lies inside the measured range, the implied resonance is what no design meets, and the reason says so."""
     answer = ask(lib, family="ind_sym", targets={"Lp@50": {"min": 2e-9}})
     assert answer["strata"]["ind_o8"] == {"error": "ind_o8: no row has a value of Lp@50; a row has a curve's value only inside its sweep "
                                                    "and while its system SRF lies above the curve's srf_margin x f"}
     assert answer["unreachable"]["ind_o8"]["kind"] == "cannot_take" and "error" not in answer["strata"]["ind_o2"]
+    o2 = answer["unreachable"]["ind_o2"]
+    assert o2["kind"] == "not_met_together" and o2["closest"]["values"]["SRF_p"] is None
+    assert ("no measured row meets them together with SRF_p >= 62.5 GHz (the resonance the anchored targets imply)" in o2["reason"]
+            and o2["reason"].endswith("SRF_p none (no resonance in its sweep)"))
+    assert o2["closest"]["distance"] == pytest.approx((62.5 - 60) / 62.5)        # its sweep's end, 2.5 GHz short of the bound
 
 
 @pytest.mark.parametrize("kw, message", [
