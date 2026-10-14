@@ -215,7 +215,13 @@ coupling — with **opposite, outward** openings (primary at
   probe missed two proven short classes (a CT lead crossing the other
   winding on a shared metal, and two same-metal CT leads crossing each
   other). The gate is strictly stronger — it fails closed only
-  on a real short.
+  on a real short. Short of contact, the pcell holds the two nets to the
+  profile's spacing in one place (N-93): where a via-stack tap reaches
+  the other winding's metal, the stack's pad there (its lead too, when
+  the tap metal is that metal) is measured against the other winding as
+  drawn and refused below the metal's spacing for those widths and that
+  parallel run (`_bs_tap_stack_gap`), naming the gap, the rule, the
+  widths and the opening.
 - **The coil itself has no vias** (same-metal leads); a CT stack uses the
   via levels between its winding and the tap metal, each at the profile's
   own via geometry (a same-metal tap uses none).
