@@ -41,7 +41,9 @@ job starts a further stage, child or command (``Interrupted``): the points still
 queued never start, a running point whose command got the interrupt is not
 recorded -- its failure is not its own, and it is simulated again next time --
 while one that had finished is. The step log says which were recorded,
-interrupted and never started, and the KeyboardInterrupt goes on.
+interrupted and never started, and the KeyboardInterrupt goes on. ``ic-opt run``
+then prints one line made from the step rows the run wrote
+(:func:`interrupted_line`, N-119) and exits with code 130.
 
 Identity. The problem is ``Spec.fingerprint()``: the spec without how it is run
 (resources, timeouts, retention, license check, budget), so a project moved to
@@ -73,6 +75,7 @@ import shutil
 import tempfile
 import threading
 import time
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -314,6 +317,21 @@ def _log_interrupted(store: RunStore, step: str, jobs: list[Job], workers: int) 
         simulations=sum(simulations(j.observation) for j in done), workers=workers, seconds=round(sum(j.seconds for j in done), 1),
         stopped=sum(1 for j in done if j.observation.not_run), not_run=sum(len(j.observation.not_run) for j in done),
     )
+
+
+def interrupted_line(rows: Sequence[dict]) -> str:
+    """The line ``ic-opt run`` prints on stderr when Ctrl-C ended it (N-119), made from the ``steps.jsonl`` rows the run
+    wrote: the points it recorded -- each finished batch's ``new`` and the interrupted batch's ``recorded`` --, the points
+    the interrupt stopped while they ran (``interrupted``: not recorded) and those it kept from starting
+    (``not_started``). Running the same command again reuses the recorded points and simulates the others. Rows of other
+    kinds (doctor, netlist.import, report) count nothing; an interrupt outside a batch leaves no ``interrupted`` row."""
+    finished = [r for r in rows if r.get("status") == "ok" and isinstance(r.get("new"), int)]
+    cut = [r for r in rows if r.get("status") == "interrupted"]
+    recorded = sum(r["new"] for r in finished) + sum(len(r.get("recorded") or ()) for r in cut)
+    stopped = sum(len(r.get("interrupted") or ()) for r in cut)
+    waiting = sum(len(r.get("not_started") or ()) for r in cut)
+    return (f"interrupted: {recorded} point{'' if recorded == 1 else 's'} recorded, {stopped} stopped, {waiting} not started; "
+            "the same command continues the run")
 
 
 def _unless_stopping(stopping, where: str) -> None:

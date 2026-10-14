@@ -89,6 +89,11 @@ Ctrl-C cut off gets the same extra `ssh` as a timed-out one. After Ctrl-C,
 `sim.evaluate` starts no further point, stage or command: a point it interrupted
 is not recorded (it is simulated again when the recipe runs again), and
 `.icopt/steps.jsonl` lists the points recorded, interrupted and never started.
+`ic-opt run` then exits with code 130 after one line on stderr, counted from the
+step rows the run wrote: `interrupted: 2 points recorded, 2 stopped, 2 not started;
+the same command continues the run` -- the points the run recorded (its earlier
+batches' too), the ones the interrupt stopped while they ran, the ones it kept
+from starting.
 
 ## Use
 

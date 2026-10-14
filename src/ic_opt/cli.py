@@ -28,6 +28,7 @@ from ic_opt import __version__, blocks
 from ic_opt import migrate as migrate_module
 from ic_opt import recipe as recipe_module
 from ic_opt.blocks.doctor import plan_line
+from ic_opt.eval.engine import interrupted_line
 from ic_opt.library import manifest as library_manifest
 from ic_opt.library import query as library_query
 from ic_opt.library.link import LinkError
@@ -96,20 +97,48 @@ def run(
     cshrc: Annotated[str | None, typer.Option("--cshrc", help="Cadence environment file on the simulation host: "
                                               "*.csh / *.cshrc / *.tcsh / *.tcshrc are sourced by csh, others by sh")] = None,
 ) -> None:
-    """Run a recipe (``--plan`` first: it is the only approval point)."""
+    """Run a recipe (``--plan`` first: it is the only approval point). Ctrl-C ends a run with exit code 130 and one line on
+    stderr (N-119): how many points it recorded, how many the interrupt stopped and how many never started, and that the
+    same command continues the run (``eval.engine.interrupted_line``, from the step rows the run wrote)."""
     main = recipe_module.load_recipe(recipe)
     ctx = _run(project, ssh_profile, cshrc)
     kwargs = _params(params or [])
     typer.echo(f"recipe {recipe}  spec {ctx.spec.project} ({ctx.spec.fingerprint()})  {plan_line(ctx.spec, ctx.executor, ctx.limits)}")
     typer.echo(f"params {kwargs}  cshrc {ctx.cshrc or '-'}  observations {len(ctx.store.observations())}")
+    steps = ctx.store.root / "steps.jsonl"
+    begun = steps.stat().st_size if steps.is_file() else 0      # where this run's step rows start
     token = recipe_module.PLAN_MODE.set(plan)
     try:
         main(ctx, **kwargs)
     except (SiteError, EnvelopeError, LinkError) as exc:   # a job too big for its host, or a library device that cannot be resolved: refused before anything starts, --plan too
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
+    except KeyboardInterrupt as exc:                       # Ctrl-C: the engine stopped the run and logged it (eval.engine, "Interrupts")
+        if not plan:
+            typer.echo(interrupted_line(_steps_after(steps, begun)), err=True)
+        raise typer.Exit(code=130) from exc
     finally:
         recipe_module.PLAN_MODE.reset(token)
+
+
+def _steps_after(path: Path, offset: int) -> list[dict]:
+    """The rows appended to ``steps.jsonl`` past byte ``offset``: the ones this run wrote. A line that does not parse (cut
+    short by a second Ctrl-C) is skipped."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(offset)
+            lines = handle.read().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    rows = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
 
 
 @app.command("blocks")

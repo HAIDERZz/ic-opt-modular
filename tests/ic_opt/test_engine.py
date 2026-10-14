@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ic_opt import migrate_store
+from ic_opt import migrate_store, recipe
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
+from ic_opt.eval import engine
 from ic_opt.eval.engine import BudgetExceeded
 from ic_opt.eval.stage import TRACE_FILE, StageContext
 from ic_opt.executor import CommandResult, process_group
@@ -243,6 +244,86 @@ def test_a_job_that_sees_the_forwarded_interrupt_first_stops_the_run(tmp_path, m
     again = evaluate(spec, [Point({"F": "20", "W": "0.6u"}, "user")], FakeSpectreExecutor(store.root / "sims",
                      lambda p, tb, c: {"NF": 8.0}), RunStore(tmp_path), deck=deck_for(spec), limits=FAKE_HOST)
     assert [(o.obs_id, o.status) for o in again] == [("obs_0002", "ok")]      # simulated afresh; obs_0001's directory is not reused
+
+
+# -- N-119: Ctrl-C ends ic-opt run with one line and exit code 130 ----------------------------------------------------------
+
+N118_T2 = {"step": "optimize", "status": "interrupted", "points": 6, "reused": 0, "recorded": ["obs_0001", "obs_0002"],
+           "interrupted": ["obs_0003", "obs_0004"], "not_started": ["obs_0005", "obs_0006"], "simulations": 2}
+
+
+def test_the_interrupt_line_counts_the_runs_step_rows():
+    """N-118's check t2 (six points, two recorded, two running, two queued) gives the specification's line; a finished
+    batch before the interrupted one adds its new points; other rows count nothing; no batch running, nothing stopped."""
+    doctor = {"step": "doctor", "status": "ok", "checks": [["executor", True]]}
+    imported = {"step": "netlist.import", "status": "ok", "deck": "f8ba5cda41623571", "testbenches": 1}
+    assert engine.interrupted_line([doctor, imported, N118_T2]) == (
+        "interrupted: 2 points recorded, 2 stopped, 2 not started; the same command continues the run")
+    batch = {"step": "optimize", "status": "ok", "points": 6, "new": 5, "reused": 1}
+    assert engine.interrupted_line([doctor, batch, {**N118_T2, "recorded": ["obs_0008"]}]) == (
+        "interrupted: 6 points recorded, 2 stopped, 2 not started; the same command continues the run")
+    assert engine.interrupted_line([doctor, {**batch, "new": 1}]) == (
+        "interrupted: 1 point recorded, 0 stopped, 0 not started; the same command continues the run")
+    assert engine.interrupted_line([]).startswith("interrupted: 0 points recorded, 0 stopped, 0 not started;")
+
+
+@posix_only
+@pytest.mark.parametrize(("recipe_name", "hung", "line"), [
+    ("fix_run", "obs_0002", "interrupted: 1 point recorded, 1 stopped, 2 not started"),     # one batch of four, as t2
+    ("optimize", "obs_0003", "interrupted: 2 points recorded, 1 stopped, 1 not started"),   # the first batch counts too
+], ids=["fix_run", "optimize"])
+def test_ctrl_c_ends_ic_opt_run_with_one_line_and_exit_code_130(tmp_path, monkeypatch, recipe_name, hung, line):
+    """``ic-opt run`` interrupted by a Ctrl-C at the terminal (SIGINT to the main thread while ``hung`` simulates, one
+    point at a time): exit code 130 and one line on stderr whose counts are the step rows' -- the interrupted row says
+    what it said before N-119 --; the same command then continues the run."""
+    from typer.testing import CliRunner
+
+    from ic_opt.cli import app
+    from ic_opt.spec import load_spec
+    from tests.ic_opt.test_cli_recipes import SITE, project
+
+    root = project(tmp_path)
+    d = yaml.safe_load((root / "spec.yaml").read_text(encoding="utf-8"))
+    d["simulator"]["parallel_jobs"] = 1
+    (root / "spec.yaml").write_text(yaml.safe_dump(d, sort_keys=False), encoding="utf-8")
+    (root / "points.json").write_text(json.dumps([{"F": f, "W": "0.6u"} for f in ("20", "22", "24", "26")]))
+    hang = {"on": True}
+    executors = []
+
+    def fake_load_run(project_dir, *, ssh_profile=None, cshrc=None):
+        store = RunStore(project_dir)
+        ex = FakeSpectreExecutor(store.root / "sims", lambda p, tb, c: {"NF": 5.0 + int(p["F"]) / 10},
+                                 hang=lambda tool, cwd: hang["on"] and tool == "spectre" and hung in cwd.parts)
+        executors.append(ex)
+        return recipe.Run(Path(project_dir).resolve(), load_spec(Path(project_dir) / "spec.yaml"), store, ex, None, SITE,
+                          SITE.host("local"))
+
+    monkeypatch.setattr(recipe, "load_run", fake_load_run)
+    params = ["points=points.json"] if recipe_name == "fix_run" else ["budget=4", "batch=2", "strategy=random", "seed=1"]
+    main = threading.main_thread().ident
+
+    def ctrl_c_once_it_hangs():
+        deadline = time.monotonic() + 30
+        while not (executors and executors[0].hung and process_group._running) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        signal.pthread_kill(main, signal.SIGINT)                    # what the terminal's Ctrl-C does to the main thread
+
+    runner = CliRunner()
+    with forwarded_signals():
+        threading.Thread(target=ctrl_c_once_it_hangs, daemon=True).start()
+        result = runner.invoke(app, ["run", recipe_name, str(root), *params])
+    assert result.exit_code == 130, result.output
+    assert result.stderr.splitlines() == [f"{line}; the same command continues the run"]
+    assert "Traceback" not in result.output and not process_group._running
+    step = json.loads((root / ".icopt" / "steps.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert step["status"] == "interrupted" and step["interrupted"] == [hung]
+    assert line == engine.interrupted_line([json.loads(row) for row in (root / ".icopt" / "steps.jsonl").read_text(
+        encoding="utf-8").splitlines()]).split(";")[0]                 # nothing else wrote to steps.jsonl here
+
+    hang["on"] = False                                                   # the same command continues the run
+    again = runner.invoke(app, ["run", recipe_name, str(root), *params])
+    assert again.exit_code == 0, again.output
+    assert sum(o.status == "ok" for o in RunStore(root).observations()) == 4
 
 
 def test_reuse_budget_and_rerun_is_continuation(tmp_path):
