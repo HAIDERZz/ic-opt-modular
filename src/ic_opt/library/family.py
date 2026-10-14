@@ -16,6 +16,11 @@ A family request asks each of its tables exactly as ``stratum=`` does and puts t
 - ``unreachable``: for each table without a design, why (``unreachable``, the one place that words it);
 - ``notes``: the library's notes, then which tables have designs and what the others reach.
 
+Every table answers with the call's ``extrapolate`` (N-116: ``domain.EXTRAPOLATE_FRACTION`` unless given), so a table whose
+designs lie just beyond its measured range along the outer diameters has designs, each marked ``extrapolated``; a table
+that still has none for a target outside its measured range says so "even with up to <F> extrapolation of the outer
+diameter".
+
 Membership is read off the tables, never off their names: a table is of family ``F`` when its generator is
 ``clean_port_<F>`` (the built-in families; a generator without that prefix is a family of its own name), and it is
 tapped when its parts' device has a centre-tap port -- a port whose name starts with ``CT`` (``CT``, ``CTP``, ``CTS``),
@@ -33,7 +38,7 @@ from collections.abc import Callable
 import numpy as np
 
 from ic_opt import site
-from ic_opt.library import combinations, dataset, query
+from ic_opt.library import combinations, dataset, domain, query
 from ic_opt.library import region as _region
 from ic_opt.library import suggest as _suggest
 
@@ -177,7 +182,9 @@ def suggest(library: query.Library, names: list[str], targets: dict, objective: 
                           lambda name=name: _suggest.suggest(library, name, targets, objective, n=n, **options)) for name in names}
     known = {name: facts(library, name) for name in names}
     reached = [name for name, a in answers.items() if "error" not in a and (a["satisfying"] or a.get("region_grid", {}).get("satisfying"))]
-    why = {name: unreachable(library, name, a, len(stated), kind="suggest") for name, a in answers.items() if name not in reached}
+    extrapolate = options.get("extrapolate", domain.EXTRAPOLATE_FRACTION)
+    why = {name: unreachable(library, name, a, len(stated), kind="suggest", extrapolate=extrapolate) for name, a in answers.items()
+           if name not in reached}
     return {"family": family, "taps": taps, "strata": answers, "facts": known,
             "leaders": _suggest_leaders(answers, known, len(stated), objective, n), "unreachable": {k: v[0] for k, v in why.items()},
             "notes": library.notes + _summary(answers, stated, reached, why)}
@@ -198,7 +205,9 @@ def region(library: query.Library, names: list[str], targets: dict, objective: s
     points = {name: a.pop("level_points") for name, a in answers.items() if "level_points" in a}
     known = {name: facts(library, name) for name in names}
     reached = [name for name, a in answers.items() if "error" not in a and (a["levels"]["robust"]["count"] or a["measured"])]
-    why = {name: unreachable(library, name, a, len(stated), kind="region") for name, a in answers.items() if name not in reached}
+    extrapolate = options.get("extrapolate", domain.EXTRAPOLATE_FRACTION)
+    why = {name: unreachable(library, name, a, len(stated), kind="region", extrapolate=extrapolate) for name, a in answers.items()
+           if name not in reached}
     answer = {"family": family, "taps": taps, "strata": answers, "facts": known, "leaders": _region_leaders(answers, known),
               "unreachable": {k: v[0] for k, v in why.items()}, "notes": library.notes + _summary(answers, stated, reached, why)}
     if out:
@@ -285,15 +294,18 @@ def _region_leaders(answers: dict, known: dict) -> list[dict]:
 
 # -- why a table has no design -------------------------------------------------------------------------------------------
 
-def unreachable(library: query.Library, stratum: str, answer: dict, stated: int, *, kind: str) -> tuple[dict, str]:
-    """Why ``stratum`` has no design for the request -- the one place that words it (N-116, answers beyond the measured
-    range, would change it here). ``answer`` is the table's answer (``kind`` ``suggest`` or ``region``) or its error, and
-    its ``targets`` the goals as the table resolved them, the first ``stated`` the request's own (the rest the resonance the
-    anchored ones imply). The measured range of a quantity is that of the rows that have it under the library's own rules
-    (``Dataset.usable``: an anchored column only below its resonance margin). ``kind`` is one of three (``KINDS``):
+def unreachable(library: query.Library, stratum: str, answer: dict, stated: int, *, kind: str,
+                extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> tuple[dict, str]:
+    """Why ``stratum`` has no design for the request -- the one place that words it. ``answer`` is the table's answer
+    (``kind`` ``suggest`` or ``region``) or its error, and its ``targets`` the goals as the table resolved them, the first
+    ``stated`` the request's own (the rest the resonance the anchored ones imply). The measured range of a quantity is that
+    of the rows that have it under the library's own rules (``Dataset.usable``: an anchored column only below its resonance
+    margin). ``kind`` is one of three (``KINDS``):
 
     - ``outside_range`` (a): a target's window lies wholly outside the table's measured range of its quantity: ``outside``
-      lists each such target -- ``quantity``, ``window`` (SI units), ``range``, ``side`` (below or above);
+      lists each such target -- ``quantity``, ``window`` (SI units), ``range``, ``side`` (below or above); the table's
+      answer was asked with ``extrapolate`` (N-116), so with it > 0 the sentence ends "even with up to <F> extrapolation of
+      the outer diameter" -- the designs beyond the measured range did not reach the window either;
     - ``not_met_together`` (b): every target inside its range, but no design meets them together: ``closest`` is the
       measured row nearest to meeting every goal (the distance outside each window scaled by the window's width, a
       one-sided bound's by its own size; a row without a resonance in its sweep counts its sweep's end for an SRF
@@ -328,7 +340,8 @@ def unreachable(library: query.Library, stratum: str, answer: dict, stated: int,
         first = outside[0]
         end = first["range"][0] if first["side"] == "below" else first["range"][1]
         shown = _si(first["quantity"], [end])
-        return ({"kind": "outside_range", "reason": "; ".join(texts), "ranges": ranges, "outside": outside, "closest": None},
+        reason = "; ".join(texts) + (f", even with up to {100 * extrapolate:g}% extrapolation of the outer diameter" if extrapolate > 0 else "")
+        return ({"kind": "outside_range", "reason": reason, "ranges": ranges, "outside": outside, "closest": None},
                 f"{stratum} reaches {first['quantity']} {shown(end)}{shown.unit} at the {'least' if first['side'] == 'below' else 'most'}")
     closest = _closest(ds, goals)
     implied = [f"{t.quantity} >= {_value(t.quantity, t.value)}" for t in goals[stated:]]

@@ -44,6 +44,14 @@ A target, the objective or a trend may name a declared curve at any frequency (`
 T18.1); ``resolve`` puts them in canonical form first, so the implied SRF follows the frequency asked. Each design carries
 its ``footprint`` (``ic_opt.em.pcell.footprint``): a measured one its row's, a candidate the one ``build_check`` drew
 (None when the build was not asked for).
+
+Beyond the measured range (N-116): ``extrapolate`` (``domain.EXTRAPOLATE_FRACTION`` unless given; 0: as before) is the
+fraction every model answers beyond its measured range along the outer diameters (``domain.DomainGuard.check``).
+``predict_all`` lets such rows into the domain, widens their intervals (``query.widening``) and says per quantity how far
+(``pred[q]["depth"]``, 0 inside the range) and by what factor (``pred[q]["widening"]``); ``pool`` extends the sampled box
+along those dims by the table's allowance, so a design just outside the measured range can be drawn; each design whose
+answers are extrapolated carries ``extrapolated`` (``extrapolation``: per dim the farthest of its models' labels) and, per
+predicted quantity, ``widening``. The measured designs still come first.
 """
 
 from __future__ import annotations
@@ -203,13 +211,14 @@ def srf_floors_for(library: query.Library, stratum: str, x: np.ndarray, models: 
 
 
 def in_domain(x: np.ndarray, models: dict[str, query.Model], *, srf_floor: dict[str, np.ndarray] | None = None,
-              exact: dict[str, np.ndarray] | None = None) -> np.ndarray:
-    """The domain half of ``predict_all``'s gate: every model's guard accepts the row (criteria 1-3), or the value is
-    settled without the model there. A caller predicting a large grid filters with it first."""
+              exact: dict[str, np.ndarray] | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> np.ndarray:
+    """The domain half of ``predict_all``'s gate: every model's guard accepts the row (criteria 1-3, the outer diameters
+    ``extrapolate`` beyond the measured range: N-116), or the value is settled without the model there. A caller predicting
+    a large grid filters with it first."""
     ok = np.ones(len(x), dtype=bool)
     for q, m in models.items():
         above, known = _settled(len(x), (srf_floor or {}).get(q), (exact or {}).get(q))
-        ok &= m.guard.inside(x) | above | known
+        ok &= m.guard.inside(x, extrapolate=extrapolate) | above | known
     return ok
 
 
@@ -240,7 +249,8 @@ def _gp_predict(model: gp.StratumGP, x: np.ndarray, chunk_rows: int | None) -> t
 
 def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0, rel_sigma_max: float | None = None,
                 srf_floor: dict[str, np.ndarray] | None = None, exact: dict[str, np.ndarray] | None = None,
-                check_domain: bool = True, chunk_bytes: int | None = None) -> tuple[np.ndarray, dict]:
+                check_domain: bool = True, chunk_bytes: int | None = None,
+                extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> tuple[np.ndarray, dict]:
     """``(ok, pred)`` for candidate rows ``x`` and every quantity in ``models``: ``ok`` is the domain (``in_domain``) and
     confidence gate (a finite value, sigma / mu within ``rel_sigma_max`` for every quantity, or when it is None within
     each model's own ``Model.rel_sigma_max``) and the resonance gate (``below_resonance``: an anchored column only where
@@ -252,13 +262,22 @@ def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0
     library's callers give one for every resonance column too, ``srf_floors_for``);
     ``exact[q]`` gives measured values (NaN where not measured), used as zero-width intervals instead of predictions.
     ``chunk_bytes`` bounds each GP call's memory (``rows_per_call`` for the model's training rows; the library's callers
-    pass ``predict_budget(library.limits)``); None predicts every row in one call."""
+    pass ``predict_budget(library.limits)``); None predicts every row in one call. ``extrapolate`` (N-116): the guard's
+    fraction beyond the measured range along the outer diameters; a row there that is no settled value gets its interval
+    widened (``query.widening``), ``pred[q]["depth"]`` how far (0 inside the range) and ``pred[q]["widening"]`` the factor
+    (1 inside), whether or not ``check_domain`` -- a caller that checked the domain itself passes the same fraction."""
     n = len(x)
-    ok = in_domain(x, models, srf_floor=srf_floor, exact=exact) if check_domain else np.ones(n, dtype=bool)
+    ok = in_domain(x, models, srf_floor=srf_floor, exact=exact, extrapolate=extrapolate) if check_domain else np.ones(n, dtype=bool)
     pred: dict[str, dict[str, np.ndarray]] = {}
     for q, m in models.items():
         mu, sigma = _gp_predict(m.gp, x, None if chunk_bytes is None else rows_per_call(chunk_bytes, query.fit_rows(m)))
         lo, hi = gp.prediction_bounds(mu, sigma, log_target=m.gp.log_target, k=k * m.gp.k_scale)
+        depth = m.guard.depth(x) if extrapolate > 0 and m.guard is not None and n else np.zeros(n)
+        wide = np.ones(n)
+        far = depth > 0
+        if far.any():                                           # N-116: beyond the measured range, the interval widened
+            wide[far] = query.widening(q, depth[far])
+            lo[far], hi[far] = gp.prediction_bounds(mu[far], sigma[far], log_target=m.gp.log_target, k=k * m.gp.k_scale * wide[far])
         scale = query.fit_unit(q)                               # the library fits SRF in GHz (query.fit_unit)
         mu, sigma, lo, hi = mu * scale, sigma * scale, lo * scale, hi * scale
         floor, measured = (srf_floor or {}).get(q), (exact or {}).get(q)
@@ -272,7 +291,7 @@ def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0
         ceiling = m.rel_sigma_max if rel_sigma_max is None else rel_sigma_max
         ok &= (np.isfinite(mu) | above) & (settled | domain.sigma_ok(mu, sigma, ceiling))
         pred[q] = {"value": mu, "lo": lo, "hi": hi, "rel_sigma": np.where(settled, 0.0, sigma / np.maximum(np.abs(mu), 1e-300)),
-                   "sigma": sigma}
+                   "sigma": sigma, "depth": np.where(settled, 0.0, depth), "widening": np.where(settled, 1.0, wide)}
     for allowed in below_resonance(x, models, pred, srf_floor=srf_floor, exact=exact, chunk_bytes=chunk_bytes).values():
         ok &= allowed
     return ok, pred
@@ -309,13 +328,14 @@ def rank(pred: dict, targets: list[Target], objective: tuple[str, str] | None, o
 
 def score(x: np.ndarray, models: dict[str, query.Model], targets: list[Target], objective: tuple[str, str] | None, *,
           k: float = 2.0, rel_sigma_max: float | None = None, srf_floor: dict[str, np.ndarray] | None = None,
-          check_domain: bool = True, exact: dict[str, np.ndarray] | None = None, chunk_bytes: int | None = None) -> dict:
+          check_domain: bool = True, exact: dict[str, np.ndarray] | None = None, chunk_bytes: int | None = None,
+          extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
     """Predict, gate and rank candidate rows ``x``: ``predict_all`` over the targets' and the objective's quantities,
     the robust ``satisfy``, ``rank``. ``models`` must cover every target and the objective; ``rel_sigma_max``,
-    ``srf_floor``, ``exact`` and ``chunk_bytes`` as in ``predict_all``."""
+    ``srf_floor``, ``exact``, ``chunk_bytes`` and ``extrapolate`` as in ``predict_all``."""
     names = sorted({t.quantity for t in targets} | ({objective[1]} if objective else set()))
     ok, pred = predict_all(x, {q: models[q] for q in names}, k=k, rel_sigma_max=rel_sigma_max, srf_floor=srf_floor, exact=exact,
-                           check_domain=check_domain, chunk_bytes=chunk_bytes)
+                           check_domain=check_domain, chunk_bytes=chunk_bytes, extrapolate=extrapolate)
     if targets:
         ok &= satisfy(pred, targets, "robust")
     return {"ok": ok, "ranked": rank(pred, targets, objective, ok), "pred": pred}
@@ -337,11 +357,14 @@ def srf_floors(library: query.Library, stratum: str, x: np.ndarray, quantity: st
     return out
 
 
-def pool(library: query.Library, stratum: str, n: int, seed: int = 0, box: dict[str, tuple[float, float]] | None = None) -> np.ndarray:
+def pool(library: query.Library, stratum: str, n: int, seed: int = 0, box: dict[str, tuple[float, float]] | None = None, *,
+         extrapolate: float = 0.0) -> np.ndarray:
     """``n`` scrambled-Sobol candidates over the achieved box, snapped to the manifest steps; one turns level each.
     ``box`` narrows the sampled range of some dims to ``(lo, hi)`` inside the achieved one: lo == hi fixes the dim, and
     for the turns dim only the levels inside it are drawn. A dim fixed within a level keeps that level's value, so a
-    caller bounding such a dim drops the rows it leaves outside."""
+    caller bounding such a dim drops the rows it leaves outside. ``extrapolate`` (N-116; ``lib.suggest`` and
+    ``lib.region`` pass theirs) widens the box along the outer diameters by the table's allowance
+    (``domain.allowances`` of the achieved range), before ``box`` narrows it."""
     ds = library.dataset(stratum)
     steps = library.manifest.strata[stratum].steps
     x = ds.matrix()
@@ -349,6 +372,9 @@ def pool(library: query.Library, stratum: str, n: int, seed: int = 0, box: dict[
     u = qmc.Sobol(d=len(ds.dims), scramble=True, seed=seed).random(n)
     out = np.empty((n, len(ds.dims)))
     lo, hi = x.min(axis=0), x.max(axis=0)
+    if extrapolate > 0:
+        below, above = domain.allowances(ds.dims, lo, hi, extrapolate)
+        lo, hi = lo - below, hi + above
     for d, (a, b) in (box or {}).items():
         lo[ds.dims.index(d)], hi[ds.dims.index(d)] = a, b
     for i in cont:
@@ -422,15 +448,43 @@ def footprint_fields(box: dict | None, why: str | None) -> dict:
     return {"footprint": box, **({"footprint_why": why} if box is None and why else {})}
 
 
+def extrapolation(models: dict[str, query.Model], pred: dict, i: int, params: dict, extrapolate: float) -> dict[str, dict]:
+    """Design ``i``'s label (N-116): per outer-diameter dim beyond the measured range of a model that answered it there
+    (``pred[q]["depth"]`` > 0: not a settled value), the guard's ``extrapolation`` -- side, beyond, allowance, measured
+    range -- of the model that lies farthest from it; {} for a design inside every model's range."""
+    out: dict[str, dict] = {}
+    for q, m in models.items():
+        if q in pred and pred[q].get("depth") is not None and pred[q]["depth"][i] > 0:
+            for d, e in m.guard.extrapolation(params, extrapolate).items():
+                if d not in out or e["beyond"] > out[d]["beyond"]:
+                    out[d] = e
+    return out
+
+
+def predicted_entry(pred: dict, i: int, names: list[str]) -> dict:
+    """A design's ``predicted``: value, lo, hi, rel_sigma per quantity, and ``widening`` where its interval was widened
+    beyond the measured range (N-116)."""
+    out = {}
+    for q in names:
+        e = {key: float(pred[q][key][i]) for key in ("value", "lo", "hi", "rel_sigma")}
+        if "depth" in pred[q] and pred[q]["depth"][i] > 0:
+            e["widening"] = float(pred[q]["widening"][i])
+        out[q] = e
+    return out
+
+
 def suggest(library: query.Library, stratum: str, targets: dict, objective: str | None = None, *, n: int = 5, pool_size: int = 8192,
             seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, verify_build: bool = True,
-            min_spacing: float = 0.05) -> dict:
+            min_spacing: float = 0.05, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
     """The measured designs meeting ``targets`` and the predicted candidates that meet them with margin and build (module
     docstring). Each candidate's ``pool`` says where it was drawn: ``sobol``, the pool of step 1, or ``region_grid`` -- when
     no predicted point of that pool meets every target (a target region too small for 8192 points over the whole achieved
     box, N-50), a second pool: the grid ``lib.region`` searches for the same targets (``region.grid_pool``: its coarse pass
     with the stated windows ``region.RELAX`` wider, its grid over the survivors), scored the same way. The answer then
-    describes that grid in ``region_grid`` and says so in a note; ``pool`` and ``satisfying`` stay the first pool's."""
+    describes that grid in ``region_grid`` and says so in a note; ``pool`` and ``satisfying`` stay the first pool's.
+    ``extrapolate`` (N-116): both pools reach that far beyond the measured range along the outer diameters, and a candidate
+    there carries ``extrapolated`` (module docstring)."""
+    extrapolate = query.check_extrapolate(extrapolate)
     ds = library.dataset(stratum)
     stated, obj, _ = resolve(library, stratum, parse_targets(targets), parse_objective(objective))
     margin = min((r.srf_margin for r in library.manifest.strata[stratum].quantities.values()), default=1.25)
@@ -438,7 +492,7 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
     names = library.columns(stratum, sorted({t.quantity for t in goals} | ({obj[1]} if obj else set())))
     models = {q: library.model(stratum, q) for q in names}
     measured_x = ds.matrix()
-    x = np.unique(np.round(np.vstack([measured_x, pool(library, stratum, pool_size, seed)]), 9), axis=0)
+    x = np.unique(np.round(np.vstack([measured_x, pool(library, stratum, pool_size, seed, extrapolate=extrapolate)]), 9), axis=0)
     index = {tuple(np.round(r, 9)): i for i, r in enumerate(measured_x)}
     row_of = np.array([index.get(tuple(r), -1) for r in x])
     exact = {q: np.array([np.nan if i < 0 or ds.rows[i].values.get(q) is None else ds.rows[i].values[q] for i in row_of]) for q in names}
@@ -449,19 +503,20 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
                 floor[j] = ds.rows[i].stop_hz
     budget = predict_budget(library.limits)
     with threadpool_limits(limits=query.blas_threads(library.limits), user_api="blas"):   # the pools' predictions, like a region's
-        s = score(x, models, goals, obj, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, exact=exact, chunk_bytes=budget)
+        s = score(x, models, goals, obj, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, exact=exact, chunk_bytes=budget,
+                  extrapolate=extrapolate)
         measured_ranked = [i for i in s["ranked"] if row_of[i] >= 0]
         predicted_ranked = [i for i in s["ranked"] if row_of[i] < 0]
         second = None if predicted_ranked else _grid_pool(library, stratum, models, stated, goals, obj, set(index), seed=seed, k=k,
-                                                          rel_sigma_max=rel_sigma_max, budget=budget)
+                                                          rel_sigma_max=rel_sigma_max, budget=budget, extrapolate=extrapolate)
     ranges = library.ranges(stratum)
     notes = library.notes + [f"added {t.quantity} >= {t.value / 1e9:g} GHz: anchored quantities need the resonance above {margin:g} x f0"
                              for t in goals[len(stated):]]
 
     def entry(xs: np.ndarray, pred: dict, i: int, **extra) -> dict:
         params = dict(zip(ds.dims, (float(v) for v in xs[i])))
-        return {"params": params, **extra,
-                "predicted": {q: {k2: float(pred[q][k2][i]) for k2 in ("value", "lo", "hi", "rel_sigma")} for q in names},
+        label = extrapolation({q: models[q] for q in names}, pred, i, params, extrapolate)
+        return {"params": params, **extra, **({"extrapolated": label} if label else {}), "predicted": predicted_entry(pred, i, names),
                 "nearest": [query._evidence(r, names[0], ds.dims) for r in query._nearest_rows(library, stratum, params, 3)]}
 
     shown = diversify(x, measured_ranked, ranges, ds.dims, keep=n, min_spacing=min_spacing)
@@ -485,6 +540,10 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
         notes.append(_second_pool_note(len(x) - len(measured_x), second[2]))
     if rejected:
         notes.append(f"{rejected} leading candidates failed the real build and were skipped")
+    beyond = sum("extrapolated" in c for c in candidates)
+    if beyond:
+        notes.append(f"{beyond} of {len(candidates)} candidates lie beyond the measured range along the outer diameters, within "
+                     f"extrapolate={extrapolate:g} of it: their answers are extrapolated and their intervals widened (extrapolated)")
     out = {"stratum": stratum, "targets": [t.__dict__ for t in goals], "objective": objective, "pool": len(x),
            "satisfying": int(s["ok"].sum()), "satisfying_measured": len(measured_ranked), "measured": measured,
            "candidates": candidates, "notes": notes}
@@ -495,7 +554,7 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
 
 def _grid_pool(library: query.Library, stratum: str, models: dict[str, query.Model], stated: list[Target], goals: list[Target],
                obj: tuple[str, str] | None, rows: set[tuple], *, seed: int, k: float, rel_sigma_max: float | None,
-               budget: int) -> tuple[np.ndarray, dict, dict]:
+               budget: int, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> tuple[np.ndarray, dict, dict]:
     """N-50: the second pool -- ``region.grid_pool``, the grid ``lib.region`` searches for these goals, without the points
     that are library rows (``rows``: their coordinates rounded to 1e-9; a row is a measured design, never a candidate) --
     scored as the first pool is (``score``; every point is inside every model's domain already). Returns the points, their
@@ -503,10 +562,11 @@ def _grid_pool(library: query.Library, stratum: str, models: dict[str, query.Mod
     from ic_opt.library import region  # region builds on this module
 
     gx, floors, grid = region.grid_pool(library, stratum, models, stated, goals, seed=seed, k=k, rel_sigma_max=rel_sigma_max,
-                                        budget=budget)
+                                        budget=budget, extrapolate=extrapolate)
     new = np.array([tuple(np.round(r, 9)) not in rows for r in gx], dtype=bool)
     gx, floors = gx[new], {q: f[new] for q, f in floors.items()}
-    s = score(gx, models, goals, obj, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, check_domain=False, chunk_bytes=budget)
+    s = score(gx, models, goals, obj, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, check_domain=False, chunk_bytes=budget,
+              extrapolate=extrapolate)
     return gx, s, {**grid, "satisfying": int(s["ok"].sum())}
 
 

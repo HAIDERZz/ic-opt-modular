@@ -9,7 +9,10 @@ list of parameter dicts. Each candidate is simulated with the spec of the stratu
 sweep), so a signed-off point is a measurement of the same generation as the library.
 The predictions are taken before anything runs; after EMX the quantities are measured with the library's
 own definitions (band, anchors, margin) and reported per candidate: predicted mu and calibrated bounds,
-measured value, z in the model's space, inside or not. ``adopt=true`` copies every ok observation, sims
+measured value, z in the model's space, inside or not. A candidate beyond the measured range along the outer diameters
+(N-116, within ``lib.query``'s default allowance) is predicted and scored like the others; its quantities carry the
+answer's ``extrapolated`` label and ``widening``, and z is taken against the model's sigma (the widened interval's
+half-width over k x k_scale x widening). ``adopt=true`` copies every ok observation, sims
 directory included, into the part store it was simulated for, under fresh obs ids and an ``origin`` naming
 the sign-off run, so the next dataset build includes it. Real EMX: run with ``--plan`` first; it is the
 approval point. ``threads`` / ``memory_gb`` replace the part's EMX thread count and memory cap (EMX's cap is
@@ -58,8 +61,9 @@ def _part_for(ds: dataset.Dataset, parts: list[str], params: dict) -> str:
 
 
 def _z(y: float, pred: dict, k: float) -> float | None:
-    """z of a measurement against a predicted interval: in log space when the interval is log-symmetric, else linear."""
-    mu, lo, hi, scale = pred["value"], pred["lo"], pred["hi"], k * pred["k_scale"]
+    """z of a measurement against a predicted interval: in log space when the interval is log-symmetric, else linear. An
+    extrapolated answer's interval is widened by its ``widening`` (N-116): z stays against the model's own sigma."""
+    mu, lo, hi, scale = pred["value"], pred["lo"], pred["hi"], k * pred["k_scale"] * pred.get("widening", 1.0)
     if lo > 0 and mu > 0 and y > 0 and abs(math.log(hi / mu) - math.log(mu / lo)) < 1e-6 * max(1.0, abs(math.log(hi / mu))):
         sigma = math.log(hi / mu) / scale
         return math.log(y / mu) / sigma if sigma > 0 else None
@@ -119,6 +123,8 @@ def main(run: Run, *, library: str, candidates: str, stratum: str | None = None,
             for q, pred in before[o.key]["quantities"].items():
                 y = row.values.get(q)
                 e = {"measured": y, "predicted": pred.get("value"), "lo": pred.get("lo"), "hi": pred.get("hi"), "status": pred["status"]}
+                if "extrapolated" in pred:                       # N-116: beyond the measured range, the interval widened
+                    e["extrapolated"], e["widening"] = pred["extrapolated"], pred["widening"]
                 if pred["status"] == "predicted" and y is not None:
                     e["z"] = _z(y, pred, float(k))
                     e["inside"] = pred["lo"] <= y <= pred["hi"]

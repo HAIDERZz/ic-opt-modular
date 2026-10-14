@@ -339,3 +339,21 @@ def build_family_library(root: Path) -> Path:
     doc = {"schema_version": "ic-opt-library-v1", "process_profile": "demo_6m", "strata": strata}
     (root / "library.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
     return root
+
+
+# -- N-116: an inductor table with outer diameters 60-120 um and widths 4-8 um (extrapolation along the outer diameter) -------
+
+EXT_STRATUM = "ind_ext"
+
+
+def build_extrapolate_library(root: Path) -> Path:
+    """Stratum ind_ext: two-turn inductors, outer diameters 60-120 um every 10, widths 4, 6, 8 um, spacings 2 and 3 um (42 rows,
+    a box: every combination); Lp_lf, Qp_peak, SRF_p (inside the 60 GHz sweep from about 90 um up) and Lp@10. The guard's
+    allowance along the outer diameter: 0.15 x min(60, 60) = 9 um below (down to 51), 0.15 x min(60, 120) = 9 above (129)."""
+    write_store(root, "ext", [(float(od), w, s, 2) for od in range(60, 121, 10) for w in (4.0, 6.0, 8.0) for s in (2.0, 3.0)])
+    doc = {"schema_version": "ic-opt-library-v1", "process_profile": "demo_6m",
+           "strata": {EXT_STRATUM: {"generator": "clean_port_ind_sym", "dims": DIMS, "nt_dim": "turns", "parts": [{"store": "ext"}],
+                                    "steps": FAMILY_STEPS,
+                                    "quantities": {"Lp_lf": {}, "Qp_peak": {"band_ghz": STOP_GHZ}, "SRF_p": {}, "Lp": {"anchors_ghz": [10]}}}}}
+    (root / "library.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
+    return root

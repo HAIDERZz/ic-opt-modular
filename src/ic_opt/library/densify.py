@@ -48,6 +48,12 @@ targets renormalised, so the real reduction differs from ``after``, qualitativel
 The work is sized by the library's ``limits`` like ``lib.region``: the uncached models are fitted by
 ``Library.models``, predictions and covariances run with ``query.blas_threads`` BLAS threads within
 ``suggest.predict_budget`` bytes per call.
+
+Beyond the measured range (N-116): the pool stays inside the table's achieved box (where to measure next is a question
+about the table's own domain), but with ``extrapolate`` (``domain.EXTRAPOLATE_FRACTION`` unless given; 0: as before) each
+model answers up to its allowance beyond its own measured range along the outer diameters, as ``lib.query`` does: a
+model whose rows stop short of the box's edge there (a curve at a high frequency, an SRF) counts there too. A pick
+whose answers are extrapolated carries ``extrapolated`` and, per predicted quantity, ``widening`` (``suggest.extrapolation``).
 """
 
 from __future__ import annotations
@@ -63,7 +69,7 @@ from scipy.linalg import solve_triangular
 from scipy.spatial import cKDTree
 from threadpoolctl import threadpool_limits
 
-from ic_opt.library import dataset, gp, query, suggest
+from ic_opt.library import dataset, domain, gp, query, suggest
 from ic_opt.site import EnvelopeError
 
 SCORES = {"ceiling": "max_q sigma_rel_q / rel_sigma_max_q", "typical": "max_q sigma_rel_q / median_rel_q"}
@@ -207,7 +213,8 @@ def norms(score: str, median_rel: dict[str, float | None], rel_sigma_max: float 
 
 def densify(library: query.Library, stratum: str, quantities: list[str] | None = None, *, n: int, pool_size: int = 65536,
             top: int = 4000, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None,
-            score: str = DEFAULT_SCORE, bounds: dict | None = None, threads: int | None = None, workers: int | None = None) -> dict:
+            score: str = DEFAULT_SCORE, bounds: dict | None = None, threads: int | None = None, workers: int | None = None,
+            extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
     """``n`` new geometries of ``stratum`` whose simulation lowers the uncertainty of ``quantities`` (default: every
     column) the most over the sampled domain, with the pool's sigma before and after (see the module docstring), as
     plain JSON data. ``score`` is ``ceiling`` (sigma_rel over the quantity's confidence ceiling, the default) or
@@ -216,8 +223,10 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
     ``lib.query`` reports it). ``rel_sigma_max`` is every quantity's confidence ceiling (None: each quantity's own,
     ``Library.rel_sigma_max``), the one the statistics count against too; ``method`` echoes them. ``threads`` (BLAS
     threads of fitting and prediction) and ``workers`` (fitting processes) are explicit caps within the library's limits,
-    as in ``lib.region``."""
+    as in ``lib.region``. ``extrapolate`` (N-116, module docstring): how far each model answers beyond its own measured
+    range along the outer diameters; the pool stays in the table's box."""
     marks = [time.perf_counter()]
+    extrapolate = query.check_extrapolate(extrapolate)
     ds = library.dataset(stratum)
     names = list(dict.fromkeys(library.columns(stratum, quantities) if quantities else ds.columns))   # a curve at any frequency too
     for label, value in (("n", n), ("pool_size", pool_size), ("top", top)):
@@ -234,7 +243,7 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
     with threadpool_limits(limits=blas, user_api="blas"):
         models = library.models(stratum, names, workers=workers, threads=threads)
         marks.append(time.perf_counter())
-        x, info, floors = _pool(library, stratum, models, pool_size, seed, box)
+        x, info, floors = _pool(library, stratum, models, pool_size, seed, box, extrapolate)
         swept = {q: ~np.isfinite(floors[q]) if q in floors else np.ones(len(x), dtype=bool) for q in names}   # SRF: not above the sweep
         resonant = suggest.below_resonance(x, models, srf_floor=floors, chunk_bytes=budget)                   # N-113: an anchored column
         informs = {q: swept[q] & resonant[q] if q in resonant else swept[q] for q in names}                   # where it has a value
@@ -245,7 +254,7 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
         sel = select(x, {q: models[q].gp for q in names}, n, norm=norm, informs=informs, top=top, budget=budget,
                      n_train=max(query.fit_rows(m) for m in models.values()))
         mark = time.perf_counter()
-        candidates = _candidates(library, stratum, models, names, x, sel, floors, resonant, k, rel_sigma_max, budget)
+        candidates = _candidates(library, stratum, models, names, x, sel, floors, resonant, k, rel_sigma_max, budget, extrapolate)
         marks.append(time.perf_counter())
     notes = _notes(library, names, info, sel, n, top, budget, swept, resonant, models)
     seconds = {"models": marks[1] - marks[0], "pool": marks[2] - marks[1], **sel.seconds, "report": marks[3] - mark,
@@ -336,7 +345,7 @@ def _real(dim: str, value: object) -> float:
 
 
 def _pool(library: query.Library, stratum: str, models: dict[str, query.Model], size: int, seed: int,
-          box: dict[str, tuple[float, float]]) -> tuple[np.ndarray, dict, dict[str, np.ndarray]]:
+          box: dict[str, tuple[float, float]], extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> tuple[np.ndarray, dict, dict[str, np.ndarray]]:
     """The candidates (step 2), what the pool was made of, and per SRF column -- the resonance columns of the anchored ones
     too (``suggest.srf_floors_for``) -- the sweep stop where it is settled above the sweep (NaN elsewhere)."""
     ds = library.dataset(stratum)
@@ -350,7 +359,7 @@ def _pool(library: query.Library, stratum: str, models: dict[str, query.Model], 
     fresh = np.array([tuple(r) not in measured for r in np.round(bounded, 9)], dtype=bool)
     x = bounded[fresh]
     floors = suggest.srf_floors_for(library, stratum, x, models)
-    keep = suggest.in_domain(x, models, srf_floor=floors)
+    keep = suggest.in_domain(x, models, srf_floor=floors, extrapolate=extrapolate)
     for q, m in models.items():                            # the guard's criterion 2 is the sub-GP's floor; stated anyway
         keep &= m.gp.available(x) | np.isfinite(floors.get(q, np.full(len(x), np.nan)))
     x = x[keep]
@@ -378,28 +387,39 @@ def _number(value: float | None) -> float | None:
 
 def _candidates(library: query.Library, stratum: str, models: dict[str, query.Model], names: list[str], x: np.ndarray,
                 sel: Selection, floors: dict[str, np.ndarray], resonant: dict[str, np.ndarray], k: float,
-                rel_sigma_max: float | None, budget: int) -> list[dict]:
+                rel_sigma_max: float | None, budget: int, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> list[dict]:
     """The picks in ``lib_signoff``'s candidate shape: params, the score, relative sigma before any pick and when picked,
     the current prediction with its calibrated k-sigma interval (SRF in Hz; above the sweep: the stop as its lower
-    bound; null for an anchored column where ``resonant`` says the pick lies at or above its resonance) and the nearest
-    measured rows."""
+    bound; null for an anchored column where ``resonant`` says the pick lies at or above its resonance; widened beyond a
+    model's measured range, N-116, with ``widening`` and the pick's ``extrapolated``) and the nearest measured rows."""
     if not sel.picks:
         return []
     ds = library.dataset(stratum)
     xp = x[sel.picks]
     _ok, pred = suggest.predict_all(xp, {q: models[q] for q in names}, k=k, rel_sigma_max=rel_sigma_max,
-                                    srf_floor={q: f[sel.picks] for q, f in floors.items()}, check_domain=False, chunk_bytes=budget)
+                                    srf_floor={q: f[sel.picks] for q, f in floors.items()}, check_domain=False, chunk_bytes=budget,
+                                    extrapolate=extrapolate)
     for q, allowed in resonant.items():                      # N-113: no value above the resonance, as lib.query answers it
         for key in ("value", "lo", "hi"):
             pred[q][key] = np.where(allowed[sel.picks], pred[q][key], np.nan)
     near = _nearest(library, stratum, xp, names)
     out = []
     for t, i in enumerate(sel.picks):
-        out.append({"params": {d: float(v) for d, v in zip(ds.dims, xp[t])},
+        params = {d: float(v) for d, v in zip(ds.dims, xp[t])}
+        for q, allowed in resonant.items():                  # no answer there: nothing extrapolated either
+            if not allowed[i]:
+                pred[q]["depth"][t] = 0.0
+        label = suggest.extrapolation({q: models[q] for q in names}, pred, t, params, extrapolate)
+        predicted = {}
+        for q in names:
+            predicted[q] = {key: _number(float(pred[q][key][t])) for key in ("value", "lo", "hi")}
+            if pred[q]["depth"][t] > 0:
+                predicted[q]["widening"] = float(pred[q]["widening"][t])
+        out.append({"params": params, **({"extrapolated": label} if label else {}),
                     "score": sel.score[t],
                     "rel_sigma": {q: _number(sel.before[q][i]) for q in names},
                     "rel_sigma_at_pick": {q: sel.at_pick[q][t] for q in names},
-                    "predicted": {q: {key: _number(float(pred[q][key][t])) for key in ("value", "lo", "hi")} for q in names},
+                    "predicted": predicted,
                     "nearest": near[t]})
     return out
 

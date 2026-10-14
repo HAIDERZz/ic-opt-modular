@@ -69,6 +69,13 @@ with it and attaches them (``Model.resonance``), so that ``suggest.predict_all``
 same rule.
 
 ``Library.footprints`` reads each row's footprint once per stratum (``dataset.footprints``), only when an answer needs it.
+
+Beyond the measured range (N-116): ``query``'s ``extrapolate`` (``domain.EXTRAPOLATE_FRACTION``, 0.15, unless given; 0 is
+the guard as it was) lets a model answer a point beyond its measured range along the outer diameters, up to the guard's
+allowance (``domain.DomainGuard.check``). Such an answer keeps its status (``predicted`` / ``uncertain``) and gains
+``extrapolated`` -- per dim beyond the range, ``side``, ``beyond``, ``allowance`` and ``measured_range`` -- and
+``widening``, the factor its calibrated interval is widened by (``widening``: 1 + a x depth, ``a`` per column class from
+N-115's edge hold-outs, ``WIDENING``). An answer inside the range is computed exactly as before.
 """
 
 from __future__ import annotations
@@ -77,6 +84,7 @@ import hashlib
 import inspect
 import json
 import multiprocessing
+import numbers
 import os
 import pickle
 import sys
@@ -105,11 +113,26 @@ WINDOWS_MAX_WORKERS = 61                             # ProcessPoolExecutor refus
 THREAD_CAP_VARIABLES = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")   # explicit caps: omp_cap
 DRIVE_SRF = {"Lp": ("SRF_p",), "Qp": ("SRF_p",), "Ls": ("SRF_s",), "Qs": ("SRF_s",), "k": ("SRF_p", "SRF_s")}   # a curve's resonance
                                                      # per drive, where the stratum has no system SRF (Resonance, suggest.implied_srf)
+# N-116: the column classes of N-115 and, per class, the slope ``a`` of an extrapolated answer's interval widening 1 + a x depth
+# (``widening``). Fitted on N-115's edge hold-outs along the outer diameters, the rows the guard answers with extrapolate=0.15
+# (docs/refactor/reports/library_query/extrapolation_widening.py, .json): the smallest a (step 0.01) whose widened calibrated
+# 2-sigma intervals cover 95 % of a class's rows; 0 where today's already do (L_lf 96.4 %, L curves 98.7 %, Q curves 99.8 %).
+COLUMN_CLASS = {"Lp_lf": "L_lf", "Ls_lf": "L_lf", "Lp_res": "L_lf", "Ls_res": "L_lf", "k_lf": "k_lf", "SRF": "SRF", "SRF_p": "SRF",
+                "SRF_s": "SRF", "Qp_peak": "Q_peak", "Qs_peak": "Q_peak", "Lp": "L_curve", "Ls": "L_curve", "Qp": "Q_curve",
+                "Qs": "Q_curve", "k": "k_curve"}       # Lp_res / Ls_res: not in N-115; the low-frequency inductance's class
+WIDENING = {"L_lf": 0.0, "k_lf": 0.75, "SRF": 2.64, "Q_peak": 3.09, "L_curve": 0.0, "Q_curve": 0.0, "k_curve": 0.36}
 
 
 def unit(quantity: str) -> str:
     base = quantity.split("@")[0]
     return UNITS["SRF"] if base.startswith("SRF") else UNITS[base[0]] if base[0] in "LQ" else UNITS["k"]
+
+
+def widening(quantity: str, depth):
+    """The factor an extrapolated answer's calibrated interval is widened by (N-116): 1 + a x ``depth``, ``depth`` how far the
+    point lies beyond the model's measured range in allowances at ``domain.EXTRAPOLATE_FRACTION`` (``DomainGuard.depth``: 1 at
+    the default allowance's end) and ``a`` the column class's (``WIDENING``). 1 inside the range."""
+    return 1.0 + WIDENING[COLUMN_CLASS[quantity.split("@")[0]]] * np.asarray(depth, dtype=float)
 
 
 def fit_unit(quantity: str) -> float:
@@ -871,12 +894,14 @@ def _thread_budget(limits: site.HostLimits, threads: int) -> int:
 
 
 def query(library: Library, stratum: str, params: dict, quantities: list[str] | None = None, *, k: float = 2.0,
-          rel_sigma_max: float | None = None) -> dict:
+          rel_sigma_max: float | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
     """Measured values at an exact library point, else per-quantity predictions with calibrated k-sigma bounds and domain verdicts;
     ``notes`` carries the library's (``Library.notes``). ``rel_sigma_max`` is the confidence ceiling for every quantity; None:
     each quantity's own (``Library.rel_sigma_max``), which a prediction reports with its ``rel_sigma``. ``quantities`` may
     name extension columns (``Library.columns``: a declared curve at any frequency); the answer names them canonically. A
-    curve column is answered only below its resonance (``_predict``, N-113)."""
+    curve column is answered only below its resonance (``_predict``, N-113). ``extrapolate`` is the fraction of the measured
+    range a model answers beyond it along the outer diameters (N-116, module docstring); 0 answers as before N-116."""
+    extrapolate = check_extrapolate(extrapolate)
     ds = library.dataset(stratum)
     missing = [d for d in ds.dims if d not in params]
     if missing:
@@ -893,12 +918,20 @@ def query(library: Library, stratum: str, params: dict, quantities: list[str] | 
     x = np.array([[coords[d] for d in ds.dims]])
     found: dict[str, dict] = {}                          # the answers so far: a resonance several curves share is predicted once
     for q in wanted:
-        out["quantities"][q] = _predict(library, stratum, q, coords, x, k, rel_sigma_max, found)
+        out["quantities"][q] = _predict(library, stratum, q, coords, x, k, rel_sigma_max, found, extrapolate)
     return out
 
 
+def check_extrapolate(value) -> float:
+    """A call's ``extrapolate`` as a float: a number >= 0 (0 switches extrapolation off), else ValueError."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real) or not np.isfinite(value) or value < 0:
+        raise ValueError(f"extrapolate is the fraction of the measured range a model answers beyond it along the outer diameters: "
+                         f"a number >= 0 (0: none), got {value!r}")
+    return float(value)
+
+
 def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None,
-             found: dict[str, dict] | None = None) -> dict:
+             found: dict[str, dict] | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
     """Column ``q``'s answer at a point that is no library row, kept in ``found`` (the answers given so far in this call). A
     column without a resonance (``Library.resonance``) answers from its own model (``_answer``). A curve column first takes
     its resonance's answer at the point, through this same path (above the sweep and the domain guard work as for any SRF
@@ -915,16 +948,17 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
 
     Two resonances (``k`` of a stratum without the system SRF: both drives'): one at or below the threshold makes the curve
     ``above_resonance`` (the lower named), else one out of its domain makes it ``out_of_domain``, else the lower bound that
-    reaches lowest is the one ``near_resonance`` names."""
+    reaches lowest is the one ``near_resonance`` names. An extrapolated resonance (N-116) decides as any other; ``srf``
+    then carries its ``extrapolated``."""
     found = {} if found is None else found
     if q in found:
         return found[q]
     limit = library.resonance(stratum, q)
     if limit is None:
-        found[q] = _answer(library, stratum, q, coords, x, k, rel_sigma_max)
+        found[q] = _answer(library, stratum, q, coords, x, k, rel_sigma_max, extrapolate)
         return found[q]
     threshold = limit.threshold_hz
-    srf = {c: _predict(library, stratum, c, coords, x, k, rel_sigma_max, found) for c in limit.columns}
+    srf = {c: _predict(library, stratum, c, coords, x, k, rel_sigma_max, found, extrapolate) for c in limit.columns}
     below = [c for c, a in srf.items() if a["status"] in ("predicted", "uncertain") and a["value"] <= threshold]
     refused = [c for c, a in srf.items() if a["status"] == "out_of_domain"]
     if below:
@@ -934,14 +968,15 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
         out = {"status": "above_resonance",
                "reason": f"the resonance predicted here ({named}{a['value'] / 1e9:.4g} GHz) is at or below srf_margin x f "
                          f"({threshold / 1e9:.4g} GHz): a measured row there has no value for this column",
-               "srf": {"column": c, "value": a["value"], "lo": a["lo"], "hi": a["hi"]}, "threshold_hz": threshold,
+               "srf": {"column": c, "value": a["value"], "lo": a["lo"], "hi": a["hi"],
+                       **({"extrapolated": a["extrapolated"]} if "extrapolated" in a else {})}, "threshold_hz": threshold,
                "frequency_hz": limit.frequency_hz, "srf_margin": limit.srf_margin, "unit": unit(q),
                "nearest": [_evidence(m.rows[i], q, library.dataset(stratum).dims, dist) for i, dist in m.guard.nearest(coords)]}
     elif refused:
         a = srf[refused[0]]
         out = {**a, "reason": f"resonance model: {a['reason']}", "unit": unit(q)}
     else:
-        out = _answer(library, stratum, q, coords, x, k, rel_sigma_max)
+        out = _answer(library, stratum, q, coords, x, k, rel_sigma_max, extrapolate)
         lows = {c: a["lower_bound"] if a["status"] == "above_sweep" else a["lo"] for c, a in srf.items()}
         near = [c for c, a in srf.items() if lows[c] < threshold or (a["status"] != "above_sweep" and lows[c] == threshold)]
         if near:
@@ -951,9 +986,11 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
     return out
 
 
-def _answer(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None) -> dict:
+def _answer(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None,
+            extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
     """``q``'s answer from its own model (and, for SRF, the nearest rows above their sweep): ``above_sweep``, ``out_of_domain``,
-    ``predicted`` or ``uncertain``."""
+    ``predicted`` or ``uncertain``; beyond the measured range within the allowance (N-116), ``predicted`` or ``uncertain`` with
+    ``extrapolated`` and ``widening``, the interval widened by it."""
     ds = library.dataset(stratum)
     if q.startswith("SRF"):
         near = _nearest_rows(library, stratum, coords, 5)
@@ -965,7 +1002,7 @@ def _answer(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray,
     m = library.model(stratum, q)
     scale = fit_unit(q)
     try:
-        verdict = m.guard.check(coords)
+        verdict = m.guard.check(coords, extrapolate=extrapolate)
     except domain.OutOfDomainError as exc:
         return {"status": "out_of_domain", "criterion": exc.criterion, "reason": exc.reason, "unit": unit(q),
                 "nearest": [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in exc.nearest], "fill_points": exc.fill_points}
@@ -973,12 +1010,18 @@ def _answer(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray,
         return {"status": "out_of_domain", "criterion": 2, "reason": "no model for this turns level (too few usable rows)", "unit": unit(q),
                 "nearest": [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in verdict.nearest]}
     mu, sigma = m.gp.predict(x)
-    lo, hi = m.gp.predict_bounds(x, k)
+    if verdict.extrapolated:                           # N-116: the calibrated interval widened with the distance beyond the range
+        wide = float(widening(q, verdict.depth))
+        lo, hi = gp.prediction_bounds(mu, sigma, log_target=m.gp.log_target, k=k * m.gp.k_scale * wide)
+    else:
+        lo, hi = m.gp.predict_bounds(x, k)
     rel = float(sigma[0] / abs(mu[0])) if mu[0] else float("inf")
     ceiling = m.rel_sigma_max if rel_sigma_max is None else float(rel_sigma_max)
     out = {"status": "predicted" if domain.sigma_ok(mu, sigma, ceiling)[0] else "uncertain",
            "value": float(mu[0]) * scale, "lo": float(lo[0]) * scale, "hi": float(hi[0]) * scale, "k": k,
            "k_scale": m.calibration["k_scale"], "rel_sigma": rel, "rel_sigma_max": ceiling, "unit": unit(q)}
+    if verdict.extrapolated:
+        out["extrapolated"], out["widening"] = verdict.extrapolated, wide
     if isinstance(m.gp, composed.ComposedGP):          # where the value came from: the parts, the rise, what is left
         out["composition"] = m.gp.explain(x, srf_unit=fit_unit("SRF"))[0]
     out["nearest"] = [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in verdict.nearest]

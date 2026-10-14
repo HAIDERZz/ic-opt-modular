@@ -64,7 +64,8 @@ def test_a_target_one_table_reaches_comes_from_it_and_the_other_says_its_measure
     window = list(suggest.Target("Lp_lf", "target", 1.5e-9, 0.05).window())
     assert answer["unreachable"] == {"ind_o8": {
         "kind": "outside_range",
-        "reason": f"Lp_lf window 1.425-1.575 nH lies below this table's measured {low * 1e9:.4g}-{high * 1e9:.4g} nH",
+        "reason": f"Lp_lf window 1.425-1.575 nH lies below this table's measured {low * 1e9:.4g}-{high * 1e9:.4g} nH, "
+                  "even with up to 15% extrapolation of the outer diameter",
         "ranges": {"Lp_lf": [low, high]}, "outside": [{"quantity": "Lp_lf", "window": window, "range": [low, high], "side": "below"}],
         "closest": None}}
     assert answer["notes"] == [f"Lp_lf window 1.425-1.575 nH: designs in ind_o2; ind_o8 reaches Lp_lf {low * 1e9:.4g} nH at the least"]

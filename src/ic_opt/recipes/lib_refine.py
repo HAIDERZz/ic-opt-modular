@@ -247,8 +247,9 @@ def _answer(c: str, cols: list[str], answers: dict) -> dict:
     status = _worse([qp["status"], qs["status"]])
     if any(a.get("value") is None for a in (qp, qs)):
         return {"status": status, "value": None}
+    label = {d: e for a in (qp, qs) for d, e in a.get("extrapolated", {}).items()}     # N-116: either Q extrapolated
     return {"status": status, "value": min(qp["value"], qs["value"]), "lo": min(qp.get("lo", math.nan), qs.get("lo", math.nan)),
-            "hi": min(qp.get("hi", math.nan), qs.get("hi", math.nan)), "from": cols}
+            "hi": min(qp.get("hi", math.nan), qs.get("hi", math.nan)), "from": cols, **({"extrapolated": label} if label else {})}
 
 
 def verdict(predicted: dict[str, dict], srf: dict | None, axes: dict[str, index.Axis], margin_hz: float) -> tuple[str | None, str]:
@@ -546,10 +547,11 @@ def _preflight_ranked(run: Run, part: str, spec: Spec, ranked: list[Neighbour], 
 # -- the check, the adoption, the report ---------------------------------------------------------------------------------
 
 def _compact(answer: dict | None) -> dict | None:
-    """An answer as the report keeps it: no evidence rows."""
+    """An answer as the report keeps it: no evidence rows (an extrapolated one keeps its label and widening, N-116)."""
     if answer is None:
         return None
-    return {k: v for k, v in answer.items() if k in ("status", "value", "lo", "hi", "rel_sigma", "lower_bound", "reason", "from")}
+    return {k: v for k, v in answer.items() if k in ("status", "value", "lo", "hi", "rel_sigma", "lower_bound", "reason", "from",
+                                                     "extrapolated", "widening")}
 
 
 def check_device(run: Run, p: Pass) -> list[Observation]:
@@ -579,6 +581,8 @@ def check_device(run: Run, p: Pass) -> list[Observation]:
         for q in model_cols:                       # as lib_signoff compares them: every model column asked
             pred, y = nb.answers[q], got["models"].get(q)
             e = {"measured": y, "predicted": pred.get("value"), "lo": pred.get("lo"), "hi": pred.get("hi"), "status": pred["status"]}
+            if "extrapolated" in pred:                       # N-116: beyond the measured range, the interval widened
+                e["extrapolated"], e["widening"] = pred["extrapolated"], pred["widening"]
             if pred["status"] == "predicted" and y is not None:
                 e["z"] = _z(y, pred, K)
                 e["inside"] = pred["lo"] <= y <= pred["hi"]

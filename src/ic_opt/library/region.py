@@ -41,6 +41,13 @@ compared SRF in the wrong unit, which emptied a whole run).
 The work is sized by the library's ``limits`` (site.yaml's hosts.local unless the library was given its own): the
 uncached models are fitted by ``Library.models``, predictions run with ``query.blas_threads`` BLAS threads in chunks
 of ``suggest.predict_budget`` bytes.
+
+Beyond the measured range (N-116): with ``extrapolate`` (``domain.EXTRAPOLATE_FRACTION`` unless given; 0: as before) the
+coarse pool (``suggest.pool``) and the grid's bracket reach that far beyond the table's measured range along the outer
+diameters (``domain.allowances``), every model answers up to its own allowance (``suggest.predict_all``), and ``edge``
+measures against that reach. A level whose points include extrapolated answers says so in ``extrapolated``: how many,
+and per outer diameter the part of its range beyond the table's measured one (``beyond_measured``); a candidate carries
+its ``extrapolated`` label as ``lib.suggest``'s do, a sample point ``extrapolated: true``.
 """
 
 from __future__ import annotations
@@ -54,7 +61,7 @@ import time
 import numpy as np
 from threadpoolctl import threadpool_limits
 
-from ic_opt.library import dataset, query, suggest
+from ic_opt.library import dataset, domain, query, suggest
 
 RELAX = 0.10                                         # the coarse pass widens every stated window by this fraction unless told otherwise
 POOL_SIZE = 32768                                    # the coarse pass's Sobol points (besides the library's rows) unless told otherwise
@@ -68,7 +75,7 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
            pool_size: int = POOL_SIZE, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, relax: float = RELAX,
            group_by: list[str] | None = None, trend: tuple[str, str] | None = None, n: int = 8, min_spacing: float = 0.05,
            verify_build: bool = False, sample_size: int = 5000, threads: int | None = None,
-           workers: int | None = None, level_points: str | None = None) -> dict:
+           workers: int | None = None, level_points: str | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
     """The region of ``stratum`` whose predictions meet ``targets`` (see the module docstring), as plain JSON data.
 
     ``steps`` gives grid steps for some or all continuous dims (multiples of the manifest steps); ``group_by`` names
@@ -80,9 +87,11 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     OMP_NUM_THREADS, OPENBLAS_NUM_THREADS or MKL_NUM_THREADS lowers the threads (``query.omp_cap``).
     ``level_points`` (``robust`` or ``mean``, N-106) adds ``level_points`` at the end of the answer: every grid point of
     that level, in the grid's order, ``{"level", "dims", "rows"}`` -- what ``lib.region out=`` writes as a pcell device's
-    allowed combinations (``ic_opt.library.combinations``)."""
+    allowed combinations (``ic_opt.library.combinations``). ``extrapolate`` (N-116): how far beyond the measured range along
+    the outer diameters the pool, the grid and the models reach (module docstring)."""
     if level_points not in (None, "robust", "mean"):
         raise ValueError(f"level is robust or mean, got {level_points!r}")
+    extrapolate = query.check_extrapolate(extrapolate)
     marks = [time.perf_counter()]
     ds = library.dataset(stratum)
     stated = suggest.parse_targets(targets)
@@ -105,17 +114,21 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
         models = library.models(stratum, names, workers=workers, threads=threads)
         marks.append(time.perf_counter())
         survivors, pooled, confident, alone = _coarse(library, stratum, models, stated, goals, pool_size, seed, k, rel_sigma_max,
-                                                      relax, budget)
+                                                      relax, budget, extrapolate)
         marks.append(time.perf_counter())
         if len(survivors):
-            x, grid, grid_notes = _grid(library, stratum, survivors, explicit, levels_per_dim, max_points)
+            x, grid, grid_notes = _grid(library, stratum, survivors, explicit, levels_per_dim, max_points, extrapolate)
             notes += grid_notes
         else:
             x, grid = np.empty((0, len(ds.dims))), {"steps": {}, "bracket": {}, "points": 0, "coarsened": 1}
             notes.append(_empty_note(pooled, confident, alone, relax))
-        x, floors = _inside(library, stratum, x, models)
+        x, floors = _inside(library, stratum, x, models, extrapolate)
         marks.append(time.perf_counter())
-        ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, check_domain=True, chunk_bytes=budget)
+        ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, check_domain=True, chunk_bytes=budget,
+                                       extrapolate=extrapolate)
+        beyond = np.zeros(len(x), dtype=bool)                # N-116: a point where some quantity's answer is extrapolated
+        for q in names:
+            beyond |= pred[q]["depth"] > 0
         robust, mean = ok & suggest.satisfy(pred, goals, "robust"), ok & suggest.satisfy(pred, goals, "mean")
         marks.append(time.perf_counter())
         binding = {t.quantity: int((ok & suggest.satisfy(pred, [t], "mean")).sum()) for t in goals}
@@ -125,11 +138,15 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
                          f"({binding[tight]} of {int(ok.sum())} confident points)")
         level = "robust" if robust.any() else "mean"
         candidates, rejected = _candidates(library, stratum, x, pred, names, goals, obj, robust if robust.any() else mean,
-                                           n, min_spacing, verify_build)
+                                           n, min_spacing, verify_build, models, extrapolate)
         if rejected:
             notes.append(f"{rejected} leading candidates failed the real build and were skipped")
+        if (beyond & mean).any():
+            notes.append(f"{int((beyond & robust).sum())} robust and {int((beyond & mean).sum())} mean points have answers extrapolated "
+                         f"beyond the measured range along the outer diameters (extrapolate={extrapolate:g}); each level's "
+                         "extrapolated says where")
         measured = _measured(ds, goals, names, library.footprints(stratum) if _any_measured(ds, goals) else {})
-        missed = _unanswered(library, stratum, measured, models, k, rel_sigma_max, budget)
+        missed = _unanswered(library, stratum, measured, models, k, rel_sigma_max, budget, extrapolate)
         if missed:
             notes.append(f"{len(missed)} of {len(measured)} measured designs meeting every target lie where a model has no confident "
                          f"answer, so the region cannot contain them: {', '.join(missed[:3])}{' ...' if len(missed) > 3 else ''}")
@@ -138,10 +155,10 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
                "rel_sigma_max": {q: models[q].rel_sigma_max if rel_sigma_max is None else float(rel_sigma_max) for q in names},
                "grid": {"steps": grid["steps"], "bracket": grid["bracket"], "relax": relax, "points": grid["points"], "in_domain": len(x),
                         "confident": int(ok.sum()), "coarsened": grid["coarsened"], "auto_steps": not steps},
-               "levels": {"robust": _level(x, robust, ds.dims), "mean": _level(x, mean, ds.dims)},
-               "binding": binding, "edge": _edge(x, mean, ds, step), "group_by": _group_by(x, ds.dims, by, robust, mean, pred, obj),
+               "levels": {"robust": _level(x, robust, ds, beyond), "mean": _level(x, mean, ds, beyond)},
+               "binding": binding, "edge": _edge(x, mean, ds, step, extrapolate), "group_by": _group_by(x, ds.dims, by, robust, mean, pred, obj),
                "trend": _trend(x, ds.dims, trend, ok, pred, goals), "candidates": candidates, "candidates_level": level,
-               "measured": measured, "points_sample": _sample(x, ds.dims, robust, mean, pred, names, sample_size, seed)}
+               "measured": measured, "points_sample": _sample(x, ds.dims, robust, mean, pred, names, sample_size, seed, beyond)}
         marks.append(time.perf_counter())
     out["seconds"] = {**dict(zip(STAGES, (round(b - a, 3) for a, b in itertools.pairwise(marks)))), "total": round(marks[-1] - marks[0], 3)}
     out["notes"] = notes
@@ -202,16 +219,17 @@ def _relaxed(t: suggest.Target, relax: float) -> suggest.Target:
 
 def _coarse(library: query.Library, stratum: str, models: dict, stated: list[suggest.Target], goals: list[suggest.Target],
             pool_size: int, seed: int, k: float, rel_sigma_max: float | None, relax: float,
-            budget: int) -> tuple[np.ndarray, int, int, dict[str, int]]:
+            budget: int, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> tuple[np.ndarray, int, int, dict[str, int]]:
     """The coarse candidates meeting every target at the mean level with the stated windows ``relax`` wider (the implied
     SRF as it is); the candidate count, the confident count, and the count meeting each relaxed target alone.
 
     The candidates are ``suggest``'s: the library's rows and the Sobol pool. The rows matter here: they sit on the
     faces and corners of the sampled domain (concentric windings, the extreme widths), where a Sobol pool is sparse,
     so a bracket from the pool alone can cut off part of a region that measured designs prove is there."""
-    x = np.unique(np.round(np.vstack([library.dataset(stratum).matrix(), suggest.pool(library, stratum, pool_size, seed)]), 9), axis=0)
+    x = np.unique(np.round(np.vstack([library.dataset(stratum).matrix(),
+                                      suggest.pool(library, stratum, pool_size, seed, extrapolate=extrapolate)]), 9), axis=0)
     floors = suggest.srf_floors_for(library, stratum, x, models)
-    ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, chunk_bytes=budget)
+    ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, chunk_bytes=budget, extrapolate=extrapolate)
     loose = [_relaxed(t, relax) if t in stated else t for t in goals]
     alone = {t.quantity: int((ok & suggest.satisfy(pred, [t], "mean")).sum()) for t in loose}
     return x[ok & suggest.satisfy(pred, loose, "mean")], len(x), int(ok.sum()), alone
@@ -220,19 +238,19 @@ def _coarse(library: query.Library, stratum: str, models: dict, stated: list[sug
 def grid_pool(library: query.Library, stratum: str, models: dict, stated: list[suggest.Target], goals: list[suggest.Target], *,
               seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, relax: float = RELAX, pool_size: int = POOL_SIZE,
               levels_per_dim: int = LEVELS_PER_DIM, max_points: int = MAX_POINTS,
-              budget: int) -> tuple[np.ndarray, dict[str, np.ndarray], dict]:
+              budget: int, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> tuple[np.ndarray, dict[str, np.ndarray], dict]:
     """The grid ``region`` predicts for these goals, by the same steps (the coarse pass, the grid over its survivors'
     bracket, the points inside every model's domain): with the defaults, the grid of a ``lib.region`` call left at its
     defaults. ``suggest`` draws its second pool here (N-50). Returns the points, their floors (``_inside``: every SRF
     and resonance column's, ``suggest.srf_floors_for``) and the grid as ``region``'s answer describes it (``steps``,
     ``bracket``, ``points``, ``coarsened``) with ``relax``, ``in_domain`` and ``survivors`` (the coarse candidates it
     brackets); no survivor, no point."""
-    survivors = _coarse(library, stratum, models, stated, goals, pool_size, seed, k, rel_sigma_max, relax, budget)[0]
+    survivors = _coarse(library, stratum, models, stated, goals, pool_size, seed, k, rel_sigma_max, relax, budget, extrapolate)[0]
     if not len(survivors):
         return (np.empty((0, len(library.dataset(stratum).dims))), {},
                 {"steps": {}, "bracket": {}, "points": 0, "coarsened": 1, "relax": relax, "in_domain": 0, "survivors": 0})
-    x, grid, _notes = _grid(library, stratum, survivors, {}, levels_per_dim, max_points)
-    x, floors = _inside(library, stratum, x, models)
+    x, grid, _notes = _grid(library, stratum, survivors, {}, levels_per_dim, max_points, extrapolate)
+    x, floors = _inside(library, stratum, x, models, extrapolate)
     return x, floors, {**grid, "relax": relax, "in_domain": len(x), "survivors": len(survivors)}
 
 
@@ -249,12 +267,18 @@ def _empty_note(pooled: int, confident: int, alone: dict[str, int], relax: float
 
 
 def _grid(library: query.Library, stratum: str, survivors: np.ndarray, explicit: dict[str, float], levels_per_dim: int,
-          max_points: int) -> tuple[np.ndarray, dict, list[str]]:
+          max_points: int, extrapolate: float = 0.0) -> tuple[np.ndarray, dict, list[str]]:
     """The grid over the survivors' bracket, its description (steps, bracket, points, coarsened) and notes. An automatic
     step follows from the survivors' span (the bracket before its padding; the library range if they share one value);
-    the padding is one grid step at the coarsening ``m`` in force, so the grid always reaches past the survivors."""
+    the padding is one grid step at the coarsening ``m`` in force, so the grid always reaches past the survivors. The
+    bracket stays inside the library's ranges, along the outer diameters widened by ``extrapolate``'s allowances (N-116)."""
     ds = library.dataset(stratum)
     ranges = library.ranges(stratum)
+    reach = ranges                                       # where the bracket may go
+    if extrapolate > 0:                                  # N-116: as far as the models answer beyond the measured range
+        achieved = ds.matrix()
+        below, above = domain.allowances(ds.dims, achieved.min(axis=0), achieved.max(axis=0), extrapolate)
+        reach = {d: (ranges[d][0] - below[i], ranges[d][1] + above[i]) for i, d in enumerate(ds.dims)}
     lattice = library.manifest.strata[stratum].steps
     lo, hi = survivors.min(axis=0), survivors.max(axis=0)
     step = {}
@@ -265,7 +289,7 @@ def _grid(library: query.Library, stratum: str, survivors: np.ndarray, explicit:
 
     def bracket_at(m: int) -> dict[str, tuple[float, float]]:
         pad = {d: step[d] * m if d in step else 1.0 for d in ds.dims}          # turns: one level
-        return {d: (max(float(lo[i]) - pad[d], ranges[d][0]), min(float(hi[i]) + pad[d], ranges[d][1])) for i, d in enumerate(ds.dims)}
+        return {d: (max(float(lo[i]) - pad[d], reach[d][0]), min(float(hi[i]) + pad[d], reach[d][1])) for i, d in enumerate(ds.dims)}
 
     slices = _slices(ds, bracket_at(1))
     m = 1
@@ -335,33 +359,51 @@ def _product(axis: list[np.ndarray]) -> np.ndarray:
     return np.stack(np.meshgrid(*axis, indexing="ij"), axis=-1).reshape(-1, len(axis))
 
 
-def _inside(library: query.Library, stratum: str, x: np.ndarray, models: dict) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    """The grid points inside every model's domain (``suggest.in_domain``, the gate ``predict_all`` applies) and their
-    SRF floors (``suggest.srf_floors_for``: the resonance columns' too), so that only those are predicted."""
+def _inside(library: query.Library, stratum: str, x: np.ndarray, models: dict,
+            extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """The grid points inside every model's domain (``suggest.in_domain``, the gate ``predict_all`` applies, with the same
+    ``extrapolate``) and their SRF floors (``suggest.srf_floors_for``: the resonance columns' too), so that only those are
+    predicted."""
     if not len(x):
         return x, {}
     floors = suggest.srf_floors_for(library, stratum, x, models)
-    keep = suggest.in_domain(x, models, srf_floor=floors)
+    keep = suggest.in_domain(x, models, srf_floor=floors, extrapolate=extrapolate)
     return x[keep], {q: f[keep] for q, f in floors.items()}
 
 
 # -- summaries ----------------------------------------------------------------------------------------------------------
 
-def _level(x: np.ndarray, mask: np.ndarray, dims: list[str]) -> dict:
+def _level(x: np.ndarray, mask: np.ndarray, ds: dataset.Dataset, beyond: np.ndarray | None = None) -> dict:
+    """A level's count and per-dim ranges; where some of its points have extrapolated answers (``beyond``, N-116), also
+    ``extrapolated``: their count and, per outer-diameter dim, the part of the level's range that lies beyond the table's
+    measured range (``beyond_measured``: ``measured`` and ``below`` / ``above``, the stretches outside it)."""
     sel = x[mask]
-    return {"count": int(mask.sum()),
-            "ranges": {d: [float(sel[:, i].min()), float(sel[:, i].max())] for i, d in enumerate(dims)} if len(sel) else {}}
+    out = {"count": int(mask.sum()),
+           "ranges": {d: [float(sel[:, i].min()), float(sel[:, i].max())] for i, d in enumerate(ds.dims)} if len(sel) else {}}
+    if beyond is not None and (mask & beyond).any():
+        achieved, outside = ds.matrix(), {}
+        for i, d in enumerate(ds.dims):
+            if d not in domain.EXTRAPOLATE_DIMS:
+                continue
+            lo, hi, a, b = float(sel[:, i].min()), float(sel[:, i].max()), float(achieved[:, i].min()), float(achieved[:, i].max())
+            part = {**({"below": [lo, a]} if lo < a - 1e-9 else {}), **({"above": [b, hi]} if hi > b + 1e-9 else {})}
+            if part:
+                outside[d] = {"measured": [a, b], **part}
+        out["extrapolated"] = {"count": int((mask & beyond).sum()), "beyond_measured": outside}
+    return out
 
 
-def _edge(x: np.ndarray, mean: np.ndarray, ds: dataset.Dataset, step: dict[str, float]) -> dict:
+def _edge(x: np.ndarray, mean: np.ndarray, ds: dataset.Dataset, step: dict[str, float], extrapolate: float = 0.0) -> dict:
     """Per dim, whether the mean set reaches the library's coverage: no grid step fits between it and the achieved
-    range (``Library.ranges`` except for a dim with one value, which the set then touches on both sides)."""
+    range (``Library.ranges`` except for a dim with one value, which the set then touches on both sides), along the outer
+    diameters widened by ``extrapolate``'s allowances (N-116: as far as the models answer)."""
     sel, achieved = x[mean], ds.matrix()
+    below, above = domain.allowances(ds.dims, achieved.min(axis=0), achieved.max(axis=0), extrapolate)
     out = {}
     for i, d in enumerate(ds.dims):
         if len(sel):
-            out[d] = {"at_min": bool(sel[:, i].min() - step[d] < achieved[:, i].min() - 1e-9),
-                      "at_max": bool(sel[:, i].max() + step[d] > achieved[:, i].max() + 1e-9)}
+            out[d] = {"at_min": bool(sel[:, i].min() - step[d] < achieved[:, i].min() - below[i] - 1e-9),
+                      "at_max": bool(sel[:, i].max() + step[d] > achieved[:, i].max() + above[i] + 1e-9)}
         else:
             out[d] = {"at_min": False, "at_max": False}
     return out
@@ -408,9 +450,11 @@ def _trend(x: np.ndarray, dims: list[str], trend: tuple[str, str] | None, ok: np
 
 
 def _candidates(library: query.Library, stratum: str, x: np.ndarray, pred: dict, names: list[str], goals: list[suggest.Target],
-                obj: tuple[str, str] | None, pick: np.ndarray, n: int, min_spacing: float, verify_build: bool) -> tuple[list[dict], int]:
+                obj: tuple[str, str] | None, pick: np.ndarray, n: int, min_spacing: float, verify_build: bool,
+                models: dict | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> tuple[list[dict], int]:
     """Up to ``n`` of the ``pick`` points, ranked as ``score`` ranks and kept ``min_spacing`` apart, in ``suggest``'s entry
-    shape; with ``verify_build`` each is built with the real generator first and a failure is skipped and counted."""
+    shape (``extrapolated`` from ``models``' guards where a quantity's answer is: N-116); with ``verify_build`` each is
+    built with the real generator first and a failure is skipped and counted."""
     if n < 1:
         return [], 0
     ds = library.dataset(stratum)
@@ -427,7 +471,10 @@ def _candidates(library: query.Library, stratum: str, x: np.ndarray, pred: dict,
                 continue
             entry["build"], box = suggest.drawn(build)
             entry.update(box)                            # the footprint of the geometry the generator drew
-        entry["predicted"] = {q: {key: float(pred[q][key][i]) for key in ("value", "lo", "hi", "rel_sigma")} for q in names}
+        label = suggest.extrapolation({q: models[q] for q in names}, pred, i, params, extrapolate) if models else {}
+        if label:
+            entry["extrapolated"] = label
+        entry["predicted"] = suggest.predicted_entry(pred, i, names)
         entry["nearest"] = [query._evidence(r, names[0], ds.dims) for r in query._nearest_rows(library, stratum, params, 3)]
         out.append(entry)
         if len(out) == n:
@@ -477,7 +524,7 @@ def _measured(ds: dataset.Dataset, goals: list[suggest.Target], names: list[str]
 
 
 def _unanswered(library: query.Library, stratum: str, measured: list[dict], models: dict, k: float, rel_sigma_max: float | None,
-                budget: int) -> list[str]:
+                budget: int, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> list[str]:
     """``part/obs_id`` of the measured designs where ``predict_all``'s gate fails (a model's domain, its confidence, the
     resonance): no grid point there can be feasible, whatever the design measured."""
     if not measured:
@@ -485,15 +532,17 @@ def _unanswered(library: query.Library, stratum: str, measured: list[dict], mode
     dims = library.dataset(stratum).dims
     x = np.array([[m["params"][d] for d in dims] for m in measured])
     floors = suggest.srf_floors_for(library, stratum, x, models)
-    ok, _ = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, chunk_bytes=budget)
+    ok, _ = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, chunk_bytes=budget, extrapolate=extrapolate)
     return [f"{m['part']}/{m['obs_id']}" for m, good in zip(measured, ok) if not good]
 
 
 def _sample(x: np.ndarray, dims: list[str], robust: np.ndarray, mean: np.ndarray, pred: dict, names: list[str], size: int,
-            seed: int) -> list[dict]:
-    """At most ``size`` points of the mean set, drawn with a seeded generator, for plots."""
+            seed: int, beyond: np.ndarray | None = None) -> list[dict]:
+    """At most ``size`` points of the mean set, drawn with a seeded generator, for plots; a point with an extrapolated
+    answer (``beyond``, N-116) says ``extrapolated: true``."""
     idx = np.nonzero(mean)[0]
     if len(idx) > size:
         idx = np.sort(np.random.default_rng(seed).choice(idx, size=max(size, 0), replace=False))
     return [{"params": {d: float(x[i, j]) for j, d in enumerate(dims)}, "level": "robust" if robust[i] else "mean",
+             **({"extrapolated": True} if beyond is not None and beyond[i] else {}),
              "predicted": {q: float(pred[q]["value"][i]) for q in names}} for i in idx]

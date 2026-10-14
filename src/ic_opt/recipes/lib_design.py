@@ -1,13 +1,16 @@
 """Built-in recipe: lib_design -- optimize a device on library predictions (no EMX), report the leaders with their bounds.
 
-``ic-opt run lib_design PROJECT library=<library root> [stratum=...] budget=200 strategy=turbo top=5 [rel_sigma_max=R] [cache_dir=DIR]``
+``ic-opt run lib_design PROJECT library=<library root> [stratum=...] budget=200 strategy=turbo top=5 [rel_sigma_max=R] [extrapolate=F] [cache_dir=DIR]``
 
 The project's spec is an em_only spec (one pcell device, its variables, device metrics, constraints,
 objective). Every candidate is built by the pcell (real generator, product DRC) and scored from the
 library; the leaders are written to ``reports/lib_design.json`` with each metric's calibrated interval.
 They are predictions: ``lib_signoff`` runs them through real EMX (after ``--plan`` and approval).
 A prediction whose sigma / mu exceeds its ceiling -- ``rel_sigma_max`` when given, else the quantity's in
-library.yaml, else 0.15 -- fails the point as ``failed:predict``. Each leader carries its ``footprint``, the box around
+library.yaml, else 0.15 -- fails the point as ``failed:predict``. ``extrapolate`` (N-116; 0.15 unless given, 0: none) is
+the fraction of a model's measured range it answers beyond it along the outer diameters, as ``lib.query`` does: a
+point there is scored (its answers labelled ``extrapolated``, their intervals widened), farther it fails as out of domain;
+the stage's identity names it, so its predictions are a generation of their own. Each leader carries its ``footprint``, the box around
 the device its pcell drew (its GDS under the point's sims directory) without the ground fixture
 (``ic_opt.em.pcell.footprint``; null with ``footprint_why`` when it cannot be measured).
 
@@ -22,15 +25,17 @@ from __future__ import annotations
 import json
 
 from ic_opt import blocks as b
-from ic_opt.library import query, stage
+from ic_opt.library import domain, query, stage
 from ic_opt.recipe import Run
 
 
 def main(run: Run, *, library: str, stratum: str | None = None, budget: int = 200, batch: int = 20, strategy: str = "turbo",
-         top: int = 5, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, cache_dir: str | None = None) -> None:
+         top: int = 5, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, cache_dir: str | None = None,
+         extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> None:
     lib = query.Library(library, limits=run.site.host("local"), cache_dir=cache_dir)     # the controller's entry, not the executor host's
     strata = {d.id: stratum or stage.match_stratum(lib, d) for d in run.spec.devices}
-    pipeline = stage.surrogate_pipeline(run.spec, lib, strata, k=float(k), rel_sigma_max=None if rel_sigma_max is None else float(rel_sigma_max))
+    pipeline = stage.surrogate_pipeline(run.spec, lib, strata, k=float(k), rel_sigma_max=None if rel_sigma_max is None else float(rel_sigma_max),
+                                        extrapolate=float(extrapolate))
     run.note(f"lib_design: {', '.join(f'{d} -> {s}' for d, s in strata.items())} ({library})")
     for note in lib.notes:
         run.note(f"lib_design: {note}")

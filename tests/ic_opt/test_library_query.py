@@ -92,7 +92,9 @@ def test_domain_answers_carry_the_reason_and_evidence(library):
     got = {k: (a["quantities"]["Lp_lf"]["status"], a["quantities"]["Lp_lf"]["criterion"]) for k, a in answers.items()}
     assert got == {"range": ("out_of_domain", 1), "fixed spacing": ("out_of_domain", 1), "half turn": ("out_of_domain", 2)}
     assert "spacing_um is 2 for every row at turns=1" in answers["fixed spacing"]["quantities"]["Lp_lf"]["reason"]
-    assert answers["range"]["quantities"]["Lp_lf"]["fill_points"][1]["outer_diameter_um"] == 200.0
+    assert answers["range"]["quantities"]["Lp_lf"]["fill_points"][1]["outer_diameter_um"] == 218.0    # 200 + the allowance (N-116)
+    strict = q.query(lib, "ind_demo", params(250, 5, 2, 2), ["Lp_lf"], extrapolate=0)["quantities"]["Lp_lf"]
+    assert strict["fill_points"][1]["outer_diameter_um"] == 200.0 and strict["reason"] == "outer_diameter_um=250 outside the measured range [80, 200]"
     small = q.query(lib, "ind_demo", params(85, 5.5, 2, 1), ["SRF_p"])["quantities"]["SRF_p"]
     assert truth(85, 5.5, 2, 1)["SRF_p"] is None
     assert small["status"] == "above_sweep" and small["lower_bound"] == STOP_GHZ * 1e9 and small["value"] is None

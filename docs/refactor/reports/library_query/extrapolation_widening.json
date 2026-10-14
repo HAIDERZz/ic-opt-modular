@@ -1,0 +1,647 @@
+{
+ "specification": "docs/refactor/N116_EXTRAPOLATION_SPEC.md section 1 (Intervals)",
+ "fraction": 0.15,
+ "target": 0.95,
+ "form": "1 + a x depth, depth = distance beyond the measured range / the allowance at 0.15",
+ "rows": 78033,
+ "answered": 5811,
+ "checks": {
+  "box_match": 1556,
+  "csv_inside_agree": 78033
+ },
+ "classes": {
+  "L_lf": {
+   "edge_rows": 14426,
+   "answered": 895,
+   "beyond_allowance": 13274,
+   "refused_within_allowance": 257,
+   "coverage_today": 0.964245810055866,
+   "a": 0.0,
+   "coverage_widened": 0.964245810055866,
+   "p90_rel": 0.011637595180922881,
+   "median_rel": 0.0018048369960727724,
+   "depth_median": 0.7407407407407408,
+   "sides": {
+    "below": {
+     "rows": 270,
+     "today": 0.9148148148148149
+    },
+    "above": {
+     "rows": 625,
+     "today": 0.9856
+    }
+   },
+   "dims": {
+    "outer_diameter_um": 45,
+    "primary_outer_diameter_um": 540,
+    "secondary_outer_diameter_um": 310
+   },
+   "by_depth": {
+    "0-0.25": {
+     "rows": 128,
+     "today": 0.953125,
+     "widened": 0.953125
+    },
+    "0.25-0.5": {
+     "rows": 118,
+     "today": 0.9067796610169492,
+     "widened": 0.9067796610169492
+    },
+    "0.5-0.75": {
+     "rows": 235,
+     "today": 0.9914893617021276,
+     "widened": 0.9914893617021276
+    },
+    "0.75-1": {
+     "rows": 414,
+     "today": 0.9685990338164251,
+     "widened": 0.9685990338164251
+    }
+   },
+   "by_table": {
+    "ind_sym_ap_hf": {
+     "rows": 20,
+     "today": 0.9,
+     "widened": 0.9
+    },
+    "ind_sym_m10_hf": {
+     "rows": 25,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap": {
+     "rows": 128,
+     "today": 0.9140625,
+     "widened": 0.9140625
+    },
+    "xfm_bs_ap_ct": {
+     "rows": 8,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_ct_hf": {
+     "rows": 2,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_hf": {
+     "rows": 286,
+     "today": 0.986013986013986,
+     "widened": 0.986013986013986
+    },
+    "xfm_bs_m10": {
+     "rows": 128,
+     "today": 0.9140625,
+     "widened": 0.9140625
+    },
+    "xfm_bs_m10_ct": {
+     "rows": 8,
+     "today": 0.5,
+     "widened": 0.5
+    },
+    "xfm_bs_m10_ct_hf": {
+     "rows": 4,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_hf": {
+     "rows": 286,
+     "today": 1.0,
+     "widened": 1.0
+    }
+   }
+  },
+  "k_lf": {
+   "edge_rows": 6843,
+   "answered": 425,
+   "beyond_allowance": 6290,
+   "refused_within_allowance": 128,
+   "coverage_today": 0.8776470588235294,
+   "a": 0.75,
+   "coverage_widened": 0.9505882352941176,
+   "p90_rel": 0.010225682201803801,
+   "median_rel": 0.0017435964612576443,
+   "depth_median": 0.7407407407407408,
+   "sides": {
+    "below": {
+     "rows": 129,
+     "today": 0.9767441860465116
+    },
+    "above": {
+     "rows": 296,
+     "today": 0.8344594594594594
+    }
+   },
+   "dims": {
+    "outer_diameter_um": 0,
+    "primary_outer_diameter_um": 270,
+    "secondary_outer_diameter_um": 155
+   },
+   "by_depth": {
+    "0-0.25": {
+     "rows": 64,
+     "today": 0.78125,
+     "widened": 0.8125
+    },
+    "0.25-0.5": {
+     "rows": 59,
+     "today": 0.864406779661017,
+     "widened": 0.8983050847457628
+    },
+    "0.5-0.75": {
+     "rows": 108,
+     "today": 0.9074074074074074,
+     "widened": 0.9907407407407407
+    },
+    "0.75-1": {
+     "rows": 194,
+     "today": 0.8969072164948454,
+     "widened": 0.9896907216494846
+    }
+   },
+   "by_table": {
+    "xfm_bs_ap": {
+     "rows": 64,
+     "today": 0.828125,
+     "widened": 0.875
+    },
+    "xfm_bs_ap_ct": {
+     "rows": 4,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_ct_hf": {
+     "rows": 1,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_hf": {
+     "rows": 143,
+     "today": 0.8671328671328671,
+     "widened": 0.986013986013986
+    },
+    "xfm_bs_m10": {
+     "rows": 64,
+     "today": 0.828125,
+     "widened": 0.84375
+    },
+    "xfm_bs_m10_ct": {
+     "rows": 4,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_ct_hf": {
+     "rows": 2,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_hf": {
+     "rows": 143,
+     "today": 0.9230769230769231,
+     "widened": 0.993006993006993
+    }
+   }
+  },
+  "SRF": {
+   "edge_rows": 19757,
+   "answered": 390,
+   "beyond_allowance": 19220,
+   "refused_within_allowance": 147,
+   "coverage_today": 0.8897435897435897,
+   "a": 2.64,
+   "coverage_widened": 0.9512820512820512,
+   "p90_rel": 0.08668823537565296,
+   "median_rel": 0.02097534831498487,
+   "depth_median": 0.272108843537415,
+   "sides": {
+    "below": {
+     "rows": 102,
+     "today": 1.0
+    },
+    "above": {
+     "rows": 288,
+     "today": 0.8506944444444444
+    }
+   },
+   "dims": {
+    "outer_diameter_um": 0,
+    "primary_outer_diameter_um": 0,
+    "secondary_outer_diameter_um": 390
+   },
+   "by_depth": {
+    "0-0.25": {
+     "rows": 192,
+     "today": 0.859375,
+     "widened": 0.9166666666666666
+    },
+    "0.25-0.5": {
+     "rows": 144,
+     "today": 0.8888888888888888,
+     "widened": 0.9791666666666666
+    },
+    "0.5-0.75": {
+     "rows": 18,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "0.75-1": {
+     "rows": 36,
+     "today": 1.0,
+     "widened": 1.0
+    }
+   },
+   "by_table": {
+    "xfm_bs_ap": {
+     "rows": 186,
+     "today": 0.8817204301075269,
+     "widened": 0.956989247311828
+    },
+    "xfm_bs_ap_ct": {
+     "rows": 9,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10": {
+     "rows": 186,
+     "today": 0.8870967741935484,
+     "widened": 0.9408602150537635
+    },
+    "xfm_bs_m10_ct": {
+     "rows": 9,
+     "today": 1.0,
+     "widened": 1.0
+    }
+   }
+  },
+  "Q_peak": {
+   "edge_rows": 14426,
+   "answered": 895,
+   "beyond_allowance": 13274,
+   "refused_within_allowance": 257,
+   "coverage_today": 0.9162011173184358,
+   "a": 3.09,
+   "coverage_widened": 0.9508379888268157,
+   "p90_rel": 0.03269053664148739,
+   "median_rel": 0.011237378692171378,
+   "depth_median": 0.7407407407407408,
+   "sides": {
+    "below": {
+     "rows": 270,
+     "today": 0.9962962962962963
+    },
+    "above": {
+     "rows": 625,
+     "today": 0.8816
+    }
+   },
+   "dims": {
+    "outer_diameter_um": 45,
+    "primary_outer_diameter_um": 540,
+    "secondary_outer_diameter_um": 310
+   },
+   "by_depth": {
+    "0-0.25": {
+     "rows": 128,
+     "today": 0.625,
+     "widened": 0.734375
+    },
+    "0.25-0.5": {
+     "rows": 118,
+     "today": 0.7711864406779662,
+     "widened": 0.9152542372881356
+    },
+    "0.5-0.75": {
+     "rows": 235,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "0.75-1": {
+     "rows": 414,
+     "today": 1.0,
+     "widened": 1.0
+    }
+   },
+   "by_table": {
+    "ind_sym_ap_hf": {
+     "rows": 20,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "ind_sym_m10_hf": {
+     "rows": 25,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap": {
+     "rows": 128,
+     "today": 0.7109375,
+     "widened": 0.8125
+    },
+    "xfm_bs_ap_ct": {
+     "rows": 8,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_ct_hf": {
+     "rows": 2,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_hf": {
+     "rows": 286,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10": {
+     "rows": 128,
+     "today": 0.703125,
+     "widened": 0.84375
+    },
+    "xfm_bs_m10_ct": {
+     "rows": 8,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_ct_hf": {
+     "rows": 4,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_hf": {
+     "rows": 286,
+     "today": 1.0,
+     "widened": 1.0
+    }
+   }
+  },
+  "L_curve": {
+   "edge_rows": 10550,
+   "answered": 1334,
+   "beyond_allowance": 8670,
+   "refused_within_allowance": 546,
+   "coverage_today": 0.987256371814093,
+   "a": 0.0,
+   "coverage_widened": 0.987256371814093,
+   "p90_rel": 0.003658709169636782,
+   "median_rel": 0.00130906963830581,
+   "depth_median": 0.8333333333333334,
+   "sides": {
+    "below": {
+     "rows": 460,
+     "today": 0.9804347826086957
+    },
+    "above": {
+     "rows": 874,
+     "today": 0.9908466819221968
+    }
+   },
+   "dims": {
+    "outer_diameter_um": 90,
+    "primary_outer_diameter_um": 1080,
+    "secondary_outer_diameter_um": 164
+   },
+   "by_depth": {
+    "0-0.25": {
+     "rows": 8,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "0.25-0.5": {
+     "rows": 68,
+     "today": 0.9852941176470589,
+     "widened": 0.9852941176470589
+    },
+    "0.5-0.75": {
+     "rows": 450,
+     "today": 0.9955555555555555,
+     "widened": 0.9955555555555555
+    },
+    "0.75-1": {
+     "rows": 808,
+     "today": 0.9826732673267327,
+     "widened": 0.9826732673267327
+    }
+   },
+   "by_table": {
+    "ind_sym_ap_hf": {
+     "rows": 40,
+     "today": 0.925,
+     "widened": 0.925
+    },
+    "ind_sym_m10_hf": {
+     "rows": 50,
+     "today": 0.96,
+     "widened": 0.96
+    },
+    "xfm_bs_ap_ct": {
+     "rows": 16,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_ct_hf": {
+     "rows": 4,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_hf": {
+     "rows": 572,
+     "today": 0.993006993006993,
+     "widened": 0.993006993006993
+    },
+    "xfm_bs_m10": {
+     "rows": 56,
+     "today": 0.9642857142857143,
+     "widened": 0.9642857142857143
+    },
+    "xfm_bs_m10_ct": {
+     "rows": 16,
+     "today": 0.875,
+     "widened": 0.875
+    },
+    "xfm_bs_m10_ct_hf": {
+     "rows": 8,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_hf": {
+     "rows": 572,
+     "today": 0.993006993006993,
+     "widened": 0.993006993006993
+    }
+   }
+  },
+  "Q_curve": {
+   "edge_rows": 8145,
+   "answered": 1278,
+   "beyond_allowance": 6353,
+   "refused_within_allowance": 514,
+   "coverage_today": 0.9984350547730829,
+   "a": 0.0,
+   "coverage_widened": 0.9984350547730829,
+   "p90_rel": 0.03145397206965405,
+   "median_rel": 0.01071105587074986,
+   "depth_median": 0.8333333333333334,
+   "sides": {
+    "below": {
+     "rows": 412,
+     "today": 0.9951456310679612
+    },
+    "above": {
+     "rows": 866,
+     "today": 1.0
+    }
+   },
+   "dims": {
+    "outer_diameter_um": 90,
+    "primary_outer_diameter_um": 1080,
+    "secondary_outer_diameter_um": 108
+   },
+   "by_depth": {
+    "0-0.25": {
+     "rows": 0,
+     "today": null,
+     "widened": null
+    },
+    "0.25-0.5": {
+     "rows": 44,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "0.5-0.75": {
+     "rows": 438,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "0.75-1": {
+     "rows": 796,
+     "today": 0.9974874371859297,
+     "widened": 0.9974874371859297
+    }
+   },
+   "by_table": {
+    "ind_sym_ap_hf": {
+     "rows": 40,
+     "today": 0.975,
+     "widened": 0.975
+    },
+    "ind_sym_m10_hf": {
+     "rows": 50,
+     "today": 0.98,
+     "widened": 0.98
+    },
+    "xfm_bs_ap_ct": {
+     "rows": 16,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_ct_hf": {
+     "rows": 4,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_hf": {
+     "rows": 572,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_ct": {
+     "rows": 16,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_ct_hf": {
+     "rows": 8,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_hf": {
+     "rows": 572,
+     "today": 1.0,
+     "widened": 1.0
+    }
+   }
+  },
+  "k_curve": {
+   "edge_rows": 3886,
+   "answered": 594,
+   "beyond_allowance": 3036,
+   "refused_within_allowance": 256,
+   "coverage_today": 0.8956228956228957,
+   "a": 0.36,
+   "coverage_widened": 0.9528619528619529,
+   "p90_rel": 0.0026610660473609625,
+   "median_rel": 0.000538033125156747,
+   "depth_median": 0.8333333333333334,
+   "sides": {
+    "below": {
+     "rows": 194,
+     "today": 1.0
+    },
+    "above": {
+     "rows": 400,
+     "today": 0.845
+    }
+   },
+   "dims": {
+    "outer_diameter_um": 0,
+    "primary_outer_diameter_um": 540,
+    "secondary_outer_diameter_um": 54
+   },
+   "by_depth": {
+    "0-0.25": {
+     "rows": 0,
+     "today": null,
+     "widened": null
+    },
+    "0.25-0.5": {
+     "rows": 22,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "0.5-0.75": {
+     "rows": 200,
+     "today": 0.885,
+     "widened": 0.935
+    },
+    "0.75-1": {
+     "rows": 372,
+     "today": 0.8951612903225806,
+     "widened": 0.9596774193548387
+    }
+   },
+   "by_table": {
+    "xfm_bs_ap_ct": {
+     "rows": 8,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_ct_hf": {
+     "rows": 2,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_ap_hf": {
+     "rows": 286,
+     "today": 0.8881118881118881,
+     "widened": 0.9475524475524476
+    },
+    "xfm_bs_m10_ct": {
+     "rows": 8,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_ct_hf": {
+     "rows": 4,
+     "today": 1.0,
+     "widened": 1.0
+    },
+    "xfm_bs_m10_hf": {
+     "rows": 286,
+     "today": 0.8951048951048951,
+     "widened": 0.9545454545454546
+    }
+   }
+  }
+ },
+ "seconds": 3.2
+}

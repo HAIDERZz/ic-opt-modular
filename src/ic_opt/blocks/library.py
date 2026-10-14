@@ -15,6 +15,12 @@ the library's own ``.cache`` are read either way.
 A column name may be a declared curve at any frequency, ``<curve>@<GHz>`` (T18.1): ``lib.query`` (``quantities``),
 ``lib.suggest`` and ``lib.region`` (targets, objective, trend) and ``lib.densify`` (``quantities``) take it. A design's
 ``footprint`` is the box around the drawn device without its ground fixture (``ic_opt.em.pcell.footprint``).
+
+``extrapolate`` (N-116; ``lib.query``, ``lib.suggest``, ``lib.region``, ``lib.densify``): the fraction F of a model's
+measured range it answers beyond that range along the outer diameters (``outer_diameter_um``, ``primary_outer_diameter_um``,
+``secondary_outer_diameter_um``), F x min(range, boundary) per side; 0.15 unless given, 0 answers exactly as before. An
+answer there is labelled ``extrapolated`` (per dim: ``side``, ``beyond``, ``allowance``, ``measured_range``) and its
+interval widened by ``widening``.
 ``lib.index`` and ``lib.pick`` show a stratum's rows by their electrical values at one frequency
 (``ic_opt.library.index``)."""
 
@@ -26,6 +32,7 @@ from pathlib import Path
 
 from ic_opt.library import cache as _cache
 from ic_opt.library import combinations as _combinations
+from ic_opt.library import domain as _domain
 from ic_opt.library import index as _index
 from ic_opt.library import query as _query
 from ic_opt.library import region as _region
@@ -88,7 +95,8 @@ def coverage(library: _query.Library | str | Path, stratum: str, cache_dir: str 
 
 
 def query(library: _query.Library | str | Path, stratum: str, params: dict, quantities: str | list[str] | None = None, k: float = 2.0,
-          rel_sigma_max: float | None = None, footprint: bool = False, cache_dir: str | None = None) -> dict:
+          rel_sigma_max: float | None = None, footprint: bool = False, cache_dir: str | None = None,
+          extrapolate: float = _domain.EXTRAPOLATE_FRACTION) -> dict:
     """Measured values at an exact library point; elsewhere mu with calibrated k-sigma bounds, the domain verdict and nearest measured rows.
 
     ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns),
@@ -100,13 +108,30 @@ def query(library: _query.Library | str | Path, stratum: str, params: dict, quan
     device without its ground fixture: a library point's row's; elsewhere null unless ``footprint=true``, which draws the
     geometry with the stratum's generator (no EMX); ``footprint_why`` says why a footprint is null. ``cache_dir`` holds the
     library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).
+    ``extrapolate`` (default 0.15; 0: none) lets a model answer beyond its measured range along the outer diameters, up to
+    that fraction of min(range, boundary) per side: such an answer keeps its status and adds ``extrapolated`` and
+    ``widening`` (the factor its interval was widened by); farther, or beyond the range along any other dim, the point is
+    ``out_of_domain`` with the dim, how far and the allowance in the reason.
     """
     from ic_opt.library import suggest as _suggest
 
     lib = _lib(library, cache_dir)
-    answer = _query.query(lib, stratum, params, _names(quantities), k=float(k), rel_sigma_max=_ceiling(rel_sigma_max))
+    answer = _query.query(lib, stratum, params, _names(quantities), k=float(k), rel_sigma_max=_ceiling(rel_sigma_max),
+                          extrapolate=_extrapolate(extrapolate))
     answer.update(_suggest.footprint_fields(*_query.footprint_at(lib, stratum, answer["params"], build=_flag(footprint))))
     return _strict_json(answer)
+
+
+def _extrapolate(value: float | str | None) -> float:
+    """``extrapolate`` as a fraction >= 0 (``query.check_extrapolate``); None: the default."""
+    if value is None:
+        return _domain.EXTRAPOLATE_FRACTION
+    if isinstance(value, str):
+        try:
+            value = float(value)
+        except ValueError:
+            pass
+    return _query.check_extrapolate(value)
 
 
 def _flag(value: bool | str | None) -> bool:
@@ -132,7 +157,7 @@ def _targets(value: dict | None) -> dict:
 def suggest(library: _query.Library | str | Path, stratum: str | None = None, targets: dict | None = None, objective: str | None = None,
             n: int = 5, pool_size: int = 8192, seed: int = 0, k: float = 2.0, verify_build: bool = True,
             rel_sigma_max: float | None = None, cache_dir: str | None = None, family: str | None = None, taps: str | None = None,
-            strata: str | list[str] | None = None) -> dict:
+            strata: str | list[str] | None = None, extrapolate: float = _domain.EXTRAPOLATE_FRACTION) -> dict:
     """Designs that meet ``targets`` with margin: measured ones first (exact), then predicted candidates built and audited.
 
     ``targets`` maps quantities to ``{"min": v}``, ``{"max": v}`` or ``{"target": v, "tol": rel}`` (JSON on the command
@@ -142,7 +167,9 @@ def suggest(library: _query.Library | str | Path, stratum: str | None = None, ta
     ``pool`` says where it was drawn: ``sobol`` (``pool_size`` points over the table), or ``region_grid`` when no point of
     that pool met the targets and a second pool was drawn on the grid ``lib.region`` searches (the answer's ``region_grid``
     describes it). ``cache_dir`` holds the library's cache files (default: its own ``.cache``, else
-    ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).
+    ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name). ``extrapolate`` (default 0.15; 0: none) extends both
+    pools that fraction beyond the measured range along the outer diameters, as far as ``lib.query`` answers there: a
+    candidate there carries ``extrapolated`` and, per predicted quantity, ``widening``; the measured designs still come first.
 
     One table (``stratum``), or several (``ic_opt.library.family``): ``family`` -- every table whose generator draws that
     device kind (``ind_sym``, ``xfm_bs``, ``xfm_ms``, ...) -- with ``taps`` (``none``, the default: the tables without
@@ -160,7 +187,7 @@ def suggest(library: _query.Library | str | Path, stratum: str | None = None, ta
     lib = _lib(library, cache_dir)
     names, kind, kept = _family.request(lib, stratum=stratum, family=family, taps=taps, strata=_names(strata))
     options = {"n": int(n), "pool_size": int(pool_size), "seed": int(seed), "k": float(k), "rel_sigma_max": _ceiling(rel_sigma_max),
-               "verify_build": bool(verify_build)}
+               "verify_build": bool(verify_build), "extrapolate": _extrapolate(extrapolate)}
     if stratum is not None:
         return _strict_json(_suggest.suggest(lib, stratum, _targets(targets), objective, **options))
     return _strict_json(_family.suggest(lib, names, _targets(targets), objective, family=kind, taps=kept, **options))
@@ -172,7 +199,7 @@ def region(library: _query.Library | str | Path, stratum: str | None = None, tar
            sample_size: int = 5000, threads: int | None = None, workers: int | None = None,
            rel_sigma_max: float | None = None, relax: float = _region.RELAX, cache_dir: str | None = None,
            out: str | None = None, level: str = "robust", device: str | None = None, family: str | None = None,
-           taps: str | None = None, strata: str | list[str] | None = None) -> dict:
+           taps: str | None = None, strata: str | list[str] | None = None, extrapolate: float = _domain.EXTRAPOLATE_FRACTION) -> dict:
     """The part of the geometry space whose predictions meet ``targets``: sweep ranges, not ``lib.suggest``'s best few points.
 
     Two levels: ``robust`` -- the calibrated k-sigma interval lies inside every window (``lib.suggest``'s test; centre a
@@ -191,7 +218,10 @@ def region(library: _query.Library | str | Path, stratum: str | None = None, tar
     and the ceiling each quantity was held to (``rel_sigma_max``, per quantity). ``threads`` caps BLAS and ``workers`` the processes fitting uncached models, both within site.yaml's
     hosts.local (above it they are refused; by default they follow from it). ``cache_dir`` holds the library's cache
     files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name). The answer
-    is strict JSON, every non-finite number null: ``targets[].upper`` is null except for windows.
+    is strict JSON, every non-finite number null: ``targets[].upper`` is null except for windows. ``extrapolate`` (default
+    0.15; 0: none) extends the coarse pool and the grid that fraction beyond the measured range along the outer diameters,
+    as far as ``lib.query`` answers there: a level holding such points says so in ``extrapolated`` (how many, and per outer
+    diameter the part of its range beyond the table's measured one), a candidate carries ``extrapolated``.
 
     ``out`` (N-106) writes the grid points of one level -- ``level``, ``robust`` unless ``mean`` -- as a pcell device's
     allowed combinations (``ic_opt.library.combinations``: a spec's ``devices[*].combinations`` names the file) and adds
@@ -220,7 +250,7 @@ def region(library: _query.Library | str | Path, stratum: str | None = None, tar
                "seed": int(seed), "k": float(k), "rel_sigma_max": _ceiling(rel_sigma_max), "relax": float(relax),
                "group_by": _names(group_by), "trend": _trend(trend), "n": int(n), "verify_build": bool(verify_build),
                "sample_size": int(sample_size), "threads": None if threads is None else int(threads),
-               "workers": None if workers is None else int(workers)}
+               "workers": None if workers is None else int(workers), "extrapolate": _extrapolate(extrapolate)}
     if stratum is None:
         return _strict_json(_family.region(lib, names, _targets(targets), objective, family=kind, taps=kept, out=out, level=str(level),
                                            device=device, **options))
@@ -234,7 +264,7 @@ def region(library: _query.Library | str | Path, stratum: str | None = None, tar
 def densify(library: _query.Library | str | Path, stratum: str, n: int, quantities: str | list[str] | None = None,
             bounds: dict | None = None, score: str = "ceiling", pool_size: int = 65536, top: int = 4000, seed: int = 0,
             k: float = 2.0, threads: int | None = None, workers: int | None = None, out: str | None = None,
-            rel_sigma_max: float | None = None, cache_dir: str | None = None) -> dict:
+            rel_sigma_max: float | None = None, cache_dir: str | None = None, extrapolate: float = _domain.EXTRAPOLATE_FRACTION) -> dict:
     """Where to simulate next: ``n`` new geometries whose simulation lowers the models' uncertainty the most over the
     sampled domain, whatever the targets.
 
@@ -257,7 +287,9 @@ def densify(library: _query.Library | str | Path, stratum: str, n: int, quantiti
     ``ic-opt run lib_signoff PROJECT library=... candidates=<file> top=<n> --plan`` takes as it is. ``threads`` and
     ``workers`` cap BLAS and the fitting processes within site.yaml's hosts.local, as in ``lib.region``. ``cache_dir``
     holds the library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's
-    ``notes`` name). The answer is strict JSON, every non-finite number null.
+    ``notes`` name). The answer is strict JSON, every non-finite number null. ``extrapolate`` (default 0.15; 0: none): the
+    pool stays inside the table's achieved box, but each model answers that fraction beyond its own measured range along
+    the outer diameters, as ``lib.query`` does; a pick whose answers are extrapolated carries ``extrapolated``.
     """
     from ic_opt.library import densify as _densify
 
@@ -266,7 +298,7 @@ def densify(library: _query.Library | str | Path, stratum: str, n: int, quantiti
     answer = _strict_json(_densify.densify(
         _lib(library, cache_dir), stratum, _names(quantities), n=int(n), pool_size=int(pool_size), top=int(top), seed=int(seed), k=float(k),
         rel_sigma_max=_ceiling(rel_sigma_max), score=str(score), bounds=bounds, threads=None if threads is None else int(threads),
-        workers=None if workers is None else int(workers)))
+        workers=None if workers is None else int(workers), extrapolate=_extrapolate(extrapolate)))
     if out:
         path = Path(out)
         path.parent.mkdir(parents=True, exist_ok=True)

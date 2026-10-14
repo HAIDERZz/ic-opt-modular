@@ -108,7 +108,8 @@ def test_densify_divides_by_each_quantitys_ceiling(ceilings):
 def test_predict_fails_only_the_metric_whose_ceiling_it_misses(plain, ceilings, tmp_path):
     """The Predict stage asks each column with its own ceiling: L (Lp_lf, STRICT) is uncertain, Q and L10 are not. A manifest
     ceiling is part of the stage's identity -- surrogate observations of another ceiling are another generation -- while a
-    library that sets none keeps the identity it had, and an explicit rel_sigma_max overrides every column."""
+    library that sets none keeps the identity it had, and an explicit rel_sigma_max overrides every column. The default
+    extrapolation (N-116) is part of the identity too; extrapolate=0 keeps the identity of before."""
     pytest.importorskip("klayout.db")
     from ic_opt.blocks.evaluate import evaluate
     from ic_opt.eval.stage import pipeline_fingerprint
@@ -124,9 +125,11 @@ def test_predict_fails_only_the_metric_whose_ceiling_it_misses(plain, ceilings, 
     (strict,) = evaluate(spec, [point], FakeSpectreExecutor(store.root / "sims"), store, pipeline=stage.surrogate_pipeline(spec, lib),
                          limits=FAKE_HOST)
     assert strict.status == "failed:predict" and strict.issues == ["ind/nominal: metric L: uncertain"]
-    identity = json.loads(stage.Predict(before, {"ind": "ind_demo"}).identity)
+    identity = json.loads(stage.Predict(before, {"ind": "ind_demo"}, extrapolate=0).identity)
     assert identity == {"k": 2.0, "rel_sigma_max": domain.DEFAULT_SIGMA_REL_MAX, "calibrate": True,
                         "strata": {"ind": ["ind_demo", before.dataset("ind_demo").key]}}
+    assert json.loads(stage.Predict(before, {"ind": "ind_demo"}).identity) == {
+        **identity, "extrapolate": {"fraction": domain.EXTRAPOLATE_FRACTION, "widening": q.WIDENING}}
     assert json.loads(stage.Predict(lib, {"ind": "ind_demo"}).identity)["rel_sigma_max_by_quantity"] == {
         "ind_demo": {"Lp_lf": STRICT, "Qp_peak": LOOSE}}
     fingerprint = {name: pipeline_fingerprint(stage.surrogate_pipeline(spec, library, **kw))
