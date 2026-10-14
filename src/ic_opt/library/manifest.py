@@ -17,10 +17,16 @@ A curve's ``model`` says how its columns are predicted: ``direct`` (the default)
 low-frequency value for ``Lp`` / ``Ls`` / ``k``, the peak for ``Qp`` / ``Qs``) and, for ``resonance``, its system SRF,
 and fit only what is left (``ic_opt.library.composed``). Unlike the ceiling, a ``model`` other than ``direct`` is part
 of the dataset's cache key (it changes what is fitted); ``direct`` stays out of it.
+
+The library may declare a ``frequency_grid`` (N-126): frequencies at which every declared curve has, or will have, a model of
+its own besides its anchors (``FrequencyGrid``; ``query.Library.knots``, the ``lib.prefit`` block). It is a library-level
+entry, in no stratum's dump, so declaring it changes no dataset key and no cache file name. A reader older than it (0.9.0)
+refuses the manifest: extra fields are forbidden.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal
 
@@ -138,9 +144,51 @@ class Stratum(Model):
         return out
 
 
+class FrequencyGrid(Model):
+    """The library's frequency grid (N-126), in GHz: below ``until_ghz`` the distinct values round(from_ghz x ratio^n), n = 0,
+    1, ... (whole GHz, each about ``ratio`` above the previous; Python's round, a tie to the even neighbour), then
+    ``until_ghz``, ``until_ghz + step_ghz``, ... -- each inside a part's sweep (``frequencies``). ``{from_ghz: 1, ratio: 1.1,
+    until_ghz: 50, step_ghz: 5}`` over a 0-250 GHz sweep: 1-14, 16, 17, 19, 21, 23, 26, 28, 31, 34, 37, 41, 45 and 50, 55, ...,
+    250 (67 frequencies); on a 16-table library's own rows, PCHIP between them follows the measured curves to a p99 of at most
+    1.7 % on every table and curve (N-126's rerun of N-122's study)."""
+
+    from_ghz: float = Field(gt=0, allow_inf_nan=False)
+    ratio: float = Field(gt=1, allow_inf_nan=False)
+    until_ghz: float = Field(gt=0, allow_inf_nan=False)
+    step_ghz: float = Field(gt=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> FrequencyGrid:
+        if not self.from_ghz < self.until_ghz:
+            raise ValueError(f"frequency_grid: from_ghz ({self.from_ghz:g}) must lie below until_ghz ({self.until_ghz:g})")
+        return self
+
+    def frequencies(self, sweeps: Iterable[tuple[float, float]]) -> list[float]:
+        """The grid's frequencies in GHz, ascending, that lie inside one of ``sweeps`` -- each ``(first, last)`` in Hz, as
+        ``dataset.sweeps`` gives a part's (the tolerance of ``query.Library.anchors``); none without a sweep. A rounded value
+        of 0 is no frequency and is left out; a value from ``until_ghz`` on is written with at most six significant digits, as
+        a column's name writes it."""
+        spans = [(float(a), float(b)) for a, b in sweeps]
+        if not spans:
+            return []
+        top = max(b for _a, b in spans) / 1e9
+        out: set[float] = set()
+        n = 0
+        while (value := round(self.from_ghz * self.ratio**n)) < self.until_ghz:
+            if value > 0:
+                out.add(float(value))
+            n += 1
+        k = 0
+        while (value := float(f"{self.until_ghz + k * self.step_ghz:g}")) <= top * (1 + 1e-12):
+            out.add(value)
+            k += 1
+        return sorted(f for f in out if any(a * (1 - 1e-12) <= f * 1e9 <= b * (1 + 1e-12) for a, b in spans))
+
+
 class Library(Model):
     schema_version: Literal["ic-opt-library-v1"] = SCHEMA
     process_profile: str = Field(min_length=1)
+    frequency_grid: FrequencyGrid | None = None           # N-126: where every curve has a model besides its anchors (lib.prefit)
     strata: dict[str, Stratum] = Field(min_length=1)
 
 

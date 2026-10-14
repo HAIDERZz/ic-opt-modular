@@ -22,7 +22,8 @@ measured range it answers beyond that range along the outer diameters (``outer_d
 answer there is labelled ``extrapolated`` (per dim: ``side``, ``beyond``, ``allowance``, ``measured_range``) and its
 interval widened by ``widening``.
 ``lib.index`` and ``lib.pick`` show a stratum's rows by their electrical values at one frequency
-(``ic_opt.library.index``)."""
+(``ic_opt.library.index``). ``lib.prefit`` fits ahead every curve's knots -- its anchors and the frequencies of
+library.yaml's ``frequency_grid`` (N-126, ``ic_opt.library.prefit``)."""
 
 from __future__ import annotations
 
@@ -90,8 +91,32 @@ def load(library: _query.Library | str | Path, stratum: str | None = None, cache
 
 def coverage(library: _query.Library | str | Path, stratum: str, cache_dir: str | None = None) -> dict:
     """Rows per part and turns level, the achieved range of every dim, usable rows and value range per quantity.
-    ``cache_dir`` holds the library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``)."""
+    ``cache_dir`` holds the library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``). ``cached``
+    says per column what a query will have to fit first and, when library.yaml declares a ``frequency_grid``, per curve
+    ``grid <n>/<m>``: n of its m knots have their model cached (``lib.prefit`` fits the others)."""
     return _query.coverage(_lib(library, cache_dir), stratum)
+
+
+def prefit(library: _query.Library | str | Path, strata: str | list[str] | None = None, curves: str | list[str] | None = None,
+           threads: int | None = None, workers: int | None = None, cache_dir: str | None = None) -> dict:
+    """Fit ahead every knot column the cache does not hold (N-126), so that a curve answers at its knots at once.
+
+    A curve's knots are its anchors and the frequencies of library.yaml's ``frequency_grid`` inside the parts' sweeps, less
+    the columns that can have no model (no row with a value there, or too few rows: lib.query's ``no_model``); without a
+    grid, its anchors. ``strata`` and ``curves`` are comma lists (default: every stratum, every curve each declares). Stratum
+    after stratum, each with the whole of site.yaml's ``hosts.local`` (``threads`` caps BLAS and ``workers`` the fitting
+    processes, within it, as in ``lib.region``): the grid's columns are measured from the rows' sNp files (seconds), then
+    the knot columns not cached are fitted, with the models they need (the resonance's, a composed curve's parts).
+    Resumable: what is cached is not fitted again, and an interrupted run, started again, continues. Prints per stratum,
+    on stderr, the columns cached, to fit and skipped (with why), progress and the minutes. The answer: ``frequency_grid``,
+    per stratum ``knots`` (per curve, GHz), ``fitted``, ``cached``, ``skipped`` (column: why) and ``seconds``, and the
+    library's ``notes``. ``cache_dir`` holds the library's cache files (default: its own ``.cache``, else
+    ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).
+    """
+    from ic_opt.library import prefit as _prefit
+
+    return _strict_json(_prefit.prefit(_lib(library, cache_dir), _names(strata), _names(curves),
+                                       workers=None if workers is None else int(workers), threads=None if threads is None else int(threads)))
 
 
 def query(library: _query.Library | str | Path, stratum: str, params: dict, quantities: str | list[str] | None = None, k: float = 2.0,
