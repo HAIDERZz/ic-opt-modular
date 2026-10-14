@@ -159,13 +159,16 @@ fitted once however many curves share them. A `resonance` curve is only as
 good as its SRF model: where the table has no rows like the design asked
 about, the SRF is off and the curve follows it. The interval adds the parts'
 uncertainties as independent ones, the SRF's scaled by how steeply the rise
-depends on it, and is calibrated like any other (below) -- except that each
-held-out fold refits every part, so it takes about two (`ratio`) or three
-(`resonance`) times the fits of a direct column; the folds run as parallel
-jobs. Changing `model` or `feature_map` of any quantity is a new definition
-of the stratum -- unlike `rel_sigma_max`, it changes what is fitted: its
-dataset and every model of that stratum are rebuilt once. A library that
-never names `model` keeps its caches.
+depends on it, and is calibrated like any other (below) -- on five held-out
+folds in which no model sees the rows it is scored on, its parts included.
+Each fold holds out the same fifth of the stratum's rows whichever curve it
+calibrates, so each part's model of a fold is fitted once and serves every
+curve built on that part, at every frequency: a new curve costs its own five
+fold fits and its fit, and the parts' fold models (five per part) come once
+per stratum (see [Compute](#compute)). Changing `model` or `feature_map` of
+any quantity is a new definition of the stratum -- unlike `rel_sigma_max`,
+it changes what is fitted: its dataset and every model of that stratum are
+rebuilt once. A library that never names `model` keeps its caches.
 
 ### Asking at any frequency
 
@@ -1177,6 +1180,28 @@ the whole entry. A second command on the same machine, such as a local EMX
 sweep, needs its own share: lower `hosts.local` or set `OMP_NUM_THREADS`
 (or `OPENBLAS_NUM_THREADS` / `MKL_NUM_THREADS`) for one of them.
 
+A curve the manifest builds from other columns (`model: ratio` or
+`resonance`) is calibrated on five folds. Fold s holds out the first fifth
+of a seeded permutation of all the stratum's rows -- the same rows whatever
+the curve and its frequency -- and scores those of them that have a positive
+value of the curve. Each part's model of a fold (the low-frequency value or
+the Q peak, and the SRF for `resonance`) is fitted once, on the part's rows
+outside the fold, and kept (see [Cache](#cache)); a curve's fold fits only
+the curve's own model, on its rows outside the fold. The fits are jobs of
+their own, each started as soon as what it needs is there: the parts' fold
+models not kept yet, then every fold of every curve, then each curve's
+model. A curve with a handful of rows that the shared folds cannot calibrate
+-- no fold holds out one of them, or one holds out every row its own model
+could be fitted on -- is calibrated on folds of its own rows, with every
+part refitted, as before, so which columns can have a model is unchanged. On
+`xfm_bs_m10` (1736 rows, 16 threads) the four composed curves at three new
+frequencies took 6.8 minutes and 97 fits (25 part fold models, 60 curve
+folds, 12 curves), against 17.2 minutes and 162 fits when every curve's
+folds refitted its parts; ten new frequencies of its five curves (k modelled
+directly) took 23.8 minutes and 325 fits, the parts' fold models among them
+once: about 2.4 minutes a frequency, where the four composed curves alone
+took 5.7 minutes a frequency before.
+
 ## Cache
 
 Datasets, calibrations and fitted models are cached as files named after
@@ -1210,6 +1235,19 @@ stratum's footprints hold a lock next to their own file the same way. That holds
 file system that honours file locks, for machines sharing a cache
 directory; where locks are not supported both fit, and the last one to
 finish writes the file. The lock files are empty.
+
+The parts' models of the composed curves' calibration folds are files too:
+`fold-<stratum>-<part>-s<seed>-<key>.pkl`, five per part, keyed like a model
+and by the fold. Every composed curve of the stratum built on that part uses
+them, at every frequency, and their fit holds a lock next to the file as a
+model's fit does. Each holds a GP fitted on four fifths of the part's rows:
+about 15 MB on `xfm_bs_m10` (1736 rows), 390 MB for its 25. A composed
+curve's calibration file says how it was made: one written on these folds
+has `"folds": "stable-rows"` (its name is keyed by it too); one written
+before them keeps its file and its name, and the curve keeps its model and
+its answers -- only a curve without a calibration is calibrated on the
+shared folds (one too sparse for them on folds of its own rows, under the
+earlier name, as before).
 
 `lib.coverage` and `lib.load` answer with `cached`, one entry per quantity of the stratum's current dataset: `model` (a
 query needs no fit), `calibration` (the hold-out fits are cached; the first query fits the model, minutes), `none`

@@ -1,6 +1,7 @@
 """T16.5 R-20: where a library keeps its cache files -- its own .cache, a cache_dir= of the caller's, or, when its own
 cannot be written, ~/.cache/ic-opt/<key>/ with a note in every answer; the files in its own .cache are read in every case.
-N-4: two processes that need the same uncached model at once compute it once."""
+N-4: two processes that need the same uncached model at once compute it once -- and (N-125) two that need composed curves
+fit each part fold model and each calibration once between them."""
 from __future__ import annotations
 
 import contextlib
@@ -19,10 +20,18 @@ from typer.testing import CliRunner
 from ic_opt import _lock
 from ic_opt.blocks import library as library_blocks
 from ic_opt.cli import app
-from ic_opt.library import gp
+from ic_opt.library import folds, gp
 from ic_opt.library import query as q
 from tests.ic_opt.fakes import FAKE_HOST
-from tests.ic_opt.library_fixtures import LOCAL, build_library, params, use_site
+from tests.ic_opt.library_fixtures import (
+    LOCAL,
+    MAPPED,
+    RES_STRATUM,
+    build_library,
+    build_resonance_library,
+    params,
+    use_site,
+)
 from tests.ic_opt.test_library_query import count_fits, fresh_copy
 
 TARGETS = {"Lp_lf": {"min": 1.0e-9, "max": 1.3e-9}}
@@ -171,3 +180,63 @@ def test_two_processes_that_need_the_same_model_compute_it_once(owned, tmp_path,
         assert len(computed) == 1 and (root / ".cache" / f"{calibration.name}.lock").is_file()
     else:
         assert len(computed) == 2 and len(set(computed)) == 2                         # each process computed it
+
+
+def fit_curve_marked(root: str, marker: str, start, column: str) -> dict:
+    """In a spawned process: ``column``'s model of the resonance table at ``root``, noting in ``marker`` each part fold model
+    fitted (``part <part> <seed> <pid>``, each taking HOLD_S longer) and each calibration fold computed (``fold <column>
+    <seed> <pid>``); the processes set off together from ``start``."""
+    current: list[tuple[str, int]] = []
+    part_fold, fit_part, fold = q.Library._part_fold, folds.fit_part, folds.fold
+
+    def note(line: str) -> None:
+        with open(marker, "a", encoding="utf-8") as f:
+            f.write(f"{line} {os.getpid()}\n")
+
+    def spy_part_fold(self, stratum, part, seed):
+        current.append((part, seed))
+        try:
+            return part_fold(self, stratum, part, seed)
+        finally:
+            current.pop()
+
+    def spy_fit_part(x, y, seed, settings):
+        note(f"part {current[-1][0]} {seed}")
+        time.sleep(HOLD_S)
+        return fit_part(x, y, seed, settings)
+
+    def spy_fold(x, y, lf_y, seed, **kwargs):
+        note(f"fold {column} {seed}")
+        return fold(x, y, lf_y, seed, **kwargs)
+
+    q.Library._part_fold, folds.fit_part, folds.fold = spy_part_fold, spy_fit_part, spy_fold
+    lib = q.Library(root, limits=LOCAL)                                   # one fit worker: everything runs here
+    lib.dataset(RES_STRATUM)
+    start.wait(timeout=120)
+    return lib.model(RES_STRATUM, column).calibration
+
+
+@pytest.mark.parametrize("columns", [("Lp@20", "Lp@20"), ("Lp@20", "Ls@20")], ids=["same-curve", "sibling-curves"])
+def test_two_processes_fit_each_part_fold_model_and_each_composed_calibration_once(tmp_path, columns):
+    """N-125 on N-4's test, for a composed curve on stable rows: two spawned processes ask at the same moment, either for the
+    same curve -- one calibrates it, the other waits for the curve's lock and loads it -- or for two curves sharing SRF --
+    each calibrates its own, and each of SRF's five fold models is fitted by one of them while the other waits for that
+    model's lock and loads it. Every part fold model and every calibration fold is computed once between the two."""
+    resonance = {"model": "resonance", "feature_map": MAPPED}
+    root = build_resonance_library(tmp_path / "lib", lp=resonance, ls=resonance, srf={"feature_map": MAPPED})
+    q.Library(root, limits=LOCAL).models(RES_STRATUM, ["Lp_lf", "Ls_lf", "SRF"])   # the parts on file: both start with the folds
+    marker = tmp_path / "marks.txt"
+    context = multiprocessing.get_context("spawn")
+    with context.Manager() as manager, ProcessPoolExecutor(max_workers=2, mp_context=context) as pool:
+        start = manager.Barrier(2)
+        jobs = [pool.submit(fit_curve_marked, str(root), str(marker), start, c) for c in columns]
+        got = [job.result(timeout=600) for job in jobs]
+    lines = [line.split() for line in marker.read_text(encoding="utf-8").splitlines()]
+    parts = sorted((p, int(s)) for kind, p, s, _pid in lines if kind == "part")
+    calibrated = sorted((c, int(s)) for kind, c, s, _pid in lines if kind == "fold")
+    needs = {"Lp@20": ("Lp_lf", "SRF"), "Ls@20": ("Ls_lf", "SRF")}
+    assert parts == sorted({(p, s) for c in columns for p in needs[c] for s in gp.SEEDS})
+    assert calibrated == sorted({(c, s) for c in columns for s in gp.SEEDS})
+    if columns[0] == columns[1]:
+        assert got[0] == got[1] and len({pid for kind, *_rest, pid in lines}) == 1
+    assert all(cal["folds"] == "stable-rows" for cal in got)

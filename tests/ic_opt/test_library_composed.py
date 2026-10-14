@@ -19,7 +19,7 @@ import yaml
 from pydantic import ValidationError
 
 from ic_opt import _lock
-from ic_opt.library import composed, dataset, densify, domain, gp, manifest, region
+from ic_opt.library import composed, dataset, densify, domain, folds, gp, manifest, region
 from ic_opt.library import query as q
 from ic_opt.site import HostLimits
 from tests.ic_opt.fakes import FAKE_HOST
@@ -174,8 +174,9 @@ def test_a_q_ratio_is_the_peak_model_times_a_ratio_model(tmp_path):
 def test_q_values_at_or_below_zero_are_left_out_of_the_ratio_and_counted(tmp_path):
     """A log-space model takes no value <= 0: rows of a Q column holding one are left out of the ratio's fit and of its
     calibration, as rows without the curve are, and the calibration counts them. Held out, such a row would have no finite
-    |z| and the calibration would come out wrong without a word; left out, the hold-out draws from the other 97 rows and
-    the model answers the three rows' geometries from their neighbours."""
+    |z| and the calibration would come out wrong without a word; left out, each fold scores its held-out rows among the
+    other 97 (N-125: the fold's 20 of all 100 rows, less the three) and the model answers the three rows' geometries from
+    their neighbours."""
     lib = q.Library(build_resonance_library(tmp_path / "lib", qp=RATIO, scalars=("Qp_peak",)), limits=LOCAL)
     rows = lib.dataset(S).rows
     picked = [26, 49, 73]                                             # inside the table: OD_P 100, 120 and 140
@@ -183,7 +184,8 @@ def test_q_values_at_or_below_zero_are_left_out_of_the_ratio_and_counted(tmp_pat
     for i, value in zip(picked, (-2.0, 0.0, -0.5)):
         rows[i].values[QP] = value                                    # this library's dataset in memory: what its fits read
     m = lib.model(S, QP)
-    assert m.calibration["dropped_nonpositive"] == 3 and m.calibration["n_scored"] == len(gp.SEEDS) * round(gp.HOLDOUT * 97)
+    scored = sum(len(set(folds.held(len(rows), seed).tolist()) - set(picked)) for seed in gp.SEEDS)
+    assert m.calibration["dropped_nonpositive"] == 3 and m.calibration["n_scored"] == scored == 96
     assert np.isfinite([m.calibration[key] for key in ("k_scale", "median_rel", "coverage_2sigma_before")]).all()
     np.testing.assert_allclose(m.gp.predict(lib.dataset(S).matrix([rows[i] for i in picked]))[0], truth, rtol=0.01)
 
@@ -241,10 +243,11 @@ def test_cache_keys_follow_the_option_and_the_parts_keys(table, tmp_path):
 
 
 def test_the_parallel_path_matches_one_worker_and_writes_only_to_the_cache(table, tmp_path):
-    """Spawned workers: the parts, then the five calibration folds of each curve as jobs of their own, then each curve's
-    own part -- the same calibration and the same answers as one worker fitting everything here (one BLAS thread both).
-    With cache_dir= every file goes there, the fold jobs' and the final jobs' too, and each calibration file -- composed or
-    not -- has the lock file its fit held; the library's own .cache is never made."""
+    """Spawned workers: the parts, then the parts' fold models and the five calibration folds of each curve as jobs of their
+    own (N-125), then each curve's own part -- the same calibration and the same answers as one worker fitting everything
+    here (one BLAS thread both). With cache_dir= every file goes there, the fold jobs' and the final jobs' too; each
+    calibration file -- composed or not -- has the lock file its fit held, and so has each part fold model (one per part and
+    fold, shared by the two curves); the library's own .cache is never made."""
     reference = q.Library(shutil.copytree(table, tmp_path / "one", ignore=shutil.ignore_patterns(".cache")), limits=ONE_THREAD)
     expected = reference.models(S, [LP, LS])
     root, elsewhere = shutil.copytree(table, tmp_path / "many", ignore=shutil.ignore_patterns(".cache")), tmp_path / "elsewhere"
@@ -252,7 +255,7 @@ def test_the_parallel_path_matches_one_worker_and_writes_only_to_the_cache(table
     x = reference.dataset(S).matrix()[::9]
     for column in (LP, LS):
         mine, theirs = got[column].calibration, expected[column].calibration
-        assert mine.keys() == theirs.keys() and mine["source"] == theirs["source"] == "holdout 5x20%, every part refitted on each fold"
+        assert mine.keys() == theirs.keys() and mine["source"] == theirs["source"] == folds.SOURCE and mine["folds"] == "stable-rows"
         for key in ("k_scale", "median_rel", "coverage_2sigma_before", "n_scored"):
             assert mine[key] == pytest.approx(theirs[key], rel=1e-9), key
         for a, b in zip(got[column].gp.predict(x), expected[column].gp.predict(x)):
@@ -260,9 +263,11 @@ def test_the_parallel_path_matches_one_worker_and_writes_only_to_the_cache(table
     files = [p.name for p in elsewhere.glob(f"*-{S}-*")]
     stems = sorted({name.rsplit("-", 1)[0] for name in files if not name.endswith(".lock")})
     assert stems == [f"calibration-{S}-{c}" for c in ("Lp_at_20-resonance", "Lp_lf", "Ls_at_20-resonance", "Ls_lf", "SRF")] + \
-        [f"dataset-{S}"] + [f"model-{S}-{c}" for c in ("Lp_at_20", "Lp_lf", "Ls_at_20", "Ls_lf", "SRF")]
+        [f"dataset-{S}"] + [f"fold-{S}-{p}-s{seed}" for p in ("Lp_lf", "Ls_lf", "SRF") for seed in gp.SEEDS] + \
+        [f"model-{S}-{c}" for c in ("Lp_at_20", "Lp_lf", "Ls_at_20", "Ls_lf", "SRF")]
     calibrations = [n for n in files if n.startswith("calibration-") and n.endswith(".json")]
-    assert sorted(n for n in files if n.endswith(".lock")) == sorted(f"{n}.lock" for n in calibrations)
+    part_folds = [n for n in files if n.startswith("fold-") and n.endswith(".pkl")]
+    assert sorted(n for n in files if n.endswith(".lock")) == sorted(f"{n}.lock" for n in calibrations + part_folds)
     assert not (root / ".cache").exists()
 
 
