@@ -90,7 +90,11 @@ class FakeSpectreExecutor(LocalExecutor):
     ``metric_fn(params_text, testbench, corner) -> dict[str, float]`` decides the
     scalars each OCEAN run reports; the netlist text is parsed for ``NAME=value``
     parameters so tests can make metrics depend on the point. Set ``fail_spectre``
-    or ``fail_ocean`` to a predicate on (testbench, corner) to inject failures.
+    or ``fail_ocean`` to a predicate on (testbench, corner) to inject failures:
+    True fails the run with a one-line message and no log; a string is the log the
+    failed run leaves -- Spectre's ``psf/spectre.out`` (also its standard output,
+    exit 2, standard error ``spectre terminated prematurely due to fatal error.``)
+    or OCEAN's ``metrics/ocean.log`` (N-119).
     Waveform exports requested by the probe script are written as the script writes
     them (N-100: ``<name>.csv`` and ``<name>.meta.json``, a row each in
     ``ocean_timing.tsv``) unless ``nil_waveforms`` names them (OCEAN returned nil:
@@ -169,7 +173,12 @@ class FakeSpectreExecutor(LocalExecutor):
         work = Path(cwd)
         if argv[0] == "spectre":
             tb, corner = _tb_corner(work.parent)
-            if self.fail_spectre(tb, corner):
+            failure = self.fail_spectre(tb, corner)
+            if isinstance(failure, str):                # Spectre's log, which its standard output repeats
+                (work.parent / "psf").mkdir(exist_ok=True)
+                (work.parent / "psf" / "spectre.out").write_text(failure)
+                return CommandResult(2, failure, "spectre terminated prematurely due to fatal error.\n", argv, 0.01)
+            if failure:
                 return CommandResult(1, "", "spectre: license lost", argv, 0.01)
             psf = work.parent / "psf"
             psf.mkdir(exist_ok=True)
@@ -177,7 +186,10 @@ class FakeSpectreExecutor(LocalExecutor):
             return CommandResult(0, "spectre done\n", "", argv, 0.01)
         if argv[0] == "ocean":
             tb, corner = _tb_corner(work)
-            if self.fail_ocean(tb, corner):
+            failure = self.fail_ocean(tb, corner)
+            if isinstance(failure, str):                # OCEAN's log (-log metrics/ocean.log)
+                (work / "metrics" / "ocean.log").write_text(failure)
+            if failure:
                 return CommandResult(2, "", "ocean: replay failed", argv, 0.01)
             params = _params_from_netlist((work / "netlist" / "input.scs").read_text())
             rows = ["metric\tvalue\tunit\tstatus\tmessage"]

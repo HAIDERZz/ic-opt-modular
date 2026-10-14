@@ -89,6 +89,24 @@ Ctrl-C cut off gets the same extra `ssh` as a timed-out one. After Ctrl-C,
 `sim.evaluate` starts no further point, stage or command: a point it interrupted
 is not recorded (it is simulated again when the recipe runs again), and
 `.icopt/steps.jsonl` lists the points recorded, interrupted and never started.
+`ic-opt run` then exits with code 130 after one line on stderr, counted from the
+step rows the run wrote: `interrupted: 2 points recorded, 2 stopped, 2 not started;
+the same command continues the run` -- the points the run recorded (its earlier
+batches' too), the ones the interrupt stopped while they ran, the ones it kept
+from starting.
+
+One run per project: `ic-opt run` takes the project lock, `.icopt/run.lock`,
+before anything writes to the store -- before the doctor's step row and the
+netlist import -- and holds it to its end, the file naming its process id
+meanwhile. A second `ic-opt run` on that project is refused like the command's
+other refusals: one line, `error: project is locked by another run:
+<project>/.icopt/run.lock (pid 12345)`, exit code 2, nothing written. `--plan`
+writes nothing and takes no lock, so it answers while a run goes, as `ic-opt
+digest` and `ic-opt call` on a library do; `ic-opt advise` is refused until the
+run ends. The blocks that take the lock themselves (`opt.optimize` for its loop,
+`opt.advise` in a recipe's own code) take nothing more inside the run that holds
+it. The lock is the operating system's: it ends with its process, so a killed
+run leaves none behind (never delete the file).
 
 ## Use
 
@@ -639,6 +657,16 @@ The file is no part of `observations.jsonl`, of any fingerprint, of the digest o
 its point failed in a point-level stage (`pcell`, `emx:<device>`, `pick`), so its `sim_dir` is null -- has no directory and
 no trace; a point's EMX runs are in `sims/<obs>/em/<device>/` (`emx.cmd`, `emx.log`), not in a child's trace. Children
 recorded by an earlier version have no `trace.json`.
+
+A child whose Spectre run exits non-zero is `failed:spectre`, and its `issues` say why: first the first `ERROR` entry of
+Spectre's log, `psf/spectre.out` (fetched from an SSH host; Spectre's own output when there is no log) -- the line that
+starts it and its continuation lines on one line, a quoted absolute path longer than 40 characters written `.../<file
+name>`, at most 300 characters, e.g. `ERROR: "input.scs" 12: The file '.../toplevel.scs' appears to be in Spectre
+syntax, but Spectre cannot find the 'section tt_x' library defined in it ...` for a corner whose model section the model
+file lacks --, then `spectre exited <code>` and the end of its standard error. A log without an `ERROR` entry leaves the
+first line out. An OCEAN run that wrote no scalars (`failed:ocean`) puts the first error of `metrics/ocean.log` in front
+of its lines the same way: a line of its error stream (`\e`) starting with `ERROR (<code>)` -- a license refused -- or
+with SKILL's `*Error*`. A job past its deadline reads `timed out after <s>s: ...` as before.
 
 Waveforms asked for with `waveforms=` (`fix_run`, `sim.evaluate`) land in the
 child's `sims/<obs>/<tb>/<corner>/metrics/waveforms/`: one real CSV per waveform,
