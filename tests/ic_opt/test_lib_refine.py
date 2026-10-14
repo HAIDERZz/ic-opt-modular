@@ -265,6 +265,28 @@ def test_the_window_rules_in_their_order():
     assert lib_refine.verdict({**ok, "k": {"status": "predicted", "value": 0.9}}, {"status": "out_of_domain"}, axes, 9e10)[0] == "out_of_domain"
 
 
+def test_a_column_above_its_resonance_fails_the_srf_margin_rule_in_its_place():
+    """N-113: lib.query answers a curve column ``above_resonance`` -- no value, the resonance predicted there at or below the
+    curve's srf_margin x f. The neighbour fails ``srf_margin`` with lib.query's reason, after the rules before it; ``Qmin``
+    is ``above_resonance`` when either Q is, whatever the other."""
+    axes = {"Lp": index.Axis.of("Lp", 3e-10, 4e-10, 1e-12), "k": index.Axis.of("k", 0.6, 0.8, 0.01)}
+    ok = {"Lp": {"status": "predicted", "value": 3.5e-10}, "k": {"status": "predicted", "value": 0.7}}
+    srf = {"status": "predicted", "value": 5e10}
+    beyond = {"status": "above_resonance", "reason": "the resonance predicted here (11 GHz) is at or below srf_margin x f "
+                                                     "(12.5 GHz): a measured row there has no value for this column"}
+    assert lib_refine.verdict({**ok, "Lp": beyond}, srf, axes, 4e10) == ("srf_margin", f"Lp: {beyond['reason']}")
+    assert lib_refine.verdict({**ok, "Lp": beyond}, None, axes, 4e10)[0] == "srf_margin"            # whether or not SRF is declared
+    assert lib_refine.verdict({**ok, "Lp": beyond, "k": {"status": "uncertain", "value": 0.7}}, srf, axes, 4e10)[0] == "uncertain"
+    assert lib_refine.verdict({**ok, "Lp": beyond, "k": {"status": "predicted", "value": 0.9}}, srf, axes, 4e10)[0] == "outside_range"
+    assert lib_refine.verdict({**ok, "Lp": beyond}, {"status": "out_of_domain"}, axes, 4e10)[0] == "out_of_domain"
+    columns = ["Qp@10", "Qs@10"]
+    for other in ({"status": "predicted", "value": 12.0, "lo": 11.0, "hi": 13.0}, {"status": "uncertain", "value": 12.0}):
+        assert lib_refine._answer("Qmin", columns, {"Qp@10": other, "Qs@10": beyond}) == {"status": "above_resonance", "value": None}
+        assert lib_refine._answer("Qmin", columns, {"Qp@10": beyond, "Qs@10": other}) == {"status": "above_resonance", "value": None}
+    assert lib_refine.verdict({**ok, "Qmin": {"status": "above_resonance", "value": None}}, srf,
+                              {**axes, "Qmin": index.Axis.of("Qmin", 5, 20, 0.1)}, 4e10) == ("srf_margin", "Qmin: above_resonance")
+
+
 def test_the_window_drops_and_counts_and_the_kept_ones_rank_by_prefer(library, tmp_path, capsys):
     """Out of domain: the 81 neighbours with a centre offset of -0.5 (below the table's 0). Outside a range: the primary's
     inductance is held at the centre row's level, so a larger primary goes beyond it. Below the SRF margin: the margin sits

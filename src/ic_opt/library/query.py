@@ -59,6 +59,15 @@ under the column's name. A frequency outside every part's sweep, or where no row
 inside its sweep and below its system SRF / srf_margin), is refused with the parts' sweeps. Nothing is measured or
 fitted for a column nobody asks for, and the dataset, its key and its cache files stay what they were.
 
+A curve column is answered only below the device's own resonance (N-113). A measured row has a value for ``<curve>@<f>``
+only where its resonance lies above the curve's ``srf_margin`` x f (``dataset._anchor_value``), so ``query`` takes the
+resonance's answer at the point first -- the stratum's system ``SRF``, else per drive (``DRIVE_SRF``; ``Resonance``) -- and
+answers the curve ``above_resonance``, without a value, where the resonance predicted there is at or below that threshold,
+``out_of_domain`` where the resonance's model refuses the point (the rule cannot be checked), and as before elsewhere, flagged
+``near_resonance`` where the resonance's lower bound reaches the threshold. ``Library.models`` loads a curve's resonance models
+with it and attaches them (``Model.resonance``), so that ``suggest.predict_all`` holds every anchored column it predicts to the
+same rule.
+
 ``Library.footprints`` reads each row's footprint once per stratum (``dataset.footprints``), only when an answer needs it.
 """
 
@@ -76,7 +85,7 @@ import threading
 from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -94,6 +103,8 @@ FIT_PEAK_COPIES = 3                                  # a fit's peak memory in ke
 BYTES_PER_GB = 1024**3                               # GB as site.yaml means it (env.doctor reads MemTotal in these units)
 WINDOWS_MAX_WORKERS = 61                             # ProcessPoolExecutor refuses more worker processes on Windows
 THREAD_CAP_VARIABLES = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")   # explicit caps: omp_cap
+DRIVE_SRF = {"Lp": ("SRF_p",), "Qp": ("SRF_p",), "Ls": ("SRF_s",), "Qs": ("SRF_s",), "k": ("SRF_p", "SRF_s")}   # a curve's resonance
+                                                     # per drive, where the stratum has no system SRF (Resonance, suggest.implied_srf)
 
 
 def unit(quantity: str) -> str:
@@ -108,6 +119,26 @@ def fit_unit(quantity: str) -> float:
 
 
 @dataclass
+class Resonance:
+    """What limits a curve column's answers (N-113). A measured row has a value for ``<curve>@<f>`` only where its resonance
+    lies above the curve's ``srf_margin`` x f (``dataset._anchor_value``), so a prediction there is an answer only where the
+    resonance predicted there lies above it too. ``columns`` are the resonance columns that decide it: the stratum's system
+    ``SRF`` when it declares one, else per drive (``DRIVE_SRF``: ``SRF_p`` for Lp / Qp, ``SRF_s`` for Ls / Qs, both for k).
+    ``models`` are their models, which ``Library.models`` loads with the curve's and attaches (``Library.resonance`` leaves
+    it empty)."""
+
+    columns: tuple[str, ...]
+    frequency_hz: float                              # f, the column's frequency
+    srf_margin: float                                # the curve's (library.yaml)
+    models: dict[str, Model] = field(default_factory=dict, repr=False)
+
+    @property
+    def threshold_hz(self) -> float:
+        """srf_margin x f: a resonance at or below it leaves a measured row without a value for the column."""
+        return self.srf_margin * self.frequency_hz
+
+
+@dataclass
 class Model:
     stratum: str
     quantity: str
@@ -116,6 +147,7 @@ class Model:
     guard: domain.DomainGuard
     calibration: dict                                # k_scale, held-out median_rel and coverage behind it
     rel_sigma_max: float = domain.DEFAULT_SIGMA_REL_MAX   # its confidence ceiling when a call gives none (Library.rel_sigma_max)
+    resonance: Resonance | None = None               # a curve column's (Library.resonance), attached by Library.models; else None
 
 
 def fit_rows(model: Model) -> int:
@@ -296,16 +328,17 @@ class Library:
         minutes per fit. Every worker also imports the main module of the program, so a script that gets here (directly or
         through ``lib.region`` / ``lib_signoff``) keeps its top-level work under ``if __name__ == "__main__":``.
 
-        A composed curve (``model: ratio`` / ``resonance``) needs its parts' models: they are loaded or fitted first, with the
+        A composed curve (``model: ratio`` / ``resonance``) needs its parts' models, and every curve column the models of its
+        resonance (``resonance``, N-113: its answers are checked against them): they are loaded or fitted first, with the
         other direct quantities, each once however many curves share it. Then the composed curves: with several workers, the
         five folds of each uncached calibration are jobs of their own (``_calibrate_fold_in_worker``: every fold refits every
         part) while this process holds the curve's lock, and once a curve is calibrated its own part is fitted on the shared
-        models (``_fit_in_worker``).
+        models (``_fit_in_worker``). Last, each curve's model gets its resonance with those models attached (``_limit``).
 
         The names go through ``columns`` first: an extension column is measured (and cached) before any worker starts, so a
         worker reads it from the cache file; the answer is keyed by the canonical names."""
         quantities = self.columns(stratum, quantities)
-        order = self._with_parts(stratum, list(dict.fromkeys(quantities)))
+        order = self._with_needs(stratum, list(dict.fromkeys(quantities)))
         missing = [q for q in order if not self._load(stratum, q)]
         direct = [q for q in missing if self._plan(stratum, q) is None]
         built = [q for q in missing if q not in direct]
@@ -319,6 +352,8 @@ class Library:
             self._fit_composed(stratum, built, workers, threads)
         if missing:
             print(f"[lib] {stratum}: {len(missing)} model(s) fitted and cached", file=sys.stderr, flush=True)
+        for q in order:
+            self._limit(stratum, q)
         return {q: self._models[(stratum, q)] for q in quantities}
 
     def _fit_direct(self, stratum: str, names: list[str], workers: int | None, threads: int | None) -> None:
@@ -421,6 +456,30 @@ class Library:
         guard = domain.DomainGuard(x, ds.dims, settings["ranges"], nt_dim=ds.nt_dim, ids=list(range(len(rows))))
         self._models[(stratum, quantity)] = Model(stratum, quantity, rows, model, guard, calibration, self.rel_sigma_max(stratum, quantity))
 
+    # -- the resonance that limits a curve's answers (N-113) ----------------------------------------------------------------
+
+    def resonance(self, stratum: str, column: str) -> Resonance | None:
+        """What limits the answers of ``column`` (``Resonance``, without models): for a curve column ``<curve>@<f>``, the
+        resonance columns -- the stratum's system ``SRF`` when it declares one, else ``DRIVE_SRF``'s per drive, those it
+        declares -- that have usable rows, f in Hz and the curve's ``srf_margin``. None for any other column, and for a curve
+        with no such column: the stratum declares none (the rule cannot be applied), or no row resonates inside its sweep
+        (then the margin cuts no row either)."""
+        base, at, ghz = column.partition("@")
+        rules = self.manifest.strata[stratum].quantities
+        if not at or base not in manifest.CURVES or base not in rules:
+            return None
+        ds = self.dataset(stratum)
+        columns = tuple(c for c in (("SRF",) if "SRF" in rules else DRIVE_SRF[base]) if c in rules and ds.usable(c))
+        return Resonance(columns, float(ghz) * 1e9, rules[base].srf_margin) if columns else None
+
+    def _limit(self, stratum: str, quantity: str) -> None:
+        """Attach a curve column's resonance, with its columns' models (in memory: ``models`` loaded them first), to the
+        column's model, where ``suggest.predict_all`` reads it."""
+        limit = self.resonance(stratum, quantity)
+        if limit is not None:
+            limit.models = {c: self._models[(stratum, c)] for c in limit.columns}
+            self._models[(stratum, quantity)].resonance = limit
+
     # -- composed curves (ic_opt.library.composed) ---------------------------------------------------------------------
 
     def _plan(self, stratum: str, quantity: str) -> dict | None:
@@ -439,11 +498,17 @@ class Library:
         plan = self._plan(stratum, quantity)
         return [] if plan is None else [plan["lf"]] + ([plan["srf"]] if plan["srf"] else [])
 
-    def _with_parts(self, stratum: str, quantities: list[str]) -> list[str]:
-        """``quantities`` with every composed curve's parts before it, each column once."""
+    def _needs(self, stratum: str, quantity: str) -> list[str]:
+        """The columns whose models a column's answers need besides its own: a composed curve's parts (``_parts``) and a
+        curve's resonance columns (``resonance``)."""
+        limit = self.resonance(stratum, quantity)
+        return list(dict.fromkeys(self._parts(stratum, quantity) + (list(limit.columns) if limit else [])))
+
+    def _with_needs(self, stratum: str, quantities: list[str]) -> list[str]:
+        """``quantities`` with the columns each one needs (``_needs``) before it, each column once."""
         out: dict[str, None] = {}
         for q in quantities:
-            out.update(dict.fromkeys(self._parts(stratum, q)))
+            out.update(dict.fromkeys(self._needs(stratum, q)))
             out[q] = None
         return list(out)
 
@@ -810,7 +875,8 @@ def query(library: Library, stratum: str, params: dict, quantities: list[str] | 
     """Measured values at an exact library point, else per-quantity predictions with calibrated k-sigma bounds and domain verdicts;
     ``notes`` carries the library's (``Library.notes``). ``rel_sigma_max`` is the confidence ceiling for every quantity; None:
     each quantity's own (``Library.rel_sigma_max``), which a prediction reports with its ``rel_sigma``. ``quantities`` may
-    name extension columns (``Library.columns``: a declared curve at any frequency); the answer names them canonically."""
+    name extension columns (``Library.columns``: a declared curve at any frequency); the answer names them canonically. A
+    curve column is answered only below its resonance (``_predict``, N-113)."""
     ds = library.dataset(stratum)
     missing = [d for d in ds.dims if d not in params]
     if missing:
@@ -825,12 +891,69 @@ def query(library: Library, stratum: str, params: dict, quantities: list[str] | 
             out["quantities"][q] = {"status": "measured", "value": row.values.get(q), "unit": unit(q)}
         return out
     x = np.array([[coords[d] for d in ds.dims]])
+    found: dict[str, dict] = {}                          # the answers so far: a resonance several curves share is predicted once
     for q in wanted:
-        out["quantities"][q] = _predict(library, stratum, q, coords, x, k, rel_sigma_max)
+        out["quantities"][q] = _predict(library, stratum, q, coords, x, k, rel_sigma_max, found)
     return out
 
 
-def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None) -> dict:
+def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None,
+             found: dict[str, dict] | None = None) -> dict:
+    """Column ``q``'s answer at a point that is no library row, kept in ``found`` (the answers given so far in this call). A
+    column without a resonance (``Library.resonance``) answers from its own model (``_answer``). A curve column first takes
+    its resonance's answer at the point, through this same path (above the sweep and the domain guard work as for any SRF
+    column), and then (N-113), with the threshold srf_margin x f:
+
+    - a resonance ``predicted`` or ``uncertain`` at or below the threshold: ``above_resonance``, without a value -- a measured
+      row there would have none (``dataset._anchor_value``) -- giving the resonance's ``srf`` (its column, value, lo, hi),
+      ``threshold_hz``, ``frequency_hz``, ``srf_margin``, the unit, the nearest rows of the curve's model and the reason;
+    - a resonance ``out_of_domain``: the rule cannot be checked, so the curve is ``out_of_domain`` too, with the resonance
+      model's criterion and nearest rows and its reason prefixed ``resonance model: ``;
+    - otherwise the curve's own answer, as without the rule, plus ``near_resonance`` (the resonance's column, ``srf_lo_hz``,
+      ``threshold_hz``) where the resonance's lower bound -- its calibrated ``lo``, or the sweep's end when it lies above the
+      sweep -- falls below the threshold (a calibrated ``lo`` at it counts too); the status does not change.
+
+    Two resonances (``k`` of a stratum without the system SRF: both drives'): one at or below the threshold makes the curve
+    ``above_resonance`` (the lower named), else one out of its domain makes it ``out_of_domain``, else the lower bound that
+    reaches lowest is the one ``near_resonance`` names."""
+    found = {} if found is None else found
+    if q in found:
+        return found[q]
+    limit = library.resonance(stratum, q)
+    if limit is None:
+        found[q] = _answer(library, stratum, q, coords, x, k, rel_sigma_max)
+        return found[q]
+    threshold = limit.threshold_hz
+    srf = {c: _predict(library, stratum, c, coords, x, k, rel_sigma_max, found) for c in limit.columns}
+    below = [c for c, a in srf.items() if a["status"] in ("predicted", "uncertain") and a["value"] <= threshold]
+    refused = [c for c, a in srf.items() if a["status"] == "out_of_domain"]
+    if below:
+        c = min(below, key=lambda name: srf[name]["value"])
+        a, m = srf[c], library.model(stratum, q)
+        named = "" if c == "SRF" else f"{c} "
+        out = {"status": "above_resonance",
+               "reason": f"the resonance predicted here ({named}{a['value'] / 1e9:.4g} GHz) is at or below srf_margin x f "
+                         f"({threshold / 1e9:.4g} GHz): a measured row there has no value for this column",
+               "srf": {"column": c, "value": a["value"], "lo": a["lo"], "hi": a["hi"]}, "threshold_hz": threshold,
+               "frequency_hz": limit.frequency_hz, "srf_margin": limit.srf_margin, "unit": unit(q),
+               "nearest": [_evidence(m.rows[i], q, library.dataset(stratum).dims, dist) for i, dist in m.guard.nearest(coords)]}
+    elif refused:
+        a = srf[refused[0]]
+        out = {**a, "reason": f"resonance model: {a['reason']}", "unit": unit(q)}
+    else:
+        out = _answer(library, stratum, q, coords, x, k, rel_sigma_max)
+        lows = {c: a["lower_bound"] if a["status"] == "above_sweep" else a["lo"] for c, a in srf.items()}
+        near = [c for c, a in srf.items() if lows[c] < threshold or (a["status"] != "above_sweep" and lows[c] == threshold)]
+        if near:
+            c = min(near, key=lows.get)
+            out["near_resonance"] = {"column": c, "srf_lo_hz": lows[c], "threshold_hz": threshold}
+    found[q] = out
+    return out
+
+
+def _answer(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None) -> dict:
+    """``q``'s answer from its own model (and, for SRF, the nearest rows above their sweep): ``above_sweep``, ``out_of_domain``,
+    ``predicted`` or ``uncertain``."""
     ds = library.dataset(stratum)
     if q.startswith("SRF"):
         near = _nearest_rows(library, stratum, coords, 5)
