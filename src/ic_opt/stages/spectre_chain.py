@@ -30,10 +30,10 @@ change, and the engine reuses no observation across that change (``eval.engine``
 
 Failures (N-119). A Spectre run that exits non-zero fails its child with, first, the first ``ERROR`` entry of Spectre's
 log (``psf/spectre.out``: :func:`spectre_error`) -- the cause, such as a corner's model section that the model file
-lacks -- then ``spectre exited <code>`` and the end of its standard error, as before; a log without one leaves the
-first line out. An OCEAN run that produced no scalars puts the first error of its log (``metrics/ocean.log``:
-:func:`ocean_error`, e.g. a license refused) in front of its lines the same way. A command past its deadline fails as
-before (``timed out after ...``: ``eval.engine``).
+lacks, a quoted absolute path in it shortened to ``.../<file name>`` -- then ``spectre exited <code>`` and the end of
+its standard error, as before; a log without one leaves the first line out. An OCEAN run that produced no scalars puts
+the first error of its log (``metrics/ocean.log``: :func:`ocean_error`, e.g. a license refused) in front of its lines
+the same way. A command past its deadline fails as before (``timed out after ...``: ``eval.engine``).
 """
 
 from __future__ import annotations
@@ -59,6 +59,7 @@ OCEAN_ATTEMPTS = 3
 TRANSIENT_SOCKET_FAILURE = "can't create server socket"
 SPECTRE_LOG = "spectre.out"          # Spectre's log in the child's psf directory (``+log ../psf/spectre.out``)
 ERROR_LIMIT = 300                    # characters of a log's error entry that a failed child's issues keep (N-119)
+PATH_LIMIT = 40                      # a quoted absolute path longer than this is .../<file name> in that entry
 
 
 @dataclass
@@ -315,8 +316,9 @@ _SPECTRE_ERROR = re.compile(r"ERROR\b")
 def spectre_error(text: str) -> str | None:
     """The first ``ERROR`` entry of a Spectre log or output: the line that starts with ``ERROR`` (``ERROR (SFE-868):
     ...``, ``ERROR: "input.scs" 12: ...``) and its continuation lines -- the lines after it indented deeper than it,
-    up to a blank line -- collapsed to one line of at most ``ERROR_LIMIT`` characters (``...`` where it was cut).
-    None when the text holds no such line."""
+    up to a blank line -- collapsed to one line, each quoted absolute path longer than ``PATH_LIMIT`` characters
+    shortened to ``.../<file name>`` (:func:`_short_paths`), at most ``ERROR_LIMIT`` characters (``...`` where it was
+    cut). None when the text holds no such line."""
     lines = text.splitlines()
     for at, line in enumerate(lines):
         start = line.lstrip()
@@ -339,7 +341,8 @@ def ocean_error(text: str) -> str | None:
     """The first error of an OCEAN log (``-log``): a line of its error stream (``\\e``) that starts with ``ERROR`` -- the
     framework's, e.g. ``ERROR (LMF-02005): License call failed for feature ...`` -- or ``*Error*`` -- SKILL's, e.g.
     ``*Error* openResults: ...`` --, with the error-stream lines after it that are indented (continuation lines),
-    collapsed to one line of at most ``ERROR_LIMIT`` characters. None when the log holds none."""
+    collapsed to one line as :func:`spectre_error` collapses its entry (long quoted paths shortened, at most
+    ``ERROR_LIMIT`` characters). None when the log holds none."""
     lines = text.splitlines()
     for at, line in enumerate(lines):
         if not line.startswith(_OCEAN_ERROR_STREAM):
@@ -358,8 +361,25 @@ def ocean_error(text: str) -> str | None:
 
 
 def _one_line(lines: list[str]) -> str:
-    text = " ".join(" ".join(lines).split())
+    text = _short_paths(" ".join(" ".join(lines).split()))
     return text if len(text) <= ERROR_LIMIT else text[: ERROR_LIMIT - 3] + "..."
+
+
+_QUOTED_PATH = re.compile(r"""([`'"])(/[^\s`'"]+)(['"])""")
+
+
+def _short_paths(text: str) -> str:
+    """``text`` with every quoted absolute path longer than ``PATH_LIMIT`` characters written ``.../<file name>``, its
+    quotes kept -- Spectre's `` `...' ``, ``'...'``, ``"..."``. A model file's path in a PDK tree runs to 120 characters
+    and more, and put the cause of the error behind what the digest keeps of an issue (its first 200 characters).
+    Short paths, quoted text that is no absolute path and unquoted paths stay as they are."""
+    def shorten(match: re.Match) -> str:
+        opening, path, closing = match.groups()
+        if (opening == '"') != (closing == '"') or len(path) <= PATH_LIMIT:      # `...' and '...' close with '
+            return match.group(0)
+        return f"{opening}.../{path.rstrip('/').rsplit('/', 1)[-1]}{closing}"
+
+    return _QUOTED_PATH.sub(shorten, text)
 
 
 def spectre_pipeline(spec, deck: Deck, *, waveforms: list[WaveformExport] = ()) -> list:

@@ -128,16 +128,42 @@ spectre completes with 1 error, 0 warnings, and 2 notices.
 
 def test_a_failed_spectre_run_puts_the_first_error_of_its_log_before_the_other_lines(tmp_path):
     """N-119: Spectre exited 2 and its log says why; the child's issues start with that entry, then the lines they always
-    had. A longer entry is cut to ERROR_LIMIT characters (a real model path is longer than this one: the section's name
-    stays inside the first 300 there too)."""
+    had. A longer entry is cut to ERROR_LIMIT characters."""
     executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {}, fail_spectre=lambda tb, c: SPECTRE_LOG)
     with pytest.raises(StageFailure) as failed:
         run_chain(tmp_path, executor)
     assert failed.value.issues == [SECTION_ERROR, "spectre exited 2", "spectre terminated prematurely due to fatal error."]
     assert not any(c.startswith("ocean") for c in executor.commands)
-    longer = SPECTRE_LOG.replace("/pdk/models/", "/pdk/" + "a_long_directory_name/" * 6 + "models/")
+    longer = SPECTRE_LOG.replace("rerun the simulation.", "rerun the simulation." + " Check the include statement." * 10)
     cut = spectre_chain.spectre_error(longer)
     assert len(cut) == spectre_chain.ERROR_LIMIT == 300 and cut.endswith("...") and "`section tt_no_such_section'" in cut
+
+
+PDK_PATH = ("/nas/pdk/vendor_process_design_kit/PROCESS_1P10M_5X2Y2R/iPDK_PROCESS_v1.0_2p2a_1p10m/"
+            "vendor_kit_models_and_corners/../models/spectre/toplevel.scs")          # 145 characters, as deep as a real PDK's
+
+
+def test_a_long_quoted_path_is_shortened_to_its_file_name_so_the_cause_stays_in_front(tmp_path):
+    """N-119 follow-up: a model file deep in a PDK tree put the section's name past the 200 characters the digest keeps
+    of a point's issue (T17.10; the real check's path was 120 characters long, the name at 235). A quoted absolute path
+    longer than PATH_LIMIT becomes ``.../<file name>`` inside its quotes, and the name is within the first 200. A short
+    quoted path, quoted text that is no path and an unquoted path stay; SKILL's double quotes are shortened too."""
+    assert len(PDK_PATH) == 145 and spectre_chain.PATH_LIMIT == 40
+    raw = SECTION_ERROR.replace("/pdk/models/spectre/toplevel.scs", PDK_PATH)
+    assert f"tb/nominal: {raw}".index("tt_no_such_section") > 200               # as it was: behind the digest's cut
+    log = SPECTRE_LOG.replace("/pdk/models/spectre/toplevel.scs", PDK_PATH)
+    executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {}, fail_spectre=lambda tb, c: log)
+    with pytest.raises(StageFailure) as failed:
+        run_chain(tmp_path, executor)
+    cause = failed.value.issues[0]
+    assert cause == SECTION_ERROR.replace("`/pdk/models/spectre/toplevel.scs'", "`.../toplevel.scs'")
+    assert "`section tt_no_such_section'" in f"tb/nominal: {cause}"[:200]
+    assert spectre_chain.spectre_error(SPECTRE_LOG) == SECTION_ERROR             # its quoted path has 33 characters
+    deep = "/home/user/project/simulation/a_long_directory_name/" * 2
+    assert spectre_chain.spectre_error(f"ERROR (SFE-1): include {deep}x.scs not found\n") == (
+        f"ERROR (SFE-1): include {deep}x.scs not found")                          # unquoted: as written
+    assert spectre_chain.ocean_error(f'\\e *Error* load: can\'t access file "{deep}probe.il"\n') == (
+        "*Error* load: can't access file \".../probe.il\"")
 
 
 def test_the_error_entry_is_the_first_one_with_its_continuation_lines_on_one_line():

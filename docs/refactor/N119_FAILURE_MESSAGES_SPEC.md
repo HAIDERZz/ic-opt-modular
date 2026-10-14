@@ -172,9 +172,9 @@ stderr of each run in `<tag>.out` / `<tag>.err`; `drive.log`). About two minutes
 Spectre jobs (two at once).
 
 - c1 (`c1_spectre_error/`, model section `Post_simu_top_no_such_section`, budget=1): exit 0, the point
-  `failed:spectre`, its child's issues `ERROR: "input.scs" 12: The file `<PDK>/models/spectre/toplevel.scs' appears
+  `failed:spectre`, its child's issues ``ERROR: "input.scs" 12: The file `<PDK>/models/spectre/toplevel.scs' appears
   to be in Spectre syntax, but Spectre cannot find the `section Post_simu_top_no_such_section' library defined in it.
-  Ensure that the `P...` (300 characters, the real model path about 120 of them), `spectre exited 2`, `spectre
+  Ensure that the `P...`` (300 characters, the real model path about 120 of them), `spectre exited 2`, `spectre
   terminated prematurely due to fatal error.`; the point's issues the same with `cg_nf/tt: `.
 - c2 (`c2_interrupt_lock/`, budget=6): SIGINT to the group 39 s after the start, with 2 points recorded and 4
   simulator processes running: exit 130 at once, stderr exactly `interrupted: 2 points recorded, 2 stopped, 2 not
@@ -202,8 +202,7 @@ Spectre jobs (two at once).
 3. The digest keeps an issue text's first 200 characters (T17.10). With this PDK's model path the ERROR line's section
    name starts at character 235 of the point's issue, so `ic-opt digest` shows `cg_nf/tt: ERROR: "input.scs" 12: The
    file '...toplevel.scs' appears to be in Spectre syntax, b...` without the cause; observations.jsonl holds it (the
-   report shows no issue texts). Not changed here; a candidate: the digest keeps 300 characters of a failure text, or
-   the entry shortens a long quoted path.
+   report shows no issue texts). Resolved by the follow-up below: the entry shortens a long quoted path.
 4. OCEAN: the log's first error is added on `no scalars` only (above). Spectre: `ERROR` entries only, as specified; a
    `FATAL` entry without one would leave the issues as they were (none seen on this machine). The fetch of the log from
    an SSH host is covered by the code path and the local test only, not by a real remote run.
@@ -215,3 +214,19 @@ Spectre jobs (two at once).
 7. The test of point 2 drives the command line from `test_engine.py`, as the specification asks; it and the lock tests
    share `test_cli_recipes.fake_cli`, added in the third commit (so the second commit's version of the test was
    reworded there).
+
+### Follow-up: long quoted paths (the coordinator's request after review; the commit that adds this paragraph)
+
+Deviation 3 defeated point 1 in the digest, so the entry now writes every quoted absolute path longer than `PATH_LIMIT`
+= 40 characters as `.../<file name>` inside its quotes (`` `...' ``, `'...'`, `"..."`), before the 300-character cut, in
+`spectre_error` and `ocean_error` alike (`_short_paths` in `_one_line`); short paths, quoted text that is no path and
+unquoted paths stay (the license log's unquoted search path is unchanged). c1's saved `psf/spectre.out` through the
+parser (`drive.py reparse`): before, 300 characters, the section's name at character 235 of the point's issue --
+``ERROR: "input.scs" 12: The file `<PDK>/models/spectre/toplevel.scs' appears to be in Spectre syntax, but Spectre
+cannot find the `section Post_simu_top_no_such_section' library defined in it. Ensure that the `P...``; after, 297
+characters, the name at 131 (the digest keeps 200), nothing cut -- ``ERROR: "input.scs" 12: The file `.../toplevel.scs'
+appears to be in Spectre syntax, but Spectre cannot find the `section Post_simu_top_no_such_section' library defined in
+it. Ensure that the `Post_simu_top_no_such_section' section is defined by `section/endsection' block and rerun the
+simulation.`` Test: a 145-character PDK-like path puts the name past character 200 as it was and inside it now, with the
+short, unquoted and SKILL-quoted cases (it fails with the shortening switched off); the cut test now lengthens the
+message instead of the path. The targeted set: 325 passed, 1 skipped; ruff clean.
