@@ -4,22 +4,14 @@
 # provenance and the KNOWN_DEVIATIONS record.
 from __future__ import annotations
 
-import math
-
-import klayout.db as kdb
-
 from ic_opt.em.pcell._pcell_core import (
     _EPS,
-    DBU_UM,
     Cell,
     PortError,
     ProcessRuleContext,
-    _metal,
     _metal_index,
     _metal_name,
-    _nm,
     _pin,
-    _required_parallel_spacing,
     _xfm_order_ports,
     finalize_emx_ports,
     vias,
@@ -27,6 +19,7 @@ from ic_opt.em.pcell._pcell_core import (
 from ic_opt.em.pcell._pcell_guards import (
     _check_opening,
     _check_trace_rules,
+    _tap_stack_gap,
     _xfm_net_short,
 )
 from ic_opt.em.pcell._pcell_primitives import (
@@ -102,9 +95,10 @@ def _bs_center_tap(cell, center_x, radius, W, LEAD, WINDING_ME, CT_ME, side,
 
     * CT_ME below WINDING_ME, a via-stack tap: a W x W via stack at the
       closed column drops to CT_ME and the lead runs on CT_ME, W wide.
-      The stack draws its W x W pad on every metal it passes; when one of
-      them is the other winding's, xfm_bs measures that pad against the
-      other winding (``_bs_tap_stack_gap``, N-93).
+      The stack draws its W x W pad on every metal it passes; where the
+      other winding draws on one of them, the family measures the tap
+      there against it (xfm_bs ``_bs_tap_stack_gap``, N-93; xfm_ms
+      ``_ms_tap_stack_gap`` and xfm_balun ``_balun_tap_stack_gap``, N-121).
     * CT_ME equal to WINDING_ME, a same-metal tap: no via stack; the lead
       runs on the winding's own metal over the same x span (the column plus
       LEAD outward), so it overlaps the column and merges with the winding,
@@ -220,27 +214,6 @@ def _bs_tap_guard(label: str, ct_me, width, winding_i: int, winding: str,
 _WINDINGS = {"P": "primary", "S": "secondary"}
 
 
-def _drawn_on(cell: Cell, layer: tuple[int, int]) -> kdb.Region:
-    """Everything ``cell`` draws on ``layer``, its instances flattened, merged."""
-    region = kdb.Region()
-    for drawn, points in cell.flat_shapes():
-        if drawn == layer and points:
-            region.insert(kdb.Polygon([kdb.Point(x, y) for x, y in points]))
-    return region.merged()
-
-
-def _run_side_by_side_um(a: kdb.Edge, b: kdb.Edge) -> float:
-    """How far two edges run side by side: ``b`` projected onto ``a`` and
-    clipped to it when the two are parallel, else 0 -- the parallel run
-    length the DRC audit's wide-line rules measure (KLayout's projection)."""
-    length = math.hypot(a.dx(), a.dy())
-    if not length or a.dx() * b.dy() != a.dy() * b.dx():
-        return 0.0
-    ux, uy = a.dx() / length, a.dy() / length
-    t0, t1 = sorted((p.x - a.p1.x) * ux + (p.y - a.p1.y) * uy for p in (b.p1, b.p2))
-    return max(0.0, min(length, t1) - max(0.0, t0)) * DBU_UM
-
-
 def _bs_tap_stack_gap(tapped: Cell, other: Cell, ct_me, *, side: str,
                       host_i: int, other_i: int, W: float, W_other: float,
                       OPENING_other: float,
@@ -258,8 +231,9 @@ def _bs_tap_stack_gap(tapped: Cell, other: Cell, ct_me, *, side: str,
     the metal's spacing it fails the product DRC gate after the build.
 
     The gap is measured on the two windings as drawn (``tapped`` and
-    ``other``, after the straight extension): every pair of facing edges of
-    the tap's shapes and the other winding's on that metal closer than the
+    ``other``, after the straight extension) by ``_tap_stack_gap``, shared
+    with xfm_ms and xfm_balun (N-121): every pair of facing edges of the
+    tap's shapes and the other winding's on that metal closer than the
     widest spacing those widths can need, each against
     ``_required_parallel_spacing`` -- the metal's min space, raised by every
     wide-line rule of the profile whose width threshold both lines exceed
@@ -269,7 +243,9 @@ def _bs_tap_stack_gap(tapped: Cell, other: Cell, ct_me, *, side: str,
     +-OPENING_other) and every other placement -- centre spacing, unequal
     ODs, port-spacing jogs, the other winding's closed column -- are judged
     as the gate judges them. Below the rule: ``PortError`` with the gap,
-    the run, the rule value, the widths and the opening.
+    the run, the rule value, the widths and the opening. Only that metal:
+    below it the other winding draws nothing but its own tap, which leaves
+    its closed column on the far side of the device.
 
     Reference mode (no profile) has no rules: skipped, as in
     ``_check_trace_rules``. Same-metal taps, untapped windings and stacks
@@ -277,42 +253,15 @@ def _bs_tap_stack_gap(tapped: Cell, other: Cell, ct_me, *, side: str,
     unchanged."""
     if process is None or ct_me is None:
         return
-    ct_i = _metal_index(ct_me)
-    if not ct_i <= other_i < host_i:
+    if not _metal_index(ct_me) <= other_i < host_i:
         return
-    layer = _metal(other_i, process)
-    tap, beside = _drawn_on(tapped, layer), _drawn_on(other, layer)
-    if tap.is_empty() or beside.is_empty():
-        return
-    width = min(W, W_other)
-    reach = _required_parallel_spacing(other_i, width, math.inf, process)
-    worst = None                                         # (rule, gap, run) of the largest shortfall
-    for pair in tap.separation_check(beside, _nm(reach) + 1, False,
-                                     kdb.Metrics.Euclidian).each():
-        gap = pair.to_dtype(DBU_UM).distance()
-        run = _run_side_by_side_um(pair.first, pair.second)
-        need = _required_parallel_spacing(other_i, width, run, process)
-        if gap < need - _EPS and (worst is None or need - gap > worst[0] - worst[1]):
-            worst = (need, gap, run)
-    if worst is None:
-        return
-    need, gap, run = worst
     o = "S" if side == "P" else "P"
-    winding, facing = _WINDINGS[side], _WINDINGS[o]
-    name = _metal_name(other_i)
-    drawn, shape = ((f"its {W:g} um wide lead", "lead") if ct_i == other_i
-                    else (f"a {W:g} x {W:g} um pad", "pad"))
-    along = f" over a {run:.3f} um parallel run" if run > 0 else " at a corner"
-    raise PortError(
-        f"xfm_bs: the {winding}'s via-stack tap (CT_{side}_ME={_metal_name(ct_i)}) "
-        f"draws {drawn} on {name}, the {facing}'s metal, {gap:.3f} um from "
-        f"the {facing}'s own {name} metal{along}, below the {need:g} um "
-        f"profile {process.profile_id} asks between {name} lines W_{side}={W:g} "
-        f"and W_{o}={W_other:g} um wide{' over that run' if run > 0 else ''}; "
-        f"the {facing}'s leads lie OPENING_{o}={OPENING_other:g} um off the "
-        f"centre line (a wider OPENING_{o} or a narrower W_{side} moves the "
-        f"{shape} away from them; a tap on the {winding}'s own metal draws "
-        f"nothing on {name})")
+    _tap_stack_gap(tapped, other, ct_me, {other_i: f"the {_WINDINGS[o]}'s metal"},
+                   family="xfm_bs", winding=_WINDINGS[side], facing=_WINDINGS[o],
+                   ct_label=f"CT_{side}_ME", W=W, W_label=f"W_{side}",
+                   W_other=W_other, W_other_label=f"W_{o}",
+                   OPENING_other=OPENING_other, opening_label=f"OPENING_{o}",
+                   process=process)
 
 
 @builds_on_profile_stack

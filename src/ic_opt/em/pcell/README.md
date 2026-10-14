@@ -221,7 +221,8 @@ coupling — with **opposite, outward** openings (primary at
   the tap metal is that metal) is measured against the other winding as
   drawn and refused below the metal's spacing for those widths and that
   parallel run (`_bs_tap_stack_gap`), naming the gap, the rule, the
-  widths and the opening.
+  widths and the opening. The measurement (`_tap_stack_gap`) is shared
+  with `xfm_ms` and `xfm_balun` (N-121).
 - **The coil itself has no vias** (same-metal leads); a CT stack uses the
   via levels between its winding and the tap metal, each at the profile's
   own via geometry (a same-metal tap uses none).
@@ -277,6 +278,14 @@ N1 adjacency rule (at least two actual profile levels below `MULTI_ME` —
 the crossunder occupies the immediately lower conductor). Each winding (plus its tap) builds in its own
 sub-cell and the layer-complete `_xfm_net_short` gate fails closed on any
 overlap; taps append after the fixed base as `[P1,N1,P2,N2,CTP,CTS]`.
+Short of contact (N-121), a via-stack `CT_P_ME` tap is held to the
+profile's spacing as xfm_bs's are (N-93): its stack's pad on each metal of
+the multi winding's it reaches -- `MULTI_ME`, where the pad sits between the
+multi's leads, the crossunder's, the multi tap's -- is measured against the
+multi as drawn and refused below the metal's spacing for those widths and
+that parallel run (`_ms_tap_stack_gap`), naming the gap, the rule, the
+widths and `OPENING_M`. The multi's own tap never reaches `SINGLE_ME`,
+which lies above everything the multi draws.
 
 - SINGLE=AP / MULTI=M10 / crossover=M9 is the historical constructive
   example (`xfm_ms`); `xfm_ms_demo6m` builds SINGLE=M6 / MULTI=M5 /
@@ -327,6 +336,13 @@ coplanarly. This is the only balun-family milestone with real `.il` porting:
   **every layer either net draws** (union of layer keys — no pinned list). Any
   overlap → `PortError` with layer and area. This replaces M7T's ring-only
   `_coplanar_ring_short` which missed the concentric lead short.
+- **Inter-net spacing**: short of contact, `_xfm_nets_are_drc_separate`
+  holds the two complete nets (taps included) to every shared metal's
+  spacing, wide-line rules too, before the fixture (design-region issue
+  04). A primary tap (single-turn primary only) drops at the primary's
+  closed column, between the secondary's escape bars on `ESCAPE_ME`: when
+  it is what comes too close, the refusal names the gap, the rule, the
+  widths and `OPENING_S` (`_balun_tap_stack_gap`, N-121).
 - **NT per winding**: NT=1 uses `base_xfm_half` R0+MX; NT≥2 uses `ind_sym`
   (crossover on `BALUN_ME-1`). Nested + NT_S≥2 → `PortError` (ind_sym bakes
   its own leads).
