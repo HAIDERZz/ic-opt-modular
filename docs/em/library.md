@@ -302,6 +302,79 @@ target such as `Lp@28` adds `SRF ≥ srf_margin × f0` (the manifest's
 SRF ≥ 35 GHz) unless SRF is already constrained; a target at a frequency the
 curve does not anchor (an extension column, section 2) does the same.
 
+The candidates come from a pool: the library's rows and `pool_size` (8192)
+scrambled Sobol points spread over the table's whole achieved box. A small
+target region -- a few narrow windows that only a few dozen geometries meet
+together -- can fall between those points. Then, and only then, a second
+pool is drawn: the grid `lib.region` searches for the same targets (its
+coarse pass with the stated windows 10% wider, its grid over what that pass
+keeps; section 5b), without the library's rows, scored the same way. Each
+candidate's `pool` says where it came from (`sobol` or `region_grid`); the
+answer's `region_grid` describes the grid (`steps`, `bracket`, `points`,
+`in_domain`, `coarsened`, `relax`, `survivors` -- the coarse candidates it
+brackets -- and `satisfying`, its points meeting every target) and a note
+says so, while `pool` and `satisfying` stay the first pool's. The second pool
+costs about what a `lib.region` call costs.
+
+### Every table of a device kind: `family=`
+
+```bash
+ic-opt call lib.suggest <library root> family=xfm_bs \
+    'targets={"Lp@60": {"target": 60e-12, "tol": 0.08}, "Ls@60": {"target": 60e-12, "tol": 0.08}}' objective=max:Qp@60
+```
+
+A table (stratum) is one device: one generator with one set of fixed
+fields -- the port opening, the metals the windings and the ground fixture
+sit on, the centre taps. A target outside one table may lie inside another
+of the same kind: the tables built with a 2 µm port opening reach smaller
+inductances than those built with 8 µm. Instead of `stratum=`, a request may
+name `family=`, every table whose generator draws that kind -- `ind_sym`,
+`xfm_bs`, `xfm_ms` (the generator `clean_port_<family>`; membership is read
+from the tables' generators, not from their names) -- or `strata=<a>,<b>`,
+a list of tables as given. With `family=`, `taps=none` (the default) keeps
+the tables without centre taps, `any` all of them, `only` the tapped ones; a
+table is tapped when its parts' device has a port named `CT...` (`CT`,
+`CTP`, `CTS`). Exactly one of `stratum=`, `family=` and `strata=`. Every
+table is asked exactly as `stratum=` asks it, and the answer puts them side
+by side:
+
+- `family` and `taps` (both null for `strata=`);
+- `strata`: each table's own answer -- the one `stratum=` gives -- or
+  `{"error": <text>}`;
+- `facts`: per table its `generator`, `fixed` (the port openings, the
+  metals, `ground_fixture_metal`, `taps` -- the tap ports, `[]` without --
+  and the `ct_*` tap fields; a field the table's parts set differently is
+  `{<part>: <value>}`) and `rows`;
+- `leaders`: at most `n` measured designs, then at most `n` predicted ones,
+  merged across the tables by the objective's conservative bound (without an
+  objective: by closeness to the targets), each table's own order kept;
+  every entry is the table's own entry plus `stratum` and that table's
+  `fixed`;
+- `unreachable`: per table without a design, why: `reason`, a sentence in
+  SI units, and `kind`, one of
+  - `outside_range`: a target's window lies wholly outside the table's
+    measured range of its quantity -- the rows that have the quantity under
+    the library's own rules, an anchored column only below its resonance
+    margin; `outside` lists each such target with its `window`, the `range`
+    and the `side` (`below` or `above`): "Lp@60 window 55.2-64.8 pH lies
+    below this table's measured 75-1001 pH";
+  - `not_met_together`: every target lies inside its range, but no measured
+    row meets them together and no predicted design meets them with its
+    whole calibrated interval; `closest` is the measured row nearest to
+    meeting them all (its distance outside each window over the window's
+    width, a one-sided bound's over its own size; a row without a resonance
+    in its sweep counts its sweep's end for an SRF minimum) with its values;
+  - `cannot_take`: the table cannot take the request -- a quantity it does
+    not have, a frequency outside its sweeps, a column none of its rows has
+    a value of -- and `reason` quotes its error;
+
+  every entry also gives `ranges`, the measured range of each target's
+  quantity;
+- `notes`: the library's notes, then, when some tables have no design, one
+  line naming the tables that have designs and what each other one reaches
+  ("...: designs in xfm_bs_m10_hf; xfm_bs_m10 reaches Lp@60 75 pH at the
+  least; ...").
+
 ## 5b. Region questions: `lib.region`
 
 ```bash
@@ -357,6 +430,16 @@ fitted in parallel processes sized from `hosts.local` (see
 [Compute](#compute)). `workers` and `threads` cap the fitting processes and
 the BLAS threads; a value above what that entry allows is refused.
 
+`family=` (with `taps=`) or `strata=` asks every table of a device kind, as
+`lib.suggest` does (section 5): `strata` holds each table's own answer,
+`facts` each table's fixed fields, `leaders` per table its `robust` and
+`mean` counts and ranges and `measured` (how many measured designs meet
+every target), the tables with points first, and `unreachable` the tables
+with neither a robust point nor a measured design, by the same three
+reasons (`not_met_together` also counts a table's mean-level points). Start
+a recommendation there: it shows which tables -- which port opening, which
+metals, taps or none -- hold the region at all.
+
 ### A region as a pcell device's allowed combinations: `out=`
 
 ```bash
@@ -401,6 +484,13 @@ dim the device neither maps nor fixes, or no row left is refused with
 what to change. The file is part of no identity: it says which points are
 proposed, not what a point evaluates to (README, "EM devices"). A level
 without a point writes nothing and is refused.
+
+A combinations file belongs to one table. With `family=` or `strata=`,
+`out=` is refused unless exactly one table holds points at the level; the
+refusal names the tables that do, with their counts: rerun with
+`stratum=<table> out=<file>` for the one whose fixed fields fit the
+circuit. When exactly one does, its points are written, the answer gains
+the three fields above and a note names the table.
 
 ## 5c. Where to simulate next: `lib.densify`
 
