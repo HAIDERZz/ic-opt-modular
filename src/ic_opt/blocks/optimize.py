@@ -45,7 +45,6 @@ from threadpoolctl import threadpool_limits
 from ic_opt import advice as advice_rules
 from ic_opt import objective as objective_contract
 from ic_opt import space, suggesters
-from ic_opt._lock import exclusive_lock
 from ic_opt.blocks.evaluate import evaluate
 from ic_opt.deck import Deck
 from ic_opt.eval.stage import Stage
@@ -59,7 +58,7 @@ from ic_opt.sim.ocean import WaveformExport
 from ic_opt.site import HostLimits
 from ic_opt.space import Point
 from ic_opt.spec import Spec
-from ic_opt.store import RunStore
+from ic_opt.store import RUN_LOCK, RunStore  # noqa: F401 -- RUN_LOCK is still imported from here
 from ic_opt.suggesters.base import surrogate_minimum
 
 
@@ -277,7 +276,7 @@ def optimize(
     _print_design(strategy, design, len(history), budget - done, batch, fresh, plan=False, note=note,
                   total=sized_for - done)
     announced: set[str] = set()
-    with exclusive_lock(store.root / RUN_LOCK, what="project"):      # no advice is adopted while the run goes (advise)
+    with store.run_lock():      # no advice is adopted while the run goes (advise); held already when ic-opt run took it
         if design is not None and (not done or given):     # the step's first call, or a size stated: recorded (N-96)
             _record_design(store.root, step, design[0], sized_for)
         while True:
@@ -313,7 +312,6 @@ def _say_duplicate_starts(given: Sequence[Point], step: str, *, plan: bool) -> N
               f"{dropped} duplicate row{'s' if dropped != 1 else ''} dropped ({distinct} distinct)")
 
 
-RUN_LOCK = "run.lock"      # held by opt.optimize for its whole loop; the store's own lock is held per batch (sim.evaluate)
 STEPS = "steps.json"       # per step, the initial design its first call sized (N-96): {step: {initial_design, budget}}
 
 
@@ -394,14 +392,15 @@ def advise(spec: Spec, store: RunStore, advice: dict, *, corners: str | list[str
     upper]}`` inside the spec's range), ``fixed`` (``{variable: value}``), ``vary`` (the variables that may move; the
     others stay at the search region's centre). Checked against the spec -- refused with what to change, values between
     levels moved onto the grid and said so -- and appended to ``<project>/.icopt/advice.jsonl`` with the next id and
-    ``since`` (:func:`history_size`; ``corners`` as there). It ends the advice before it. Takes the project's run lock and
-    its store lock: not while a run goes. Prints what it adopted; returns the recorded row.
+    ``since`` (:func:`history_size`; ``corners`` as there). It ends the advice before it. Takes the project lock and the
+    store lock: not while another run goes (a recipe's own code, inside the run that holds the project lock, takes
+    nothing more there: ``RunStore.run_lock``). Prints what it adopted; returns the recorded row.
 
     It is in effect from the next batch: its start rows come first (every strategy); its ranges, fixed levels and
     ``vary`` narrow four fifths of each ``metric_gp`` batch after the initial design, the other fifth looks over the
     spec's whole range. An advice never widens the spec's ranges and never moves the initial design's points."""
     same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}
-    with exclusive_lock(store.root / RUN_LOCK, what="project"), store.lock():
+    with store.run_lock(), store.lock():
         rows = advice_rules.read(store.root)
         since = history_size(spec, store.observations(), corners)
         row, notes = advice_rules.adoption(spec, advice, rows, since)
@@ -419,7 +418,7 @@ def revoke_advice(spec: Spec, store: RunStore, advice_id: str, reason: str, *,
     """End advice ``advice_id`` (the one adopted last) from the next batch on: appends a ``revoke`` row with ``since``
     (:func:`history_size`) and ``reason``. Takes the locks ``advise`` takes. Returns the row."""
     same_problem = {spec.fingerprint(), spec._legacy_fingerprint()}
-    with exclusive_lock(store.root / RUN_LOCK, what="project"), store.lock():
+    with store.run_lock(), store.lock():
         rows = advice_rules.of_problem(advice_rules.read(store.root), same_problem)
         row = advice_rules.revocation(rows, advice_id, reason, history_size(spec, store.observations(), corners))
         advice_rules.append(store.root, row)

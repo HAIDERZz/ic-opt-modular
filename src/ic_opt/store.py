@@ -4,7 +4,9 @@
 - ``steps.jsonl``        — one line per block call (name, args digest, outcome)
 - ``steps.json``         — per optimize step, the initial design's size its first call recorded (N-96)
 - ``decks/``, ``sims/``, ``cache/``, ``reports/`` — artifacts, all rebuildable
-- ``lock``               — one writer per project (``fcntl`` or ``msvcrt``: the controller may be Windows)
+- ``run.lock``           — one run per project (:meth:`RunStore.run_lock`): ``ic-opt run`` holds it from before its first
+                           write to its end, and while it holds it the file names the run's process id (N-119)
+- ``lock``               — one writer at a time: a batch of sim.evaluate, an advice (``fcntl`` or ``msvcrt``: the controller may be Windows)
 """
 
 from __future__ import annotations
@@ -17,10 +19,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from ic_opt._lock import exclusive_lock
+from ic_opt._lock import exclusive_lock, reentrant_lock
 from ic_opt.observation import Observation, Observations
 
 _WINDOWS = os.name == "nt"                                           # reserves ':' in file names
+RUN_LOCK = "run.lock"      # the project lock: a run's, whole (RunStore.run_lock); the store's own lock is per batch
 
 
 def utc_now() -> str:
@@ -113,3 +116,13 @@ class RunStore:
         """One writer per project: ``with store.lock():`` holds it, or raises ``LockHeld`` (a RuntimeError, "project is
         locked by another run: ...") at once while another run holds it."""
         return exclusive_lock(self.root / "lock", what="project")
+
+    def run_lock(self) -> AbstractContextManager[bool]:
+        """The project lock, ``.icopt/run.lock``: one run per project (N-119). ``ic-opt run`` takes it outright
+        (``exclusive_lock(..., holder=True)``) before anything writes to the store -- before the doctor's step row and the
+        netlist import -- and holds it to the end; a second run is refused at once in one line, naming the first one's
+        pid. The blocks that take it themselves -- ``opt.optimize`` for its loop, ``opt.advise`` / ``opt.revoke_advice``,
+        ``ic-opt advise`` -- take it here: inside the run that holds it this holds nothing more (``reentrant_lock``), so
+        a recipe never refuses itself; called alone (``ic-opt call``, a script) it is taken as it always was. While
+        another process holds it, ``LockHeld`` names that process's pid."""
+        return reentrant_lock(self.root / RUN_LOCK, what="project")

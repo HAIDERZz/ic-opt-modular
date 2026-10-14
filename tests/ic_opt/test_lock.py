@@ -1,5 +1,6 @@
 """T15.4: the run-store lock on any controller (fcntl on Linux / macOS, msvcrt on Windows), and no ic_opt module that
-imports a platform-only module when it is itself imported. T16.5 N-4: the same lock, waited for instead of refused."""
+imports a platform-only module when it is itself imported. T16.5 N-4: the same lock, waited for instead of refused.
+N-119: a run's lock names its process, and the code inside it takes it again without being refused."""
 from __future__ import annotations
 
 import ast
@@ -15,7 +16,7 @@ from pathlib import Path
 import pytest
 
 import ic_opt
-from ic_opt._lock import LockHeld, exclusive_lock, waiting_lock
+from ic_opt._lock import LockHeld, exclusive_lock, reentrant_lock, waiting_lock
 from ic_opt.store import RunStore
 
 PLATFORM_ONLY = {"fcntl", "grp", "pwd", "pty", "resource", "termios", "tty", "msvcrt", "winreg", "_winapi"}
@@ -86,6 +87,56 @@ def test_without_fcntl_the_lock_is_taken_with_msvcrt(tmp_path, monkeypatch):
     with RunStore(project).lock():
         pass
     assert fake.held == {}
+
+
+@pytest.mark.parametrize("platform", ["fcntl", "msvcrt"])
+def test_a_runs_lock_names_its_process_and_lets_the_code_inside_take_it_again(tmp_path, monkeypatch, platform):
+    """N-119: ``holder=True`` writes this process's id into the file while the lock is held (from the second byte: on
+    Windows the holder's locked first byte cannot be read by another handle) and empties it on release; another handle's
+    refusal names it. ``reentrant_lock`` inside it, in this thread, holds nothing more (yields False); in another thread,
+    or inside a lock taken without ``holder``, it is refused like any other handle; alone it takes the lock (True)."""
+    if platform == "msvcrt":
+        monkeypatch.setitem(sys.modules, "fcntl", None)
+        monkeypatch.setitem(sys.modules, "msvcrt", FakeMsvcrt())
+    path = tmp_path / "run.lock"
+    refused_elsewhere: list[str] = []
+
+    def other_thread() -> None:
+        try:
+            with reentrant_lock(path, what="project"):
+                refused_elsewhere.append("taken")
+        except LockHeld as exc:
+            refused_elsewhere.append(str(exc))
+
+    with exclusive_lock(path, what="project", holder=True):
+        assert path.read_bytes() == f"\n{os.getpid()}\n".encode()
+        with reentrant_lock(path, what="project") as took, reentrant_lock(path, what="project") as again:
+            assert took is False and again is False
+        with pytest.raises(LockHeld) as refused, exclusive_lock(path, what="project"):
+            pass
+        assert str(refused.value) == f"project is locked by another run: {path} (pid {os.getpid()})"
+        worker = threading.Thread(target=other_thread)
+        worker.start()
+        worker.join(timeout=30)
+        assert refused_elsewhere == [f"project is locked by another run: {path} (pid {os.getpid()})"]
+    assert path.read_bytes() == b""                                     # released: it names nobody
+    with exclusive_lock(path, what="project"), pytest.raises(LockHeld, match=r"another run: \S+$"), reentrant_lock(path):
+        pass                                                            # a lock without holder: refused, no pid to name
+    with reentrant_lock(path, what="project") as took:
+        assert took is True and path.read_bytes() == f"\n{os.getpid()}\n".encode()
+    assert path.read_bytes() == b""
+
+
+def test_another_process_reads_the_holders_pid(tmp_path):
+    """The pid comes from the file, not from this process's bookkeeping: a second interpreter is refused with it."""
+    path = tmp_path / "run.lock"
+    probe = ("import sys\nfrom ic_opt._lock import LockHeld, exclusive_lock\ntry:\n    with exclusive_lock(sys.argv[1], "
+             "what='project'):\n        print('acquired')\nexcept LockHeld as exc:\n    print(exc)\n")
+    env = {**os.environ, "PYTHONPATH": str(Path(ic_opt.__file__).parents[1])}
+    with exclusive_lock(path, what="project", holder=True):
+        done = subprocess.run([sys.executable, "-c", probe, str(path)], capture_output=True, text=True, env=env, timeout=120,
+                              check=True)
+    assert done.stdout.strip() == f"project is locked by another run: {path} (pid {os.getpid()})"
 
 
 @pytest.mark.parametrize("platform", ["fcntl", "msvcrt"])

@@ -86,17 +86,145 @@ def test_the_license_queue_wait_is_passed_only_when_the_spec_states_it(tmp_path)
 
 
 def test_spectre_failure_stops_the_chain(tmp_path):
+    """A log without an ERROR entry (here none at all): the issues are what they were before N-119."""
     executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {}, fail_spectre=lambda tb, c: True)
-    with pytest.raises(StageFailure, match="spectre exited 1"):
+    with pytest.raises(StageFailure, match="spectre exited 1") as failed:
         run_chain(tmp_path, executor)
+    assert failed.value.issues == ["spectre exited 1", "spectre: license lost"]
     assert (tmp_path / ".icopt" / "sims" / "obs_0001" / "tb" / "nominal" / "spectre.stderr").read_text().startswith("spectre: license")
+
+
+# -- N-119: the cause of a failed Spectre / OCEAN run in the child's issues ---------------------------------------------
+
+# A Spectre log as N-118's check t4 left it (a corner whose model section the model file lacks), the path made generic:
+# the log (+log psf/spectre.out) writes the entry on one line, the standard output wraps it at 80 columns.
+SECTION_ERROR = ('ERROR: "input.scs" 12: The file `/pdk/models/spectre/toplevel.scs\' appears to be in Spectre syntax, but '
+                 "Spectre cannot find the `section tt_no_such_section' library defined in it. Ensure that the "
+                 "`tt_no_such_section' section is defined by `section/endsection' block and rerun the simulation.")
+SPECTRE_LOG = f"""
+Reading file:  /pdk/models/spectre/toplevel.scs
+
+Error found by spectre during circuit read-in.
+    {SECTION_ERROR}
+
+Time for NDB Parsing: CPU = 102.152 ms, elapsed = 378.936 ms.
+spectre completes with 1 error, 0 warnings, and 2 notices.
+spectre terminated prematurely due to fatal error.
+"""
+SPECTRE_STDOUT = """
+Error found by spectre during circuit read-in.
+    ERROR: "input.scs" 12: The file
+        `/pdk/models/spectre/toplevel.scs'
+        appears to be in Spectre syntax, but Spectre cannot find the `section
+        tt_no_such_section' library defined in it. Ensure that the
+        `tt_no_such_section' section is defined by `section/endsection' block
+        and rerun the simulation.
+
+Reading file:
+        /cad/spectre/etc/configs/preset.cfg
+spectre completes with 1 error, 0 warnings, and 2 notices.
+"""
+
+
+def test_a_failed_spectre_run_puts_the_first_error_of_its_log_before_the_other_lines(tmp_path):
+    """N-119: Spectre exited 2 and its log says why; the child's issues start with that entry, then the lines they always
+    had. A longer entry is cut to ERROR_LIMIT characters."""
+    executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {}, fail_spectre=lambda tb, c: SPECTRE_LOG)
+    with pytest.raises(StageFailure) as failed:
+        run_chain(tmp_path, executor)
+    assert failed.value.issues == [SECTION_ERROR, "spectre exited 2", "spectre terminated prematurely due to fatal error."]
+    assert not any(c.startswith("ocean") for c in executor.commands)
+    longer = SPECTRE_LOG.replace("rerun the simulation.", "rerun the simulation." + " Check the include statement." * 10)
+    cut = spectre_chain.spectre_error(longer)
+    assert len(cut) == spectre_chain.ERROR_LIMIT == 300 and cut.endswith("...") and "`section tt_no_such_section'" in cut
+
+
+PDK_PATH = ("/nas/pdk/vendor_process_design_kit/PROCESS_1P10M_5X2Y2R/iPDK_PROCESS_v1.0_2p2a_1p10m/"
+            "vendor_kit_models_and_corners/../models/spectre/toplevel.scs")          # 145 characters, as deep as a real PDK's
+
+
+def test_a_long_quoted_path_is_shortened_to_its_file_name_so_the_cause_stays_in_front(tmp_path):
+    """N-119 follow-up: a model file deep in a PDK tree put the section's name past the 200 characters the digest keeps
+    of a point's issue (T17.10; the real check's path was 120 characters long, the name at 235). A quoted absolute path
+    longer than PATH_LIMIT becomes ``.../<file name>`` inside its quotes, and the name is within the first 200. A short
+    quoted path, quoted text that is no path and an unquoted path stay; SKILL's double quotes are shortened too."""
+    assert len(PDK_PATH) == 145 and spectre_chain.PATH_LIMIT == 40
+    raw = SECTION_ERROR.replace("/pdk/models/spectre/toplevel.scs", PDK_PATH)
+    assert f"tb/nominal: {raw}".index("tt_no_such_section") > 200               # as it was: behind the digest's cut
+    log = SPECTRE_LOG.replace("/pdk/models/spectre/toplevel.scs", PDK_PATH)
+    executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {}, fail_spectre=lambda tb, c: log)
+    with pytest.raises(StageFailure) as failed:
+        run_chain(tmp_path, executor)
+    cause = failed.value.issues[0]
+    assert cause == SECTION_ERROR.replace("`/pdk/models/spectre/toplevel.scs'", "`.../toplevel.scs'")
+    assert "`section tt_no_such_section'" in f"tb/nominal: {cause}"[:200]
+    assert spectre_chain.spectre_error(SPECTRE_LOG) == SECTION_ERROR             # its quoted path has 33 characters
+    deep = "/home/user/project/simulation/a_long_directory_name/" * 2
+    assert spectre_chain.spectre_error(f"ERROR (SFE-1): include {deep}x.scs not found\n") == (
+        f"ERROR (SFE-1): include {deep}x.scs not found")                          # unquoted: as written
+    assert spectre_chain.ocean_error(f'\\e *Error* load: can\'t access file "{deep}probe.il"\n') == (
+        "*Error* load: can't access file \".../probe.il\"")
+
+
+def test_the_error_entry_is_the_first_one_with_its_continuation_lines_on_one_line():
+    """The wrapped form (standard output) collapses to the log's own line; the entry ends at a blank line or at a line
+    indented no deeper than it; only the first entry counts; a text without one gives None."""
+    assert spectre_chain.spectre_error(SPECTRE_STDOUT) == spectre_chain.spectre_error(SPECTRE_LOG)
+    two = ("    ERROR (SFE-868): \"input.scs\" 3: Cannot open the input file\n        'models.scs'.\n"
+           "    ERROR (SFE-1997): later\n    WARNING (SPECTRE-1): not part of it\n")
+    assert spectre_chain.spectre_error(two) == "ERROR (SFE-868): \"input.scs\" 3: Cannot open the input file 'models.scs'."
+    assert spectre_chain.spectre_error("ERROR (SPECTRE-25): The simulation is stopped either by the user or the\n"
+                                       "        farm.\nAggregate audit\n") == ("ERROR (SPECTRE-25): The simulation is "
+                                                                          "stopped either by the user or the farm.")
+    for text in ("", "Error found by spectre during circuit read-in.\nspectre completes with 1 error.\n", "ERRORS: none\n"):
+        assert spectre_chain.spectre_error(text) is None
+
+
+def test_without_a_log_the_error_comes_from_spectres_output(tmp_path):
+    """A run that stopped before it wrote psf/spectre.out: the same entry from its standard output."""
+    from ic_opt.executor import CommandResult
+
+    class NoLog(FakeSpectreExecutor):
+        def run(self, command, *, cwd=None, timeout_s=None, cshrc=None):
+            if command.startswith("spectre"):
+                return CommandResult(2, SPECTRE_STDOUT, "spectre terminated prematurely due to fatal error.\n", ["spectre"], 0.01)
+            return super().run(command, cwd=cwd, timeout_s=timeout_s, cshrc=cshrc)
+
+    executor = NoLog(tmp_path / ".icopt" / "sims", lambda p, tb, c: {})
+    with pytest.raises(StageFailure) as failed:
+        run_chain(tmp_path, executor)
+    assert not (tmp_path / ".icopt" / "sims" / "obs_0001" / "tb" / "nominal" / "psf" / "spectre.out").exists()
+    assert failed.value.issues[0] == spectre_chain.spectre_error(SPECTRE_LOG) and failed.value.issues[1] == "spectre exited 2"
 
 
 def test_ocean_retries_then_fails(tmp_path):
     executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {}, fail_ocean=lambda tb, c: True)
-    with pytest.raises(StageFailure, match="no scalars after 3 attempt"):
+    with pytest.raises(StageFailure, match="no scalars after 3 attempt") as failed:
         run_chain(tmp_path, executor)
     assert sum(c.startswith("ocean") for c in executor.commands) == 3
+    assert failed.value.issues == ["ocean produced no scalars after 3 attempt(s)", "ocean: replay failed"]     # no log: as before
+
+
+# OCEAN's log (-log metrics/ocean.log) as a license refusal leaves it (the N-100 acceptance, 2026-10-09): the error stream
+# is the lines that start with \e, a framework message ERROR (<code>) or a SKILL error *Error*.
+OCEAN_LOG = """\\o INFO (ELI-00333) License program mode is Virtuoso.
+\\o Virtuoso Framework License (111) was checked out successfully. Total checkout time was 0.01s.
+\\e ERROR (LMF-02005): License call failed for feature Virtuoso_Adv_Node_Framework, version 23.100 and quantity 1.
+\\e ERROR (ELI-00111) Failed to check out license 'Virtuoso_Adv_Node_Framework'.
+\\e ERROR (ELI-00133) Failed to launch the application because the required license is not available.
+"""
+
+
+def test_an_ocean_run_without_scalars_puts_the_first_error_of_its_log_first(tmp_path):
+    executor = FakeSpectreExecutor(tmp_path / ".icopt" / "sims", lambda p, tb, c: {}, fail_ocean=lambda tb, c: OCEAN_LOG)
+    with pytest.raises(StageFailure) as failed:
+        run_chain(tmp_path, executor)
+    assert failed.value.issues == [
+        "ERROR (LMF-02005): License call failed for feature Virtuoso_Adv_Node_Framework, version 23.100 and quantity 1.",
+        "ocean produced no scalars after 3 attempt(s)", "ocean: replay failed"]
+    skill = "\\i openResults(\"psf\")\n\\e *Error* openResults: no results in\n\\e     \"psf\"\n\\t nil\n\\e *Error* later\n"
+    assert spectre_chain.ocean_error(skill) == '*Error* openResults: no results in "psf"'
+    assert spectre_chain.ocean_error("\\o ERROR in the output stream is not the error stream\n\\e *WARNING* x\n") is None
 
 
 def test_a_failed_metric_marks_the_child_metric_failed_and_keeps_the_others(tmp_path):

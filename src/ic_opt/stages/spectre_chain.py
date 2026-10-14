@@ -27,11 +27,19 @@ Identity (N-99). ``Render.identity`` is the deck's fingerprint (``Deck.fingerpri
 file's content) and ``Extract.identity`` the waveform exports requested (name, expression and testbench, in order) with
 the operating-point setting: the pipeline fingerprint changes when the netlist, a support file or the requested exports
 change, and the engine reuses no observation across that change (``eval.engine``, "Identity").
+
+Failures (N-119). A Spectre run that exits non-zero fails its child with, first, the first ``ERROR`` entry of Spectre's
+log (``psf/spectre.out``: :func:`spectre_error`) -- the cause, such as a corner's model section that the model file
+lacks, a quoted absolute path in it shortened to ``.../<file name>`` -- then ``spectre exited <code>`` and the end of
+its standard error, as before; a log without one leaves the first line out. An OCEAN run that produced no scalars puts
+the first error of its log (``metrics/ocean.log``: :func:`ocean_error`, e.g. a license refused) in front of its lines
+the same way. A command past its deadline fails as before (``timed out after ...``: ``eval.engine``).
 """
 
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import shutil
 from dataclasses import dataclass
@@ -39,6 +47,7 @@ from pathlib import Path
 
 from ic_opt.deck import Deck
 from ic_opt.eval.stage import Resources, StageContext, StageFailure
+from ic_opt.executor import ExecutorError
 from ic_opt.localpath import literal
 from ic_opt.observation import ChildResult
 from ic_opt.sim import netlist as netlist_kernel
@@ -48,6 +57,9 @@ from ic_opt.space import Point
 
 OCEAN_ATTEMPTS = 3
 TRANSIENT_SOCKET_FAILURE = "can't create server socket"
+SPECTRE_LOG = "spectre.out"          # Spectre's log in the child's psf directory (``+log ../psf/spectre.out``)
+ERROR_LIMIT = 300                    # characters of a log's error entry that a failed child's issues keep (N-119)
+PATH_LIMIT = 40                      # a quoted absolute path longer than this is .../<file name> in that entry
 
 
 @dataclass
@@ -137,7 +149,9 @@ class Spectre:
         (ctx.workdir / "spectre.stdout").write_text(result.stdout, encoding="utf-8")
         (ctx.workdir / "spectre.stderr").write_text(result.stderr, encoding="utf-8")
         if not result.ok:
-            raise StageFailure(f"spectre exited {result.returncode}", _tail(result.stderr or result.stdout))
+            cause = _spectre_log_error(ctx, result.stdout)
+            raise StageFailure(*([cause] if cause else []), f"spectre exited {result.returncode}",
+                               _tail(result.stderr or result.stdout))
         return RawSim(psf_dir=f"{ctx.remote_dir}/psf", returncode=result.returncode)
 
 
@@ -186,7 +200,10 @@ class Ocean:
 
         scalars_path = local / "ocean_scalars.tsv"
         if not scalars_path.exists():
-            raise StageFailure(f"ocean produced no scalars after {attempts} attempt(s)", _tail(result.stderr or result.stdout))
+            log = local / "ocean.log"                  # OCEAN's own log, fetched with the metrics directory
+            cause = ocean_error(log.read_text(encoding="utf-8", errors="replace")) if log.is_file() else None
+            raise StageFailure(*([cause] if cause else []), f"ocean produced no scalars after {attempts} attempt(s)",
+                               _tail(result.stderr or result.stdout))
         try:
             rows = ocean_kernel.parse_scalars(scalars_path)
         except ValueError as exc:
@@ -278,6 +295,91 @@ def _waveform_issue(name: str, meta: Path | None, outcome: str | None) -> str | 
 
 def _tail(text: str, lines: int = 8) -> str:
     return "\n".join(text.strip().splitlines()[-lines:])
+
+
+def _spectre_log_error(ctx: StageContext, stdout: str) -> str | None:
+    """The first ``ERROR`` entry of the failed run's log, ``psf/spectre.out`` -- fetched into the child's directory when
+    the host is remote (locally it is there already) -- else of its standard output, which carries the same messages
+    (a run that stopped before it opened its log); None when neither holds one."""
+    log = ctx.workdir / "psf" / SPECTRE_LOG
+    try:
+        ctx.executor.get(f"{ctx.remote_dir}/psf/{SPECTRE_LOG}", log)
+        text = log.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ExecutorError):                   # no log, or it could not be fetched: the output may still say
+        text = ""
+    return spectre_error(text) or spectre_error(stdout)
+
+
+_SPECTRE_ERROR = re.compile(r"ERROR\b")
+
+
+def spectre_error(text: str) -> str | None:
+    """The first ``ERROR`` entry of a Spectre log or output: the line that starts with ``ERROR`` (``ERROR (SFE-868):
+    ...``, ``ERROR: "input.scs" 12: ...``) and its continuation lines -- the lines after it indented deeper than it,
+    up to a blank line -- collapsed to one line, each quoted absolute path longer than ``PATH_LIMIT`` characters
+    shortened to ``.../<file name>`` (:func:`_short_paths`), at most ``ERROR_LIMIT`` characters (``...`` where it was
+    cut). None when the text holds no such line."""
+    lines = text.splitlines()
+    for at, line in enumerate(lines):
+        start = line.lstrip()
+        if not _SPECTRE_ERROR.match(start):
+            continue
+        indent = len(line) - len(start)
+        entry = [start]
+        for more in lines[at + 1:]:
+            if not more.strip() or len(more) - len(more.lstrip()) <= indent:
+                break
+            entry.append(more)
+        return _one_line(entry)
+    return None
+
+
+_OCEAN_ERROR_STREAM = "\\e "                           # a line of the OCEAN log's error stream (``\e *Error* ...``)
+
+
+def ocean_error(text: str) -> str | None:
+    """The first error of an OCEAN log (``-log``): a line of its error stream (``\\e``) that starts with ``ERROR`` -- the
+    framework's, e.g. ``ERROR (LMF-02005): License call failed for feature ...`` -- or ``*Error*`` -- SKILL's, e.g.
+    ``*Error* openResults: ...`` --, with the error-stream lines after it that are indented (continuation lines),
+    collapsed to one line as :func:`spectre_error` collapses its entry (long quoted paths shortened, at most
+    ``ERROR_LIMIT`` characters). None when the log holds none."""
+    lines = text.splitlines()
+    for at, line in enumerate(lines):
+        if not line.startswith(_OCEAN_ERROR_STREAM):
+            continue
+        body = line[len(_OCEAN_ERROR_STREAM):]
+        if not body.lstrip().startswith(("ERROR", "*Error*")):
+            continue
+        entry = [body]
+        for more in lines[at + 1:]:
+            rest = more[len(_OCEAN_ERROR_STREAM):]
+            if not more.startswith(_OCEAN_ERROR_STREAM) or not rest.strip() or not rest[:1].isspace():
+                break
+            entry.append(rest)
+        return _one_line(entry)
+    return None
+
+
+def _one_line(lines: list[str]) -> str:
+    text = _short_paths(" ".join(" ".join(lines).split()))
+    return text if len(text) <= ERROR_LIMIT else text[: ERROR_LIMIT - 3] + "..."
+
+
+_QUOTED_PATH = re.compile(r"""([`'"])(/[^\s`'"]+)(['"])""")
+
+
+def _short_paths(text: str) -> str:
+    """``text`` with every quoted absolute path longer than ``PATH_LIMIT`` characters written ``.../<file name>``, its
+    quotes kept -- Spectre's `` `...' ``, ``'...'``, ``"..."``. A model file's path in a PDK tree runs to 120 characters
+    and more, and put the cause of the error behind what the digest keeps of an issue (its first 200 characters).
+    Short paths, quoted text that is no absolute path and unquoted paths stay as they are."""
+    def shorten(match: re.Match) -> str:
+        opening, path, closing = match.groups()
+        if (opening == '"') != (closing == '"') or len(path) <= PATH_LIMIT:      # `...' and '...' close with '
+            return match.group(0)
+        return f"{opening}.../{path.rstrip('/').rsplit('/', 1)[-1]}{closing}"
+
+    return _QUOTED_PATH.sub(shorten, text)
 
 
 def spectre_pipeline(spec, deck: Deck, *, waveforms: list[WaveformExport] = ()) -> list:

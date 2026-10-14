@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
 import os
@@ -27,13 +28,15 @@ from pydantic import ValidationError
 from ic_opt import __version__, blocks
 from ic_opt import migrate as migrate_module
 from ic_opt import recipe as recipe_module
+from ic_opt._lock import LockHeld, exclusive_lock
 from ic_opt.blocks.doctor import plan_line
+from ic_opt.eval.engine import interrupted_line
 from ic_opt.library import manifest as library_manifest
 from ic_opt.library import query as library_query
 from ic_opt.library.link import LinkError
 from ic_opt.site import EnvelopeError, SiteError
 from ic_opt.spec import load_spec
-from ic_opt.store import RunStore
+from ic_opt.store import RUN_LOCK, RunStore
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__)
 _RESOURCE_FIELDS = ("parallel_jobs", "threads_per_run", "timeout_s", "threads", "memory_gb")
@@ -96,20 +99,60 @@ def run(
     cshrc: Annotated[str | None, typer.Option("--cshrc", help="Cadence environment file on the simulation host: "
                                               "*.csh / *.cshrc / *.tcsh / *.tcshrc are sourced by csh, others by sh")] = None,
 ) -> None:
-    """Run a recipe (``--plan`` first: it is the only approval point)."""
+    """Run a recipe (``--plan`` first: it is the only approval point). Ctrl-C ends a run with exit code 130 and one line on
+    stderr (N-119): how many points it recorded, how many the interrupt stopped and how many never started, and that the
+    same command continues the run (``eval.engine.interrupted_line``, from the step rows the run wrote).
+
+    A run takes the project lock (``.icopt/run.lock``, ``RunStore.run_lock``) before anything writes to the store and
+    holds it to its end; while another run holds it the command is refused like its other refusals -- one line, ``error:
+    project is locked by another run: <path> (pid <n>)``, exit code 2, nothing written (N-119). ``--plan`` writes
+    nothing and takes no lock, so it is never refused for one."""
     main = recipe_module.load_recipe(recipe)
     ctx = _run(project, ssh_profile, cshrc)
     kwargs = _params(params or [])
-    typer.echo(f"recipe {recipe}  spec {ctx.spec.project} ({ctx.spec.fingerprint()})  {plan_line(ctx.spec, ctx.executor, ctx.limits)}")
-    typer.echo(f"params {kwargs}  cshrc {ctx.cshrc or '-'}  observations {len(ctx.store.observations())}")
-    token = recipe_module.PLAN_MODE.set(plan)
+    with contextlib.ExitStack() as held:
+        if not plan:
+            try:     # outright, not re-entrant: a run is never inside another; the blocks inside it take nothing more
+                held.enter_context(exclusive_lock(ctx.store.root / RUN_LOCK, what="project", holder=True))
+            except LockHeld as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(code=2) from exc
+        typer.echo(f"recipe {recipe}  spec {ctx.spec.project} ({ctx.spec.fingerprint()})  {plan_line(ctx.spec, ctx.executor, ctx.limits)}")
+        typer.echo(f"params {kwargs}  cshrc {ctx.cshrc or '-'}  observations {len(ctx.store.observations())}")
+        steps = ctx.store.root / "steps.jsonl"
+        begun = steps.stat().st_size if steps.is_file() else 0      # where this run's step rows start
+        token = recipe_module.PLAN_MODE.set(plan)
+        try:
+            main(ctx, **kwargs)
+        except (SiteError, EnvelopeError, LinkError) as exc:   # a job too big for its host, or a library device that cannot be resolved: refused before anything starts, --plan too
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        except KeyboardInterrupt as exc:                       # Ctrl-C: the engine stopped the run and logged it (eval.engine, "Interrupts")
+            if not plan:
+                typer.echo(interrupted_line(_steps_after(steps, begun)), err=True)
+            raise typer.Exit(code=130) from exc
+        finally:
+            recipe_module.PLAN_MODE.reset(token)
+
+
+def _steps_after(path: Path, offset: int) -> list[dict]:
+    """The rows appended to ``steps.jsonl`` past byte ``offset``: the ones this run wrote. A line that does not parse (cut
+    short by a second Ctrl-C) is skipped."""
     try:
-        main(ctx, **kwargs)
-    except (SiteError, EnvelopeError, LinkError) as exc:   # a job too big for its host, or a library device that cannot be resolved: refused before anything starts, --plan too
-        typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(code=2) from exc
-    finally:
-        recipe_module.PLAN_MODE.reset(token)
+        with path.open("rb") as handle:
+            handle.seek(offset)
+            lines = handle.read().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    rows = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
 
 
 @app.command("blocks")
@@ -278,7 +321,6 @@ def advise(
     goes: continue the run afterwards (same recipe, larger budget). An advice the check refuses is recorded as refused
     (never in effect), so that the next digest lists it."""
     from ic_opt import advice as advice_rules
-    from ic_opt._lock import LockHeld
     from ic_opt.blocks.optimize import advise as adopt_advice
     from ic_opt.blocks.optimize import revoke_advice
     from ic_opt.spec import load_spec
@@ -340,11 +382,10 @@ def _record_refusal(spec, store, raw: object, message: str, corners: str | list[
     says what was recorded. A store holding this problem at several sets of corners with no ``--corners`` given counts
     all of this problem's points. While a run holds the project nothing is recorded: advice is given between runs."""
     from ic_opt import advice as advice_rules
-    from ic_opt._lock import LockHeld, exclusive_lock
-    from ic_opt.blocks.optimize import RUN_LOCK, history_size
+    from ic_opt.blocks.optimize import history_size
 
     try:
-        with exclusive_lock(store.root / RUN_LOCK, what="project"), store.lock():
+        with store.run_lock(), store.lock():
             observations = store.observations()
             try:
                 since = history_size(spec, observations, corners)
