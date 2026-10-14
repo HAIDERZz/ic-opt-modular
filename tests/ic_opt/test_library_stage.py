@@ -115,7 +115,8 @@ def test_predict_refuses_what_the_library_cannot_vouch_for(library, tmp_path):
 
 def test_predict_fits_every_model_once_for_all_evaluation_threads(library, tmp_path, monkeypatch):
     """Four points in four evaluation threads, the caller did not prefit: the first thread to need the library fits every
-    model the stage asks for (three columns x FITS_PER_MODEL fits) while the others wait; a second evaluation fits none."""
+    model the stage asks for -- three columns, and SRF_p, the resonance that limits Lp@10's answers (N-113) -- x
+    FITS_PER_MODEL fits while the others wait; a second evaluation fits none."""
     lib = query.Library(uncached(library, tmp_path / "lib"), limits=LOCAL)                # one fit worker: the fits run here
     spec = design_spec("threads")
     pipeline = stage.surrogate_pipeline(spec, lib)
@@ -126,11 +127,11 @@ def test_predict_fits_every_model_once_for_all_evaluation_threads(library, tmp_p
               for od, w in (("145", "5"), ("155", "4.5"), ("165", "5.5"), ("175", "5"))]
     obs = evaluate(spec, points, ex, store, pipeline=pipeline, limits=FAKE_HOST, parallel_jobs=4)
     assert all({"L", "Q", "L10"} <= set(o.metrics) for o in obs), [o.issues for o in obs]
-    assert len(fits) == 3 * FITS_PER_MODEL and len(set(fits)) == 1 and fits[0] != threading.current_thread().name
+    assert len(fits) == 4 * FITS_PER_MODEL and len(set(fits)) == 1 and fits[0] != threading.current_thread().name
     assert pipeline[-1].prefit(spec) == {"ind_demo": ["Lp_lf", "Qp_peak", "Lp@10"]}
     more = [Point({"outer_diameter_um": od, "width_um": "5", "spacing_um": "2.5", "turns": "2"}, "user") for od in ("150", "160", "170")]
     evaluate(spec, more, ex, store, pipeline=pipeline, limits=FAKE_HOST, parallel_jobs=4)
-    assert len(fits) == 3 * FITS_PER_MODEL
+    assert len(fits) == 4 * FITS_PER_MODEL
 
 
 def test_predict_honours_rel_sigma_max(library, tmp_path):
@@ -182,7 +183,7 @@ def test_lib_design_recipe_optimizes_on_predictions_and_reports_leaders(library,
     assert passed == {"k": 2.0, "rel_sigma_max": 0.3}
     main(run, library=str(root), budget=24, batch=12, strategy="random", top=3, seed=3)
     assert passed["rel_sigma_max"] is None                                          # each column's own ceiling
-    assert len(fits) == 3 * FITS_PER_MODEL and set(fits) == {threading.current_thread().name}
+    assert len(fits) == 4 * FITS_PER_MODEL and set(fits) == {threading.current_thread().name}     # with Lp@10's resonance SRF_p
     obs = run.store.observations()
     assert len(obs) == 24 and all(o.step == "lib_design" for o in obs)
     assert all(o.status in ("ok", "constraint_failed", "failed:predict", "failed:pcell") for o in obs)

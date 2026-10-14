@@ -33,9 +33,11 @@ variable's search scale), so that a row adopted at that value is a candidate of 
 the index's margin x the frequency (the margin every row of the device's table satisfies: the largest of the manifest's
 curves', or the device's ``srf_margin`` when that is larger; an SRF above the sweep is above it). The first rule a
 neighbour fails drops it, in this order: ``out_of_domain`` (a variable's column or the SRF), ``uncertain`` (a variable's
-column or the SRF not ``predicted`` otherwise: too uncertain, no value), ``outside_range``, ``srf_margin``. A stratum
-that declares no ``SRF`` cannot have the last rule applied, and a line says so. ``area`` is drawn only for the neighbours
-the models leave in the window (a pcell build each).
+column or the SRF not ``predicted`` otherwise: too uncertain, no value), ``outside_range``, ``srf_margin`` (also a
+variable's curve column that ``lib.query`` answers ``above_resonance``, N-113: the resonance predicted there at or below
+the curve's own margin x the frequency, so it has no value). A stratum that declares no ``SRF`` cannot have the SRF's
+margin rule applied, and a line says so. ``area`` is drawn only for the neighbours the models leave in the window (a pcell
+build each).
 
 Ranked by ``prefer`` (``max:<column>`` / ``min:<column>``, an index column; default the device's own ``prefer``, else the
 index's ``max:Qmin`` / ``max:Qp``) on the predicted value, a neighbour without a predicted value for it last, then the one
@@ -231,7 +233,7 @@ def model_columns(lib: query.Library, stratum: str, columns: list[str], ghz: flo
 
 
 def _worse(statuses: list[str]) -> str:
-    for status in ("out_of_domain", "uncertain", "above_sweep"):
+    for status in ("out_of_domain", "above_resonance", "uncertain", "above_sweep"):
         if status in statuses:
             return status
     return statuses[0]
@@ -256,21 +258,26 @@ def verdict(predicted: dict[str, dict], srf: dict | None, axes: dict[str, index.
     the variable's range when the table would take it onto that grid (``Axis.level``: the end levels reach half an end
     interval beyond the bounds, in the variable's search scale); ``margin_hz``: the index's margin x
     the frequency. An SRF above the sweep (``above_sweep``) is above the margin, as the index keeps a row without a
-    resonance in its sweep."""
+    resonance in its sweep. A column answered ``above_resonance`` (N-113: no value, its resonance at or below its curve's
+    own margin x the frequency) fails ``srf_margin``, in that rule's place."""
     for c, a in predicted.items():
         if a["status"] == "out_of_domain":
             return "out_of_domain", f"{c}: {a.get('reason', 'out of domain')}"
     if srf is not None and srf["status"] == "out_of_domain":
         return "out_of_domain", f"SRF: {srf.get('reason', 'out of domain')}"
+    beyond = {c: a for c, a in predicted.items() if a["status"] == "above_resonance"}
     for c, a in predicted.items():
-        if a["status"] not in ("predicted", "drawn") or a.get("value") is None:
+        if c not in beyond and (a["status"] not in ("predicted", "drawn") or a.get("value") is None):
             return "uncertain", f"{c}: {a['status']}"
     if srf is not None and srf["status"] not in ("predicted", "above_sweep"):
         return "uncertain", f"SRF: {srf['status']}"
     for c, a in predicted.items():
         axis = axes[c]
-        if axis.level(a["value"]) is None:
+        if c not in beyond and axis.level(a["value"]) is None:
             return "outside_range", f"{c} {a['value']:.4g} outside [{axis.lower:.4g}, {axis.upper:.4g}]"
+    if beyond:
+        c, a = next(iter(beyond.items()))
+        return "srf_margin", f"{c}: {a.get('reason', a['status'])}"
     if srf is not None and srf["status"] == "predicted" and srf["value"] <= margin_hz:
         return "srf_margin", f"SRF {srf['value']:.4g} Hz at or below {margin_hz:.4g} Hz"
     return None, ""

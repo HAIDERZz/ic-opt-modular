@@ -14,7 +14,10 @@ adopted, the rows make the next dataset build, and the models refitted on it are
    left out) or a fixed value; a pool row left outside them (snapped past a window's edge, or held by its turns level
    at another value) is dropped. An SRF whose nearest measured rows mostly resonate above their sweep is settled
    there, as ``lib.query`` answers it (``above_sweep``): such a point is in that SRF's domain without its model, its
-   sigma does not count and a measurement there does not inform the SRF model (no resonance to fit);
+   sigma does not count and a measurement there does not inform the SRF model (no resonance to fit). Likewise an
+   anchored column where the resonance predicted there lies at or below its curve's srf_margin x f (N-113,
+   ``suggest.below_resonance``; ``lib.query`` answers it ``above_resonance``): a measurement there has no value for it,
+   so its sigma does not count there and a pick there does not inform its model;
 3. every model's RAW posterior sigma (``StratumGP.predict(floor=False)``): the sigma floor is the held-out median
    error everywhere, flat, and says nothing about where the model is unsure. Relative: for a log target (every
    positive quantity) the log-space sigma, else sigma / |mu|;
@@ -232,7 +235,9 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
         models = library.models(stratum, names, workers=workers, threads=threads)
         marks.append(time.perf_counter())
         x, info, floors = _pool(library, stratum, models, pool_size, seed, box)
-        informs = {q: ~np.isfinite(floors[q]) if q in floors else np.ones(len(x), dtype=bool) for q in names}
+        swept = {q: ~np.isfinite(floors[q]) if q in floors else np.ones(len(x), dtype=bool) for q in names}   # SRF: not above the sweep
+        resonant = suggest.below_resonance(x, models, srf_floor=floors, chunk_bytes=budget)                   # N-113: an anchored column
+        informs = {q: swept[q] & resonant[q] if q in resonant else swept[q] for q in names}                   # where it has a value
         median_rel = {q: _median_rel(models[q]) for q in names}
         ceilings = {q: models[q].rel_sigma_max if rel_sigma_max is None else float(rel_sigma_max) for q in names}
         norm = norms(score, median_rel, ceilings)
@@ -240,9 +245,9 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
         sel = select(x, {q: models[q].gp for q in names}, n, norm=norm, informs=informs, top=top, budget=budget,
                      n_train=max(query.fit_rows(m) for m in models.values()))
         mark = time.perf_counter()
-        candidates = _candidates(library, stratum, models, names, x, sel, floors, k, rel_sigma_max, budget)
+        candidates = _candidates(library, stratum, models, names, x, sel, floors, resonant, k, rel_sigma_max, budget)
         marks.append(time.perf_counter())
-    notes = _notes(library, names, info, sel, n, top, budget, informs)
+    notes = _notes(library, names, info, sel, n, top, budget, swept, resonant, models)
     seconds = {"models": marks[1] - marks[0], "pool": marks[2] - marks[1], **sel.seconds, "report": marks[3] - mark,
                "total": marks[3] - marks[0]}
     return {"stratum": stratum, "quantities": names, "n": n, "bounds": effective, "pool": info,
@@ -332,8 +337,8 @@ def _real(dim: str, value: object) -> float:
 
 def _pool(library: query.Library, stratum: str, models: dict[str, query.Model], size: int, seed: int,
           box: dict[str, tuple[float, float]]) -> tuple[np.ndarray, dict, dict[str, np.ndarray]]:
-    """The candidates (step 2), what the pool was made of, and per SRF column the sweep stop where it is settled above
-    the sweep (NaN elsewhere)."""
+    """The candidates (step 2), what the pool was made of, and per SRF column -- the resonance columns of the anchored ones
+    too (``suggest.srf_floors_for``) -- the sweep stop where it is settled above the sweep (NaN elsewhere)."""
     ds = library.dataset(stratum)
     drawn = suggest.pool(library, stratum, size, seed, box=box)
     inside = np.ones(len(drawn), dtype=bool)               # snapped past a window's edge, or held at its level's value
@@ -344,7 +349,7 @@ def _pool(library: query.Library, stratum: str, models: dict[str, query.Model], 
     measured = {tuple(r) for r in np.round(ds.matrix(), 9)}
     fresh = np.array([tuple(r) not in measured for r in np.round(bounded, 9)], dtype=bool)
     x = bounded[fresh]
-    floors = {q: suggest.srf_floors(library, stratum, x, q) for q in models if q.startswith("SRF")}
+    floors = suggest.srf_floors_for(library, stratum, x, models)
     keep = suggest.in_domain(x, models, srf_floor=floors)
     for q, m in models.items():                            # the guard's criterion 2 is the sub-GP's floor; stated anyway
         keep &= m.gp.available(x) | np.isfinite(floors.get(q, np.full(len(x), np.nan)))
@@ -372,16 +377,21 @@ def _number(value: float | None) -> float | None:
 
 
 def _candidates(library: query.Library, stratum: str, models: dict[str, query.Model], names: list[str], x: np.ndarray,
-                sel: Selection, floors: dict[str, np.ndarray], k: float, rel_sigma_max: float | None, budget: int) -> list[dict]:
+                sel: Selection, floors: dict[str, np.ndarray], resonant: dict[str, np.ndarray], k: float,
+                rel_sigma_max: float | None, budget: int) -> list[dict]:
     """The picks in ``lib_signoff``'s candidate shape: params, the score, relative sigma before any pick and when picked,
     the current prediction with its calibrated k-sigma interval (SRF in Hz; above the sweep: the stop as its lower
-    bound) and the nearest measured rows."""
+    bound; null for an anchored column where ``resonant`` says the pick lies at or above its resonance) and the nearest
+    measured rows."""
     if not sel.picks:
         return []
     ds = library.dataset(stratum)
     xp = x[sel.picks]
     _ok, pred = suggest.predict_all(xp, {q: models[q] for q in names}, k=k, rel_sigma_max=rel_sigma_max,
                                     srf_floor={q: f[sel.picks] for q, f in floors.items()}, check_domain=False, chunk_bytes=budget)
+    for q, allowed in resonant.items():                      # N-113: no value above the resonance, as lib.query answers it
+        for key in ("value", "lo", "hi"):
+            pred[q][key] = np.where(allowed[sel.picks], pred[q][key], np.nan)
     near = _nearest(library, stratum, xp, names)
     out = []
     for t, i in enumerate(sel.picks):
@@ -411,7 +421,7 @@ def _evidence(row: dataset.Row, dims: list[str], names: list[str], distance: flo
 
 
 def _notes(library: query.Library, names: list[str], info: dict, sel: Selection, n: int, top: int, budget: int,
-           informs: dict[str, np.ndarray]) -> list[str]:
+           swept: dict[str, np.ndarray], resonant: dict[str, np.ndarray], models: dict[str, query.Model]) -> list[str]:
     notes = library.notes
     if info["in_bounds"] < info["distinct"]:
         notes.append(f"{info['distinct'] - info['in_bounds']} of {info['distinct']} pool points fell outside the bounds once "
@@ -427,9 +437,15 @@ def _notes(library: query.Library, names: list[str], info: dict, sel: Selection,
     if sel.stopped:
         notes.append(f"stopped after {len(sel.picks)} of {n} picks: every other candidate is already resolved for every quantity")
     for q in names:
-        above = int((~informs[q]).sum())
+        above = int((~swept[q]).sum())
         if above:
             notes.append(f"{q}: {above} pool candidates lie above the sweep (most of their 5 nearest measured rows have no "
                          "resonance in it): its model is not asked there, so they neither score for it nor count in its "
                          "statistics, and a pick there does not lower its sigma")
+        beyond = int((~resonant[q]).sum()) if q in resonant else 0
+        if beyond:
+            notes.append(f"{q}: {beyond} pool candidates lie where the resonance predicted there is at or below srf_margin x f "
+                         f"({models[q].resonance.threshold_hz / 1e9:.4g} GHz), so a measured row there has no {q}: its model "
+                         "is not asked there, so they neither score for it nor count in its statistics, and a pick there does "
+                         "not lower its sigma")
     return notes

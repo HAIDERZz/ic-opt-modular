@@ -23,8 +23,15 @@ formerly em-opt's ``inverse.suggest``):
 ``score`` is the reusable core (fitted models + candidate matrix in, ranks out) so a hold-out test can rank
 known rows exactly as ``suggest`` ranks a Sobol pool. It is three parts ``lib.region`` shares:
 ``predict_all`` (the one prediction path: one GP call per quantity, the bounds derived from it, SRF mapped
-from the GHz it is fitted in back to Hz, settled rows, the domain + confidence gate), ``satisfy`` (robust:
-the interval inside every window; mean: the predicted value) and ``rank``.
+from the GHz it is fitted in back to Hz, settled rows, the domain + confidence gate, and the resonance gate),
+``satisfy`` (robust: the interval inside every window; mean: the predicted value) and ``rank``.
+
+The resonance gate (N-113, ``below_resonance``): an anchored column is answered only where the resonance predicted there
+lies above its curve's ``srf_margin`` x f -- where a measured row has a value for it (``dataset._anchor_value``) -- whatever
+the targets are. Targets and the objective get the robust form of this through the implied SRF target; the gate holds
+every other anchored column a caller predicts (a ``lib.region`` trend, ``lib.densify``'s columns) to the rule as well. It
+reads the resonance from each curve's model (``query.Model.resonance``, which ``Library.models`` attaches) and its floors
+above the sweep from the caller (``srf_floors_for``).
 
 A GP call's memory grows with (rows predicted) x (training rows), so a large batch is predicted in chunks
 sized by bytes, not rows: ``predict_budget`` is a share of the machine's ``max_memory_gb`` (the library's
@@ -125,16 +132,14 @@ def resolve(library: query.Library, stratum: str, targets: list[Target], objecti
 
 def implied_srf(targets: list[Target], objective: tuple[str, str] | None, margin: float, columns: list[str] | tuple[str, ...] = ()) -> list[Target]:
     """Anchored quantities are only defined below the resonance: add SRF >= margin x the highest anchor. The system
-    ``SRF`` when the stratum has it (what its anchored columns were cut by); else per drive, both drives for ``k``."""
+    ``SRF`` when the stratum has it (what its anchored columns were cut by); else per drive (``query.DRIVE_SRF``), both
+    drives for ``k``."""
     named = {t.quantity for t in targets}
     extra, highest = [], {}
     for q in [t.quantity for t in targets] + ([objective[1]] if objective else []):
         m = _ANCHOR.match(q)
         if m:
-            if "SRF" in columns:
-                drives = ("SRF",)
-            else:
-                drives = {"Lp": ("SRF_p",), "Qp": ("SRF_p",), "Ls": ("SRF_s",), "Qs": ("SRF_s",), "k": ("SRF_p", "SRF_s")}[m.group(1)]
+            drives = ("SRF",) if "SRF" in columns else query.DRIVE_SRF[m.group(1)]
             for srf in drives:
                 highest[srf] = max(highest.get(srf, 0.0), float(m.group(2)) * 1e9)
     for srf, f0 in highest.items():
@@ -148,6 +153,50 @@ def _settled(n: int, floor: np.ndarray | None, measured: np.ndarray | None) -> t
     above = np.zeros(n, dtype=bool) if floor is None else np.isfinite(floor)
     known = np.zeros(n, dtype=bool) if measured is None else np.isfinite(measured)
     return above, known
+
+
+def below_resonance(x: np.ndarray, models: dict[str, query.Model], pred: dict | None = None, *,
+                    srf_floor: dict[str, np.ndarray] | None = None, exact: dict[str, np.ndarray] | None = None,
+                    chunk_bytes: int | None = None) -> dict[str, np.ndarray]:
+    """N-113: per anchored column among ``models`` -- a curve column whose model carries its resonance
+    (``query.Model.resonance``) -- the rows of ``x`` where it may be answered: its own value is measured there (``exact``), or
+    each of its resonance columns is settled above the sweep there (``srf_floor``) or lies above srf_margin x f, the
+    measured value (``exact``) where there is one, else its model's mean in Hz. A row where a resonance has no mean (no
+    model at its turns level) is left out. A resonance column ``pred`` holds already (``predict_all``'s own, settled rows
+    applied) is not predicted again; another is predicted here, in calls of ``chunk_bytes`` as ``predict_all`` does."""
+    n = len(x)
+    floors, measured = srf_floor or {}, exact or {}
+    resonances: dict[str, tuple[np.ndarray, np.ndarray]] = {}    # resonance column -> (settled above the sweep, value in Hz)
+    out: dict[str, np.ndarray] = {}
+    for q, m in models.items():
+        limit = m.resonance
+        if limit is None:
+            continue
+        allowed = np.ones(n, dtype=bool)
+        for c in limit.columns:
+            if c not in resonances:
+                above, known = _settled(n, floors.get(c), measured.get(c))
+                if pred is not None and c in pred:
+                    value = pred[c]["value"]
+                else:
+                    r = limit.models[c]
+                    mu, _ = _gp_predict(r.gp, x, None if chunk_bytes is None else rows_per_call(chunk_bytes, query.fit_rows(r)))
+                    mu = mu * query.fit_unit(c)                     # the library fits SRF in GHz (query.fit_unit)
+                    value = np.where(known, measured[c], mu) if known.any() else mu
+                resonances[c] = (above, value)
+            above, value = resonances[c]
+            allowed &= above | (value > limit.threshold_hz)
+        if q in measured:                                            # a measured value of the column itself: the row has it
+            allowed |= np.isfinite(measured[q])
+        out[q] = allowed
+    return out
+
+
+def srf_floors_for(library: query.Library, stratum: str, x: np.ndarray, models: dict[str, query.Model]) -> dict[str, np.ndarray]:
+    """``srf_floors`` per SRF column among ``models`` and per resonance column of an anchored one (``below_resonance``
+    settles a row above the sweep with it)."""
+    names = [q for q in models if q.startswith("SRF")] + [c for m in models.values() if m.resonance for c in m.resonance.columns]
+    return {q: srf_floors(library, stratum, x, q) for q in dict.fromkeys(names)}
 
 
 def in_domain(x: np.ndarray, models: dict[str, query.Model], *, srf_floor: dict[str, np.ndarray] | None = None,
@@ -191,10 +240,13 @@ def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0
                 check_domain: bool = True, chunk_bytes: int | None = None) -> tuple[np.ndarray, dict]:
     """``(ok, pred)`` for candidate rows ``x`` and every quantity in ``models``: ``ok`` is the domain (``in_domain``) and
     confidence gate (a finite value, sigma / mu within ``rel_sigma_max`` for every quantity, or when it is None within
-    each model's own ``Model.rel_sigma_max``); ``pred[q]`` holds value, lo, hi (calibrated
+    each model's own ``Model.rel_sigma_max``) and the resonance gate (``below_resonance``: an anchored column only where
+    the resonance predicted there lies above its srf_margin x f, a row elsewhere not ok as one out of the domain is,
+    whether or not SRF is among ``models``); ``pred[q]`` holds value, lo, hi (calibrated
     k-sigma), rel_sigma and sigma in SI units. One GP prediction per quantity: the bounds come from that (mu, sigma)
     as ``StratumGP.predict_bounds`` derives them, and SRF, fitted in GHz, is mapped back to Hz here and nowhere else.
-    ``srf_floor[q]`` gives a per-candidate lower bound for an SRF known to lie above the sweep (NaN elsewhere);
+    ``srf_floor[q]`` gives a per-candidate lower bound for an SRF known to lie above the sweep (NaN elsewhere; the
+    library's callers give one for every resonance column too, ``srf_floors_for``);
     ``exact[q]`` gives measured values (NaN where not measured), used as zero-width intervals instead of predictions.
     ``chunk_bytes`` bounds each GP call's memory (``rows_per_call`` for the model's training rows; the library's callers
     pass ``predict_budget(library.limits)``); None predicts every row in one call."""
@@ -218,6 +270,8 @@ def predict_all(x: np.ndarray, models: dict[str, query.Model], *, k: float = 2.0
         ok &= (np.isfinite(mu) | above) & (settled | domain.sigma_ok(mu, sigma, ceiling))
         pred[q] = {"value": mu, "lo": lo, "hi": hi, "rel_sigma": np.where(settled, 0.0, sigma / np.maximum(np.abs(mu), 1e-300)),
                    "sigma": sigma}
+    for allowed in below_resonance(x, models, pred, srf_floor=srf_floor, exact=exact, chunk_bytes=chunk_bytes).values():
+        ok &= allowed
     return ok, pred
 
 
@@ -379,7 +433,7 @@ def suggest(library: query.Library, stratum: str, targets: dict, objective: str 
     index = {tuple(np.round(r, 9)): i for i, r in enumerate(measured_x)}
     row_of = np.array([index.get(tuple(r), -1) for r in x])
     exact = {q: np.array([np.nan if i < 0 or ds.rows[i].values.get(q) is None else ds.rows[i].values[q] for i in row_of]) for q in names}
-    floors = {q: srf_floors(library, stratum, x, q) for q in names if q.startswith("SRF")}
+    floors = srf_floors_for(library, stratum, x, models)
     for q, floor in floors.items():                           # a measured row with no resonance in its sweep: at least its stop
         for j, i in enumerate(row_of):
             if i >= 0 and ds.rows[i].values.get(q) is None:

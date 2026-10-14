@@ -106,8 +106,9 @@ def test_an_extension_column_equals_what_a_manifest_declaring_that_anchor_gives(
 
 def test_the_dataset_key_its_cache_files_and_the_declared_columns_stay_what_they_were(tmp_path):
     """The key is main's; a library that never asks for an extension column writes exactly main's files, a library point's
-    footprint included (no row has a GDS here, so there is nothing to keep); asking for one adds its own files and leaves
-    every earlier one byte for byte, and every declared value as it was."""
+    footprint included (no row has a GDS here, so there is nothing to keep); asking for one adds its own files -- its model
+    coming with its resonance's, SRF_p (N-113) -- and leaves every earlier one byte for byte, and every declared value as
+    it was."""
     root = build_library(tmp_path / "lib")
     assert dataset.build(root, "ind_demo").key == IND_KEY
     assert dataset.build(build_xfm_library(tmp_path / "xfm"), "xfm_demo").key == XFM_KEY
@@ -131,7 +132,9 @@ def test_the_dataset_key_its_cache_files_and_the_declared_columns_stay_what_they
     assert sorted(set(after) - set(before))[:4] == [f"anchors-ind_demo-{IND_KEY}-15.json", f"anchors-ind_demo-{IND_KEY}-15.json.lock",
                                                      f"calibration-ind_demo-Lp_at_15-{IND_KEY}.json",
                                                      f"calibration-ind_demo-Lp_at_15-{IND_KEY}.json.lock"]
-    assert [n.rsplit("-", 1)[0] for n in sorted(set(after) - set(before))[4:]] == ["model-ind_demo-Lp_at_15"]
+    assert sorted(set(after) - set(before))[4:6] == [f"calibration-ind_demo-SRF_p-{IND_KEY}.json",
+                                                      f"calibration-ind_demo-SRF_p-{IND_KEY}.json.lock"]
+    assert [n.rsplit("-", 1)[0] for n in sorted(set(after) - set(before))[6:]] == ["model-ind_demo-Lp_at_15", "model-ind_demo-SRF_p"]
     ds = lib.dataset("ind_demo")
     assert ds.columns == DECLARED and all({k: v for k, v in r.values.items() if k != "Lp@15"} == values[(r.part, r.obs_id)] for r in ds.rows)
     assert dataset.build(root, "ind_demo", cache=False).key == IND_KEY
@@ -263,7 +266,7 @@ def test_coverage_says_a_curve_answers_at_any_frequency_and_lists_the_declared_c
 
 def test_spawned_fit_workers_read_the_extension_from_its_cache_file(library, tmp_path):
     """The parent measures the extension columns before it starts any worker; the workers load them from the cache file
-    (which none of them writes again) and fit, and the models load here."""
+    (which none of them writes again) and fit -- the curves' resonance SRF_p too (N-113) -- and the models load here."""
     root = fresh_copy(library, tmp_path / "lib", keep_dataset=True)
     lib = q.Library(root, limits=FAKE_HOST)
     assert lib.columns("ind_demo", ["Lp@15", "Lp@12.5"]) == ["Lp@15", "Lp@12.5"]
@@ -272,7 +275,7 @@ def test_spawned_fit_workers_read_the_extension_from_its_cache_file(library, tmp
     assert list(got) == ["Lp@15", "Lp@12.5"] and all(m.quantity in ("Lp@15", "Lp@12.5") for m in got.values())
     assert len(files) == 2 and {p: p.stat().st_mtime_ns for p in files} == files
     stems = sorted(p.name.rsplit("-", 1)[0] for p in (root / ".cache").glob("model-*.pkl"))
-    assert stems == ["model-ind_demo-Lp_at_12.5", "model-ind_demo-Lp_at_15"]
+    assert stems == ["model-ind_demo-Lp_at_12.5", "model-ind_demo-Lp_at_15", "model-ind_demo-SRF_p"]
 
 
 def measure_marked(root: str, marker: str, start, guarded: bool) -> list:
