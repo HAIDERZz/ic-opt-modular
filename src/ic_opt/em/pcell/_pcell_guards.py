@@ -4,6 +4,8 @@
 # provenance and the KNOWN_DEVIATIONS record.
 from __future__ import annotations
 
+import math
+
 import klayout.db as kdb
 
 from ic_opt.em.pcell._pcell_core import (
@@ -387,6 +389,96 @@ def _xfm_nets_are_drc_separate(a, b, process) -> bool:
         if wide.count:
             return False
     return True
+
+
+def _drawn_on(cell: Cell, layer: tuple[int, int]) -> kdb.Region:
+    """Everything ``cell`` draws on ``layer``, its instances flattened, merged."""
+    region = kdb.Region()
+    for drawn, points in cell.flat_shapes():
+        if drawn == layer and points:
+            region.insert(kdb.Polygon([kdb.Point(x, y) for x, y in points]))
+    return region.merged()
+
+
+def _run_side_by_side_um(a: kdb.Edge, b: kdb.Edge) -> float:
+    """How far two edges run side by side: ``b`` projected onto ``a`` and
+    clipped to it when the two are parallel, else 0 -- the parallel run
+    length the DRC audit's wide-line rules measure (KLayout's projection)."""
+    length = math.hypot(a.dx(), a.dy())
+    if not length or a.dx() * b.dy() != a.dy() * b.dx():
+        return 0.0
+    ux, uy = a.dx() / length, a.dy() / length
+    t0, t1 = sorted((p.x - a.p1.x) * ux + (p.y - a.p1.y) * uy for p in (b.p1, b.p2))
+    return max(0.0, min(length, t1) - max(0.0, t0)) * DBU_UM
+
+
+def _tap_stack_gap(tapped: Cell, other: Cell, ct_me, metals: dict[int, str], *,
+                   family: str, winding: str, facing: str, ct_label: str,
+                   W: float, W_label: str, W_other: float, W_other_label: str,
+                   OPENING_other: float, opening_label: str,
+                   process: ProcessRuleContext | None, leads: str = "leads",
+                   same_metal_tap: bool = True) -> None:
+    """N-93 (xfm_bs), N-121 (xfm_ms, xfm_balun): a via-stack tap must keep
+    the process's spacing from the other winding on the metals where both
+    draw.
+
+    ``tapped`` holds the tapped winding (its tap metal ``ct_me``) and
+    ``other`` the other winding, each as drawn in its own sub-cell; the
+    tapped one draws nothing below its own metal but its tap, so its
+    shapes on each of ``metals`` -- the stack's W x W pad, and the lead
+    too on the tap metal -- are the tap's. Each metal is measured where
+    ``other`` draws as well: every pair of facing edges closer than the
+    widest spacing those widths can need, each against
+    ``_required_parallel_spacing`` -- the metal's min space, raised by
+    every wide-line rule of the profile whose width threshold both lines
+    exceed (``min(W, W_other)``, as the gate reads the rule) and whose
+    parallel-run threshold the pair's run exceeds (0 for edges that are
+    not parallel). Strict, as the audit is: a gap equal to the rule
+    passes. The largest shortfall raises ``PortError`` with the gap, the
+    run, the rule value, the widths (``W_label`` / ``W_other_label``) and
+    the other winding's opening (``opening_label``, where its ``leads``
+    lie); ``metals`` maps each metal to what it is of the other winding's
+    ("the secondary's metal"), in the order a tie is reported. The caller
+    runs it after the short gate, so a contact is still a short.
+
+    Reference mode (no profile) has no rules: skipped, as in
+    ``_check_trace_rules``."""
+    if process is None or ct_me is None:
+        return
+    ct_i = _metal_index(ct_me)
+    width = min(W, W_other)
+    worst = None                                         # (rule, gap, run, metal) of the largest shortfall
+    for met in metals:
+        layer = _metal(met, process)
+        tap, beside = _drawn_on(tapped, layer), _drawn_on(other, layer)
+        if tap.is_empty() or beside.is_empty():
+            continue
+        reach = _required_parallel_spacing(met, width, math.inf, process)
+        for pair in tap.separation_check(beside, _nm(reach) + 1, False,
+                                         kdb.Metrics.Euclidian).each():
+            gap = pair.to_dtype(DBU_UM).distance()
+            run = _run_side_by_side_um(pair.first, pair.second)
+            need = _required_parallel_spacing(met, width, run, process)
+            if gap < need - _EPS and (worst is None or need - gap > worst[0] - worst[1]):
+                worst = (need, gap, run, met)
+    if worst is None:
+        return
+    need, gap, run, met = worst
+    name = _metal_name(met)
+    drawn, shape = ((f"its {W:g} um wide lead", "lead") if ct_i == met
+                    else (f"a {W:g} x {W:g} um pad", "pad"))
+    along = f" over a {run:.3f} um parallel run" if run > 0 else " at a corner"
+    own = (f"; a tap on the {winding}'s own metal draws nothing on {name}"
+           if same_metal_tap else "")
+    raise PortError(
+        f"{family}: the {winding}'s via-stack tap ({ct_label}={_metal_name(ct_i)}) "
+        f"draws {drawn} on {name}, {metals[met]}, {gap:.3f} um from "
+        f"the {facing}'s own {name} metal{along}, below the {need:g} um "
+        f"profile {process.profile_id} asks between {name} lines {W_label}={W:g} "
+        f"and {W_other_label}={W_other:g} um wide{' over that run' if run > 0 else ''}; "
+        f"the {facing}'s {leads} lie {opening_label}={OPENING_other:g} um off the "
+        f"centre line (a wider {opening_label} or a narrower {W_label} moves the "
+        f"{shape} away from them{own})")
 
 
 def _xfm_net_short(device, a, b):

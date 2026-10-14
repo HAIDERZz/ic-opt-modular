@@ -24,6 +24,8 @@ from ic_opt.em.pcell._pcell_core import (
 from ic_opt.em.pcell._pcell_guards import (
     _check_opening,
     _heal_seam_notches,
+    _tap_stack_gap,
+    _xfm_net_overlap,
     _xfm_net_short,
     _xfm_nets_are_drc_separate,
 )
@@ -256,7 +258,15 @@ def _add_balun_ct(cell, center_x, OD, W, LEAD, balun_me, CT_ME, side, txt,
     NT==1. On a multi-turn winding that point is neither the midpoint nor
     free space (the via stack would sit on top of the inner turns), so a
     multi-turn request is refused rather than silently mis-tapped (mirrors
-    the ``nested and NT_S >= 2`` guard in ``xfm_balun``)."""
+    the ``nested and NT_S >= 2`` guard in ``xfm_balun``).
+
+    The primary's tap leaves its closed column toward the secondary's
+    escape: a stack reaching ESCAPE_ME draws its pad between the escape
+    bars (``_balun_tap_stack_gap``, N-121). The secondary's tap leaves
+    toward the primary's leads, which run on BALUN_ME; below the plane a
+    single-turn primary draws only its own tap, on the far side, and a
+    multi-turn one its crossunders, whose landings lie on its own rings,
+    no nearer to the tap's pad than the two windings are on the plane."""
     me = _metal_index(balun_me)
     cm = _metal_index(CT_ME)
     if cm >= me:
@@ -270,6 +280,41 @@ def _add_balun_ct(cell, center_x, OD, W, LEAD, balun_me, CT_ME, side, txt,
     tap_side = "right" if side == "left" else "left"
     _bs_center_tap(cell, center_x, OD / 2.0, W, LEAD, balun_me, CT_ME,
                    tap_side, txt, process)
+
+
+def _balun_tap_stack_gap(pri: Cell, sec: Cell, CT_P_ME, *, me: int, esc: int,
+                         W_P: float, W_S: float, OPENING_S: float,
+                         process: ProcessRuleContext | None) -> None:
+    """N-121: the primary's tap measured against the secondary, as N-93
+    measures xfm_bs's (``_tap_stack_gap``).
+
+    The primary's tap (single-turn only) drops from the balun plane at the
+    primary's closed column, which faces the secondary's escape: the
+    escape's two bars run on ESCAPE_ME at +-[OPENING_S, OPENING_S + W_S]
+    from the secondary's arm tips out under the primary, so a stack that
+    reaches ESCAPE_ME draws its W_P x W_P pad between them (its lead too,
+    when the tap metal is ESCAPE_ME), OPENING_S - W_P/2 from them where
+    the pad lies alongside. Below the plane the primary draws nothing but
+    this tap, so its shapes on each metal the stack reaches are the tap's;
+    the secondary's there are its escape (bars, end pads) and its own tap.
+
+    The balun's inter-net gate (``_xfm_nets_are_drc_separate``, every
+    shared metal, the metal's min space and the audit's own wide-line
+    function) already refuses such a build before the fixture and the
+    DRC gate; ``xfm_balun`` calls this only when that gate refuses and
+    the nets do not touch, so the refusal names the tap's gap, run, rule,
+    widths and opening instead of the general reason. Nothing it refuses
+    would have built."""
+    if process is None or CT_P_ME is None:
+        return
+    roles = {met: ("the secondary's escape metal" if met == esc
+                   else "a metal the secondary draws on")
+             for met in range(me - 1, _metal_index(CT_P_ME) - 1, -1)}
+    _tap_stack_gap(pri, sec, CT_P_ME, roles, family="xfm_balun",
+                   winding="primary", facing="secondary", ct_label="CT_P_ME",
+                   W=W_P, W_label="W_P", W_other=W_S, W_other_label="W_S",
+                   OPENING_other=OPENING_S, opening_label="OPENING_S",
+                   process=process, leads="escape bars", same_metal_tap=False)
 
 
 @builds_on_profile_stack
@@ -298,7 +343,12 @@ def xfm_balun(
     metal) under the outer ring, then back up outside — the reference
     balun.il base_ind_under mechanism. The layer-complete full-net gate
     (_xfm_net_short, generalized in M13 ticket 05 and shared with
-    xfm_bs) runs on every drawn layer in every mode."""
+    xfm_bs) runs on every drawn layer in every mode. Short of contact, the
+    two complete nets -- taps included -- are held to every shared metal's
+    inter-net spacing (_xfm_nets_are_drc_separate, design-region issue
+    04); a primary tap whose stack comes too close to the secondary's
+    escape bars is refused with its gap, rule, widths and OPENING_S
+    (_balun_tap_stack_gap, N-121)."""
     me = _metal_index(BALUN_ME)
     # Real profile-stack neighbour, not a bare `me - 1` (gdsfactory review
     # 2026-09-21): N65's AP sits directly above M9 (no M10), so the old
@@ -469,6 +519,12 @@ def xfm_balun(
     elif primary_pad is None and not _xfm_nets_are_drc_separate(
         pri, sec, process
     ):
+        # N-121: when the primary's tap is what comes too close (its stack
+        # through the escape metal, between the escape bars), name its gap
+        # and rule; a contact keeps the message below
+        if _xfm_net_overlap(pri, sec) is None:
+            _balun_tap_stack_gap(pri, sec, CT_P_ME, me=me, esc=esc, W_P=W_P,
+                                 W_S=W_S, OPENING_S=OPENING_S, process=process)
         # Multi-turn primary (no compact re-planner to fall back on):
         # the inter-net spacing gate must still fail closed -- before
         # this, an NT_P>=3 nested balun whose escape bridge ran within

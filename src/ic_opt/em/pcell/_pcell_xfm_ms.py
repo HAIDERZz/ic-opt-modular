@@ -8,12 +8,13 @@ from ic_opt.em.pcell._pcell_core import (
     Cell,
     PortError,
     ProcessRuleContext,
+    _metal_below,
     _metal_index,
     _metal_name,
     _xfm_order_ports,
     finalize_emx_ports,
 )
-from ic_opt.em.pcell._pcell_guards import _xfm_net_short
+from ic_opt.em.pcell._pcell_guards import _tap_stack_gap, _xfm_net_short
 from ic_opt.em.pcell._pcell_ind_sym import (
     _compact_two_turn_winding,
     _ind_ct_adjacency_guard,
@@ -35,6 +36,45 @@ from ic_opt.em.pcell.fixture import (
     add_ground_fixture,
 )
 from ic_opt.em.pcell.stack import builds_on_profile_stack
+
+
+def _ms_tap_stack_gap(sing: Cell, mult: Cell, CT_P_ME, *, si: int, mi: int,
+                      W_S: float, W_M: float, OPENING_M: float,
+                      process: ProcessRuleContext | None) -> None:
+    """N-121: the single-turn primary's via-stack tap keeps the process's
+    spacing from the multi-turn secondary (N-93's check, xfm_bs's).
+
+    The tap drops from the primary's metal (``si``) to ``CT_P_ME`` through
+    a W_S x W_S stack at the primary's closed column, which faces the
+    secondary's lead side, and draws that pad on every metal on the way
+    (its lead too, on ``CT_P_ME``). The secondary lies below the primary
+    and draws on its own metal (``mi``: turns and leads), its crossunder's
+    and, tapped, the metals its own via tower passes down to its tap
+    metal. Each of those the stack reaches is measured as drawn (``sing``
+    and ``mult``, after the straight extension) by ``_tap_stack_gap``,
+    the secondary's metal first, and refused below the profile's spacing
+    with the gap, the run, the rule, W_S, W_M and OPENING_M. With the pad
+    alongside the secondary's leads the gap is OPENING_M - W_S/2; inside
+    the secondary's turns (a smaller primary, a centre spacing) it faces
+    a turn instead, as drawn. The secondary's own tap starts at least two
+    levels below its metal and never reaches the primary's, which lies
+    above everything the secondary draws: it meets the primary only where
+    the primary's stack comes down to it, measured here as part of the
+    secondary. A same-metal tap (``CT_P_ME`` the primary's metal) draws
+    nothing below the primary: nothing to measure."""
+    if process is None or CT_P_ME is None:
+        return
+    crossunder = _metal_below(mi, process)
+    roles = {}
+    for met in range(min(si - 1, mi), _metal_index(CT_P_ME) - 1, -1):
+        roles[met] = ("the multi-turn secondary's metal" if met == mi else
+                      "the multi-turn secondary's crossunder metal" if met == crossunder else
+                      "a metal the multi-turn secondary's tap reaches")
+    _tap_stack_gap(sing, mult, CT_P_ME, roles, family="xfm_ms",
+                   winding="single-turn primary", facing="multi-turn secondary",
+                   ct_label="CT_P_ME", W=W_S, W_label="W_S", W_other=W_M,
+                   W_other_label="W_M", OPENING_other=OPENING_M,
+                   opening_label="OPENING_M", process=process)
 
 
 @builds_on_profile_stack
@@ -87,7 +127,16 @@ def xfm_ms(
     adjacency rule as the inductor (at least two levels below MULTI_ME; the
     crossunder occupies MULTI_ME-1). Each winding (plus its tap) builds in
     its own sub-cell and the layer-complete _xfm_net_short gate fails
-    closed on any overlap between the two nets.
+    closed on any overlap between the two nets. Short of contact (N-121),
+    a via-stack CT_P_ME tap draws its W_S x W_S pad on every metal on its
+    way down (its lead too, on CT_P_ME), on the multi's lead side:
+    wherever it reaches a metal the multi draws on (its own, its
+    crossunder's, its tap's) it is measured against the multi as drawn and
+    refused below the profile's spacing for those widths and that parallel
+    run, naming the gap, the rule value, W_S, W_M and OPENING_M
+    (_ms_tap_stack_gap, xfm_bs's N-93 check; with the pad between the
+    multi's leads the gap is OPENING_M - W_S/2; reference mode has no
+    rules).
 
     STRAIGHT_EXTENSION (same contract as xfm_bs) adds the same total X width
     to each winding about its OWN centre, in non-negative 0.01 um steps;
@@ -218,6 +267,11 @@ def xfm_ms(
         cell.params["STRAIGHT_EXTENSION"] = sing.params["STRAIGHT_EXTENSION"]
         cell.name += f"_SX{sing.params['STRAIGHT_EXTENSION']:g}"
     _xfm_net_short("xfm_ms", sing, mult)
+    # N-121: the primary's via-stack tap keeps the profile's spacing from the
+    # secondary on every metal of the secondary's it reaches -- after the
+    # short gate, so a contact is still reported as a short
+    _ms_tap_stack_gap(sing, mult, CT_P_ME, si=si, mi=mi, W_S=W_S, W_M=W_M,
+                      OPENING_M=OPENING_M, process=process)
     cell.inst(sing, (0.0, 0.0), "R0")
     cell.inst(mult, (0.0, 0.0), "R0")
     # (port contract 2026-09-21) replaces the old
