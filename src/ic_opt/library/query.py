@@ -21,12 +21,19 @@ another process that needs the same model waits for it, then loads what it wrote
 
 A curve whose manifest entry says ``model: ratio`` or ``model: resonance`` is composed from the stratum's own
 base-scalar (and SRF) models (``ic_opt.library.composed``): ``models`` loads or fits those first, each once
-however many curves are built on it, then the composed curves -- their calibration folds as jobs of their own,
-since every fold refits every part. A composed model's cache files live in the same cache and hold the same lock
-discipline: its calibration file is keyed by the option and the parts' settings, its model file by the parts' model
-keys as well; the file holds only its own part, and the shared models are attached when it loads. ``query`` adds to
-a composed curve's answer where the value came from. A curve's base scalar is the one ``manifest.LOW_FREQUENCY``
-names: the low-frequency value, or the peak of a Q curve.
+however many curves are built on it, then the composed curves. A composed curve's calibration (N-125,
+``ic_opt.library.folds``) holds out the same rows of the stratum in each of its five folds whichever column it
+calibrates, so each part's model of a fold is fitted once -- a job of its own -- and kept as a file
+(``fold-<stratum>-<part>-s<seed>-<key>.pkl``, under a lock as a model's fit) for every curve built on that part, at
+any frequency; a curve's fold then fits only the curve's own part. A calibration cached under the name it had before
+(folds drawn from the curve's own rows, every part refitted on each: ``composed.holdout_fold``) is used as it is, and
+the curve's model file and answers with it; a curve whose few rows the shared folds cannot calibrate is calibrated on
+those folds of before (``Library._stable``). A composed model's cache files live in the same cache and hold the same
+lock discipline: its calibration file is keyed by the option and the parts' settings (a calibration on stable rows by
+``"folds": "stable-rows"`` too), its model file by the parts' model keys as well; the file holds only its own part,
+and the shared models are attached when it loads. ``query`` adds to a composed curve's answer where the value came
+from. A curve's base scalar is the one ``manifest.LOW_FREQUENCY`` names: the low-frequency value, or the peak of a
+Q curve.
 
 SRF is fitted in GHz (the log-GP is tamer there) and answered in Hz: ``fit_unit`` is the one place that says so.
 
@@ -70,7 +77,8 @@ same rule.
 
 A column whose usable rows are too few for a model has none (N-120). ``Library.no_model`` decides it from the rows alone,
 before anything is fitted: exactly where the model's fit or its 5 x 20 % calibration would raise (``fits``,
-``composed_fits``). ``models`` fits no such column, ``query`` answers it ``no_model`` with its row count, ``cached`` lists it
+``composed_fits``; N-125's folds on stable rows calibrate only composed curves these allow and they can calibrate too, so
+nothing changes here). ``models`` fits no such column, ``query`` answers it ``no_model`` with its row count, ``cached`` lists it
 as ``too few rows (<n>)``, ``require_models`` refuses a request that names it, and a resonance column without a model limits
 no curve (``Library.resonance``), as one without rows never did.
 
@@ -103,7 +111,7 @@ import sys
 import tempfile
 import threading
 from collections.abc import Iterable
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -113,7 +121,7 @@ import sklearn
 from threadpoolctl import threadpool_limits
 
 from ic_opt import _lock, site
-from ic_opt.library import cache, composed, dataset, domain, gp, manifest
+from ic_opt.library import cache, composed, dataset, domain, folds, gp, manifest
 
 UNITS = {"L": "H", "Q": "1", "SRF": "Hz", "k": "1"}
 ABOVE_SWEEP_VOTES = 3                                # of the 5 nearest measured rows
@@ -126,6 +134,7 @@ THREAD_CAP_VARIABLES = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THRE
 DRIVE_SRF = {"Lp": ("SRF_p",), "Qp": ("SRF_p",), "Ls": ("SRF_s",), "Qs": ("SRF_s",), "k": ("SRF_p", "SRF_s")}   # a curve's resonance
                                                      # per drive, where the stratum has no system SRF (Resonance, suggest.implied_srf)
 TOO_FEW = "{rows} usable rows: too few for a model of this column"     # a no_model answer's reason (Library.no_model)
+BEFORE = "holdout 5x20%, every part refitted on each fold"            # a composed calibration's source on the folds of before N-125
 # N-116: the column classes of N-115 and, per class, the slope ``a`` of an extrapolated answer's interval widening 1 + a x depth
 # (``widening``). Fitted on N-115's edge hold-outs along the outer diameters, the rows the guard answers with extrapolate=0.15
 # (docs/refactor/reports/library_query/extrapolation_widening.py, .json): the smallest a (step 0.01) whose widened calibrated
@@ -257,6 +266,47 @@ def composed_fits(levels: np.ndarray, curve: np.ndarray, base: np.ndarray, srf: 
     return True
 
 
+def stable_composed_fits(levels: np.ndarray, curve: np.ndarray, base: np.ndarray, srf: np.ndarray | None, per_nt: dict[str, bool],
+                         *, calibrate: bool = True) -> bool:
+    """``composed_fits`` for a calibration on stable rows (N-125, ``folds``): whether the curve's fit and its five folds on
+    stable rows complete -- exactly where they raise, as far as rows can tell (the arguments as there). ``Library._stable``
+    calibrates a curve on stable rows where this and ``composed_fits`` both hold, any other on the folds of before. The fit
+    needs a row with a positive curve and base value. Fold s holds out S_s (``folds.mask``), the same rows of the stratum for
+    every column: the curve's own part is fitted on the rows with a positive curve and base value less S_s (none: refused),
+    each base or SRF fold model on its own rows less S_s (a joint one on no row: refused by scikit-learn). The fold scores
+    S_s's rows with a positive curve value: none, and it scores nothing (``folds.fold``); some, and with a joint model among
+    the three at least one of them must be answered by every fold model (none: scikit-learn refuses the empty set). With a
+    joint model some fold must hold out a row of the curve (``folds.report``). Not counted, as in ``composed_fits``: for
+    ``resonance`` the part is fitted only where the fold's SRF model puts the resonance above f0."""
+    with np.errstate(invalid="ignore"):
+        positive = np.isfinite(curve) & (curve > 0)
+        trains = positive & np.isfinite(base) & (base > 0)
+    if not trains.any():
+        return False
+    if not calibrate:
+        return True
+    joint = not all(per_nt.values())
+    held_any = False
+    for seed in gp.SEEDS:
+        held = folds.mask(len(curve), seed)
+        fitted = {"part": trains & ~held, "lf": np.isfinite(base) & ~held}
+        if srf is not None:
+            fitted["srf"] = np.isfinite(srf) & ~held
+        if not fitted["part"].any() or any(not per_nt[m] and not mask.any() for m, mask in fitted.items()):
+            return False
+        scored = positive & held
+        if not scored.any():
+            continue
+        held_any = True
+        if joint:
+            answered = np.ones(int(scored.sum()), dtype=bool)
+            for m, mask in fitted.items():
+                answered &= _answered(per_nt[m], levels[mask], levels[scored])
+            if not answered.any():
+                return False
+    return held_any or not joint
+
+
 class Library:
     def __init__(self, root: str | Path, *, calibrate: bool = True, limits: site.HostLimits | None = None,
                  cache_dir: str | Path | None = None):
@@ -270,6 +320,7 @@ class Library:
         self._anchors: dict[tuple[str, float], dict] = {}
         self._footprints: dict[str, dict] = {}
         self._no_model: dict[tuple[str, str], dict | None] = {}   # no_model's verdicts: a column's rows do not change
+        self._stable_rows: dict[tuple[str, str], bool] = {}         # _stable's verdicts, as fixed
         self._rows_lock = threading.Lock()           # extension columns and footprints: one thread measures, the others wait
 
     @property
@@ -465,7 +516,8 @@ class Library:
         calibrates (the default), its 5 x 20 % hold-out complete on its usable rows -- ``fits`` for a direct column,
         ``composed_fits`` for a composed curve, whose parts must have a model too (the reason then names the part). Where
         they would raise, ``models`` fits no such column, ``query`` answers it ``no_model``, ``cached`` lists it as ``too few
-        rows (<n>)`` and ``require_models`` refuses a request that names it."""
+        rows (<n>)`` and ``require_models`` refuses a request that names it. A composed curve is calibrated on stable rows
+        only where these folds could calibrate it too (``_stable``, N-125), so the verdicts are those of before."""
         key = (stratum, column)
         if key not in self._no_model:
             self._no_model[key] = self._why_no_model(stratum, column)
@@ -481,11 +533,7 @@ class Library:
                 short = self.no_model(stratum, part)
                 if short is not None:
                     return {"rows": rows, "reason": f"built on {part}, whose {short['rows']} usable rows are too few for a model"}
-            s = self._composed_settings(stratum, column)
-            x, y, base, srf = self._composed_data(stratum, column)
-            levels = x[:, ds.dims.index(ds.nt_dim)] if ds.nt_dim else np.zeros(len(x))
-            per_nt = {m: s[m]["nt_mode"] == "per_nt" for m in ("part", "lf", "srf") if s[m] is not None}
-            ok = composed_fits(levels, y, base, srf, per_nt, calibrate=self.calibrate)
+            ok = composed_fits(*self._composed_rows(stratum, column), calibrate=self.calibrate)
         return None if ok else {"rows": rows, "reason": TOO_FEW.format(rows=rows)}
 
     def require_models(self, stratum: str, columns: Iterable[str]) -> None:
@@ -514,10 +562,12 @@ class Library:
 
         A composed curve (``model: ratio`` / ``resonance``) needs its parts' models, and every curve column the models of its
         resonance (``resonance``, N-113: its answers are checked against them): they are loaded or fitted first, with the
-        other direct quantities, each once however many curves share it. Then the composed curves: with several workers, the
-        five folds of each uncached calibration are jobs of their own (``_calibrate_fold_in_worker``: every fold refits every
-        part) while this process holds the curve's lock, and once a curve is calibrated its own part is fitted on the shared
-        models (``_fit_in_worker``). Last, each curve's model gets its resonance with those models attached (``_limit``).
+        other direct quantities, each once however many curves share it. Then the composed curves (``_fit_composed``): with
+        several workers, while this process holds the lock of each uncached calibration, the parts' fold models not cached
+        yet are jobs of their own (``_part_fold_in_worker``, one per part and fold, N-125), each fold of a curve a job as soon
+        as its parts' fold models are there (``_calibrate_fold_in_worker``: the curve's own model only), and once a curve is
+        calibrated its own part is fitted on the shared models (``_fit_in_worker``). Last, each curve's model gets its
+        resonance with those models attached (``_limit``).
 
         The names go through ``columns`` first: an extension column is measured (and cached) before any worker starts, so a
         worker reads it from the cache file; the answer is keyed by the canonical names. A column that can have no model
@@ -557,34 +607,82 @@ class Library:
                     self._fit(stratum, q)
 
     def _fit_composed(self, stratum: str, names: list[str], workers: int | None, threads: int | None) -> None:
-        """Fit the composed curves ``names`` (not cached; their parts are loaded). With several workers: the folds of every
-        uncached calibration, one job each, while this process holds each such curve's lock -- taken in the order of the
-        lock files' names, so two processes never wait on each other -- then every curve's own part; with one worker, here,
-        one after another (``_fit``)."""
+        """Fit the composed curves ``names`` (not cached; their parts are loaded). With several workers, each a job as soon as
+        what it needs is there (``_calibrate_composed``): the parts' fold models not cached yet, one per part and fold; each
+        fold of every uncached calibration, the curve's own model only; each curve's own part on the shared models once its
+        calibration is written (``_fit_in_worker``). Meanwhile this process holds the lock of every uncached calibration --
+        taken in the order of the lock files' names, so two processes never wait on each other -- and lets a curve's go once
+        it has written its calibration, before the curve's fit (which takes it) starts. A failed job raises here, with the
+        worker's exception, and the jobs not started yet are dropped. With one worker, here, one after another (``_fit``)."""
         ds = self.dataset(stratum)
         uncalibrated = [q for q in names if self._composed_calibration(stratum, q, compute=False) is None]
-        largest = max(len(ds.usable(c)) for q in names for c in self._parts(stratum, q) + [q])    # a fold refits every part
-        n, per_worker = fit_plan(self.limits, max(len(uncalibrated) * len(gp.SEEDS), len(names)), largest, len(ds.dims),
-                                 workers=workers, threads=threads)
+        largest = max(len(ds.usable(c)) for q in names for c in self._parts(stratum, q) + [q])    # a fold model sees fewer rows
+        jobs = max(len(self._missing_part_folds(stratum, uncalibrated)), len(uncalibrated) * len(gp.SEEDS), len(names))
+        n, per_worker = fit_plan(self.limits, jobs, largest, len(ds.dims), workers=workers, threads=threads)
         if n <= 1:
             with threadpool_limits(limits=per_worker):
                 for q in names:
                     self._fit(stratum, q)
             return
-        with ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("spawn")) as pool:
-            with ExitStack() as held:
-                for name in sorted(self._composed_calibration_name(stratum, q) for q in uncalibrated):
-                    self._hold(held, name)
+        with ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("spawn")) as pool, ExitStack() as held:
+            try:
+                locks: dict[str, ExitStack] = {}
+                for name, q in sorted((self._composed_calibration_name(stratum, q), q) for q in uncalibrated):
+                    locks[q] = held.enter_context(ExitStack())
+                    self._hold(locks[q], name)
                 uncalibrated = [q for q in uncalibrated if self._composed_calibration(stratum, q, compute=False) is None]  # or written meanwhile
-                jobs = {(q, seed): pool.submit(_calibrate_fold_in_worker, self.root, self.calibrate, stratum, q, seed, per_worker,
-                                               self.cache.directory) for q in uncalibrated for seed in gp.SEEDS}
-                done = {job: future.result() for job, future in jobs.items()}
-                for q in uncalibrated:                   # written here, from the folds in seed order
-                    self._composed_calibration(stratum, q, folds=[done[(q, seed)] for seed in gp.SEEDS])
-            finals = [pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, per_worker, self.cache.directory) for q in names]
-            for job in finals:
-                job.result()
+                finals: dict[str, Future] = {}
+
+                def fit(q: str) -> None:                 # the curve's lock let go first: its fit takes it
+                    if q in locks:
+                        locks.pop(q).close()
+                    finals[q] = pool.submit(_fit_in_worker, self.root, self.calibrate, stratum, q, per_worker, self.cache.directory)
+
+                for q in names:
+                    if q not in uncalibrated:
+                        fit(q)
+                self._calibrate_composed(pool, stratum, uncalibrated, per_worker, fit)
+                for q in names:
+                    finals[q].result()
+            except BaseException:
+                pool.shutdown(wait=False, cancel_futures=True)   # the running jobs end, the others are dropped
+                raise
         self._reload(stratum, names)
+
+    def _missing_part_folds(self, stratum: str, names: list[str]) -> list[tuple[str, int]]:
+        """(part, seed) of every part fold model the composed curves ``names`` need -- those calibrated on stable rows
+        (``_stable``) -- whose cache file does not exist, seed by seed (``_part_fold``)."""
+        parts = dict.fromkeys(p for q in names if self._stable(stratum, q) for p in self._parts(stratum, q))
+        return [(p, seed) for seed in gp.SEEDS for p in parts if self.cache.find(self._part_fold_name(stratum, p, seed)) is None]
+
+    def _calibrate_composed(self, pool: ProcessPoolExecutor, stratum: str, names: list[str], threads: int, calibrated) -> None:
+        """Calibrate the composed curves ``names`` on ``pool``'s workers (``_fit_composed``), each job with ``threads`` BLAS
+        threads: every part fold model not cached yet (``_part_fold_in_worker``), each fold of a curve as soon as its parts'
+        fold models of that seed are there (``_calibrate_fold_in_worker``). A curve's calibration is written here from its
+        five folds, in seed order, and the curve handed to ``calibrated``."""
+        args = (self.root, self.calibrate, stratum)
+        parts = {q: self._parts(stratum, q) if self._stable(stratum, q) else [] for q in names}   # a fold of before fits its own
+        pending: dict[Future, tuple[str, str, int]] = {}
+        for part, seed in self._missing_part_folds(stratum, names):
+            pending[pool.submit(_part_fold_in_worker, *args, part, seed, threads, self.cache.directory)] = ("part", part, seed)
+        unfitted = {(part, seed) for _kind, part, seed in pending.values()}
+        waiting = [(q, seed) for seed in gp.SEEDS for q in names]
+        results: dict[str, dict[int, dict]] = {q: {} for q in names}
+        while waiting or pending:
+            for q, seed in [job for job in waiting if not any((p, job[1]) in unfitted for p in parts[job[0]])]:
+                waiting.remove((q, seed))
+                pending[pool.submit(_calibrate_fold_in_worker, *args, q, seed, threads, self.cache.directory)] = ("fold", q, seed)
+            done, _ = wait(pending, return_when=FIRST_COMPLETED)
+            for future in done:
+                kind, name, seed = pending.pop(future)
+                result = future.result()                 # a failed job raises here, with the worker's exception
+                if kind == "part":
+                    unfitted.discard((name, seed))
+                    continue
+                results[name][seed] = result
+                if len(results[name]) == len(gp.SEEDS):  # written here, from the folds in seed order
+                    self._composed_calibration(stratum, name, results=[results[name][s] for s in gp.SEEDS])
+                    calibrated(name)
 
     def _reload(self, stratum: str, names: list[str]) -> None:
         unread = [q for q in names if not self._load(stratum, q)]
@@ -698,7 +796,8 @@ class Library:
         return list(out)
 
     def _composed_settings(self, stratum: str, quantity: str) -> dict:
-        """What ``composed.holdout_fold`` and ``ComposedGP`` take besides the data: the plan and the three models' settings."""
+        """What ``ComposedGP`` and a calibration fold (``folds.fold``; ``composed.holdout_fold`` before N-125) take besides the
+        data: the plan and the three models' settings."""
         plan = self._plan(stratum, quantity)
         ds = self.dataset(stratum)
         part = {**self._fit_inputs(stratum, quantity)[4], "log_target": True}          # the curve's own settings
@@ -715,39 +814,127 @@ class Library:
         srf = ds.values(plan["srf"]) / fit_unit(plan["srf"]) if plan["srf"] else None
         return ds.matrix(), ds.values(quantity), ds.values(plan["lf"]), srf
 
+    def _composed_rows(self, stratum: str, quantity: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, dict[str, bool]]:
+        """What ``composed_fits`` and ``stable_composed_fits`` take for a composed curve: every row's turns level (0 without a
+        turns dim), the curve, its base scalar and the SRF per row, and per model whether it splits by turns level."""
+        ds = self.dataset(stratum)
+        s = self._composed_settings(stratum, quantity)
+        x, y, base, srf = self._composed_data(stratum, quantity)
+        levels = x[:, ds.dims.index(ds.nt_dim)] if ds.nt_dim else np.zeros(len(x))
+        return levels, y, base, srf, {m: s[m]["nt_mode"] == "per_nt" for m in ("part", "lf", "srf") if s[m] is not None}
+
+    def _stable(self, stratum: str, quantity: str) -> bool:
+        """Whether a composed curve without a cached calibration is calibrated on stable rows (N-125, ``folds``): where the
+        folds of before could calibrate it (``composed_fits``, N-120's condition) and the stable ones can too
+        (``stable_composed_fits``) -- every curve but one whose few rows the shared folds cannot score or fit on (no fold
+        holds out one of them; one holds out every row its own model could be fitted on). Such a curve, and one that can have
+        no model, is calibrated on the folds of before, which complete -- or raise -- exactly as they did."""
+        key = (stratum, quantity)
+        if key not in self._stable_rows:
+            rows = self._composed_rows(stratum, quantity)
+            self._stable_rows[key] = composed_fits(*rows) and stable_composed_fits(*rows)
+        return self._stable_rows[key]
+
     def _composed_fold(self, stratum: str, quantity: str, seed: int) -> dict:
-        """One calibration fold of a composed curve (``composed.holdout_fold``)."""
-        return composed.holdout_fold(*self._composed_data(stratum, quantity), seed, **self._composed_settings(stratum, quantity))
+        """One calibration fold of a composed curve: on stable rows (``folds.fold``, N-125) -- the parts' models of the fold
+        loaded, or fitted and kept for every curve built on them (``_part_fold``), and the curve's own model fitted on the
+        fold's other rows --, or, for a curve too sparse for those (``_stable``), as before (``composed.holdout_fold``)."""
+        if not self._stable(stratum, quantity):
+            return composed.holdout_fold(*self._composed_data(stratum, quantity), seed, **self._composed_settings(stratum, quantity))
+        x, y, base, _srf = self._composed_data(stratum, quantity)
+        s = self._composed_settings(stratum, quantity)
+        lf = self._part_fold(stratum, s["names"]["lf"], seed)
+        srf = self._part_fold(stratum, s["names"]["srf"], seed) if s["names"]["srf"] else None
+        return folds.fold(x, y, base, seed, lf=lf, srf=srf, **{k: s[k] for k in ("kind", "f0", "dims", "ranges", "nt_dim", "part", "names")})
+
+    def _part_fold_name(self, stratum: str, part: str, seed: int) -> str:
+        """The cache file name of a part's model of calibration fold ``seed`` (``folds.fit_part``): keyed as ``_model_name``
+        keys a model -- the data, the part's settings, the gp code and the scikit-learn version -- and by the fold: the
+        stable rows, the seed and the hold-out fraction (a fold model has no calibration of its own)."""
+        ds, _rows, _x, _y, settings = self._fit_inputs(stratum, part)
+        h = hashlib.sha256()
+        h.update(f"v{MODEL_CACHE_VERSION} part fold {folds.STABLE} seed {seed} holdout {gp.HOLDOUT!r}".encode())
+        h.update(ds.key.encode())
+        h.update(json.dumps(settings, sort_keys=True).encode())
+        h.update(hashlib.sha256(inspect.getsource(gp).encode()).digest())
+        h.update(sklearn.__version__.encode())
+        return f"fold-{ds.stratum}-{_file_part(part)}-s{seed}-{h.hexdigest()[:20]}.pkl"
+
+    def _part_fold(self, stratum: str, part: str, seed: int) -> gp.StratumGP:
+        """A part's model of calibration fold ``seed`` (N-125): loaded from its cache file, else fitted on the part's rows less
+        the fold's held-out ones (``folds.fit_part``) and written -- holding the lock file next to it (``<name>.lock``)
+        meanwhile, so that another process that needs the same fold model waits and then loads what this one wrote. Every
+        composed curve built on the part uses it, at any frequency; a file that does not load is fitted and written again."""
+        name = self._part_fold_name(stratum, part, seed)
+        ds = self.dataset(stratum)
+
+        def read() -> gp.StratumGP | None:
+            path = self.cache.find(name)
+            return None if path is None else _load_model(path, ds.dims)
+
+        model = read()
+        if model is not None:
+            return model
+        with ExitStack() as held:
+            self._hold(held, name)
+            model = read()                               # fitted by another process while this one waited
+            if model is None:
+                settings = self._fit_inputs(stratum, part)[4]
+                model = folds.fit_part(ds.matrix(), ds.values(part) / fit_unit(part), seed, settings)
+                _save_model(self.cache.target(name), model)
+        return model
+
+    def _composed_calibration_names(self, stratum: str, quantity: str) -> tuple[str, str]:
+        """The two cache file names a composed curve's calibration can have (each lock file adds ``.lock``): the one from
+        before N-125 -- keyed by the data, the option and the three models' settings, its folds those of
+        ``composed.holdout_fold`` -- and the one on stable rows, keyed by those settings with ``"folds": "stable-rows"``."""
+        settings = self._composed_settings(stratum, quantity)
+        key = self.dataset(stratum).key
+
+        def name(extra: dict) -> str:
+            h = hashlib.sha256(b"composed")
+            h.update(key.encode())
+            h.update(json.dumps({**settings, **extra}, sort_keys=True).encode())
+            return f"calibration-{stratum}-{_file_part(quantity)}-{settings['kind']}-{h.hexdigest()[:20]}.json"
+
+        return name({}), name({"folds": folds.STABLE})
 
     def _composed_calibration_name(self, stratum: str, quantity: str) -> str:
-        """The cache file name of a composed curve's calibration: keyed by the data, the option and the three models' settings
-        (its lock file adds ``.lock``)."""
-        settings = self._composed_settings(stratum, quantity)
-        h = hashlib.sha256(b"composed")
-        h.update(self.dataset(stratum).key.encode())
-        h.update(json.dumps(settings, sort_keys=True).encode())
-        return f"calibration-{stratum}-{_file_part(quantity)}-{settings['kind']}-{h.hexdigest()[:20]}.json"
+        """The cache file name of the composed curve's calibration (its lock file adds ``.lock``): the one from before N-125
+        where that file exists -- a curve calibrated then keeps its calibration -- or where the curve is calibrated as before
+        (``_stable``), else the stable-rows one."""
+        before, stable = self._composed_calibration_names(stratum, quantity)
+        return before if self.cache.find(before) is not None or not self._stable(stratum, quantity) else stable
 
-    def _composed_calibration(self, stratum: str, quantity: str, *, compute: bool = True, folds: list[dict] | None = None) -> dict | None:
-        """The composed curve's calibration: cached, else from ``folds`` (the parallel path), else computed here (all five
-        folds) unless ``compute`` is False. ``dropped_nonpositive`` counts the curve's rows with a value <= 0, which the
-        log-space model leaves out of its fit and its hold-out (``composed.holdout_fold``)."""
+    def _composed_calibration(self, stratum: str, quantity: str, *, compute: bool = True, results: list[dict] | None = None) -> dict | None:
+        """The composed curve's calibration: cached -- under its name from before N-125 first, so that a curve calibrated then
+        keeps its calibration, its model file and its answers, else under the stable-rows name --, else from ``results``
+        (its five folds, the parallel path), else computed here (``_composed_fold`` for each seed) unless ``compute`` is
+        False, and written under the stable-rows name -- today's fields, ``source`` saying how it was made and ``"folds":
+        "stable-rows"`` -- or, for a curve too sparse for the stable folds (``_stable``), as before: under the earlier name,
+        the earlier fields. ``dropped_nonpositive`` counts the curve's rows with a value <= 0, which the log-space model
+        leaves out of its fit and its hold-out."""
         if not self.calibrate:
             return {"k_scale": 1.0, "source": "off"}
-        name = self._composed_calibration_name(stratum, quantity)
-        found = self.cache.find(name)
-        if found is not None:
-            return json.loads(found.read_text(encoding="utf-8"))
-        if folds is None and not compute:
+        names = self._composed_calibration_names(stratum, quantity)
+        for name in names:
+            found = self.cache.find(name)
+            if found is not None:
+                return json.loads(found.read_text(encoding="utf-8"))
+        if results is None and not compute:
             return None
         settings = self._composed_settings(stratum, quantity)
-        report = composed.merge(folds) if folds is not None else composed.holdout(*self._composed_data(stratum, quantity), **settings)
+        stable = self._stable(stratum, quantity)
+        if results is None:
+            results = [self._composed_fold(stratum, quantity, seed) for seed in gp.SEEDS]
+        report = folds.report(results, settings, quantity) if stable else composed.merge(results)
         out = {"k_scale": gp.calibration_scale(report), "median_rel": report["median_rel"],
                "coverage_2sigma_before": report["coverage_2sigma"], "n_scored": report["n_scored"],
-               "dropped_nonpositive": report["dropped_nonpositive"],
-               "source": "holdout 5x20%, every part refitted on each fold", "sigma_floor": "median held-out relative error",
-               "model": settings["kind"]}
-        _write_json(self.cache.target(name), out)
+               "dropped_nonpositive": report["dropped_nonpositive"], "source": folds.SOURCE if stable else BEFORE,
+               "sigma_floor": "median held-out relative error", "model": settings["kind"]}
+        if stable:
+            out["folds"] = folds.STABLE
+        _write_json(self.cache.target(names[1] if stable else names[0]), out)
         return out
 
     def _part_keys(self, stratum: str, quantity: str) -> list[str] | None:
@@ -793,9 +980,9 @@ class Library:
 
     def _fit_composed_here(self, stratum: str, quantity: str) -> None:
         """The parts (loaded, else fitted here, each under its own lock), then -- holding the lock next to the curve's
-        calibration file, as a direct fit does -- the calibration (cached, else its five folds here) and the curve's own part
-        on the shared models; the model file is written and the model kept. A process that waited for the lock loads what
-        the holder wrote."""
+        calibration file, as a direct fit does -- the calibration (cached, else its five folds here, each on the parts' fold
+        models: loaded, else fitted here under their own locks and kept) and the curve's own part on the shared models; the
+        model file is written and the model kept. A process that waited for the lock loads what the holder wrote."""
         for part in self._parts(stratum, quantity):
             if not self._load(stratum, part):
                 self._fit(stratum, part)
@@ -975,12 +1162,23 @@ def _fit_in_worker(root: Path, calibrate: bool, stratum: str, quantity: str, thr
 
 def _calibrate_fold_in_worker(root: Path, calibrate: bool, stratum: str, quantity: str, seed: int, threads: int,
                               cache_dir: Path | None = None) -> dict:
-    """One ``Library.models`` worker job: one calibration fold of a composed curve (every part refitted on the fold's
-    training rows), with BLAS capped at ``threads``, reading the dataset from ``cache_dir`` (the parent's cache directory);
-    the held-out errors go back (a few kB), and the parent, which holds the curve's lock meanwhile, writes the calibration
-    from all five."""
+    """One ``Library.models`` worker job: one calibration fold of a composed curve (``Library._composed_fold``: the parts'
+    fold models loaded from their cache files -- the parent had them fitted first --, the curve's own model fitted on the
+    fold's training rows), with BLAS capped at ``threads``, reading the dataset from ``cache_dir`` (the parent's cache
+    directory); the held-out errors go back (a few kB), and the parent, which holds the curve's lock meanwhile, writes the
+    calibration from all five."""
     with threadpool_limits(limits=threads):
         return Library(root, calibrate=calibrate, cache_dir=cache_dir)._composed_fold(stratum, quantity, seed)
+
+
+def _part_fold_in_worker(root: Path, calibrate: bool, stratum: str, part: str, seed: int, threads: int,
+                         cache_dir: Path | None = None) -> str:
+    """One ``Library.models`` worker job: a part's model of calibration fold ``seed`` (``Library._part_fold``: fitted and
+    written into ``cache_dir`` under its lock, or loaded where another process wrote it meanwhile), with BLAS capped at
+    ``threads``; only the part's name goes back -- the fold jobs load the model from its file (N-125)."""
+    with threadpool_limits(limits=threads):
+        Library(root, calibrate=calibrate, cache_dir=cache_dir)._part_fold(stratum, part, seed)
+    return part
 
 
 # -- compute within the machine's limits ---------------------------------------------------------------------------------
