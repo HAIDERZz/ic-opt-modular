@@ -153,7 +153,7 @@ def test_the_entry_changes_no_dataset_key_and_no_cache_file_name(tmp_path):
         lib = q.Library(root, limits=LOCAL, cache_dir=cache)
         assert lib.dataset("ind_demo").key == IND_KEY and (lib.manifest.frequency_grid is None) == (grid is None)
         lib.model("ind_demo", "Lp@10")
-        lib.model("ind_demo", "Lp@15")
+        lib.model("ind_demo", "Lp@15", exact=True)               # N-127: with the grid, its own model only when asked exactly
         listings[grid is not None] = {p.name: p.read_bytes() if p.suffix == ".json" else None for p in sorted(cache.iterdir())}
     assert listings[True] == listings[False]
     names = sorted(listings[True])

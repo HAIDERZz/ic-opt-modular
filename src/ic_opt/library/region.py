@@ -48,6 +48,10 @@ diameters (``domain.allowances``), every model answers up to its own allowance (
 measures against that reach. A level whose points include extrapolated answers says so in ``extrapolated``: how many,
 and per outer diameter the part of its range beyond the table's measured one (``beyond_measured``); a candidate carries
 its ``extrapolated`` label as ``lib.suggest``'s do, a sample point ``extrapolated: true``.
+
+Between the knots (N-127): a curve column between two knots of the library's frequency grid -- a target's, the objective's
+or the trend's -- is predicted from the knots' models (``suggest.predict_all``, ``between``) unless ``exact``; a note names
+each such column, and a candidate carries its ``interpolated`` label.
 """
 
 from __future__ import annotations
@@ -61,7 +65,7 @@ import time
 import numpy as np
 from threadpoolctl import threadpool_limits
 
-from ic_opt.library import dataset, domain, query, suggest
+from ic_opt.library import between, dataset, domain, query, suggest
 
 RELAX = 0.10                                         # the coarse pass widens every stated window by this fraction unless told otherwise
 POOL_SIZE = 32768                                    # the coarse pass's Sobol points (besides the library's rows) unless told otherwise
@@ -75,7 +79,8 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
            pool_size: int = POOL_SIZE, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None, relax: float = RELAX,
            group_by: list[str] | None = None, trend: tuple[str, str] | None = None, n: int = 8, min_spacing: float = 0.05,
            verify_build: bool = False, sample_size: int = 5000, threads: int | None = None,
-           workers: int | None = None, level_points: str | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
+           workers: int | None = None, level_points: str | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION,
+           exact: bool = False) -> dict:
     """The region of ``stratum`` whose predictions meet ``targets`` (see the module docstring), as plain JSON data.
 
     ``steps`` gives grid steps for some or all continuous dims (multiples of the manifest steps); ``group_by`` names
@@ -90,7 +95,8 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
     allowed combinations (``ic_opt.library.combinations``). A target, the objective or the trend on a column whose usable
     rows are too few for a model is refused with the reason before anything is fitted (``Library.require_models``, N-120).
     ``extrapolate`` (N-116): how far beyond the measured range along the outer diameters the pool, the grid and the models
-    reach (module docstring)."""
+    reach (module docstring). ``exact``: a curve column between two knots of the library's frequency grid from its own model
+    (fitted when not cached), not from the knots' (N-127)."""
     if level_points not in (None, "robust", "mean"):
         raise ValueError(f"level is robust or mean, got {level_points!r}")
     extrapolate = query.check_extrapolate(extrapolate)
@@ -114,7 +120,8 @@ def region(library: query.Library, stratum: str, targets: dict, objective: str |
                              for t in goals if t not in stated]
     blas, budget = query.blas_threads(library.limits, threads), suggest.predict_budget(library.limits)
     with threadpool_limits(limits=blas, user_api="blas"):
-        models = library.models(stratum, names, workers=workers, threads=threads)
+        models = library.models(stratum, names, workers=workers, threads=threads, exact=exact)
+        notes += between.notes(models)
         marks.append(time.perf_counter())
         survivors, pooled, confident, alone = _coarse(library, stratum, models, stated, goals, pool_size, seed, k, rel_sigma_max,
                                                       relax, budget, extrapolate)

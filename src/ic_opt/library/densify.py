@@ -54,6 +54,11 @@ about the table's own domain), but with ``extrapolate`` (``domain.EXTRAPOLATE_FR
 model answers up to its allowance beyond its own measured range along the outer diameters, as ``lib.query`` does: a
 model whose rows stop short of the box's edge there (a curve at a high frequency, an SRF) counts there too. A pick
 whose answers are extrapolated carries ``extrapolated`` and, per predicted quantity, ``widening`` (``suggest.extrapolation``).
+
+Between the knots (N-127): a curve column between two knots of the library's frequency grid is a model built on the
+knots' (``between.Between``) unless ``exact``: its raw sigma and posterior covariance are the two bracketing knots',
+weighted by where f lies between them, and a measurement there would inform those knots' models; a pick shows its
+``interpolated`` label, and a note names each such column.
 """
 
 from __future__ import annotations
@@ -69,7 +74,7 @@ from scipy.linalg import solve_triangular
 from scipy.spatial import cKDTree
 from threadpoolctl import threadpool_limits
 
-from ic_opt.library import dataset, domain, gp, query, suggest
+from ic_opt.library import between, dataset, domain, gp, query, suggest
 from ic_opt.site import EnvelopeError
 
 SCORES = {"ceiling": "max_q sigma_rel_q / rel_sigma_max_q", "typical": "max_q sigma_rel_q / median_rel_q"}
@@ -214,7 +219,7 @@ def norms(score: str, median_rel: dict[str, float | None], rel_sigma_max: float 
 def densify(library: query.Library, stratum: str, quantities: list[str] | None = None, *, n: int, pool_size: int = 65536,
             top: int = 4000, seed: int = 0, k: float = 2.0, rel_sigma_max: float | None = None,
             score: str = DEFAULT_SCORE, bounds: dict | None = None, threads: int | None = None, workers: int | None = None,
-            extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
+            extrapolate: float = domain.EXTRAPOLATE_FRACTION, exact: bool = False) -> dict:
     """``n`` new geometries of ``stratum`` whose simulation lowers the uncertainty of ``quantities`` (default: every
     column) the most over the sampled domain, with the pool's sigma before and after (see the module docstring), as
     plain JSON data. A column whose usable rows are too few for a model (``Library.no_model``, N-120) is refused with the
@@ -226,7 +231,8 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
     ``Library.rel_sigma_max``), the one the statistics count against too; ``method`` echoes them. ``threads`` (BLAS
     threads of fitting and prediction) and ``workers`` (fitting processes) are explicit caps within the library's limits,
     as in ``lib.region``. ``extrapolate`` (N-116, module docstring): how far each model answers beyond its own measured
-    range along the outer diameters; the pool stays in the table's box."""
+    range along the outer diameters; the pool stays in the table's box. ``exact``: a curve column between two knots of the
+    library's frequency grid from its own model, not the knots' (N-127)."""
     marks = [time.perf_counter()]
     extrapolate = query.check_extrapolate(extrapolate)
     ds = library.dataset(stratum)
@@ -249,7 +255,7 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
     effective, box = _bounds(library, stratum, bounds)
     blas, budget = query.blas_threads(library.limits, threads), suggest.predict_budget(library.limits)
     with threadpool_limits(limits=blas, user_api="blas"):
-        models = library.models(stratum, names, workers=workers, threads=threads)
+        models = library.models(stratum, names, workers=workers, threads=threads, exact=exact)
         marks.append(time.perf_counter())
         x, info, floors = _pool(library, stratum, models, pool_size, seed, box, extrapolate)
         swept = {q: ~np.isfinite(floors[q]) if q in floors else np.ones(len(x), dtype=bool) for q in names}   # SRF: not above the sweep
@@ -264,7 +270,7 @@ def densify(library: query.Library, stratum: str, quantities: list[str] | None =
         mark = time.perf_counter()
         candidates = _candidates(library, stratum, models, names, x, sel, floors, resonant, k, rel_sigma_max, budget, extrapolate)
         marks.append(time.perf_counter())
-    notes = _notes(library, names, info, sel, n, top, budget, swept, resonant, models)
+    notes = _notes(library, names, info, sel, n, top, budget, swept, resonant, models) + between.notes(models)
     if left:
         notes.append(f"{len(left)} column(s) left out, their usable rows too few for a model (lib.query answers them no_model): "
                      + ", ".join(f"{q} ({short['rows']} rows)" for q, short in left.items()))
@@ -426,6 +432,9 @@ def _candidates(library: query.Library, stratum: str, models: dict[str, query.Mo
             predicted[q] = {key: _number(float(pred[q][key][t])) for key in ("value", "lo", "hi")}
             if pred[q]["depth"][t] > 0:
                 predicted[q]["widening"] = float(pred[q]["widening"][t])
+            label = suggest.interpolated(pred[q], t)
+            if label and predicted[q]["value"] is not None:                 # N-127: answered between knots
+                predicted[q]["interpolated"] = label
         out.append({"params": params, **({"extrapolated": label} if label else {}),
                     "score": sel.score[t],
                     "rel_sigma": {q: _number(sel.before[q][i]) for q in names},
@@ -475,8 +484,10 @@ def _notes(library: query.Library, names: list[str], info: dict, sel: Selection,
                          "statistics, and a pick there does not lower its sigma")
         beyond = int((~resonant[q]).sum()) if q in resonant else 0
         if beyond:
-            notes.append(f"{q}: {beyond} pool candidates lie where the resonance predicted there is at or below srf_margin x f "
-                         f"({models[q].resonance.threshold_hz / 1e9:.4g} GHz), so a measured row there has no {q}: its model "
+            limit = models[q].resonance
+            which = "f" if limit.knot_hz is None else f"{limit.knot_hz / 1e9:g} GHz, the knot above f its model is interpolated to"
+            notes.append(f"{q}: {beyond} pool candidates lie where the resonance predicted there is at or below srf_margin x {which} "
+                         f"({limit.gate_hz / 1e9:.4g} GHz), so a measured row there has no {q}: its model "
                          "is not asked there, so they neither score for it nor count in its statistics, and a pick there does "
                          "not lower its sigma")
     return notes

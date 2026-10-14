@@ -96,6 +96,15 @@ frequencies inside a stratum's sweeps and ``Library.knots`` a curve's -- its anc
 columns that can have no model -- whose columns ``ic_opt.library.prefit`` (``lib.prefit``) fits ahead; ``cached`` adds per
 curve how many of its knots are cached. The grid's columns are extension columns like any other, measured in one pass over
 the rows (``dataset.anchors_at``).
+
+Between the knots (N-127, ``ic_opt.library.between``): with a grid, a curve column at a frequency that is no knot but lies
+between two of them -- an extension column, never a declared anchor -- is not fitted. ``Library.models`` (and ``model``)
+hand out a ``Model`` built on the knots' models instead (``between.Between`` as its ``gp``, ``between.Guard`` as its guard,
+the column's own rows as its evidence), which every caller takes like a fitted column; ``_predict`` and
+``suggest.predict_all`` ask it for its answer with the resonance they predict at the point anyway (``Between.answer``: the
+knots it may use, the allowance its interval is widened by, its refusals), and ``Resonance.gate_hz`` holds the batch path to
+the next knot's resonance rule. ``exact=True`` (``query``, ``models``, ``model``; the blocks' ``exact=true``) is the column's
+own model as before. Without a grid nothing changes.
 """
 
 from __future__ import annotations
@@ -121,7 +130,7 @@ import sklearn
 from threadpoolctl import threadpool_limits
 
 from ic_opt import _lock, site
-from ic_opt.library import cache, composed, dataset, domain, folds, gp, manifest
+from ic_opt.library import between, cache, composed, dataset, domain, folds, gp, manifest
 
 UNITS = {"L": "H", "Q": "1", "SRF": "Hz", "k": "1"}
 ABOVE_SWEEP_VOTES = 3                                # of the 5 nearest measured rows
@@ -176,11 +185,18 @@ class Resonance:
     frequency_hz: float                              # f, the column's frequency
     srf_margin: float                                # the curve's (library.yaml)
     models: dict[str, Model] = field(default_factory=dict, repr=False)
+    knot_hz: float | None = None                     # N-127: a column answered between knots -- the knot above f, which must pass too
 
     @property
     def threshold_hz(self) -> float:
         """srf_margin x f: a resonance at or below it leaves a measured row without a value for the column."""
         return self.srf_margin * self.frequency_hz
+
+    @property
+    def gate_hz(self) -> float:
+        """The resonance a prediction of the column needs to lie above: ``threshold_hz``, and for a column answered between
+        knots (N-127) srf_margin x the knot above f too -- a measured row at or below that has no value at that knot."""
+        return self.threshold_hz if self.knot_hz is None else max(self.threshold_hz, self.srf_margin * self.knot_hz)
 
 
 @dataclass
@@ -322,6 +338,9 @@ class Library:
         self._no_model: dict[tuple[str, str], dict | None] = {}   # no_model's verdicts: a column's rows do not change
         self._stable_rows: dict[tuple[str, str], bool] = {}         # _stable's verdicts, as fixed
         self._rows_lock = threading.Lock()           # extension columns and footprints: one thread measures, the others wait
+        self._between_models: dict[tuple[str, str], Model] = {}     # N-127: columns answered between knots (``_between``)
+        self._spans: dict[tuple[str, str], list[float] | None] = {}  # ``_between``'s verdicts
+        self._tables: dict[str, dict[str, dict]] = {}               # ``between_tables``: per stratum, each curve's allowances
 
     @property
     def notes(self) -> list[str]:
@@ -453,6 +472,67 @@ class Library:
         self._extend_at(stratum, [f for f in grid if f not in anchors])
         return sorted(set(anchors) | set(grid))
 
+    # -- a curve between two knots (N-127, ic_opt.library.between) ------------------------------------------------------------
+
+    def _between(self, stratum: str, column: str) -> list[float] | None:
+        """The stencil's candidate knots (``between.span``: up to two below the column's frequency and two above) when
+        ``column`` (canonical) is answered between knots -- library.yaml declares a frequency grid and the column is an
+        extension column of a declared curve at a frequency that is none of the curve's ``knots`` but lies between two of
+        them --, else None (the column's own model)."""
+        key = (stratum, column)
+        if key not in self._spans:
+            base, at, f = column.partition("@")
+            rule = self.manifest.strata[stratum]
+            if self.manifest.frequency_grid is None or not at or base not in dataset.curves(rule) or column in rule.columns():
+                self._spans[key] = None
+            else:
+                self._spans[key] = between.span(self.knots(stratum, base), float(f))
+        return self._spans[key]
+
+    def between_tables(self, stratum: str) -> dict[str, dict]:
+        """Every declared curve's interpolation allowances per knot interval and proximity band (``between.tables``): read from
+        their cache files, else measured from the rows' sNp files in one pass (seconds) and cached, per dataset key, curve
+        and knots."""
+        with self._rows_lock:
+            done = stratum in self._tables
+        if not done:
+            rule = self.manifest.strata[stratum]
+            knots = {c: self.knots(stratum, c) for c in dataset.curves(rule)}
+            found = between.tables(self.root, self.dataset(stratum), rule, knots, cache=self.cache)
+            with self._rows_lock:
+                self._tables.setdefault(stratum, found)
+        return self._tables[stratum]
+
+    def _make_between(self, stratum: str, column: str, span: list[float]) -> Model:
+        """The model of ``column`` between its knots: a ``between.Between`` on the stencil's knot models (in memory: ``models``
+        loaded them), a ``between.Guard`` over its core's guards, the column's own rows as evidence, the calibration's
+        fields from the bracketing knots and the column's resonance with the knot above it (``Resonance.knot_hz``)."""
+        curve, _at, f = column.partition("@")
+        ghz = float(f)
+        names = [f"{curve}@{k:g}" for k in span]
+        models = [self._models[(stratum, n)] for n in names]
+        knots = self.knots(stratum, curve)
+        j = max(i for i, k in enumerate(knots) if k < ghz)
+        interval = self.between_tables(stratum)[curve]["intervals"][j]
+        if (interval["from"], interval["to"]) != (knots[j], knots[j + 1]):
+            raise RuntimeError(f"{stratum}: the allowance table of {curve} holds the interval {interval['from']:g}-{interval['to']:g} "
+                               f"GHz where the knots are {knots[j]:g}-{knots[j + 1]:g}")
+        rule = self.manifest.strata[stratum]
+        g = between.Between(column, ghz, span, models, names, interval, rule.quantities[curve].srf_margin)
+        ds = self.dataset(stratum)
+        rows = ds.usable(column)
+        own = domain.DomainGuard(ds.matrix(rows), ds.dims, self.ranges(stratum), nt_dim=ds.nt_dim, ids=list(range(len(rows))))
+        guard = between.Guard([models[i] for i in g.core], [names[i] for i in g.core], own)
+        a, b = (models[i].calibration for i in g.bracket)
+        calibration = {"k_scale": g.k_scale, "source": between.SOURCE, "knots": [f"{k:g}" for k in span]}
+        if a.get("median_rel") is not None and b.get("median_rel") is not None:
+            calibration["median_rel"] = (1 - g.t) * a["median_rel"] + g.t * b["median_rel"]
+        limit = self.resonance(stratum, column)
+        if limit is not None:
+            limit.models = {c: self._models[(stratum, c)] for c in limit.columns}
+            limit.knot_hz = g.f_next * 1e9
+        return Model(stratum, column, rows, g, guard, calibration, self.rel_sigma_max(stratum, column), limit)
+
     def _extend_at(self, stratum: str, ghzs: list[float]) -> None:
         """``_extend`` at each of ``ghzs``, frequencies inside the parts' sweeps: every declared curve there into the dataset's
         rows, the frequencies this library has not measured yet read from their cache files or measured together, in one
@@ -497,16 +577,25 @@ class Library:
             out[d] = (lo, hi) if hi > lo else (lo - 0.5, hi + 0.5)
         return out
 
-    def model(self, stratum: str, quantity: str) -> Model:
+    def model(self, stratum: str, quantity: str, *, exact: bool = False) -> Model:
         """One quantity's model: in memory, else loaded from its cache files, else fitted within ``limits`` (``models``). An
         extension column (``columns``) has one like a declared column; a column that can have none (``no_model``) is
-        refused (ValueError) with the reason."""
+        refused (ValueError) with the reason. A curve column between two knots of a frequency grid (``_between``, N-127) is
+        the model built on the knots' (``models``) unless ``exact``: then its own, fitted when not cached."""
         key = (stratum, quantity)
-        if key not in self._models:
-            key = (stratum, self.column(stratum, quantity))
-            if key not in self._models:
+        if key in self._models and (exact or self._between(stratum, quantity) is None):
+            return self._models[key]                     # in memory, the column's own (keys are canonical)
+        if not exact and key in self._between_models:
+            return self._between_models[key]
+        key = (stratum, self.column(stratum, quantity))
+        if not exact and self._between(stratum, key[1]) is not None:
+            if key not in self._between_models:
                 self.require_models(stratum, [key[1]])
                 self.models(stratum, [key[1]])
+            return self._between_models[key]
+        if key not in self._models:
+            self.require_models(stratum, [key[1]])
+            self.models(stratum, [key[1]], exact=True)
         return self._models[key]
 
     def no_model(self, stratum: str, column: str) -> dict | None:
@@ -543,7 +632,8 @@ class Library:
         if short:
             raise ValueError(f"{stratum} has no model of " + "; ".join(f"{c} ({why['reason']})" for c, why in short.items()))
 
-    def models(self, stratum: str, quantities: list[str], *, workers: int | None = None, threads: int | None = None) -> dict[str, Model]:
+    def models(self, stratum: str, quantities: list[str], *, workers: int | None = None, threads: int | None = None,
+               exact: bool = False) -> dict[str, Model]:
         """``model`` for several quantities, in the order asked. The ones whose cache files do not load are fitted first, sized
         by ``fit_plan`` from ``limits``: worker processes and BLAS threads per worker. ``workers`` and ``threads`` are explicit
         caps within those limits; a value above them raises ValueError naming the limit. Each fit is a sequential
@@ -571,9 +661,17 @@ class Library:
 
         The names go through ``columns`` first: an extension column is measured (and cached) before any worker starts, so a
         worker reads it from the cache file; the answer is keyed by the canonical names. A column that can have no model
-        (``no_model``) is skipped -- no fit, no worker, nothing it would need -- and left out of the answer (N-120)."""
+        (``no_model``) is skipped -- no fit, no worker, nothing it would need -- and left out of the answer (N-120).
+
+        A curve column between two knots of the library's frequency grid (``_between``, N-127) is fitted only with ``exact``;
+        otherwise its stencil's knot columns are loaded or fitted like any other (``lib.prefit`` fits them ahead), its
+        allowances measured at their first use (``between_tables``, seconds) and its model built on theirs
+        (``_make_between``): nothing is fitted for the column itself."""
         quantities = [q for q in self.columns(stratum, quantities) if self.no_model(stratum, q) is None]
-        order = self._with_needs(stratum, list(dict.fromkeys(quantities)))
+        spans = {} if exact else {q: span for q in dict.fromkeys(quantities) if (span := self._between(stratum, q)) is not None}
+        knots = [f"{q.partition('@')[0]}@{f:g}" for q, span in spans.items() for f in span]
+        limits = [c for q in spans if (limit := self.resonance(stratum, q)) is not None for c in limit.columns]
+        order = self._with_needs(stratum, list(dict.fromkeys(limits + [q for q in quantities if q not in spans] + knots)))
         missing = [q for q in order if not self._load(stratum, q)]
         direct = [q for q in missing if self._plan(stratum, q) is None]
         built = [q for q in missing if q not in direct]
@@ -589,7 +687,10 @@ class Library:
             print(f"[lib] {stratum}: {len(missing)} model(s) fitted and cached", file=sys.stderr, flush=True)
         for q in order:
             self._limit(stratum, q)
-        return {q: self._models[(stratum, q)] for q in quantities}
+        for q, span in spans.items():
+            if (stratum, q) not in self._between_models:
+                self._between_models[(stratum, q)] = self._make_between(stratum, q, span)
+        return {q: self._between_models[(stratum, q)] if q in spans else self._models[(stratum, q)] for q in quantities}
 
     def _fit_direct(self, stratum: str, names: list[str], workers: int | None, threads: int | None) -> None:
         """Fit the direct models ``names`` (not cached): in spawned workers, or here with one worker."""
@@ -1263,7 +1364,7 @@ def _thread_budget(limits: site.HostLimits, threads: int) -> int:
 
 
 def query(library: Library, stratum: str, params: dict, quantities: list[str] | None = None, *, k: float = 2.0,
-          rel_sigma_max: float | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
+          rel_sigma_max: float | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION, exact: bool = False) -> dict:
     """Measured values at an exact library point, else per-quantity predictions with calibrated k-sigma bounds and domain verdicts;
     ``notes`` carries the library's (``Library.notes``). ``rel_sigma_max`` is the confidence ceiling for every quantity; None:
     each quantity's own (``Library.rel_sigma_max``), which a prediction reports with its ``rel_sigma``. ``quantities`` may
@@ -1271,7 +1372,8 @@ def query(library: Library, stratum: str, params: dict, quantities: list[str] | 
     curve column is answered only below its resonance (``_predict``, N-113); a column whose usable rows are too few for a
     model is ``no_model`` there, the others answering as they would without it (``Library.no_model``, N-120). ``extrapolate``
     is the fraction of the measured range a model answers beyond it along the outer diameters (N-116, module docstring); 0
-    answers as before N-116."""
+    answers as before N-116. A curve column between two knots of the library's frequency grid is answered from the knots'
+    models (N-127, ``_answer_between``) unless ``exact``: then from its own model, fitted when not cached."""
     extrapolate = check_extrapolate(extrapolate)
     ds = library.dataset(stratum)
     missing = [d for d in ds.dims if d not in params]
@@ -1289,7 +1391,7 @@ def query(library: Library, stratum: str, params: dict, quantities: list[str] | 
     x = np.array([[coords[d] for d in ds.dims]])
     found: dict[str, dict] = {}                          # the answers so far: a resonance several curves share is predicted once
     for q in wanted:
-        out["quantities"][q] = _predict(library, stratum, q, coords, x, k, rel_sigma_max, found, extrapolate)
+        out["quantities"][q] = _predict(library, stratum, q, coords, x, k, rel_sigma_max, found, extrapolate, exact=exact)
     return out
 
 
@@ -1302,7 +1404,7 @@ def check_extrapolate(value) -> float:
 
 
 def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None,
-             found: dict[str, dict] | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
+             found: dict[str, dict] | None = None, extrapolate: float = domain.EXTRAPOLATE_FRACTION, *, exact: bool = False) -> dict:
     """Column ``q``'s answer at a point that is no library row, kept in ``found`` (the answers given so far in this call). A
     column that can have no model (``Library.no_model``, N-120) is ``no_model``, with its usable ``rows`` and the ``reason``.
     A column without a resonance (``Library.resonance``) answers from its own model (``_answer``). A curve column first takes
@@ -1321,7 +1423,8 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
     Two resonances (``k`` of a stratum without the system SRF: both drives'): one at or below the threshold makes the curve
     ``above_resonance`` (the lower named), else one out of its domain makes it ``out_of_domain``, else the lower bound that
     reaches lowest is the one ``near_resonance`` names. An extrapolated resonance (N-116) decides as any other; ``srf``
-    then carries its ``extrapolated``."""
+    then carries its ``extrapolated``. A curve column between two knots (N-127) takes the same steps and then its answer from
+    the knots' models with the resonances answered here (``_answer_between``), unless ``exact``."""
     found = {} if found is None else found
     if q in found:
         return found[q]
@@ -1331,7 +1434,7 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
         return found[q]
     limit = library.resonance(stratum, q)
     if limit is None:
-        found[q] = _answer(library, stratum, q, coords, x, k, rel_sigma_max, extrapolate)
+        found[q] = _answer(library, stratum, q, coords, x, k, rel_sigma_max, extrapolate, exact)
         return found[q]
     threshold = limit.threshold_hz
     srf = {c: _predict(library, stratum, c, coords, x, k, rel_sigma_max, found, extrapolate) for c in limit.columns}
@@ -1339,7 +1442,7 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
     refused = [c for c, a in srf.items() if a["status"] == "out_of_domain"]
     if below:
         c = min(below, key=lambda name: srf[name]["value"])
-        a, m = srf[c], library.model(stratum, q)
+        a, m = srf[c], library.model(stratum, q, exact=exact)
         named = "" if c == "SRF" else f"{c} "
         out = {"status": "above_resonance",
                "reason": f"the resonance predicted here ({named}{a['value'] / 1e9:.4g} GHz) is at or below srf_margin x f "
@@ -1352,7 +1455,7 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
         a = srf[refused[0]]
         out = {**a, "reason": f"resonance model: {a['reason']}", "unit": unit(q)}
     else:
-        out = _answer(library, stratum, q, coords, x, k, rel_sigma_max, extrapolate)
+        out = _answer(library, stratum, q, coords, x, k, rel_sigma_max, extrapolate, exact, srf)
         lows = {c: a["lower_bound"] if a["status"] == "above_sweep" else a["lo"] for c, a in srf.items()}
         near = [c for c, a in srf.items() if lows[c] < threshold or (a["status"] != "above_sweep" and lows[c] == threshold)]
         if near:
@@ -1363,10 +1466,11 @@ def _predict(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray
 
 
 def _answer(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None,
-            extrapolate: float = domain.EXTRAPOLATE_FRACTION) -> dict:
+            extrapolate: float = domain.EXTRAPOLATE_FRACTION, exact: bool = False, srf: dict[str, dict] | None = None) -> dict:
     """``q``'s answer from its own model (and, for SRF, the nearest rows above their sweep): ``above_sweep``, ``out_of_domain``,
     ``predicted`` or ``uncertain``; beyond the measured range within the allowance (N-116), ``predicted`` or ``uncertain`` with
-    ``extrapolated`` and ``widening``, the interval widened by it."""
+    ``extrapolated`` and ``widening``, the interval widened by it. A curve column between two knots (N-127, unless
+    ``exact``): ``_answer_between``, with its resonances' answers ``srf``."""
     ds = library.dataset(stratum)
     if q.startswith("SRF"):
         near = _nearest_rows(library, stratum, coords, 5)
@@ -1375,7 +1479,9 @@ def _answer(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray,
             return {"status": "above_sweep", "value": None, "lower_bound": min(r.stop_hz for r in above), "unit": "Hz",
                     "reason": f"{len(above)} of the 5 nearest measured rows have no resonance inside their sweep",
                     "nearest": [_evidence(r, q, ds.dims) for r in near[:3]]}
-    m = library.model(stratum, q)
+    m = library.model(stratum, q, exact=exact)
+    if isinstance(m.gp, between.Between):
+        return _answer_between(library, stratum, q, m, coords, x, k, rel_sigma_max, extrapolate, srf or {})
     scale = fit_unit(q)
     try:
         verdict = m.guard.check(coords, extrapolate=extrapolate)
@@ -1401,6 +1507,50 @@ def _answer(library: Library, stratum: str, q: str, coords: dict, x: np.ndarray,
     if isinstance(m.gp, composed.ComposedGP):          # where the value came from: the parts, the rise, what is left
         out["composition"] = m.gp.explain(x, srf_unit=fit_unit("SRF"))[0]
     out["nearest"] = [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in verdict.nearest]
+    return out
+
+
+def _answer_between(library: Library, stratum: str, q: str, m: Model, coords: dict, x: np.ndarray, k: float, rel_sigma_max: float | None,
+                    extrapolate: float, srf: dict[str, dict]) -> dict:
+    """The answer of a curve column between two knots (N-127, ``between``), from the knots' models: ``out_of_domain`` where the
+    interpolation is refused -- first the knot above f at or past its resonance margin (``srf_margin`` x that knot), then,
+    with a knot of the stencil's core refusing the point, that knot's verdict (its reason names it), then too few rows as
+    near their resonance to measure the allowance or an allowance above ``between.CAP`` (``criterion`` ``interpolation``;
+    the reasons name ``exact=true``) --, else ``predicted`` or ``uncertain`` as any column, with ``interpolated``: the
+    ``knots`` used and the ``allowance`` the interval was widened by. ``srf`` are the curve's resonances' answers at the
+    point (``_predict``; none: no model gives the resonance)."""
+    ds = library.dataset(stratum)
+    g: between.Between = m.gp
+    value_hz, low_hz, settled = between.resonance_at(srf)
+    if value_hz is not None and not settled and value_hz <= g.srf_margin * g.f_next * 1e9:
+        return {"status": "out_of_domain", "criterion": "interpolation", "reason": g.refusal(between.RESONANCE, resonance_hz=value_hz),
+                "unit": unit(q), "nearest": [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in m.guard.nearest(coords)]}
+    try:
+        verdict = m.guard.check(coords, extrapolate=extrapolate)
+    except domain.OutOfDomainError as exc:
+        return {"status": "out_of_domain", "criterion": exc.criterion, "reason": exc.reason, "unit": unit(q),
+                "nearest": [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in exc.nearest], "fill_points": exc.fill_points}
+    if not g.available(x)[0]:
+        return {"status": "out_of_domain", "criterion": 2, "reason": "no model for this turns level (too few usable rows)", "unit": unit(q),
+                "nearest": [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in verdict.nearest]}
+    wide = float(widening(q, verdict.depth)) if verdict.extrapolated else 1.0
+    got = g.answer(x, k * wide, resonance_hz=None if value_hz is None else np.array([value_hz]),
+                   resonance_lo_hz=None if low_hz is None else np.array([low_hz]), above=np.array([settled]), extrapolate=extrapolate)
+    nearest = [_evidence(m.rows[i], q, ds.dims, dist) for i, dist in verdict.nearest]
+    code = int(got["verdict"][0])
+    if code != between.OK:
+        reason = g.refusal(code, resonance_hz=value_hz, u=float(got["u"][0]), allowance=float(got["allowance"][0]))
+        return {"status": "out_of_domain", "criterion": "interpolation", "reason": reason, "unit": unit(q), "nearest": nearest}
+    mu, sigma = float(got["value"][0]), float(got["sigma"][0])
+    rel = sigma / abs(mu) if mu else float("inf")
+    ceiling = m.rel_sigma_max if rel_sigma_max is None else float(rel_sigma_max)
+    out = {"status": "predicted" if domain.sigma_ok(np.array([mu]), np.array([sigma]), ceiling)[0] else "uncertain",
+           "value": mu, "lo": float(got["lo"][0]), "hi": float(got["hi"][0]), "k": k, "k_scale": m.calibration["k_scale"],
+           "rel_sigma": rel, "rel_sigma_max": ceiling, "unit": unit(q),
+           "interpolated": {"knots": g.used(bool(got["second"][0])), "allowance": float(got["allowance"][0])}}
+    if verdict.extrapolated:
+        out["extrapolated"], out["widening"] = verdict.extrapolated, wide
+    out["nearest"] = nearest
     return out
 
 

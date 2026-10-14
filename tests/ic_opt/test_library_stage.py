@@ -180,7 +180,7 @@ def test_lib_design_recipe_optimizes_on_predictions_and_reports_leaders(library,
     finally:
         PLAN_MODE.reset(token)
     assert run.store.observations() == [] and fits == []                              # plan mode starts nothing and fits nothing
-    assert passed == {"k": 2.0, "rel_sigma_max": 0.3, "extrapolate": 0.15}
+    assert passed == {"k": 2.0, "rel_sigma_max": 0.3, "extrapolate": 0.15, "exact": False}
     main(run, library=str(root), budget=24, batch=12, strategy="random", top=3, seed=3)
     assert passed["rel_sigma_max"] is None                                          # each column's own ceiling
     assert len(fits) == 4 * FITS_PER_MODEL and set(fits) == {threading.current_thread().name}     # with Lp@10's resonance SRF_p
