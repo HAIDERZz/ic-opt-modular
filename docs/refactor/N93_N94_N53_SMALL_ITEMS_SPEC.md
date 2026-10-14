@@ -195,4 +195,133 @@ exception returns no result, is not recorded, and writes nothing; it is simulate
 
 ## Record: C
 
-(to be written by the coder)
+Branch `n93-tap-pad-gap`, from `main` at 24ceb99; `git merge --ff-only main` (run before committing) brought it to 562d01c --
+N-94 / N-53 merged and two backlog commits, nothing under `src/ic_opt/em` -- and every comparison below was run against 562d01c.
+One commit for the fix with its tests and documents (328e160), one for this record; nothing merged, nothing pushed,
+`docs/refactor/BACKLOG_CN.md` untouched.
+
+| file | change |
+| --- | --- |
+| `src/ic_opt/em/pcell/_pcell_xfm_bs.py` | `_bs_tap_stack_gap` (with `_drawn_on` and `_run_side_by_side_um`), called by `xfm_bs` for each winding right after `_xfm_net_short`. A tap is measured when its stack reaches the other winding's metal (the tap metal at or below it, its winding above it): the tap's shapes on that metal -- the W x W pad, and the lead too when the tap metal is that metal -- against the other winding's, both windings as drawn in their sub-cells after the straight extension. Every pair of facing edges closer than the widest spacing those widths can need is judged against the rule below; the largest shortfall raises `PortError`. After the short gate, so a pad that touches the leads is still reported as a short. Docstrings: `xfm_bs` (with the other tap rules) and `_bs_center_tap` (its via-stack bullet). |
+| `src/ic_opt/em/pcell/reference.py`, `docs/em/devices.md` | The xfm_bs tap paragraph (`XFM_BS_TAP_NOTE`) states the rule, the numbers the refusal names, the gap `OPENING - W/2` only where the pad lies alongside the leads, reference mode unchecked; `devices.md` regenerated (`python -m ic_opt.em.pcell.reference`). |
+| `src/ic_opt/em/pcell/README.md` | One sentence after the net gate's ("fails closed only on a real short"): the one place the pcell holds the two nets to the profile's spacing. Not in the specification's list. |
+| `tests/ic_opt/pcell/test_xfm_bs_tap_pad_gap.py` | 18 tests, below. |
+
+The refusal on demo_6m: `xfm_bs: the primary's via-stack tap (CT_P_ME=M4) draws a 10 x 10 um pad on M5, the secondary's metal,
+0.200 um from the secondary's own M5 metal over a 5.000 um parallel run, below the 0.4 um profile demo_6m asks between M5 lines W_P=10
+and W_S=5 um wide over that run; the secondary's leads lie OPENING_S=5.2 um off the centre line (a wider OPENING_S or a narrower W_P
+moves the pad away from them; a tap on the primary's own metal draws nothing on M5)`; "at a corner" when the closest edges do not run
+side by side, "its 8 um wide lead" when the tap metal is the other winding's.
+
+### The rule and where its value comes from
+
+`_pcell_core._required_parallel_spacing(metal, min(W, W_other), run, process)`, the function `_check_trace_rules` calls, on the same
+data: the profile's `layout_rules.metal_width_space.<metal>.min_space_um`, raised to the `min_space_um` of every
+`layout_rules.passive_region.wide_parallel_spacing` entry that lists the metal, whose `when_width_gt_um` both lines exceed and whose
+`when_parallel_length_gt_um` the pair's run exceeds. Both lines: the DRC audit (`drc_audit.wide_parallel_spacing_violations`) counts a
+wide-line finding only between two edges that are both wider than the threshold. The run: one edge projected on the other, the length
+the audit's `min_projection` filters on (boxes at the N-93 coordinates: KLayout reports the pair at a projection floor of 8.750 um,
+not at 8.751); 0 for edges that are not parallel. Strict, as in the audit: a gap equal to the rule passes. Reference mode (no profile): skipped, as in
+`_check_trace_rules`. For the N-93 case the value is the private profile's M9 wide-line spacing, read from its `rule.yaml` when the
+device is built and not written here; on demo_6m, M5's min space (0.4 um) and its wide-line rule (2.0 um between lines wider than
+5 um running more than 20 um).
+
+### Tests
+
+`tests/ic_opt/pcell/test_xfm_bs_tap_pad_gap.py`, on demo_6m (the M5 rules read from the profile) unless noted:
+
+1. `test_a_pad_too_close_to_the_other_windings_leads_is_refused_with_its_numbers` -- the N-93 shape on M6 / M5, the primary tapped to
+   M4 through M5: 0.2 um over a 5 um run refused, the message's numbers checked; a gap equal to the rule and a wider one build.
+2. `test_the_secondarys_tap_is_measured_the_same_way` -- the secondary on M6 tapped through the primary's M5.
+3. `test_the_rule_follows_the_widths_and_the_parallel_run` -- with the tap metal the secondary's (M5) the 8 um lead runs 26 um between
+   6 um leads: 1.5 um refused under the wide-line rule, a gap equal to it builds; the same 1.5 um from a pad (a 6 um run) or from
+   5 um leads (not wider than the threshold) builds.
+4. `test_the_gap_is_measured_from_the_actual_placement` -- OD_P 88 builds (the pad ends 1 um short of the leads: 1.02 um at the
+   corner) where `OPENING_S - W_P/2` says 0.2; OD_P 90 refused at a corner; centre spacing 19 refused 0.092 um from the secondary's
+   inner chamfer (18 builds); a secondary port spacing of 15.6 um (an inward jog) refused 0.3 um from leads whose opening keeps them
+   3 um away (15.8 builds).
+5. `test_contact_stays_a_short_and_nothing_else_changes` -- a pad overlapping the leads is still "nets short"; reference mode builds
+   the refused geometry; a same-metal tap and an untapped primary build at a 1 um opening.
+6. `test_the_pcell_refuses_exactly_what_the_drc_gate_would_fail` (12 cases, 7 refused, 5 built) -- each built through the generator
+   with the check and with it switched off (monkeypatched), the unchecked GDS audited: refused exactly when the audit finds
+   `min_space` / `wide_parallel_spacing` on M5; what builds passes the product gate and is byte for byte the unchecked drawing.
+7. `test_the_n93_case_is_refused_and_opening_7_builds` (the private profile; skipped without it) -- obs_0003's configuration
+   through the generator: refused, 1.000 um over the 8.750 um run, the rule as the profile gives it (read by the test), W_P=10,
+   W_S=5, OPENING_S=6; a row of the table, OD 60 / 60 and W 10 / 5, refused at a 6 um opening and built at 7.
+
+Runs (`PYTHONPATH=<worktree>/src`, the main tree's `.venv`, `OMP_NUM_THREADS=2`): `tests/ic_opt/pcell` with the nine files that build
+xfm_bs (`test_em_pcell`, `test_em_circuit`, `test_em_measure`, `test_library_footprint`, `test_library_xfm`, `test_library_composed`,
+`test_spec_library`, `test_lib_tap`, `test_lib_refine`): demo_6m 635 passed, 636 skipped at 562d01c, 652 passed, 637 skipped on the
+branch; with the private profile 1269 passed, 2 skipped and 1287 passed, 2 skipped. `ruff check src tests`: all checks passed.
+
+### Byte for byte with `main`
+
+As T19.4 / T19.5 did (scratch, not committed):
+
+- main's tests (562d01c, exported) run once with main's sources and once with the branch's -- the suites above, each temporary
+  directory kept with `--basetemp` -- and every GDS, `emx_ports.txt`, `geometry_manifest.json` and coordinates file at the same path
+  compared. demo_6m: 6955 files, 2318 GDS, 2315 port files and 2312 manifests identical, 10 GDS that tests write with KLayout's default
+  writer differing only in their BGNLIB / BGNSTR time, none differing otherwise, none on one side only. The private profile: 7433
+  files, 2621 GDS, 2391 port files, 2384 manifests and 30 coordinates files identical, 7 such GDS. Among them 1996 / 2012 xfm_bs
+  generator builds, 45 / 49 of them with a tap stack that reaches the other winding's metal (measured, passed, unchanged). The test
+  outcomes are the same on both sides except main's `test_reference.py` (`devices.md` regenerated). The same comparison against
+  24ceb99 before the fast-forward: 6916 / 7394 files, identical.
+- The 13 golden GDS are among them; `test_golden.py` passes, and `test_the_golden_bs_cases_are_unchanged_byte_for_byte` pins
+  `xfm_bs` and `xfm_bs_ct` to the committed bytes (`xfm_bs_ct`'s M6 tap passes M5, 5.5 um from the secondary's leads: measured).
+- Library replay: every build recorded in the libraries on this machine
+  (`/home/zzchen/Agent_virtuoso/EDA_AI_AGENT/ic-opt-library`: 19372 `geometry_manifest.json`, 2293 ind_sym, 8995 xfm_bs -- 8120
+  untapped, 508 same-metal tapped, 367 via-stack tapped -- and 8084 xfm_ms) regenerated from its recorded config with the same GDS
+  name, as `docs/refactor/reports/pcell_plan/pcell_byte_replay.py library` does, with main's sources (562d01c, and 24ceb99 before)
+  and with the branch's: the same outcome and the same sha256 of GDS, manifest and port file for all 19372, none refused, every GDS
+  equal to the recorded one on both sides (14592 manifests differ from the recorded ones on both sides alike: rows that predate
+  fields the manifest has gained since).
+
+### The t18_ct_table check
+
+- The 367 rows of the tapped table (primary M10, secondary M9, both taps on M8, openings 7 um) are the library's
+  `n28/xfm_bs_ct_m10` part, copied there from `t18_ct_table/stage` (whose own `sims` are gone): in the replay above, built and
+  identical on both sides. Each primary tap's M9 pad is measured -- the closest 2.0 um (W_P 10), 3.25 (7.5), 4.5 (5), that is
+  `7 - W_P/2` -- and passes; the secondary's taps (M9 to M8) never reach M10.
+- `ct_grid.json` replayed (408 points at its 7 um opening): the same 408 outcomes on main and on the branch, the 367 ok points built
+  byte for byte alike (GDS, manifest, port file), the 41 refused (`_check_opening`) with the same messages.
+- The opening-6 pilot's four points (`stage_pilot_opening6`): obs_0001 / 0002 / 0004 build as on main; obs_0003 (OD 50 / 42.5,
+  W 10 / 5) is refused by the pcell -- the M9 pad 1.000 um from the secondary's M9 metal over an 8.750 um parallel run, below the
+  profile's spacing for W_P=10 and W_S=5 lines over that run, OPENING_S=6 -- where main built it and the gate refused it later
+  (`[wide_parallel_spacing] M9 x2`). At OD 50 no 7 um opening builds (`_check_opening`'s bound is 6.2 um at W 10); the opening-7
+  half of acceptance (a) is shown on the table's concentric W 10 rows (OD 55-100), test 7 above.
+
+### Parity with the DRC gate (scratch)
+
+5145 demo_6m and 8000 private-profile configurations (both tap directions, the tap metal below and equal to the other winding's metal,
+ODs 40-100 and unequal, widths 4-10, openings 2.6-8 um, centre spacing up to the overlap bound, inward port-spacing jogs, a straight
+extension), each built through the generator with the check and with it switched off, the unchecked GDS audited. The check refuses
+exactly those whose audit has a `min_space` or `wide_parallel_spacing` finding on the crossed metal (278 / 510) and no other; 3 / 91
+more are refused by the check where the unchecked build is refused later by the ground fixture (overlapping or touching stubs); 2029
+/ 3221 are refused by an earlier rule either way; 2835 / 4178 build.
+
+### Deviations
+
+1. **Measured on the drawing, not before it.** The specification says "before drawing, ... compute the gap the drawing would have".
+   The gap is measured on the two windings as drawn into their sub-cells (after the taps and the straight extension), still inside
+   `xfm_bs`, before the device cell, the fixture, the GDS and the gate. A formula for the pad between the leads would miss the
+   placements the specification asks to cover: the pad short of the leads (test 4: 1.02 um where the formula says 0.2), the other
+   winding's ring at a large centre spacing (0.092 um from its chamfer), the facing leads' inward jog, the extension (which moves
+   the pad and the leads together but the other winding's closed column the other way).
+2. **The lead too.** When the tap metal is the other winding's metal the stack ends there and its lead runs on between that winding's
+   leads, over their whole length (the wide-line rule's run). The specification names the pad on an intermediate metal; the same
+   shapes on the same metal, one measurement. No library build has such a tap; one test does
+   (`test_xfm_bs_n65_ap_center_tap`, n65_1p9m: the AP primary tapped down to M9, the secondary's metal, its lead 5 um from the
+   secondary's leads): measured, passed, byte-identical.
+3. **The width.** `_required_parallel_spacing` takes one width; the rule is read with the narrower line's, the audit's reading.
+4. **The README sentence** (beyond the specification's list).
+5. The message names the run beside the gap, the rule value, the widths and the opening, and says what moves the gap.
+
+### Not foreseen
+
+1. **xfm_ms has the same case, unguarded.** Its single-turn primary's via-stack tap (`_bs_center_tap`) passes the multi-turn
+   winding's metal whenever `ct_primary_metal` sits at or below `secondary_metal`, and the pad faces the multi winding's leads the
+   same way: on demo_6m (single on M6, W 10; multi on M5, opening 5.2 um; tap to M4) the pcell builds it and the audit finds
+   `min_space` M5 x2 between the pad and the leads. Section C is xfm_bs; not changed. xfm_balun's taps (the third caller) were not
+   examined.
+2. In the private sweep, 200 builds that pass the new check fail the audit with `min_space` on M1: the ground fixture's stubs on the
+   default bottom metal at small openings, T19.4 / T19.5's matter, not the tap's.
