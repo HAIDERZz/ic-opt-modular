@@ -231,6 +231,25 @@ Each quantity comes back with a `status`:
 | `uncertain` | predicted, but sigma / mu exceeds the quantity's ceiling (criterion 4 below; the answer gives it as `rel_sigma_max`): reported with its numbers, never used silently |
 | `out_of_domain` | the domain guard refused: `criterion`, `reason`, the nearest measured rows |
 | `above_sweep` | SRF only: most nearest rows did not resonate inside their sweep; `lower_bound` is that sweep's stop |
+| `above_resonance` | curves only: the resonance predicted at the point is at or below the curve's `srf_margin` x f, so a measured row there would have no value and there is none; `srf` gives the resonance (`column`, `value`, `lo`, `hi`), with `threshold_hz`, `frequency_hz`, `srf_margin`, `reason` and the curve model's nearest rows |
+
+A curve column `<curve>@<f>`, declared or at any other frequency, is answered
+only below the device's own resonance. A measured row has a value for it only
+where its resonance lies above the curve's `srf_margin` x f, so `lib.query`
+first answers the resonance at the point: the system `SRF` where the stratum
+declares it, else per drive (`SRF_p` for `Lp` and `Qp`, `SRF_s` for `Ls` and
+`Qs`, both for `k`). Predicted at or below that threshold, `predicted` or
+`uncertain` alike, the curve is `above_resonance`. Where the resonance's own
+model refuses the point, the rule cannot be checked and the curve is
+`out_of_domain`, with that model's criterion and nearest rows and a reason
+starting `resonance model: `. Elsewhere the curve answers as the table above
+says; where the resonance's lower bound reaches the threshold (its calibrated
+`lo`, or the sweep's end when it lies above the sweep), the answer adds
+`near_resonance` (`column`, `srf_lo_hz`, `threshold_hz`) and keeps its status.
+A library row still answers with its measured values, empty where its own
+resonance left the column out. A curve's answers need its resonance's model,
+so asking for a curve loads that model too, or fits it when it is not cached.
+A stratum that declares none of these SRF columns has no such rule.
 
 The domain guard's criteria: (1) inside the achieved box, and a dim that is
 fixed within a turns level must match it; (2) a model exists for this turns
@@ -300,7 +319,14 @@ real generator draws it and the product DRC audit checks it. An anchored
 target such as `Lp@28` adds `SRF ≥ srf_margin × f0` (the manifest's
 `srf_margin`, 1.25 in the example manifest, which keeps the default: here
 SRF ≥ 35 GHz) unless SRF is already constrained; a target at a frequency the
-curve does not anchor (an extension column, section 2) does the same.
+curve does not anchor (an extension column, section 2) does the same. Besides,
+every curve column a call predicts (a target, the objective, a `lib.region`
+trend, a `lib.densify` column) counts at a point only where the resonance
+predicted there lies above that curve's `srf_margin` x f, the rule of
+`above_resonance` in section 4; elsewhere the point is left out as one out of
+the domain is. Where every curve keeps one `srf_margin`, as in the example,
+the added SRF target already asks this of a target's or the objective's whole
+interval.
 
 The candidates come from a pool: the library's rows and `pool_size` (8192)
 scrambled Sobol points spread over the table's whole achieved box. A small
@@ -419,7 +445,9 @@ no model answers; `group_by`, the counts and the other dims' ranges for
 every combination of the named dims; `trend`, one quantity's min, median
 and max along one dim over the points meeting every other target;
 `candidates` in `lib.suggest`'s shape; the `measured` rows that already
-meet every target; and a `points_sample` to plot. A `measured` row with no
+meet every target; and a `points_sample` to plot. A `trend` on a curve
+column counts only the points below its resonance (section 5), so the
+region's points are those too. A `measured` row with no
 resonance in its sweep counts for an SRF minimum that lies at or below its
 sweep's end, as `lib.suggest` ranks it: its SRF value is null and `above_sweep`
 gives the sweep's end that settled it (`{"SRF_p": 250e9}`, in Hz), while a
@@ -551,7 +579,11 @@ pick and when it was picked, the current prediction with its calibrated
 interval (`k`), and the three nearest measured rows. Where most of the
 nearest rows resonate above their sweep, an SRF is settled there
 (`above_sweep` in `lib.query`): it neither scores nor counts in its
-statistics, since a simulation there would not yield one.
+statistics, since a simulation there would not yield one. Likewise a curve
+column where the resonance predicted there lies at or below its
+`srf_margin` x f (`above_resonance` in `lib.query`): a simulation there would
+give it no value, so it neither scores nor counts there, a pick there shows no
+prediction of it, and a note says how many candidates that is.
 
 `out=` writes the answer to a file that `lib_signoff` takes as its
 `candidates` (section 7). `--plan` lists the EMX runs and is the approval
@@ -793,7 +825,8 @@ column and for the system `SRF`. A neighbour is kept when
 
 - every variable's column is `predicted`: otherwise it is dropped as
   `out_of_domain`, or as `uncertain` (too uncertain, or no value); the SRF
-  likewise;
+  likewise. A curve column answered `above_resonance` (section 4) is dropped
+  by the last rule instead, `srf_margin`;
 - each predicted value lies inside its variable's range as the table takes a
   row onto the grid (the end levels reach half an end interval beyond the
   bounds): otherwise `outside_range`. A row adopted inside it is a candidate

@@ -4,8 +4,9 @@
 unbuildable geometry fails as ``failed:pcell``, exactly as in the EM pipeline), then ``Predict`` fills each
 device metric from the library -- the measured value at an exact library point, else the model's mean --
 where the EM pipeline would run EMX and the measure kernel. A metric the library cannot vouch for (out of
-domain, too uncertain, resonance above the sweep, no such column) fails the child as ``failed:predict``
-with the reason, so optimizers treat it like any failed simulation. Every answer, bounds included, is
+domain, too uncertain, resonance above the sweep, a curve at or above the device's own resonance -- ``above_resonance``,
+N-113 --, no such column) fails the child as ``failed:predict`` with the reason, so optimizers treat it like any failed
+simulation. Every answer, bounds included, is
 written to the child's ``predictions.json``. A metric at a frequency (``{quantity: Lp, frequency_hz: 33e9}``) reads the
 column ``Lp@33``: a declared anchor, or else the extension column of a declared curve (``Library.columns``: measured from
 the rows' sNp, then modelled like a declared column).
@@ -21,8 +22,8 @@ leads ...): ``match_stratum`` finds it, and ``Predict`` refuses a device whose f
 
 The engine runs points in parallel threads; the models they share are fitted once, before any of them is
 queried: ``Predict.prefit`` (``lib_design`` calls it before the evaluation starts) hands every column the
-stage will ask for to ``Library.models``, which fits the uncached ones in parallel processes within the
-library's limits. A thread never fits a model by itself.
+stage will ask for to ``Library.models``, which fits the uncached ones -- and those their answers need: a composed curve's
+parts, a curve's resonance -- in parallel processes within the library's limits. A thread never fits a model by itself.
 
 A library device of a circuit spec (T18.2B, ``Device.library``) is another use of the library: its rows are the
 candidates. ``Pick`` (point level) takes the row of a point's combination (``ic_opt.library.link``) and hands its own sNp

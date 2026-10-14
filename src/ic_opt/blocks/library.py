@@ -94,7 +94,9 @@ def query(library: _query.Library | str | Path, stratum: str, params: dict, quan
     ``params`` maps every dim to a value (JSON on the command line); ``quantities`` is a comma list (default: all columns),
     where a declared curve may be asked at any frequency inside the parts' sweeps, ``<curve>@<GHz>`` (``Lp@33``). A
     prediction with sigma / mu above its ceiling -- ``rel_sigma_max`` when given, else the quantity's in library.yaml, else
-    0.15; each prediction reports the one it was held to -- is ``uncertain``. ``footprint`` is the box around the drawn
+    0.15; each prediction reports the one it was held to -- is ``uncertain``. A curve column where the resonance predicted
+    at the point is at or below the curve's srf_margin x f is ``above_resonance``, without a value (a measured row there has
+    none); one whose resonance's lower bound only reaches that threshold adds ``near_resonance``. ``footprint`` is the box around the drawn
     device without its ground fixture: a library point's row's; elsewhere null unless ``footprint=true``, which draws the
     geometry with the stratum's generator (no EMX); ``footprint_why`` says why a footprint is null. ``cache_dir`` holds the
     library's cache files (default: its own ``.cache``, else ``~/.cache/ic-opt/<key>/``, which the answer's ``notes`` name).

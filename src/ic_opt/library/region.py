@@ -18,7 +18,9 @@ the real devices inside those windows form a region of the geometry space, and i
    dim; every step multiplied by the smallest integer that keeps the grid under ``max_points``); turns go by
    integer level, and a dim fixed within a level stays at its value there (``suggest.pool``'s rule);
 4. the grid points inside every model's domain are predicted and gated for confidence (each quantity against its
-   ceiling: the call's ``rel_sigma_max``, else the quantity's in library.yaml, else the default);
+   ceiling: the call's ``rel_sigma_max``, else the quantity's in library.yaml, else the default) and for the resonance
+   (N-113): an anchored quantity -- a target's, the objective's or the trend's -- counts only where the resonance
+   predicted there lies above its curve's srf_margin x f (``suggest.below_resonance``);
 5. two levels of feasibility: **robust** -- the calibrated k-sigma interval lies inside every window, ``suggest``'s
    own test and where a sweep should centre; **mean** -- the predicted value does, the optimistic envelope;
 6. summaries: counts and per-dim ranges per level, the count meeting each target alone (the smallest binds),
@@ -208,7 +210,7 @@ def _coarse(library: query.Library, stratum: str, models: dict, stated: list[sug
     faces and corners of the sampled domain (concentric windings, the extreme widths), where a Sobol pool is sparse,
     so a bracket from the pool alone can cut off part of a region that measured designs prove is there."""
     x = np.unique(np.round(np.vstack([library.dataset(stratum).matrix(), suggest.pool(library, stratum, pool_size, seed)]), 9), axis=0)
-    floors = {q: suggest.srf_floors(library, stratum, x, q) for q in models if q.startswith("SRF")}
+    floors = suggest.srf_floors_for(library, stratum, x, models)
     ok, pred = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, chunk_bytes=budget)
     loose = [_relaxed(t, relax) if t in stated else t for t in goals]
     alone = {t.quantity: int((ok & suggest.satisfy(pred, [t], "mean")).sum()) for t in loose}
@@ -221,9 +223,10 @@ def grid_pool(library: query.Library, stratum: str, models: dict, stated: list[s
               budget: int) -> tuple[np.ndarray, dict[str, np.ndarray], dict]:
     """The grid ``region`` predicts for these goals, by the same steps (the coarse pass, the grid over its survivors'
     bracket, the points inside every model's domain): with the defaults, the grid of a ``lib.region`` call left at its
-    defaults. ``suggest`` draws its second pool here (N-50). Returns the points, their SRF floors (``_inside``) and the
-    grid as ``region``'s answer describes it (``steps``, ``bracket``, ``points``, ``coarsened``) with ``relax``,
-    ``in_domain`` and ``survivors`` (the coarse candidates it brackets); no survivor, no point."""
+    defaults. ``suggest`` draws its second pool here (N-50). Returns the points, their floors (``_inside``: every SRF
+    and resonance column's, ``suggest.srf_floors_for``) and the grid as ``region``'s answer describes it (``steps``,
+    ``bracket``, ``points``, ``coarsened``) with ``relax``, ``in_domain`` and ``survivors`` (the coarse candidates it
+    brackets); no survivor, no point."""
     survivors = _coarse(library, stratum, models, stated, goals, pool_size, seed, k, rel_sigma_max, relax, budget)[0]
     if not len(survivors):
         return (np.empty((0, len(library.dataset(stratum).dims))), {},
@@ -334,10 +337,10 @@ def _product(axis: list[np.ndarray]) -> np.ndarray:
 
 def _inside(library: query.Library, stratum: str, x: np.ndarray, models: dict) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     """The grid points inside every model's domain (``suggest.in_domain``, the gate ``predict_all`` applies) and their
-    SRF floors, so that only those are predicted."""
+    SRF floors (``suggest.srf_floors_for``: the resonance columns' too), so that only those are predicted."""
     if not len(x):
         return x, {}
-    floors = {q: suggest.srf_floors(library, stratum, x, q) for q in models if q.startswith("SRF")}
+    floors = suggest.srf_floors_for(library, stratum, x, models)
     keep = suggest.in_domain(x, models, srf_floor=floors)
     return x[keep], {q: f[keep] for q, f in floors.items()}
 
@@ -475,13 +478,13 @@ def _measured(ds: dataset.Dataset, goals: list[suggest.Target], names: list[str]
 
 def _unanswered(library: query.Library, stratum: str, measured: list[dict], models: dict, k: float, rel_sigma_max: float | None,
                 budget: int) -> list[str]:
-    """``part/obs_id`` of the measured designs where ``predict_all``'s gate fails (a model's domain, its confidence): no
-    grid point there can be feasible, whatever the design measured."""
+    """``part/obs_id`` of the measured designs where ``predict_all``'s gate fails (a model's domain, its confidence, the
+    resonance): no grid point there can be feasible, whatever the design measured."""
     if not measured:
         return []
     dims = library.dataset(stratum).dims
     x = np.array([[m["params"][d] for d in dims] for m in measured])
-    floors = {q: suggest.srf_floors(library, stratum, x, q) for q in models if q.startswith("SRF")}
+    floors = suggest.srf_floors_for(library, stratum, x, models)
     ok, _ = suggest.predict_all(x, models, k=k, rel_sigma_max=rel_sigma_max, srf_floor=floors, chunk_bytes=budget)
     return [f"{m['part']}/{m['obs_id']}" for m, good in zip(measured, ok) if not good]
 
