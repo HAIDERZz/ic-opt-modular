@@ -766,3 +766,15 @@ uses its own). A `spec.yaml` 0.2 wrote is not changed.
 
 Design notes and the refactor record live in `docs/refactor/`; the remote
 filesystem rule is `docs/adr/0001-remote-filesystem-boundary.md`.
+
+## License
+
+Copyright (c) 2026 HAIDERZz.
+
+IC-Opt is licensed under the GNU General Public License, version 3 only
+(`GPL-3.0-only`). See [LICENSE](LICENSE) for the full terms.
+
+Third-party components retain their own licenses and notices, including
+[OpenBox](vendor/open-box/LICENSE) and
+[TuRBO](vendor/TuRBO/LICENSE.md). TuRBO remains subject to its upstream
+non-commercial license.

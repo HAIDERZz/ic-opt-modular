@@ -377,7 +377,7 @@ coplanarly. This is the only balun-family milestone with real `.il` porting:
 ## Status
 
 - These modules are the in-package product implementation (original code under
-  the repository's MIT license; the provenance table in
+  the repository's GPL-3.0-only license; the provenance table in
   `pcell_inductor_port_clean.py` records which reference PCell each construction
   was first studied against). This README claims no foundry manufacturing signoff.
 
