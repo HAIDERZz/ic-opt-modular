@@ -57,13 +57,13 @@ from ic_opt.sim import netlist as kernel
 from ic_opt.sim.ocean import WaveformExport
 from ic_opt.site import HostLimits
 from ic_opt.space import Point
-from ic_opt.spec import Spec
+from ic_opt.spec import OptimizationProblem, Spec
 from ic_opt.store import RUN_LOCK, RunStore  # noqa: F401 -- RUN_LOCK is still imported from here
 from ic_opt.suggesters.base import surrogate_minimum
 
 
 def suggest(
-    spec: Spec,
+    spec: OptimizationProblem,
     observations: Sequence[Observation],
     n: int,
     *,
@@ -71,6 +71,8 @@ def suggest(
     seed: int = 0,
     initial: Sequence[Observation] = (),
     start: Sequence[dict[str, str]] = (),
+    pending: Sequence[dict[str, str]] = (),
+    total: int | None = None,
     advice: Sequence[dict] = (),
     failure_penalty: float | None = None,
     **strategy_kwargs,
@@ -86,6 +88,8 @@ def suggest(
     Where some variables may take only a table's combinations (T18.2A, ``space.tables``) every point is a valid one:
     ``space.snap`` projects each raw vector, and a batch still short after the random points is completed from the
     valid points not yet taken, listed (``space.valid_points``) and drawn in a seeded order, also ``fill``.
+    ``pending`` reserves points already handed to workers. ``total``, when supplied, sizes the default initial design
+    from the planned point budget exactly as ``opt.optimize`` does.
     ``advice``: every row of an advice file (``ic_opt.advice``). The advice in effect at this history size (section 2 of
     the T17.1.5 specification) puts its start rows not yet evaluated after ``start``'s, origin ``advice:<id>``, for every
     strategy; ``metric_gp`` also narrows where its models' points look (they carry ``@<id>``); the others take no more.
@@ -107,7 +111,15 @@ def suggest(
     if strategy == suggesters.AUTO:
         strategy, reason = suggesters.resolve_auto(spec, len(spec.corner_ids), history)
         suggesters.check_auto_keywords(strategy, reason, strategy_kwargs)
-    taken = history.keys()
+    if total is not None:
+        if total < 1:
+            raise ValueError("total must be positive")
+        if strategy_kwargs.get("initial_trials") is None:
+            design = _initial_design(spec, strategy, strategy_kwargs, total)
+            if design is not None:
+                strategy_kwargs["initial_trials"] = design[0]
+    outstanding = [p.params for p in space.points_from_params(spec, pending, origin="pending")]
+    taken = history.keys() | {space.point_key(p) for p in outstanding}
     points: list[Point] = []
     current = advice_rules.in_effect(advice, len(history))
     advised = space.points_from_params(spec, current["start"], origin=f"advice:{current['id']}") if current else []
@@ -129,7 +141,7 @@ def suggest(
             if missing <= 0:
                 break
             proposal = suggester.propose(spec, history, missing, seed=seed + attempt,
-                                         pending=[p.params for p in points], **narrowing, **torch_threads)
+                                         pending=outstanding + [p.params for p in points], **narrowing, **torch_threads)
             if batch_tag is None:
                 batch_tag = proposal.tag      # a batch tag is the batch's: replacements share it (TuRBO replays by it)
                 fill = f"{base}:fill" if proposal.tags else f"{base}:{batch_tag}" if batch_tag else base
@@ -157,13 +169,13 @@ def suggest(
     return points
 
 
-def strategy_threads(spec: Spec) -> int:
+def strategy_threads(spec: OptimizationProblem) -> int:
     """The threads a strategy's calls may use in :func:`suggest` (N-73): ``simulator.strategy_threads``, or, when it is
     lower, the smallest of OMP_NUM_THREADS, OPENBLAS_NUM_THREADS and MKL_NUM_THREADS that is set, read as the device
     library reads them (``library.query.omp_cap``). ``threadpool_limits`` sets a pool's size, it does not only lower it,
     so a limit above such a variable would raise the pools past it."""
     cap = omp_cap()
-    return spec.simulator.strategy_threads if cap is None else min(spec.simulator.strategy_threads, cap)
+    return spec.proposal_threads if cap is None else min(spec.proposal_threads, cap)
 
 
 def optimize(
@@ -523,7 +535,7 @@ def _exports(spec: Spec, deck: Deck | None, executor: Executor, plan: bool) -> d
         shutil.rmtree(literal(tmp))
 
 
-def _initial_design(spec: Spec, strategy: str, strategy_kwargs: dict, budget: int) -> tuple[int, int] | None:
+def _initial_design(spec: OptimizationProblem, strategy: str, strategy_kwargs: dict, budget: int) -> tuple[int, int] | None:
     """The initial design of a strategy whose design ic-opt serves: (its size, the successful points the model needs
     before it completes a batch). OpenBox: ``initial_trials`` when given, else min(2 x variables, budget // 2), at least
     one (``suggesters.openbox.initial_design_size``), and the surrogate minimum; metric_gp: ``initial_trials``, else

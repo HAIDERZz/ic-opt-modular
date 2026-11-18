@@ -4,7 +4,7 @@ import inspect
 from collections.abc import Iterable
 
 from ic_opt.observation import Observation
-from ic_opt.spec import Spec
+from ic_opt.spec import OptimizationProblem, Spec
 from ic_opt.suggesters.base import Proposal, Suggester, minimization_objective, penalized_objective
 from ic_opt.suggesters.metric_gp import DEVICES_REFUSAL, MetricGpSuggester, stage_one_refusal
 from ic_opt.suggesters.openbox import OpenBoxSuggester
@@ -38,12 +38,14 @@ def make(strategy: str, *, failure_penalty: float | None = None, **kwargs) -> Su
     raise ValueError(f"unknown strategy {strategy!r}")
 
 
-def resolve_auto(spec: Spec, corners: int, history: Iterable[Observation] = ()) -> tuple[str, str]:
+def resolve_auto(spec: OptimizationProblem, corners: int, history: Iterable[Observation] = ()) -> tuple[str, str]:
     """What ``strategy=auto`` runs, and why in words: ``metric_gp`` for a spec without EM devices, whatever the corners
     (T17.9: it takes a run at several), and for one whose devices come from library tables (T18.2B: no EMX in the loop),
     else ``openbox_gp_eic``. ``corners`` (how many the run evaluates) and ``history`` (the rows no corner filter reaches)
     are passed by the callers and no longer decide anything: a history whose points were evaluated at different sets of
     corners is ``metric_gp``'s to refuse, and ``opt.optimize`` hands it none."""
+    if not isinstance(spec, Spec):
+        return "metric_gp", "external evaluations"
     if stage_one_refusal(spec, corners) == DEVICES_REFUSAL:
         return "openbox_gp_eic", "metric_gp does not take EM devices yet"
     return "metric_gp", LIBRARY_REASON if spec.library_devices else "no EM devices"

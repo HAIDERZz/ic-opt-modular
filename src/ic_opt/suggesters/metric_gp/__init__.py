@@ -32,7 +32,7 @@ import numpy as np
 from ic_opt import advice as advice_rules
 from ic_opt import space
 from ic_opt.observation import Observations
-from ic_opt.spec import Spec
+from ic_opt.spec import OptimizationProblem, Spec
 from ic_opt.suggesters.base import Proposal, space_filling
 from ic_opt.suggesters.metric_gp import candidates, region, select
 from ic_opt.suggesters.metric_gp.compose import (
@@ -71,9 +71,9 @@ def stage_one_refusal(spec: Spec, corners: int | None = None) -> str | None:
     return DEVICES_REFUSAL if simulated_devices(spec) else None
 
 
-def simulated_devices(spec: Spec) -> list[str]:
+def simulated_devices(spec: OptimizationProblem) -> list[str]:
     """The devices of ``spec`` that EMX simulates in the loop: every device that does not come from a library table."""
-    return [d.id for d in spec.devices if d.library is None]
+    return [d.id for d in spec.devices if d.library is None] if isinstance(spec, Spec) else []
 
 
 class MetricGpSuggester:

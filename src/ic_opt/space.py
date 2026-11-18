@@ -335,10 +335,7 @@ def tables(spec: Spec) -> list[Table]:
     gives -- one per library device (T18.2B), none for a spec without -- checked against the spec here, where they are
     first used: every name a variable of the spec and in one table only, every level index within its variable's levels,
     no table empty. A violation is a ValueError that names the table."""
-    # the library builds on the space: imported where first needed, not when the space is
-    from ic_opt.library import link
-
-    found = list(link.tables(spec))
+    found = list(spec.parameter_tables())
     counts = {v.name: grid_count(v) for v in spec.variables}
     owner: dict[str, int] = {}
     for t, table in enumerate(found):

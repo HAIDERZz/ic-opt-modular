@@ -617,6 +617,47 @@ A Spectre run states threads but no memory (`simulator` has no memory field), so
 envelope's memory check covers EMX runs only; a testbench-only spec shows `0 GB per job`
 in `doctor` and `--plan`, and its memory is bounded by the host, not by ic-opt.
 
+## Use the optimizer from Python
+
+Use `ic_opt.optimizer` when your workflow supplies the measurements. Describe its
+parameter grid, scalar metrics, constraints and objective. Your script owns the
+evaluator and can submit each batch to its own workers.
+
+```python
+from ic_opt.optimizer import Problem, ask, tell
+
+problem = Problem(
+    evaluator="example-v1",
+    variables=[{"name": "x", "kind": "integer", "lower": 0, "upper": 32, "step": 1}],
+    metrics=["loss"],
+    objective={"direction": "minimize", "expression": "loss"},
+)
+history = []
+for _ in range(3):
+    batch = ask(problem, history, n=4, seed=7, total=12)
+    for trial in batch:
+        x = int(trial.params["x"])
+        history.append(tell(problem, trial, {"loss": (x - 7) ** 2}))
+```
+
+Replace the calculation in `tell` with the scalar values from your evaluator.
+To supply a single custom score, declare it as a metric and use its name as the
+objective. Declare each required constraint metric too, so `metric_gp` can model
+its margin. Set `evaluator` to a new identifier when the measurement procedure
+changes. A missing or non-finite required metric gives a failed observation.
+Pass `Result(error="solver timed out")` from `ic_opt.optimizer` for a failed job.
+
+For PVT, declare e.g. `corners=["tt", "ss"]` and pass
+`tell(problem, trial, by_corner={"tt": tt_metrics, "ss": ss_metrics})`.
+The usual `corner_policy` controls the objective and constraints. An omitted
+corner is accepted only if the returned results already establish failure.
+
+Trials and returned observations support `model_dump_json()` and
+`model_validate_json()`. Keep one observation per `obs_id` in your own history.
+Calling `ask` with the same history and seed reproduces the same parameters.
+When overlapping batches, include every unfinished trial in `pending=` and
+serialize calls that allocate new trials. Results may arrive in any order.
+
 ## Results
 
 Everything lands under `PROJECT/.icopt/`: `observations.jsonl` (one row per

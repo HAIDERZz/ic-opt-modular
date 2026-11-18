@@ -184,13 +184,21 @@ class SaturationMargin(Model):
     instances: list[str]
 
 
-class Metric(Model):
+class ScalarMetric(Model):
+    name: str
+    unit: str = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _n(cls, value: str) -> str:
+        return _name(value, "metric name")
+
+
+class Metric(ScalarMetric):
     """A scalar the evaluation must produce: an OCEAN expression on a testbench, a quantity of an EM device, or the worst
     saturation margin of named transistors, which the extract stage computes from the operating points of the testbench's
     DC analysis (T17.11) instead of OCEAN."""
 
-    name: str
-    unit: str = Field(min_length=1)
     expression: str | None = None            # OCEAN expression (testbench metrics)
     testbench: str | None = None
     result: str | None = None
@@ -208,11 +216,6 @@ class Metric(Model):
         if self.saturation_margin is None:
             data.pop("saturation_margin", None)
         return data
-
-    @field_validator("name")
-    @classmethod
-    def _n(cls, value: str) -> str:
-        return _name(value, "metric name")
 
     @field_validator("expression")
     @classmethod
@@ -586,19 +589,57 @@ class Binding(Model):
         return _compact_token(value, "binding instance")
 
 
-class Spec(Model):
+class OptimizationProblem(Model):
+    """Inputs to candidate generation and scoring, shared with externally evaluated problems."""
+
+    variables: list[Variable] = Field(min_length=1)
+    metrics: list[ScalarMetric] = Field(default_factory=list)
+    constraints: list[Constraint] = Field(default_factory=list)
+    objective: Objective | None = None
+    corners: list[Corner] = Field(default_factory=list)
+    corner_policy: CornerPolicy = Field(default_factory=CornerPolicy)
+
+    @model_validator(mode="after")
+    def _search_fields(self) -> OptimizationProblem:
+        from ic_opt.objective import expression_issues
+
+        _unique([c.id for c in self.corners], "corner ids")
+        _unique([v.name for v in self.variables], "variable names")
+        _unique([m.name for m in self.metrics], "metric names")
+        names = {m.name for m in self.metrics}
+        for constraint in self.constraints:
+            if constraint.metric not in names:
+                raise ValueError(f"constraint references unknown metric {constraint.metric}")
+        if self.objective is not None:
+            issues = expression_issues(self.objective.expression, names)
+            if issues:
+                raise ValueError(issues[0])
+        return self
+
+    @property
+    def corner_ids(self) -> list[str | None]:
+        return [c.id for c in self.corners] or [None]
+
+    @property
+    def proposal_threads(self) -> int:
+        return 1
+
+    def parameter_tables(self):
+        """Independent variable grids by default. A circuit spec can also bind library combinations."""
+        return []
+
+    def fingerprint(self) -> str:
+        return _digest(self.model_dump(mode="json", exclude_none=True))
+
+
+class Spec(OptimizationProblem):
     project: str
     description: str = ""
     testbenches: list[Testbench] = Field(default_factory=list)   # circuit testbenches (Maestro exports)
     devices: list[Device] = Field(default_factory=list)          # EM devices (pcell generators, or library tables: T18.2B)
     em: EmSettings | None = None
     bindings: list[Binding] = Field(default_factory=list)        # device sNp -> testbench nport instances
-    corners: list[Corner] = Field(default_factory=list)
-    corner_policy: CornerPolicy = Field(default_factory=CornerPolicy)
-    variables: list[Variable] = Field(min_length=1)
     metrics: list[Metric] = Field(default_factory=list)      # empty: waveform-only runs
-    constraints: list[Constraint] = Field(default_factory=list)
-    objective: Objective | None = None
     simulator: Simulator
     budget: Budget
 
@@ -609,15 +650,10 @@ class Spec(Model):
 
     @model_validator(mode="after")
     def _cross_references(self) -> Spec:
-        from ic_opt import objective as objective_contract
-
         if not self.testbenches and not self.devices:
             raise ValueError("spec needs at least one testbench or one device")
         _unique([t.id for t in self.testbenches], "testbench ids")
         _unique([d.id for d in self.devices], "device ids")
-        _unique([c.id for c in self.corners], "corner ids")
-        _unique([v.name for v in self.variables], "variable names")
-        _unique([m.name for m in self.metrics], "metric names")
         tb_ids = {t.id for t in self.testbenches}
         device_ids = {d.id for d in self.devices}
         variable_names = {v.name for v in self.variables}
@@ -656,14 +692,6 @@ class Spec(Model):
             if sorted(binding.kept) != sorted(ports):
                 raise ValueError(f"binding {binding.instance}: the named terminals must be a permutation of device ports {ports} "
                                  f"(null marks an instance port the device does not take)")
-        metric_names = {m.name for m in self.metrics}
-        for constraint in self.constraints:
-            if constraint.metric not in metric_names:
-                raise ValueError(f"constraint references unknown metric {constraint.metric}")
-        if self.objective is not None:
-            issues = objective_contract.expression_issues(self.objective.expression, metric_names)
-            if issues:
-                raise ValueError(issues[0])
         return self
 
     # -- convenience -------------------------------------------------------
@@ -707,9 +735,13 @@ class Spec(Model):
         return [v.name for v in self.variables if v.name not in consumed]
 
     @property
-    def corner_ids(self) -> list[str | None]:
-        """Corner ids to run; ``[None]`` means the source point's own corner."""
-        return [c.id for c in self.corners] or [None]
+    def proposal_threads(self) -> int:
+        return self.simulator.strategy_threads
+
+    def parameter_tables(self):
+        from ic_opt.library.link import tables
+
+        return tables(self)
 
     def testbench(self, tb_id: str) -> Testbench:
         return next(t for t in self.testbenches if t.id == tb_id)
